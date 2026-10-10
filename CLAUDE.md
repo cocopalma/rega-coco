@@ -17,7 +17,7 @@ Servidor: Supabase, projecto `fgzdqnvobgfzjetbbxcm`. Responder sempre em portugu
 
 ## Comando "aplica os activistas propostos"
 Fonte: Drive do Valdo › `Projecto de plantio de coco/Rega de emergencia _2026/Plano de rega - base/Base_721_areas_REGA_SIM_20261009_v3_proposta_activistas.xlsx`, aba `AREAS_721`.
-1. Antes de gravar no Excel: avisar o Valdo e esperar que confirme que está fechado; copiar para `_anterior/`.
+1. O Valdo disse (11/10/2026) que este Excel estará sempre fechado quando der o comando: não é preciso perguntar. Mesmo assim, verificar se existe ficheiro de bloqueio `~$…` na pasta (se existir, parar e avisar) e copiar sempre para `_anterior/` antes de gravar.
 2. Aplicar só linhas com `Sem activista` = SIM, `Validado pelo supervisor (SIM/NÃO)` (coluna AK) = SIM e `Activista proposto` (coluna AA, lista na aba oculta LISTAS) preenchido com um nome que exista em `activistas`.
 3. Não sobrepor: se o campo já tiver activista no servidor (atribuído na app), não mudar — listar como conflito.
 4. Gravar no servidor (update `areas.activista_id` + linha em `alteracoes_areas`), marcar a data em "Aplicado na app em" (coluna AN) no Excel e responder com: aplicados, conflitos, recusados (nome desconhecido).
