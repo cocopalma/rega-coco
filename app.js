@@ -81,6 +81,15 @@ function rondaInfo(actId) {
   return { n: mr, feitas: cur.areas, total: lista.length, ini: cur.ini };
 }
 const souActivista = () => S.perfil?.papel === 'activista';
+// o que cada função pode fazer na app
+const FUNCOES = {
+  tecnico: { nome: 'Técnico', desc: 'vê todos os campos, a rega do dia de todas as equipas e o painel; pode fazer regas de teste.' },
+  supervisor: { nome: 'Supervisor', desc: 'o mesmo que o técnico.' },
+  director: { nome: 'Director (só leitura)', desc: 'vê todos os campos, a rega do dia e o painel; não regista regas.' },
+  cliente: { nome: 'Cliente (só painel)', desc: 'vê apenas o painel geral.' },
+};
+const PODE_REGAR = ['activista', 'tecnico', 'supervisor', 'gestor'];
+const VER_PAINEL = ['tecnico', 'supervisor', 'gestor', 'director', 'cliente'];
 function situacao(a) {
   const u = ultimaRega(a);
   if (!a.activista_id) return { cod: 'sem', txt: 'Sem activista', u };
@@ -141,13 +150,15 @@ function actSync() {
 
 // ---------- dados ----------
 async function carregarTudo() {
-  const [p, ac, ar] = await Promise.all([
-    sb.from('perfis').select('id,nome,papel,activista_id').eq('id', S.user.id).maybeSingle(),
+  const p = await sb.from('perfis').select('id,nome,papel,activista_id').eq('id', S.user.id).maybeSingle();
+  if (p.error) throw new Error(p.error.message);
+  if (!p.data) throw new Error('Este utilizador não tem perfil na app. Fale com o gestor.');
+  if (p.data.papel === 'cliente') { S.perfil = p.data; LS.set('perfil', S.perfil); return; }   // o cliente só vê o painel
+  const [ac, ar] = await Promise.all([
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor').order('nome'),
     sb.from('areas').select('id,pr,area_n,comunidade,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999),
   ]);
-  if (p.error || ac.error || ar.error) throw new Error((p.error || ac.error || ar.error).message);
-  if (!p.data) throw new Error('Este utilizador não tem perfil na app. Fale com o gestor.');
+  if (ac.error || ar.error) throw new Error((ac.error || ar.error).message);
   S.perfil = p.data; S.activistas = ac.data; S.areas = ar.data;
   LS.set('perfil', S.perfil); LS.set('activistas', S.activistas); LS.set('areas', S.areas);
   await carregarEstado();
@@ -166,7 +177,7 @@ async function carregarEstado() {
 }
 function carregarDoTelefone() {
   S.perfil = LS.get('perfil'); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {});
-  return !!(S.perfil && S.areas.length);
+  return !!(S.perfil && (S.areas.length || S.perfil.papel === 'cliente'));
 }
 
 // ---------- login ----------
@@ -242,7 +253,7 @@ function abrirFicha(id, nota = '') {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   const s = situacao(a), emCurso = LS.get('emCurso');
   const d = S.pos && a.latitude != null ? metros(S.pos, [a.latitude, a.longitude]) : null;
-  const podeRegar = S.perfil.papel === 'activista' || a.activista_id;
+  const podeRegar = PODE_REGAR.includes(S.perfil.papel) && (S.perfil.papel === 'activista' || a.activista_id);
   let acc = '';
   if (emCurso && emCurso.area_id === a.id) acc = (emCurso.agua_em
       ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>`
@@ -426,7 +437,7 @@ async function desenharHoje() {
         const o = g[k]; o.campos++; o.plantas += x.plantas_regadas || 0; if (x.alerta) o.alertas++; if (x.teste) o.teste++;
         o.pessoas = Math.max(o.pessoas, x.pessoas || 0); if (x.agua_em && (!o.agua || x.agua_em < o.agua)) o.agua = x.agua_em;
         if (!o.ini || x.entrada_em < o.ini) o.ini = x.entrada_em; if (!o.fim || x.saida_em > o.fim) o.fim = x.saida_em; }
-      html += `<div class="lin"><span>Registos recebidos</span><b>${r.data.length}</b></div><a class="btn sec" style="text-align:center;text-decoration:none" href="painel.html">Abrir painel geral</a></div>
+      html += `<div class="lin"><span>Registos recebidos</span><b>${r.data.length}</b></div><button class="btn sec" onclick="mudar('painel')">Abrir painel geral</button></div>
         <div style="overflow-x:auto"><table><tr><th>Activista</th><th class="n">Pessoas</th><th class="n">Campos</th><th class="n">Plantas</th><th>1.ª água</th><th>Horas</th><th class="n">Alertas</th></tr>` +
         Object.entries(g).map(([k, o]) => `<tr><td>${esc(nomeAct(k))}${o.teste ? ' <span class="pequeno">(teste)</span>' : ''}</td><td class="n">${o.pessoas || '—'}</td><td class="n">${o.campos}</td><td class="n">${num(o.plantas)}</td><td>${fmtHora(o.agua)}</td><td>${fmtHora(o.ini)}–${fmtHora(o.fim)}</td><td class="n">${o.alertas}</td></tr>`).join('') + '</table></div>';
     }
@@ -454,15 +465,18 @@ async function desenharGestao(msg = '') {
     <button class="btn" id="g-criar" ${sem.length ? '' : 'disabled'}>Criar login</button></div>
     <div class="cartao"><h2>Activistas com login (${com.length} de ${d.activistas.length})</h2>
     ${com.map((a) => `<div class="item"><div><div class="nome">${esc(a.nome)}</div><div class="sub">utilizador: <b>${esc(a.utilizador || '')}</b></div></div><button class="chip" onclick="reporPin('${a.id}','${esc(a.nome)}')">Novo PIN</button></div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>
-    <div class="cartao"><h2>Acesso do cliente ao painel</h2>
-    <p class="pequeno">O cliente só vê o painel geral (painel.html). Não vê nem altera registos.</p>
+    <div class="cartao"><h2>Outros acessos</h2>
+    <p class="pequeno">${Object.entries(FUNCOES).map(([k, f]) => `<b>${f.nome}</b>: ${f.desc}`).join('<br>')}</p>
     <label>Nome<input id="c-nome"></label>
+    <label>Função<select id="c-papel">${Object.entries(FUNCOES).map(([k, f]) => `<option value="${k}">${f.nome}</option>`).join('')}</select></label>
     <label>Utilizador<input id="c-user" autocapitalize="none"></label>
     <label>Senha (8 ou mais caracteres)<input id="c-senha"></label>
-    <button class="btn" id="c-criar">Criar acesso de cliente</button>
-    ${(d.clientes || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">utilizador: <b>${esc(c.utilizador || '')}</b></div></div></div>`).join('')}</div>`;
+    <button class="btn" id="c-criar">Criar acesso</button></div>
+    <div class="cartao"><h2>Acessos criados (${(d.utilizadores || []).length})</h2>
+    ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div><button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button></div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
+  $('#c-nome').oninput = () => { $('#c-user').value = sugerirUtilizador($('#c-nome').value || ' '); };
   $('#c-criar').onclick = async () => {
-    const corpo = { accao: 'criar_cliente', nome: $('#c-nome').value.trim(), utilizador: $('#c-user').value.trim().toLowerCase(), senha: $('#c-senha').value };
+    const corpo = { accao: 'criar_utilizador', nome: $('#c-nome').value.trim(), papel: $('#c-papel').value, utilizador: $('#c-user').value.trim().toLowerCase(), senha: $('#c-senha').value };
     try { const r = await chamarGestor(corpo); desenharGestao(`<div class="msg ok">Acesso criado: ${esc(r.nome)} → utilizador <b>${esc(r.utilizador)}</b>.</div>`); }
     catch (e) { aviso(e.message, 'erro'); }
   };
@@ -473,6 +487,10 @@ async function desenharGestao(msg = '') {
     try { const r = await chamarGestor(corpo); desenharGestao(`<div class="msg ok">Login criado: ${esc(r.activista)} → utilizador <b>${esc(r.utilizador)}</b>.</div>`); }
     catch (e) { aviso(e.message, 'erro'); }
   };
+}
+async function reporSenha(id, nome) {
+  const s = prompt(`Nova senha (8 ou mais caracteres) para ${nome}:`); if (!s) return;
+  try { await chamarGestor({ accao: 'repor_senha', perfil_id: id, senha: s }); aviso('Senha alterada.', 'ok'); } catch (e) { aviso(e.message, 'erro'); }
 }
 async function reporPin(id, nome) {
   const pin = prompt(`Novo PIN de 6 dígitos para ${nome}:`); if (!pin) return;
@@ -492,13 +510,19 @@ function mudar(e) {
   if (e === 'lista') desenharLista();
   if (e === 'hoje') desenharHoje();
   if (e === 'gestao') desenharGestao();
+  if (e === 'painel') { const f = $('#painel-f'); if (!f.src) f.src = 'painel.html?embutido=1'; else f.contentWindow?.postMessage('actualizar', location.origin); }
 }
 function mostrarApp() {
   const papel = S.perfil.papel;
-  if (papel === 'cliente') { location.replace('painel.html'); return; }
   $('#login').style.display = 'none'; $('#app').style.display = 'flex';
-  $('#h-nome').textContent = `${S.perfil.nome}${papel !== 'activista' ? ' · ' + papel : ''}`;
+  $('#h-nome').textContent = `${S.perfil.nome}${['activista', 'cliente'].includes(papel) ? '' : ' · ' + (papel === 'gestor' ? 'Gestor' : FUNCOES[papel]?.nome || papel)}`;
   $('#nav-gestao').style.display = papel === 'gestor' ? '' : 'none';
+  $('#nav-painel').style.display = VER_PAINEL.includes(papel) ? '' : 'none';
+  if (papel === 'cliente') {                               // o cliente só vê o painel
+    document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.e !== 'painel') b.style.display = 'none'; });
+    $('#h-sync').style.display = 'none'; $('#h-sair').style.display = '';
+    mudar('painel'); return;
+  }
   if (papel !== 'activista') { S.filtro = 'todas'; $('#f-ambito').value = 'todas'; }
   const coms = [...new Set(S.areas.map((a) => a.comunidade))].sort();
   $('#f-com').innerHTML = '<option value="">Todas as comunidades</option>' + coms.map((c) => `<option>${esc(c)}</option>`).join('');
@@ -513,6 +537,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(); });
   $('#nav').onclick = (e) => { if (e.target.dataset.e) mudar(e.target.dataset.e); };
   $('#h-sync').onclick = () => sincronizar();
+  $('#h-sair').onclick = () => sair();
   $('#folha-x').onclick = fecharFolha;
   $('#b-centrar').onclick = () => { if (S.pos) mapa.setView(S.pos, 16); else lerGPS().then(() => mapa.setView(S.pos, 16)).catch((e) => aviso(e.message, 'erro')); };
   $('#b-filtro').onclick = () => { S.filtro = S.filtro === 'meus' ? 'todas' : 'meus'; desenharMapa(true); };

@@ -79,11 +79,13 @@ td.n,th.n{text-align:right}
   <header>
     <h1 id="h-nome">Rega Coco</h1>
     <button class="sync" id="h-sync" title="Sincronizar">…</button>
+    <button class="sync" id="h-sair" style="display:none">Sair</button>
   </header>
   <nav id="nav">
     <button data-e="mapa" class="on">Mapa</button>
     <button data-e="lista">Campos</button>
     <button data-e="hoje">Hoje</button>
+    <button data-e="painel" id="nav-painel" style="display:none">Painel</button>
     <button data-e="gestao" id="nav-gestao" style="display:none">Gestão</button>
   </nav>
   <main>
@@ -110,6 +112,7 @@ td.n,th.n{text-align:right}
       <div class="pad" id="lista"></div>
     </section>
     <section class="ecra" id="e-hoje"><div class="pad" id="hoje"></div></section>
+    <section class="ecra" id="e-painel"><iframe id="painel-f" title="Painel geral" style="border:0;width:100%;height:100%;display:block"></iframe></section>
     <section class="ecra" id="e-gestao"><div class="pad" id="gestao"></div></section>
   </main>
 </div>

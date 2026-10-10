@@ -276,6 +276,9 @@ $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar()
 $('#b-act').onclick = carregar;
 $('#b-sair').onclick = async () => { await sb.auth.signOut(); location.reload(); };
 let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(desenhar, 150); });
+// dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
+const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
+if (EMBUTIDO) { $('#b-sair').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }
 (async () => { const { data: { session } } = await sb.auth.getSession(); if (session) carregar(); else mostrarLogin(); })();
 </script>
 </body>
