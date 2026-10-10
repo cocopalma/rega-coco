@@ -138,12 +138,23 @@ async function sincronizarAgora(silencioso) {
       LS.set('filaJ', LS.get('filaJ', []).filter((x) => x.id !== j.id));
     }
   }
-  if (!erro) { LS.set('ultimaSync', new Date().toISOString()); await carregarEstado(); }
+  let alteradas = 0;
+  if (!erro) {                                           // coordenadas e atribuições feitas no terreno
+    for (const x of LS.get('filaAlt', [])) {
+      const r4 = x.tipo === 'coord'
+        ? await sb.rpc('gravar_coordenada', { p_area: x.area_id, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao })
+        : await sb.rpc('atribuir_area', { p_area: x.area_id, p_activista: x.activista_id });
+      if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
+      if (r4.error) aviso(`Não foi gravado (${x.area_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); alteradas++;
+    }
+  }
+  if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
   actSync();
   if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   b.textContent = n ? `${n} por enviar` : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0);
 }
@@ -159,7 +170,7 @@ async function carregarTudo() {
     sb.from('areas').select('id,pr,area_n,comunidade,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999),
   ]);
   if (ac.error || ar.error) throw new Error((ac.error || ar.error).message);
-  S.perfil = p.data; S.activistas = ac.data; S.areas = ar.data;
+  S.perfil = p.data; S.activistas = ac.data; S.areas = aplicarPendentes(ar.data);
   LS.set('perfil', S.perfil); LS.set('activistas', S.activistas); LS.set('areas', S.areas);
   await carregarEstado();
 }
@@ -249,6 +260,84 @@ function desenharLista() {
 // ---------- ficha do campo ----------
 function folha(html) { $('#folha-c').innerHTML = html; $('#folha').classList.add('on'); }
 function fecharFolha() { $('#folha').classList.remove('on'); }
+// ---------- coordenada e atribuição de campos (técnico, supervisor, gestor) ----------
+const PODE_COORD = ['tecnico', 'supervisor', 'gestor'];
+const podeAtribuir = (a) => ['gestor', 'supervisor'].includes(S.perfil.papel) || (S.perfil.papel === 'tecnico' && !a.activista_id);
+function botoesCampo(a) {
+  let h = '';
+  if (PODE_COORD.includes(S.perfil.papel) && (a.latitude == null || ['gestor', 'supervisor'].includes(S.perfil.papel)))
+    h += `<button class="btn sec" onclick="ecraCoordenada('${esc(a.id)}')">📍 ${a.latitude == null ? 'Gravar a coordenada deste campo' : 'Corrigir a coordenada (estou no campo)'}</button>`;
+  if (podeAtribuir(a)) h += `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">👤 ${a.activista_id ? 'Mudar o activista deste campo' : 'Atribuir a um activista'}</button>`;
+  return h;
+}
+function porNaFilaAlt(x) { const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), ...x }); LS.set('filaAlt', f); actSync(); sincronizar(true); }
+async function ecraCoordenada(id) {
+  const a = S.areas.find((x) => x.id === id);
+  folha('<h2>A ler o GPS…</h2><p class="pequeno">Fique no centro do campo, em céu aberto.</p>');
+  S.fix = null;                                            // leitura nova, não a guardada
+  let c; try { c = await lerGPS(); } catch (e) { return abrirFicha(id, `<div class="msg erro">${esc(e.message)}</div>`); }
+  const prec = Math.round(c.accuracy);
+  S.coordPendente = { area_id: id, lat: c.latitude, lon: c.longitude, precisao: prec };
+  folha(`<h2>${esc(a.produtor)}</h2><div class="cartao">
+    <div class="lin"><span>Coordenada lida</span><b>${c.latitude.toFixed(6)}, ${c.longitude.toFixed(6)}</b></div>
+    <div class="lin"><span>Precisão</span><b>±${prec} m</b></div></div>
+    ${prec > 30 ? '<div class="msg erro">Precisão fraca (mais de 30 m). Espere uns segundos em céu aberto e leia de novo.</div>' : ''}
+    <p class="pequeno">Grave só se estiver dentro do campo, perto do centro.</p>
+    <button class="btn" onclick="gravarCoordenada()">Gravar esta coordenada</button>
+    <button class="btn sec" onclick="ecraCoordenada('${esc(id)}')">Ler o GPS de novo</button>
+    <button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
+}
+function gravarCoordenada() {
+  const x = S.coordPendente; if (!x) return;
+  const a = S.areas.find((y) => y.id === x.area_id);
+  a.latitude = x.lat; a.longitude = x.lon; LS.set('areas', S.areas);    // aparece já no mapa deste telefone
+  porNaFilaAlt({ tipo: 'coord', ...x }); S.coordPendente = null; desenharMapa(); desenharLista();
+  if (!a.activista_id && podeAtribuir(a)) return ecraAtribuir(a.id, '<div class="msg ok">Coordenada gravada. Agora atribua o campo a um activista.</div>');
+  abrirFicha(a.id, '<div class="msg ok">Coordenada gravada.</div>');
+}
+// activistas ordenados pela distância do campo mais próximo que já têm na lista
+function activistasProximos(a) {
+  if (a.latitude == null) return [];
+  const melhor = {};
+  for (const b of S.areas) {
+    if (!b.activista_id || b.id === a.id || b.latitude == null) continue;
+    const d = metros([a.latitude, a.longitude], [b.latitude, b.longitude]);
+    if (!(b.activista_id in melhor) || d < melhor[b.activista_id].d) melhor[b.activista_id] = { d, com: b.comunidade };
+  }
+  return Object.entries(melhor).map(([id, o]) => ({ id, ...o })).sort((x, y) => x.d - y.d);
+}
+function ecraAtribuir(id, nota = '') {
+  const a = S.areas.find((x) => x.id === id), prox = activistasProximos(a).slice(0, 3);
+  const km = (d) => d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km';
+  const resto = S.activistas.filter((t) => !prox.some((p) => p.id === t.id));
+  folha(`${nota}<h2>${esc(a.produtor)}</h2><p class="pequeno">${esc(a.pr)} · ${esc(a.comunidade)} · activista actual: <b>${esc(nomeAct(a.activista_id))}</b></p>
+    ${a.activista_proposto ? `<div class="msg info">Proposta da base: <b>${esc(nomeAct(a.activista_proposto))}</b></div>` : ''}
+    <label>Atribuir a<select id="t-act">
+      ${prox.length ? `<optgroup label="Mais próximos (campo da lista mais perto)">${prox.map((p) => `<option value="${p.id}">${esc(nomeAct(p.id))} — ${km(p.d)} (${esc(p.com)})</option>`).join('')}</optgroup>` : ''}
+      <optgroup label="Todos">${resto.map((t) => `<option value="${t.id}">${esc(t.nome)} — ${esc(t.comunidade_principal || '')}</option>`).join('')}</optgroup>
+    </select></label>
+    <p class="pequeno">Regra: rega o activista da comunidade onde o campo está. Confirme antes de gravar.</p>
+    <button class="btn" onclick="gravarAtribuicao('${esc(id)}')">Gravar</button>
+    <button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
+  if (!prox.length && a.activista_proposto) $('#t-act').value = a.activista_proposto;
+}
+function gravarAtribuicao(id) {
+  const a = S.areas.find((x) => x.id === id), novo = $('#t-act').value;
+  if (!novo) return;
+  a.activista_id = novo; LS.set('areas', S.areas);
+  porNaFilaAlt({ tipo: 'atrib', area_id: id, activista_id: novo }); desenharMapa(); desenharLista();
+  abrirFicha(id, `<div class="msg ok">Campo atribuído a ${esc(nomeAct(novo))}.${navigator.onLine ? '' : ' Será enviado quando houver rede.'}</div>`);
+}
+async function recarregarAreas() {
+  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999);
+  if (ar.error) return;
+  S.areas = aplicarPendentes(ar.data); LS.set('areas', S.areas);
+}
+function aplicarPendentes(lista) {                          // o que ainda não foi enviado continua a valer neste telefone
+  for (const x of LS.get('filaAlt', [])) { const a = lista.find((y) => y.id === x.area_id); if (!a) continue; if (x.tipo === 'coord') { a.latitude = x.lat; a.longitude = x.lon; } else a.activista_id = x.activista_id; }
+  return lista;
+}
+
 function abrirFicha(id, nota = '') {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   const s = situacao(a), emCurso = LS.get('emCurso');
@@ -272,7 +361,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
     ${d != null ? `<div class="lin"><span>Distância</span><b>${d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km'} · ${rumo(S.pos, [a.latitude, a.longitude])}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${acc}`);
+   </div>${acc}${botoesCampo(a)}`);
 }
 
 // ---------- entrada ----------
