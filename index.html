@@ -44,6 +44,7 @@ label{display:block;margin-top:12px;font-weight:600}
 .msg{padding:12px;border-radius:10px;margin-top:10px;font-size:15px}
 .msg.erro{background:#fdecea;color:#8a1c1c}.msg.ok{background:#e7f4ea;color:#1b5e20}.msg.info{background:#eef3f8;color:#20425f}
 .item{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--borda);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.item{flex-wrap:wrap}.item .atrib{flex-basis:100%;font-size:14px;border-top:1px dashed #eceee9;padding-top:6px;margin-top:2px}.item .atrib .chips{margin-top:6px}
 .item .nome{font-weight:600}.item .sub{font-size:13px;color:var(--cinza)}.item>div{flex:1}
 .filtros{display:flex;gap:8px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--borda);flex-wrap:wrap}
 .filtros select{width:auto;margin:0;padding:8px}
@@ -106,7 +107,7 @@ td.n,th.n{text-align:right}
       <div class="filtros">
         <select id="f-ambito"><option value="meus">As minhas áreas</option><option value="todas">Todas as áreas</option></select>
         <select id="f-com"><option value="">Todas as comunidades</option></select>
-        <select id="f-sit"><option value="">Todas as situações</option><option value="por">Por regar nesta ronda</option><option value="feita">Regada nesta ronda</option><option value="sem">Sem activista</option></select>
+        <select id="f-sit"><option value="">Todas as situações</option><option value="por">Por regar nesta ronda</option><option value="feita">Regada nesta ronda</option><option value="sem">Por atribuir (sem activista)</option></select>
         <input id="f-txt" placeholder="Procurar produtor ou PR" style="flex:1;min-width:160px;margin:0;padding:8px">
       </div>
       <div class="pad" id="lista"></div>

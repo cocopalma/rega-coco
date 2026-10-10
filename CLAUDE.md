@@ -15,9 +15,6 @@ Servidor: Supabase, projecto `fgzdqnvobgfzjetbbxcm`. Responder sempre em portugu
 - Supervisor: o mesmo por `activistas.supervisor`. Coberturas na tabela `coberturas` (o gestor gere na app).
 - Director: lê tudo, não regista. Cliente / administração: só o painel.
 
-## Comando "aplica os activistas propostos"
-Fonte: Drive do Valdo › `Projecto de plantio de coco/Rega de emergencia _2026/Plano de rega - base/Base_721_areas_REGA_SIM_20261009_v3_proposta_activistas.xlsx`, aba `AREAS_721`.
-1. O Valdo disse (11/10/2026) que este Excel estará sempre fechado quando der o comando: não é preciso perguntar. Mesmo assim, verificar se existe ficheiro de bloqueio `~$…` na pasta (se existir, parar e avisar) e copiar sempre para `_anterior/` antes de gravar.
-2. Aplicar só linhas com `Sem activista` = SIM, `Validado pelo supervisor (SIM/NÃO)` (coluna AK) = SIM e `Activista proposto` (coluna AA, lista na aba oculta LISTAS) preenchido com um nome que exista em `activistas`.
-3. Não sobrepor: se o campo já tiver activista no servidor (atribuído na app), não mudar — listar como conflito.
-4. Gravar no servidor (update `areas.activista_id` + linha em `alteracoes_areas`), marcar a data em "Aplicado na app em" (coluna AN) no Excel e responder com: aplicados, conflitos, recusados (nome desconhecido).
+## Atribuir campos sem activista
+Desde 11/10/2026 faz-se na app (decisão do Valdo): separador Campos › filtro "Por atribuir" › "✓ Confirmar proposta" (usa `areas.activista_proposto`) ou "Escolher outro". Supervisor e técnico só atribuem a activistas da sua equipa; o gestor a qualquer um. Cada alteração fica em `alteracoes_areas`.
+O Excel v3 (colunas AK–AN de validação) e o comando "aplica os activistas propostos" deixaram de ser usados.

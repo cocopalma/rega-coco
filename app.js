@@ -246,6 +246,21 @@ function textoRonda() {
 }
 
 // ---------- lista ----------
+// campos sem activista que este utilizador pode atribuir (supervisor e técnico: só os que vê; gestor: todos)
+const porAtribuir = () => (S.perfil && ['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel) ? S.areas.filter((a) => !a.activista_id) : []);
+const daMinhaEquipa = (id) => !S.visiveis || S.visiveis.includes(id);
+function linhaAtribuir(a) {
+  const prop = a.activista_proposto, ok = prop && daMinhaEquipa(prop);
+  return `<div class="atrib">${prop ? `Proposta: <b>${esc(nomeAct(prop))}</b>${ok ? '' : ' <span class="pequeno">(fora da sua equipa)</span>'}` : '<span class="pequeno">Sem proposta</span>'}
+    <div class="chips">${ok ? `<button class="chip on" data-acc="confirmar" data-id="${esc(a.id)}">✓ Confirmar proposta</button>` : ''}
+    <button class="chip" data-acc="outro" data-id="${esc(a.id)}">Escolher outro</button></div></div>`;
+}
+function confirmarProposta(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a || !a.activista_proposto) return;
+  a.activista_id = a.activista_proposto; LS.set('areas', S.areas);
+  porNaFilaAlt({ tipo: 'atrib', area_id: id, activista_id: a.activista_id });
+  aviso(`${a.produtor}: atribuído a ${nomeAct(a.activista_id)}.`, 'ok'); desenharMapa(); desenharLista();
+}
 function desenharLista() {
   const amb = $('#f-ambito').value, com = $('#f-com').value, sit = $('#f-sit').value, txt = $('#f-txt').value.trim().toLowerCase();
   let L2 = (amb === 'meus' && S.perfil?.papel === 'activista') ? minhas() : S.areas;
@@ -255,10 +270,11 @@ function desenharLista() {
   if (sit) linhas = linhas.filter((x) => x.s.cod === sit);
   linhas.sort((x, y) => (x.s.cod === 'feita') - (y.s.cod === 'feita') || (x.d ?? 1e12) - (y.d ?? 1e12));   // por regar primeiro
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
+    (porAtribuir().length && sit !== 'sem' ? `<div class="msg info">${porAtribuir().length} campos por atribuir. <button class="chip" onclick="$('#f-sit').value='sem';desenharLista()">Ver</button></div>` : '') +
     `<p class="pequeno">${linhas.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` +
     linhas.slice(0, 300).map(({ a, s, d }) => `<div class="item" data-id="${esc(a.id)}"><div>
       <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
-      </div><span class="tag t-${s.cod}">${s.txt}</span></div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
+      </div><span class="tag t-${s.cod}">${s.txt}</span>${s.cod === 'sem' && podeAtribuir(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
 }
 
 // ---------- ficha do campo ----------
@@ -336,7 +352,7 @@ function ecraAtribuir(id, nota = '') {
     <p class="pequeno">Regra: rega o activista da comunidade onde o campo está. Confirme antes de gravar.</p>
     <button class="btn" onclick="gravarAtribuicao('${esc(id)}')">Gravar</button>
     <button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
-  if (!prox.length && a.activista_proposto && daEquipa(a.activista_proposto)) $('#t-act').value = a.activista_proposto;
+  if (a.activista_proposto && daEquipa(a.activista_proposto)) $('#t-act').value = a.activista_proposto;
 }
 function gravarAtribuicao(id) {
   const a = S.areas.find((x) => x.id === id), novo = $('#t-act').value;
@@ -705,7 +721,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#b-filtro').onclick = () => { S.filtro = S.filtro === 'meus' ? 'todas' : 'meus'; desenharMapa(true); };
   ['#f-ambito', '#f-com', '#f-sit'].forEach((s) => $(s).onchange = desenharLista);
   $('#f-txt').oninput = desenharLista;
-  $('#lista').onclick = (e) => { const it = e.target.closest('.item'); if (it) abrirFicha(it.dataset.id); };
+  $('#lista').onclick = (e) => {
+    const b = e.target.closest('button[data-acc]');
+    if (b) { if (b.dataset.acc === 'confirmar') confirmarProposta(b.dataset.id); else ecraAtribuir(b.dataset.id); return; }
+    const it = e.target.closest('.item'); if (it) abrirFicha(it.dataset.id);
+  };
   window.addEventListener('online', () => sincronizar(true));
   window.addEventListener('offline', actSync);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
