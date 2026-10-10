@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#1f5130">
+<title>Painel de Rega</title>
+<link rel="icon" href="icon-192.png">
+<style>
+:root{color-scheme:light;
+ --page:#f9f9f7;--surface:#fcfcfb;--card:#ffffff;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;
+ --grid:#e1e0d9;--axis:#c3c2b7;--border:rgba(11,11,11,.10);--s1:#2a78d6;--s1wash:rgba(42,120,214,.10);
+ --track:#eeede8;--marca:#1f5130;--good:#006300;--crit:#d03b3b}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;
+ --page:#0d0d0d;--surface:#1a1a19;--card:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;
+ --grid:#2c2c2a;--axis:#383835;--border:rgba(255,255,255,.10);--s1:#3987e5;--s1wash:rgba(57,135,229,.12);
+ --track:#2a2a28;--marca:#7fbf8f;--good:#0ca30c;--crit:#e66767}}
+:root[data-theme="dark"]{color-scheme:dark;
+ --page:#0d0d0d;--surface:#1a1a19;--card:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;
+ --grid:#2c2c2a;--axis:#383835;--border:rgba(255,255,255,.10);--s1:#3987e5;--s1wash:rgba(57,135,229,.12);
+ --track:#2a2a28;--marca:#7fbf8f;--good:#0ca30c;--crit:#e66767}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 48px}
+header.topo{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 16px;margin-bottom:18px}
+.marca{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--marca)}
+h1{margin:2px 0 0;font-size:26px;letter-spacing:-.01em}
+.meta{color:var(--ink2);font-size:13px}
+.meta button{font:inherit;color:var(--ink2);background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;margin-left:6px;cursor:pointer}
+.grelha{display:grid;gap:14px}
+.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+.dois{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.dois{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;min-width:0}
+.kpi .rot{color:var(--ink2);font-size:13px}
+.kpi .val{font-size:32px;font-weight:700;letter-spacing:-.02em;margin:4px 0 2px}
+.kpi .sub{color:var(--muted);font-size:12.5px}
+.barra{height:6px;border-radius:3px;background:var(--track);margin-top:10px;overflow:hidden}
+.barra i{display:block;height:100%;background:var(--s1);border-radius:3px}
+.card h2{font-size:16px;margin:0}
+.card .desc{color:var(--ink2);font-size:13px;margin:2px 0 12px}
+.sec{margin-top:14px}
+svg{display:block;width:100%;height:auto;overflow:visible}
+svg text{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+svg .lbl{fill:var(--ink2);font-size:12px}
+svg .valor{fill:var(--ink);font-size:12px;font-weight:600}
+.marca-dados{cursor:default}
+.marca-dados:hover rect.vis,.marca-dados:focus rect.vis,.marca-dados:hover path.vis,.marca-dados:focus path.vis{opacity:.75}
+.marca-dados:focus{outline:none}
+#dica{position:fixed;z-index:50;pointer-events:none;background:var(--card);color:var(--ink);border:1px solid var(--border);
+ box-shadow:0 4px 16px rgba(0,0,0,.14);border-radius:10px;padding:8px 10px;font-size:13px;display:none;max-width:260px}
+#dica .v{font-weight:700;font-size:15px}
+#dica .l{color:var(--ink2)}
+#dica .k{display:inline-block;width:12px;height:2px;background:var(--s1);vertical-align:middle;margin-right:6px}
+details{margin-top:10px}
+summary{cursor:pointer;color:var(--ink2);font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--grid);text-align:left;white-space:nowrap}
+th{color:var(--ink2);font-weight:600;background:var(--surface);position:sticky;top:0}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.tabela{overflow:auto;max-height:420px}
+.prog{display:flex;align-items:center;gap:8px;min-width:150px}
+.prog .barra{flex:1;margin:0}
+.vazio{color:var(--muted);font-size:13px;padding:24px 0;text-align:center}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;border:1px solid var(--border);border-radius:12px;padding:2px 8px;color:var(--ink2)}
+#login{max-width:380px;margin:12vh auto;padding:0 16px}
+#login input{width:100%;font:inherit;padding:11px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--ink);margin-top:6px}
+#login label{display:block;margin-top:12px;font-weight:600;font-size:14px}
+#login button{width:100%;margin-top:14px;font:inherit;font-weight:700;border:0;border-radius:10px;padding:13px;background:#2e7d4a;color:#fff;cursor:pointer}
+.erro{color:var(--crit);font-size:14px;margin-top:10px}
+.nota{color:var(--muted);font-size:12px;margin-top:18px}
+</style>
+</head>
+<body>
+<div id="login" style="display:none">
+  <div class="card">
+    <div class="marca">Projecto Coco · Palma</div>
+    <h1 style="font-size:22px">Painel de rega</h1>
+    <label>Utilizador (ou email)<input id="l-user" autocomplete="username" autocapitalize="none"></label>
+    <label>Senha<input id="l-pin" type="password" autocomplete="current-password"></label>
+    <button id="l-entrar">Entrar</button>
+    <div id="l-msg"></div>
+  </div>
+</div>
+
+<div class="wrap" id="painel" style="display:none">
+  <header class="topo">
+    <div><div class="marca">Projecto Coco · Palma</div><h1>Rega de emergência</h1></div>
+    <div class="meta"><span id="gerado"></span><button id="b-act">Actualizar</button><button id="b-sair">Sair</button></div>
+  </header>
+
+  <section class="grelha kpis" id="kpis"></section>
+
+  <section class="grelha dois sec">
+    <div class="card"><h2>Plantas regadas por dia</h2><p class="desc">Registos da app com plantas regadas (exclui testes).</p><div id="g-dia"></div><details><summary>Ver tabela</summary><div class="tabela" id="t-dia"></div></details></div>
+    <div class="card"><h2>Plantas vivas regadas por comunidade</h2><p class="desc">% das plantas vivas da comunidade em campos já regados pela app.</p><div id="g-com"></div><details><summary>Ver tabela</summary><div class="tabela" id="t-com"></div></details></div>
+  </section>
+
+  <section class="card sec"><h2>Equipas — rondas e produtividade</h2>
+    <p class="desc">Cada equipa rega toda a sua lista antes de repetir um campo. A duração de cada ronda concluída é o ciclo provisório da comunidade.</p>
+    <div class="tabela" id="t-equipa" style="max-height:none"></div></section>
+
+  <section class="card sec"><h2>Chegada da água (tuk-tuk) por equipa</h2>
+    <p class="desc">Últimos 14 dias. Espera = minutos entre a entrada no campo e a chegada da água.</p>
+    <div class="tabela" id="t-agua"></div></section>
+
+  <section class="grelha dois sec">
+    <div class="card"><h2>Constrangimentos registados</h2><p class="desc">Número de registos com cada constrangimento.</p><div id="g-constr"></div></div>
+    <div class="card"><h2>Qualidade dos registos</h2><p class="desc">Controlo dos dados recebidos.</p><div id="qualidade"></div></div>
+  </section>
+  <p class="nota">Fonte: app Rega Coco (Supabase). Universo: áreas activas da base de 721 áreas. Os números de antes da app (base do Dalmar) não entram nos gráficos.</p>
+</div>
+<div id="dica" role="tooltip"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+'use strict';
+const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
+const CHAVE = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZnemRxbnZvYmdmempldGJieGNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NDgyMzUsImV4cCI6MjEwNzIyNDIzNX0.1bSDbPLWMvhIG2fzu_Ta2vm1qV1NutzMEmii3wbN7mY';
+const DOMINIO = 'rega-coco.example.com';
+const sb = supabase.createClient(URL_SB, CHAVE, { auth: { persistSession: true, autoRefreshToken: true } });
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = (n) => Math.round(n ?? 0).toLocaleString('pt-PT');
+const pct = (a, b) => (b ? (100 * a) / b : 0);
+const fmtPct = (v) => v.toLocaleString('pt-PT', { maximumFractionDigits: v < 10 ? 1 : 0 }) + '%';
+const fmtData = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-PT') : '—';
+const ddmm = (d) => d.slice(8, 10) + '/' + d.slice(5, 7);
+const TIPOS = { falta_agua: 'Falta de água', mudas_secas: 'Mudas secas', acesso_dificil: 'Acesso difícil', avaria: 'Avaria', outro: 'Outro' };
+let D = null;
+
+// ---------- dica (tooltip): conteúdo sempre por textContent ----------
+const DICAS = [];
+function dica(linhas) { DICAS.push(linhas); return DICAS.length - 1; }
+function mostrarDica(i, x, y) {
+  const el = $('#dica'), L = DICAS[i]; if (!L) return;
+  el.replaceChildren(...L.map(([v, l], k) => { const d = document.createElement('div');
+    if (k === 0) { const s = document.createElement('span'); s.className = 'k'; d.appendChild(s); }
+    const b = document.createElement('span'); b.className = k === 0 ? 'v' : ''; b.textContent = v; d.appendChild(b);
+    if (l) { const t = document.createElement('span'); t.className = 'l'; t.textContent = ' ' + l; d.appendChild(t); } return d; }));
+  el.style.display = 'block';
+  const w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = Math.min(window.innerWidth - w - 8, Math.max(8, x + 12)) + 'px';
+  el.style.top = (y - h - 12 < 8 ? y + 16 : y - h - 12) + 'px';
+}
+document.addEventListener('pointermove', (e) => { const m = e.target.closest?.('[data-dica]'); if (m) mostrarDica(+m.dataset.dica, e.clientX, e.clientY); else $('#dica').style.display = 'none'; });
+document.addEventListener('focusin', (e) => { const m = e.target.closest?.('[data-dica]'); if (m) { const r = m.getBoundingClientRect(); mostrarDica(+m.dataset.dica, r.left + r.width / 2, r.top); } });
+document.addEventListener('focusout', () => { $('#dica').style.display = 'none'; });
+
+// ---------- escalas ----------
+function passoLimpo(max, n = 4) {
+  if (!(max > 0)) return { top: 1, step: 1 };
+  const raw = max / n, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+  return { top: step * Math.ceil(max / step), step };
+}
+const compacto = (v) => v >= 1000 ? (v / 1000).toLocaleString('pt-PT', { maximumFractionDigits: 1 }) + ' mil' : num(v);
+// barra com ponta arredondada (4px) e base recta
+function colunaPath(x, y, w, h) { const r = Math.min(4, w / 2, h); return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; }
+function barraPath(x, y, w, h) { const r = Math.min(4, h / 2, w); return `M${x},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h - r}Q${x + w},${y + h} ${x + w - r},${y + h}H${x}Z`; }
+
+// ---------- gráfico de colunas (uma série) ----------
+function colunas(alvo, dados, { valor, rotulo, dicaDe }) {
+  const el = $(alvo);
+  if (!dados.length) { el.innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
+  const W = Math.max(320, el.clientWidth || 520), H = 240, pl = 48, pr = 8, pt = 22, pb = 28;
+  const iw = W - pl - pr, ih = H - pt - pb;
+  const { top, step } = passoLimpo(Math.max(...dados.map(valor)));
+  const banda = iw / dados.length, bw = Math.max(3, Math.min(24, banda - 2));
+  const salto = Math.ceil(dados.length / Math.max(1, Math.floor(iw / 46)));
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de colunas">`;
+  for (let v = 0; v <= top + 1e-9; v += step) { const y = pt + ih - (v / top) * ih;
+    s += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="var(--${v === 0 ? 'axis' : 'grid'})" stroke-width="1"/><text x="${pl - 8}" y="${y + 4}" text-anchor="end">${compacto(v)}</text>`; }
+  let iMax = 0; dados.forEach((d, i) => { if (valor(d) > valor(dados[iMax])) iMax = i; });
+  dados.forEach((d, i) => {
+    const v = valor(d), h = (v / top) * ih, x = pl + i * banda + (banda - bw) / 2, y = pt + ih - h;
+    s += `<g class="marca-dados" tabindex="0" data-dica="${dica(dicaDe(d))}"><rect x="${pl + i * banda}" y="${pt}" width="${banda}" height="${ih}" fill="transparent"/>` +
+      (h > 0 ? `<path class="vis" d="${colunaPath(x, y, bw, h)}" fill="var(--s1)"/>` : '') + '</g>';
+    if (i === iMax || i === dados.length - 1) s += `<text class="valor" x="${x + bw / 2}" y="${y - 6}" text-anchor="middle">${compacto(v)}</text>`;
+    if (i % salto === 0) s += `<text x="${pl + i * banda + banda / 2}" y="${H - 8}" text-anchor="middle">${esc(rotulo(d))}</text>`;
+  });
+  el.innerHTML = s + '</svg>';
+}
+
+// ---------- barras horizontais (uma série) ----------
+function barras(alvo, dados, { valor, rotulo, texto, dicaDe, max }) {
+  const el = $(alvo);
+  if (!dados.length) { el.innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
+  const W = Math.max(320, el.clientWidth || 520), linha = 30, H = dados.length * linha + 8;
+  const pl = Math.min(150, W * 0.36), pr = 56, iw = W - pl - pr;
+  const top = max ?? Math.max(...dados.map(valor), 1);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de barras"><line x1="${pl}" x2="${pl}" y1="0" y2="${H - 8}" stroke="var(--axis)"/>`;
+  dados.forEach((d, i) => {
+    const v = valor(d), w = Math.max(0, (v / top) * iw), y = i * linha + 4, bh = 18;
+    s += `<g class="marca-dados" tabindex="0" data-dica="${dica(dicaDe(d))}"><rect x="0" y="${y - 3}" width="${W}" height="${linha}" fill="transparent"/>` +
+      `<text class="lbl" x="${pl - 8}" y="${y + 13}" text-anchor="end">${esc(rotulo(d))}</text>` +
+      (w > 0 ? `<path class="vis" d="${barraPath(pl, y, w, bh)}" fill="var(--s1)"/>` : '') +
+      `<text class="valor" x="${pl + w + 6}" y="${y + 13}">${esc(texto(d))}</text></g>`;
+  });
+  el.innerHTML = s + '</svg>';
+}
+
+function tabela(alvo, cab, linhas) {
+  $(alvo).innerHTML = linhas.length ? `<table><thead><tr>${cab.map(([t, n]) => `<th${n ? ' class="n"' : ''}>${esc(t)}</th>`).join('')}</tr></thead><tbody>` +
+    linhas.map((l) => `<tr>${l.map((c, i) => `<td${cab[i][1] ? ' class="n"' : ''}>${c}</td>`).join('')}</tr>`).join('') + '</tbody></table>' : '<div class="vazio">Ainda sem registos.</div>';
+}
+
+// ---------- desenhar ----------
+function desenhar() {
+  if (!D) return; DICAS.length = 0;
+  const u = D.universo || {};
+  $('#gerado').textContent = `Actualizado ${new Date(D.gerado_em).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' })}${D.inicio ? ' · desde ' + fmtData(D.inicio) : ''}`;
+  const pA = pct(D.areas_regadas, u.areas), pV = pct(D.vivas_regadas, u.vivas);
+  const kpi = (rot, val, sub, barra) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${val}</div><div class="sub">${sub}</div>${barra != null ? `<div class="barra"><i style="width:${Math.min(100, barra)}%"></i></div>` : ''}</div>`;
+  $('#kpis').innerHTML =
+    kpi('Plantas vivas em campos regados', fmtPct(pV), `${num(D.vivas_regadas)} de ${num(u.vivas)} plantas vivas`, pV) +
+    kpi('Campos regados', fmtPct(pA), `${num(D.areas_regadas)} de ${num(u.areas)} campos`, pA) +
+    kpi('Frequência média', D.dias_medios_entre_regas != null ? `${String(D.dias_medios_entre_regas).replace('.', ',')} dias` : '—', 'entre duas regas do mesmo campo') +
+    kpi('Espera pela água', D.espera_agua_min != null ? `${num(D.espera_agua_min)} min` : '—', 'média, da entrada no campo à chegada do tuk-tuk');
+  $('#kpis').innerHTML += kpi('Plantas regadas (total)', num(D.plantas_regadas_total), `em ${num(D.registos)} regas de campo`) +
+    kpi('Pessoas-dia', num(D.pessoas_dia_total), 'soma das pessoas presentes por equipa e dia') +
+    kpi('Plantas por pessoa-dia', D.pessoas_dia_total ? num(D.plantas_regadas_total / D.pessoas_dia_total) : '—', 'produtividade média') +
+    kpi('Equipas activas', num((D.por_equipa || []).filter((e) => e.dias_trabalhados > 0).length), `de ${num((D.por_equipa || []).length)} equipas com lista`);
+
+  const dias = D.por_dia || [];
+  colunas('#g-dia', dias, { valor: (d) => d.plantas, rotulo: (d) => ddmm(d.data),
+    dicaDe: (d) => [[num(d.plantas), 'plantas regadas'], [fmtData(d.data)], [`${d.campos} campos · ${d.equipas} equipas · ${num(d.pessoas)} pessoas`]] });
+  tabela('#t-dia', [['Data'], ['Plantas', 1], ['Campos', 1], ['Equipas', 1], ['Pessoas', 1]],
+    dias.slice().reverse().map((d) => [fmtData(d.data), num(d.plantas), num(d.campos), num(d.equipas), num(d.pessoas)]));
+
+  const com = (D.por_comunidade || []).map((c) => ({ ...c, p: pct(c.vivas_regadas, c.vivas) })).sort((a, b) => b.p - a.p || a.comunidade.localeCompare(b.comunidade));
+  barras('#g-com', com, { valor: (c) => c.p, max: 100, rotulo: (c) => c.comunidade, texto: (c) => fmtPct(c.p),
+    dicaDe: (c) => [[fmtPct(c.p), 'das plantas vivas'], [c.comunidade], [`${c.areas_regadas} de ${c.areas} campos regados`], [c.dias_medios_entre_regas != null ? `${String(c.dias_medios_entre_regas).replace('.', ',')} dias entre regas` : 'frequência: ainda sem repetições']] });
+  tabela('#t-com', [['Comunidade'], ['Campos', 1], ['Regados', 1], ['Vivas', 1], ['Vivas regadas', 1], ['%', 1], ['Regas', 1], ['Dias entre regas', 1]],
+    com.map((c) => [esc(c.comunidade), num(c.areas), num(c.areas_regadas), num(c.vivas), num(c.vivas_regadas), fmtPct(c.p), num(c.regas), c.dias_medios_entre_regas != null ? String(c.dias_medios_entre_regas).replace('.', ',') : '—']));
+
+  const eq = (D.por_equipa || []).slice().sort((a, b) => a.comunidade?.localeCompare(b.comunidade || '') || a.nome.localeCompare(b.nome));
+  tabela('#t-equipa', [['Equipa (activista)'], ['Comunidade'], ['Ronda'], ['Progresso da ronda'], ['Rondas concluídas (dias)'], ['Dias trab.', 1], ['Plantas', 1], ['Plantas/pessoa-dia', 1], ['Min/campo', 1], ['Espera água (min)', 1]],
+    eq.map((e) => {
+      const p = pct(e.regadas_ronda, e.lista);
+      const conc = (e.rondas_concluidas || []).map((r) => `<span class="chip">R${r.ronda}: ${r.dias} d</span>`).join('') || '<span style="color:var(--muted)">—</span>';
+      return [esc(e.nome), esc(e.comunidade || ''), String(e.ronda), `<div class="prog"><div class="barra"><i style="width:${p}%"></i></div><span>${e.regadas_ronda}/${e.lista}</span></div>`,
+        `<div class="chips">${conc}</div>`, num(e.dias_trabalhados), num(e.plantas), e.pessoas_dia ? num(e.plantas / e.pessoas_dia) : '—',
+        e.min_por_campo != null ? num(e.min_por_campo) : '—', e.espera_agua_min != null ? num(e.espera_agua_min) : '—'];
+    }));
+
+  tabela('#t-agua', [['Data'], ['Equipa'], ['Comunidade'], ['Início do trabalho'], ['1.ª água'], ['Chegadas da água'], ['Campos', 1], ['Espera média (min)', 1]],
+    (D.chegadas_agua || []).map((a) => [fmtData(a.data), esc(a.equipa), esc(a.comunidade || ''), a.inicio_trabalho || '—', a.primeira_agua || '<span style="color:var(--crit)">sem registo</span>',
+      esc(a.horas || '—'), num(a.campos), a.espera_media_min != null ? num(a.espera_media_min) : '—']));
+
+  const ct = Object.entries(D.constrangimentos || {}).map(([k, n]) => ({ k, n })).sort((a, b) => b.n - a.n);
+  barras('#g-constr', ct, { valor: (c) => c.n, rotulo: (c) => TIPOS[c.k] || c.k, texto: (c) => num(c.n), dicaDe: (c) => [[num(c.n), 'registos'], [TIPOS[c.k] || c.k]] });
+
+  $('#qualidade').innerHTML = `<table><tbody>
+    <tr><td>Regas de campo recebidas</td><td class="n">${num(D.registos)}</td></tr>
+    <tr><td>Fora da lista da equipa (com motivo)</td><td class="n">${num(D.alertas)}</td></tr>
+    <tr><td>GPS fora do campo</td><td class="n">${num(D.gps_invalido)}</td></tr></tbody></table>`;
+}
+
+// ---------- dados e sessão ----------
+async function carregar() {
+  document.body.style.opacity = D ? '.6' : '';
+  const { data, error } = await sb.rpc('painel_resumo');
+  document.body.style.opacity = '';
+  if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
+  D = data; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar();
+}
+function mostrarLogin(msg = '') { $('#painel').style.display = 'none'; $('#login').style.display = ''; $('#l-msg').innerHTML = msg ? `<div class="erro">${esc(msg)}</div>` : ''; }
+async function entrar() {
+  const u = $('#l-user').value.trim().toLowerCase(), email = u.includes('@') ? u : `${u}@${DOMINIO}`;
+  const { error } = await sb.auth.signInWithPassword({ email, password: $('#l-pin').value });
+  if (error) return mostrarLogin(/Invalid login/i.test(error.message) ? 'Utilizador ou senha errados.' : error.message);
+  carregar();
+}
+$('#l-entrar').onclick = entrar;
+$('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(); });
+$('#b-act').onclick = carregar;
+$('#b-sair').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(desenhar, 150); });
+(async () => { const { data: { session } } = await sb.auth.getSession(); if (session) carregar(); else mostrarLogin(); })();
+</script>
+</body>
+</html>

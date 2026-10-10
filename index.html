@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#1f5130">
+<title>Rega Coco</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--verde:#1f5130;--verde2:#2e7d4a;--fundo:#f3f5f1;--texto:#17201a;--cinza:#6b746d;--borda:#d9dfd7;
+ --feita:#2e7d32;--por:#d84315;--sem:#8a8f8b;--branco:#fff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--fundo);color:var(--texto);font:16px/1.4 system-ui,-apple-system,Roboto,Arial,sans-serif}
+button{font:inherit}
+.app{display:flex;flex-direction:column;height:100%}
+header{background:var(--verde);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header .sync{font-size:12px;background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:14px;padding:6px 10px}
+header .sync.pend{background:#ef8f00}
+nav{display:flex;background:#fff;border-bottom:1px solid var(--borda)}
+nav button{flex:1;border:0;background:none;padding:12px 4px;font-weight:600;color:var(--cinza);border-bottom:3px solid transparent}
+nav button.on{color:var(--verde);border-bottom-color:var(--verde)}
+main{flex:1;overflow:auto;position:relative}
+#mapa{position:absolute;inset:0}
+.ecra{display:none;height:100%}.ecra.on{display:block}
+.pad{padding:14px;max-width:640px;margin:0 auto}
+.cartao{background:#fff;border:1px solid var(--borda);border-radius:12px;padding:14px;margin-bottom:12px}
+.cartao h2{margin:0 0 8px;font-size:18px}
+.lin{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed #eceee9}
+.lin:last-child{border-bottom:0}.lin span:first-child{color:var(--cinza)}
+.btn{display:block;width:100%;border:0;border-radius:10px;padding:15px;font-size:17px;font-weight:700;background:var(--verde2);color:#fff;margin-top:10px}
+.btn.sec{background:#fff;color:var(--verde);border:2px solid var(--verde2)}
+.btn.aviso{background:#ef8f00}.btn:disabled{opacity:.5}
+input,select,textarea{width:100%;font:inherit;padding:12px;border:1px solid var(--borda);border-radius:10px;background:#fff;margin-top:6px}
+label{display:block;margin-top:12px;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chip{border:2px solid var(--borda);background:#fff;border-radius:20px;padding:8px 12px;font-size:15px}
+.chip.on{border-color:var(--verde2);background:#e5f2e8;color:var(--verde)}
+.tag{display:inline-block;border-radius:6px;padding:2px 8px;color:#fff;font-size:13px;font-weight:700}
+.t-feita{background:var(--feita)}.t-por{background:var(--por)}.t-sem{background:var(--sem)}
+.ronda{position:absolute;z-index:500;left:54px;right:132px;top:10px;margin:0 auto;max-width:320px;background:#fff;border-radius:14px;padding:7px 12px;font-size:13px;line-height:1.35;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.msg{padding:12px;border-radius:10px;margin-top:10px;font-size:15px}
+.msg.erro{background:#fdecea;color:#8a1c1c}.msg.ok{background:#e7f4ea;color:#1b5e20}.msg.info{background:#eef3f8;color:#20425f}
+.item{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--borda);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.item .nome{font-weight:600}.item .sub{font-size:13px;color:var(--cinza)}.item>div{flex:1}
+.filtros{display:flex;gap:8px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--borda);flex-wrap:wrap}
+.filtros select{width:auto;margin:0;padding:8px}
+.legenda{position:absolute;z-index:500;left:8px;bottom:8px;background:rgba(255,255,255,.95);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.7}
+.legenda i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.flutua{position:absolute;z-index:500;right:10px;top:10px;display:flex;flex-direction:column;gap:8px}
+.flutua button{background:#fff;border:1px solid var(--borda);border-radius:10px;padding:10px 12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.folha{position:fixed;left:0;right:0;bottom:0;z-index:1000;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.25);max-height:88%;overflow:auto;padding:16px;display:none}
+.folha.on{display:block}
+.folha .fechar{float:right;border:0;background:#eef0ec;border-radius:50%;width:34px;height:34px;font-size:18px}
+.relogio{font-size:34px;font-weight:800;text-align:center;color:var(--verde);margin:6px 0}
+table{width:100%;border-collapse:collapse;font-size:14px;background:#fff}
+th,td{padding:7px 6px;border-bottom:1px solid #eceee9;text-align:left}th{background:#eef1ec}
+td.n,th.n{text-align:right}
+#login{display:flex;align-items:center;justify-content:center;min-height:100%;padding:20px}
+#login .cartao{width:100%;max-width:380px}
+.pequeno{font-size:13px;color:var(--cinza)}
+</style>
+</head>
+<body>
+<div id="login" style="display:none">
+  <div class="cartao">
+    <h2>Rega Coco — Palma</h2>
+    <p class="pequeno">Entrar com o utilizador e o PIN dados pelo gestor.</p>
+    <label>Utilizador (ou email do gestor)<input id="l-user" autocomplete="username" autocapitalize="none"></label>
+    <label>PIN / senha<input id="l-pin" type="password" inputmode="numeric" autocomplete="current-password"></label>
+    <button class="btn" id="l-entrar">Entrar</button>
+    <div id="l-msg"></div>
+  </div>
+</div>
+
+<div class="app" id="app" style="display:none">
+  <header>
+    <h1 id="h-nome">Rega Coco</h1>
+    <button class="sync" id="h-sync" title="Sincronizar">…</button>
+  </header>
+  <nav id="nav">
+    <button data-e="mapa" class="on">Mapa</button>
+    <button data-e="lista">Campos</button>
+    <button data-e="hoje">Hoje</button>
+    <button data-e="gestao" id="nav-gestao" style="display:none">Gestão</button>
+  </nav>
+  <main>
+    <section class="ecra on" id="e-mapa">
+      <div id="mapa"></div>
+      <div class="flutua">
+        <button id="b-centrar">◎ Eu</button>
+        <button id="b-filtro">As minhas</button>
+      </div>
+      <div class="ronda" id="ronda-info" style="display:none"></div>
+      <div class="legenda">
+        <div><i style="background:var(--por)"></i>Por regar nesta ronda</div>
+        <div><i style="background:var(--feita)"></i>Regada nesta ronda</div>
+        <div><i style="background:var(--sem)"></i>Sem activista</div>
+      </div>
+    </section>
+    <section class="ecra" id="e-lista">
+      <div class="filtros">
+        <select id="f-ambito"><option value="meus">As minhas áreas</option><option value="todas">Todas as áreas</option></select>
+        <select id="f-com"><option value="">Todas as comunidades</option></select>
+        <select id="f-sit"><option value="">Todas as situações</option><option value="por">Por regar nesta ronda</option><option value="feita">Regada nesta ronda</option><option value="sem">Sem activista</option></select>
+        <input id="f-txt" placeholder="Procurar produtor ou PR" style="flex:1;min-width:160px;margin:0;padding:8px">
+      </div>
+      <div class="pad" id="lista"></div>
+    </section>
+    <section class="ecra" id="e-hoje"><div class="pad" id="hoje"></div></section>
+    <section class="ecra" id="e-gestao"><div class="pad" id="gestao"></div></section>
+  </main>
+</div>
+
+<div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
