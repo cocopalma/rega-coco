@@ -7,6 +7,8 @@ const CFG = {
   chave: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZnemRxbnZvYmdmempldGJieGNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NDgyMzUsImV4cCI6MjEwNzIyNDIzNX0.1bSDbPLWMvhIG2fzu_Ta2vm1qV1NutzMEmii3wbN7mY',
   dominio: 'rega-coco.example.com', // utilizadores dos activistas: <utilizador>@este-dominio
   margemGPS: 200,      // metros: distância máxima ao centro do campo para validar (a afinar no terreno)
+  precisaoCoord: 10,   // metros: pior precisão aceite para gravar a coordenada de um campo (a afinar no terreno)
+  precisaoIdeal: 5,    // metros: precisão recomendada
 };
 /* Regra da fase de aprendizagem (1–2 semanas): cada equipa rega a sua lista em "rondas".
    Um campo da lista não pode ser regado de novo enquanto a equipa não regar todos os campos da lista.
@@ -171,6 +173,8 @@ async function carregarTudo() {
   ]);
   if (ac.error || ar.error) throw new Error((ac.error || ar.error).message);
   S.perfil = p.data; S.activistas = ac.data; S.areas = aplicarPendentes(ar.data);
+  S.visiveis = null;
+  if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { const v = await sb.rpc('meus_activistas'); S.visiveis = v.error ? null : v.data; LS.set('visiveis', S.visiveis); }
   LS.set('perfil', S.perfil); LS.set('activistas', S.activistas); LS.set('areas', S.areas);
   await carregarEstado();
 }
@@ -187,7 +191,7 @@ async function carregarEstado() {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {});
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {});
   return !!(S.perfil && (S.areas.length || S.perfil.papel === 'cliente'));
 }
 
@@ -259,7 +263,7 @@ function desenharLista() {
 
 // ---------- ficha do campo ----------
 function folha(html) { $('#folha-c').innerHTML = html; $('#folha').classList.add('on'); }
-function fecharFolha() { $('#folha').classList.remove('on'); }
+function fecharFolha() { pararVigia(); $('#folha').classList.remove('on'); }
 // ---------- coordenada e atribuição de campos (técnico, supervisor, gestor) ----------
 const PODE_COORD = ['tecnico', 'supervisor', 'gestor'];
 const podeAtribuir = (a) => ['gestor', 'supervisor'].includes(S.perfil.papel) || (S.perfil.papel === 'tecnico' && !a.activista_id);
@@ -271,24 +275,36 @@ function botoesCampo(a) {
   return h;
 }
 function porNaFilaAlt(x) { const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), ...x }); LS.set('filaAlt', f); actSync(); sincronizar(true); }
-async function ecraCoordenada(id) {
+// leitura contínua do GPS: mostra a precisão a melhorar e só deixa gravar abaixo do limite
+let vigiaCoord = null;
+function pararVigia() { if (vigiaCoord != null) { navigator.geolocation.clearWatch(vigiaCoord); vigiaCoord = null; } }
+function ecraCoordenada(id) {
   const a = S.areas.find((x) => x.id === id);
-  folha('<h2>A ler o GPS…</h2><p class="pequeno">Fique no centro do campo, em céu aberto.</p>');
-  S.fix = null;                                            // leitura nova, não a guardada
-  let c; try { c = await lerGPS(); } catch (e) { return abrirFicha(id, `<div class="msg erro">${esc(e.message)}</div>`); }
-  const prec = Math.round(c.accuracy);
-  S.coordPendente = { area_id: id, lat: c.latitude, lon: c.longitude, precisao: prec };
-  folha(`<h2>${esc(a.produtor)}</h2><div class="cartao">
-    <div class="lin"><span>Coordenada lida</span><b>${c.latitude.toFixed(6)}, ${c.longitude.toFixed(6)}</b></div>
-    <div class="lin"><span>Precisão</span><b>±${prec} m</b></div></div>
-    ${prec > 30 ? '<div class="msg erro">Precisão fraca (mais de 30 m). Espere uns segundos em céu aberto e leia de novo.</div>' : ''}
-    <p class="pequeno">Grave só se estiver dentro do campo, perto do centro.</p>
-    <button class="btn" onclick="gravarCoordenada()">Gravar esta coordenada</button>
-    <button class="btn sec" onclick="ecraCoordenada('${esc(id)}')">Ler o GPS de novo</button>
-    <button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
+  pararVigia(); S.coordPendente = null;
+  folha(`<h2>${esc(a.produtor)}</h2>
+    <div class="msg info"><b>Onde ficar:</b> no centro do campo, longe de árvores grandes, casas e viaturas.
+      Telefone parado, à altura do peito, ecrã para cima. Espere 30 a 60 segundos até a precisão baixar.</div>
+    <div class="cartao"><div class="lin"><span>Precisão agora</span><b id="c-prec">a ler…</b></div>
+      <div class="lin"><span>Coordenada</span><b id="c-pos">—</b></div></div>
+    <p class="pequeno">Só pode gravar com precisão de ${CFG.precisaoCoord} m ou melhor. O ideal é ${CFG.precisaoIdeal} m ou menos.</p>
+    <button class="btn" id="c-gravar" disabled onclick="gravarCoordenada()">Gravar esta coordenada</button>
+    <button class="btn sec" onclick="pararVigia();abrirFicha('${esc(id)}')">Cancelar</button>`);
+  if (!navigator.geolocation) return aviso('Este telefone não tem GPS disponível no navegador.', 'erro');
+  vigiaCoord = navigator.geolocation.watchPosition((p) => {
+    const prec = Math.round(p.coords.accuracy), el = $('#c-prec');
+    if (!el) return pararVigia();                                    // saiu do ecrã
+    const melhor = S.coordPendente && S.coordPendente.precisao <= prec ? S.coordPendente : { area_id: id, lat: p.coords.latitude, lon: p.coords.longitude, precisao: prec };
+    S.coordPendente = melhor;                                       // guarda a melhor leitura até agora
+    el.textContent = `±${prec} m` + (melhor.precisao < prec ? ` (melhor até agora: ±${melhor.precisao} m)` : '');
+    el.style.color = melhor.precisao <= CFG.precisaoIdeal ? '#1b5e20' : melhor.precisao <= CFG.precisaoCoord ? '#ef8f00' : '#c62828';
+    $('#c-pos').textContent = `${melhor.lat.toFixed(6)}, ${melhor.lon.toFixed(6)}`;
+    $('#c-gravar').disabled = melhor.precisao > CFG.precisaoCoord;
+  }, (e) => { const el = $('#c-prec'); if (el) el.textContent = e.code === 1 ? 'sem autorização de localização' : 'sem sinal de GPS'; },
+  { enableHighAccuracy: true, maximumAge: 1000, timeout: 60000 });
 }
 function gravarCoordenada() {
-  const x = S.coordPendente; if (!x) return;
+  const x = S.coordPendente; if (!x || x.precisao > CFG.precisaoCoord) return;
+  pararVigia();
   const a = S.areas.find((y) => y.id === x.area_id);
   a.latitude = x.lat; a.longitude = x.lon; LS.set('areas', S.areas);    // aparece já no mapa deste telefone
   porNaFilaAlt({ tipo: 'coord', ...x }); S.coordPendente = null; desenharMapa(); desenharLista();
@@ -307,9 +323,10 @@ function activistasProximos(a) {
   return Object.entries(melhor).map(([id, o]) => ({ id, ...o })).sort((x, y) => x.d - y.d);
 }
 function ecraAtribuir(id, nota = '') {
-  const a = S.areas.find((x) => x.id === id), prox = activistasProximos(a).slice(0, 3);
+  const a = S.areas.find((x) => x.id === id), daEquipa = (t) => !S.visiveis || S.visiveis.includes(t);
+  const prox = activistasProximos(a).filter((p) => daEquipa(p.id)).slice(0, 3);
   const km = (d) => d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km';
-  const resto = S.activistas.filter((t) => !prox.some((p) => p.id === t.id));
+  const resto = S.activistas.filter((t) => daEquipa(t.id) && !prox.some((p) => p.id === t.id));
   folha(`${nota}<h2>${esc(a.produtor)}</h2><p class="pequeno">${esc(a.pr)} · ${esc(a.comunidade)} · activista actual: <b>${esc(nomeAct(a.activista_id))}</b></p>
     ${a.activista_proposto ? `<div class="msg info">Proposta da base: <b>${esc(nomeAct(a.activista_proposto))}</b></div>` : ''}
     <label>Atribuir a<select id="t-act">
@@ -319,7 +336,7 @@ function ecraAtribuir(id, nota = '') {
     <p class="pequeno">Regra: rega o activista da comunidade onde o campo está. Confirme antes de gravar.</p>
     <button class="btn" onclick="gravarAtribuicao('${esc(id)}')">Gravar</button>
     <button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
-  if (!prox.length && a.activista_proposto) $('#t-act').value = a.activista_proposto;
+  if (!prox.length && a.activista_proposto && daEquipa(a.activista_proposto)) $('#t-act').value = a.activista_proposto;
 }
 function gravarAtribuicao(id) {
   const a = S.areas.find((x) => x.id === id), novo = $('#t-act').value;
@@ -556,16 +573,34 @@ async function desenharGestao(msg = '') {
     ${com.map((a) => `<div class="item"><div><div class="nome">${esc(a.nome)}</div><div class="sub">utilizador: <b>${esc(a.utilizador || '')}</b></div></div><button class="chip" onclick="reporPin('${a.id}','${esc(a.nome)}')">Novo PIN</button></div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>
     <div class="cartao"><h2>Outros acessos</h2>
     <p class="pequeno">${Object.entries(FUNCOES).map(([k, f]) => `<b>${f.nome}</b>: ${f.desc}`).join('<br>')}</p>
-    <label>Nome<input id="c-nome"></label>
     <label>Função<select id="c-papel">${Object.entries(FUNCOES).map(([k, f]) => `<option value="${k}">${f.nome}</option>`).join('')}</select></label>
+    <label>Nome<span id="c-nome-caixa"></span></label>
     <label>Utilizador<input id="c-user" autocapitalize="none"></label>
     <label>Senha (8 ou mais caracteres)<input id="c-senha"></label>
     <button class="btn" id="c-criar">Criar acesso</button></div>
+    <div class="cartao"><h2>Coberturas (ausências)</h2>
+    <p class="pequeno">Quando um técnico ou supervisor está ausente, um colega passa a ver e gerir as equipas dele durante o período indicado.</p>
+    <label>Quem cobre<select id="k-quem">${(d.utilizadores || []).filter((u) => u.papel === 'tecnico' || u.papel === 'supervisor').map((u) => `<option value="${u.id}" data-p="${u.papel}" data-n="${esc(u.nome)}">${esc(u.nome)} — ${esc(FUNCOES[u.papel].nome)}</option>`).join('')}</select></label>
+    <label>Cobre as equipas de<select id="k-cobre"></select></label>
+    <label>Desde<input id="k-desde" type="date" value="${hojeISO()}"></label>
+    <label>Até (vazio = até terminar)<input id="k-ate" type="date"></label>
+    <button class="btn" id="k-gravar">Gravar cobertura</button>
+    <div id="k-lista"><p class="pequeno">A carregar…</p></div></div>
     <div class="cartao"><h2>Quem viu o painel</h2><div id="g-visitas"><p class="pequeno">A carregar…</p></div></div>
     <div class="cartao"><h2>Acessos criados (${(d.utilizadores || []).length})</h2>
     ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div><button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button></div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
-  desenharVisitas();
-  $('#c-nome').oninput = () => { $('#c-user').value = sugerirUtilizador($('#c-nome').value || ' '); };
+  desenharVisitas(); desenharCoberturas(d);
+  const comLogin = new Set((d.utilizadores || []).map((u) => u.papel + '|' + u.nome));
+  const caixaNome = () => {                                  // técnico/supervisor: nome tem de ser igual ao da lista de activistas
+    const papel = $('#c-papel').value, lista = (d.nomes || {})[papel];
+    $('#c-nome-caixa').innerHTML = lista
+      ? `<select id="c-nome">${lista.map((n) => `<option ${comLogin.has(papel + '|' + n) ? 'disabled' : ''}>${esc(n)}</option>`).join('')}</select>`
+      : '<input id="c-nome">';
+    if (lista) { const livre = [...$('#c-nome').options].find((o) => !o.disabled); if (livre) $('#c-nome').value = livre.value; }
+    const sug = () => { $('#c-user').value = sugerirUtilizador($('#c-nome').value || ' '); };
+    $('#c-nome').oninput = sug; $('#c-nome').onchange = sug; sug();
+  };
+  $('#c-papel').onchange = caixaNome; caixaNome();
   $('#c-criar').onclick = async () => {
     const corpo = { accao: 'criar_utilizador', nome: $('#c-nome').value.trim(), papel: $('#c-papel').value, utilizador: $('#c-user').value.trim().toLowerCase(), senha: $('#c-senha').value };
     try { const r = await chamarGestor(corpo); desenharGestao(`<div class="msg ok">Acesso criado: ${esc(r.nome)} → utilizador <b>${esc(r.utilizador)}</b>.</div>`); }
@@ -578,6 +613,33 @@ async function desenharGestao(msg = '') {
     try { const r = await chamarGestor(corpo); desenharGestao(`<div class="msg ok">Login criado: ${esc(r.activista)} → utilizador <b>${esc(r.utilizador)}</b>.</div>`); }
     catch (e) { aviso(e.message, 'erro'); }
   };
+}
+// ---------- coberturas ----------
+async function desenharCoberturas(d) {
+  const quem = $('#k-quem'), cobre = $('#k-cobre');
+  const opcoes = () => { const o = quem.selectedOptions[0]; if (!o) { cobre.innerHTML = ''; return; }
+    cobre.innerHTML = ((d.nomes || {})[o.dataset.p] || []).filter((n) => n !== o.dataset.n).map((n) => `<option>${esc(n)}</option>`).join(''); };
+  quem.onchange = opcoes; opcoes();
+  $('#k-gravar').onclick = async () => {
+    const o = quem.selectedOptions[0]; if (!o || !cobre.value) return aviso('Escolha quem cobre e quem é coberto.', 'erro');
+    const linha = { perfil_id: o.value, papel: o.dataset.p, cobre_nome: cobre.value, desde: $('#k-desde').value || hojeISO(), ate: $('#k-ate').value || null };
+    const { error } = await sb.from('coberturas').insert(linha);
+    if (error) return aviso(error.message, 'erro');
+    aviso('Cobertura gravada.', 'ok'); desenharCoberturas(d);
+  };
+  const { data, error } = await sb.from('coberturas').select('id,perfil_id,papel,cobre_nome,desde,ate').or(`ate.is.null,ate.gte.${hojeISO()}`).order('desde');
+  const el = $('#k-lista'); if (!el) return;
+  if (error) { el.innerHTML = `<div class="msg erro">${esc(error.message)}</div>`; return; }
+  const nome = (id) => ((d.utilizadores || []).find((u) => u.id === id) || {}).nome || '?';
+  el.innerHTML = data.length ? data.map((c) => `<div class="item"><div><div class="nome">${esc(nome(c.perfil_id))} cobre ${esc(c.cobre_nome)}</div>
+      <div class="sub">${fmtData(c.desde)} → ${c.ate ? fmtData(c.ate) : 'até terminar'}${c.desde > hojeISO() ? ' · ainda não começou' : ''}</div></div>
+      <button class="chip" onclick="terminarCobertura('${c.id}','${c.desde}')">${c.desde > hojeISO() ? 'Anular' : 'Terminar hoje'}</button></div>`).join('')
+    : '<p class="pequeno">Nenhuma cobertura activa.</p>';
+}
+async function terminarCobertura(id, desde) {
+  const r = desde > hojeISO() ? await sb.from('coberturas').delete().eq('id', id) : await sb.from('coberturas').update({ ate: hojeISO() }).eq('id', id);
+  if (r.error) return aviso(r.error.message, 'erro');
+  aviso(desde > hojeISO() ? 'Cobertura anulada.' : 'Cobertura termina hoje.', 'ok'); desenharGestao();
 }
 async function desenharVisitas() {
   const { data, error } = await sb.rpc('visitas_painel_resumo');
