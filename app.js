@@ -86,7 +86,7 @@ const FUNCOES = {
   tecnico: { nome: 'Técnico', desc: 'vê todos os campos, a rega do dia de todas as equipas e o painel; pode fazer regas de teste.' },
   supervisor: { nome: 'Supervisor', desc: 'o mesmo que o técnico.' },
   director: { nome: 'Director (só leitura)', desc: 'vê todos os campos, a rega do dia e o painel; não regista regas.' },
-  cliente: { nome: 'Cliente (só painel)', desc: 'vê apenas o painel geral.' },
+  cliente: { nome: 'Só painel (cliente / administração)', desc: 'vê apenas o painel geral.' },
 };
 const PODE_REGAR = ['activista', 'tecnico', 'supervisor', 'gestor'];
 const VER_PAINEL = ['tecnico', 'supervisor', 'gestor', 'director', 'cliente'];
@@ -472,8 +472,10 @@ async function desenharGestao(msg = '') {
     <label>Utilizador<input id="c-user" autocapitalize="none"></label>
     <label>Senha (8 ou mais caracteres)<input id="c-senha"></label>
     <button class="btn" id="c-criar">Criar acesso</button></div>
+    <div class="cartao"><h2>Quem viu o painel</h2><div id="g-visitas"><p class="pequeno">A carregar…</p></div></div>
     <div class="cartao"><h2>Acessos criados (${(d.utilizadores || []).length})</h2>
     ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div><button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button></div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
+  desenharVisitas();
   $('#c-nome').oninput = () => { $('#c-user').value = sugerirUtilizador($('#c-nome').value || ' '); };
   $('#c-criar').onclick = async () => {
     const corpo = { accao: 'criar_utilizador', nome: $('#c-nome').value.trim(), papel: $('#c-papel').value, utilizador: $('#c-user').value.trim().toLowerCase(), senha: $('#c-senha').value };
@@ -487,6 +489,15 @@ async function desenharGestao(msg = '') {
     try { const r = await chamarGestor(corpo); desenharGestao(`<div class="msg ok">Login criado: ${esc(r.activista)} → utilizador <b>${esc(r.utilizador)}</b>.</div>`); }
     catch (e) { aviso(e.message, 'erro'); }
   };
+}
+async function desenharVisitas() {
+  const { data, error } = await sb.rpc('visitas_painel_resumo');
+  const el = $('#g-visitas'); if (!el) return;
+  if (error) { el.innerHTML = `<div class="msg erro">${esc(error.message)}</div>`; return; }
+  el.innerHTML = data.length ? `<div style="overflow-x:auto"><table><tr><th>Pessoa</th><th>Última visita</th><th class="n">Visitas (30 dias)</th><th class="n">Total</th></tr>` +
+    data.map((v) => `<tr><td>${esc(v.nome)}<div class="pequeno">${esc(FUNCOES[v.papel]?.nome || (v.papel === 'gestor' ? 'Gestor' : v.papel))} · ${esc(v.utilizador || '')}</div></td><td>${new Date(v.ultima_visita).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' })}</td><td class="n">${v.visitas_30_dias}</td><td class="n">${v.visitas_total}</td></tr>`).join('') + '</table></div>' +
+    '<p class="pequeno">Conta no máximo uma visita por pessoa a cada 30 minutos.</p>'
+    : '<p class="pequeno">Ainda ninguém abriu o painel.</p>';
 }
 async function reporSenha(id, nome) {
   const s = prompt(`Nova senha (8 ou mais caracteres) para ${nome}:`); if (!s) return;
