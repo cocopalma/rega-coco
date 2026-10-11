@@ -620,7 +620,9 @@ async function desenharGestao(msg = '') {
     $('#c-nome-caixa').innerHTML = `<select id="c-nome">${lista.map((x) => `<option value="${esc(x.nome)}" data-u="${esc((x.utilizador || '').toLowerCase())}" ${comLogin.has(papel + '|' + x.nome) ? 'disabled' : ''}>${esc(x.nome)}${x.entidade ? ' — ' + esc(x.entidade) : ''}${comLogin.has(papel + '|' + x.nome) ? ' (já tem acesso)' : ''}</option>`).join('')}
       ${fixo ? '' : '<option value="__outro">Outra pessoa (escrever o nome)…</option>'}</select><input id="c-nome-outro" placeholder="Nome completo" style="display:none">`;
     const sel = $('#c-nome'), outro = $('#c-nome-outro');
-    const livre = [...sel.options].find((o) => !o.disabled); if (livre) sel.value = livre.value;
+    const livre = [...sel.options].find((o) => !o.disabled && o.value !== '__outro');
+    if (livre) sel.value = livre.value;
+    else if (lista.length) outro.insertAdjacentHTML('afterend', '<div class="msg info" id="c-todos">Todas as pessoas desta função na lista já têm acesso (ver "Acessos criados" abaixo).</div>');
     const sug = () => {
       const o = sel.selectedOptions[0], escrever = sel.value === '__outro';
       outro.style.display = escrever ? '' : 'none';
