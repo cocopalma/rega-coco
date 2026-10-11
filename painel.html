@@ -86,7 +86,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 <div class="wrap" id="painel" style="display:none">
   <header class="topo">
     <div><div class="marca">Projecto Coco · Palma</div><h1>Rega de emergência</h1></div>
-    <div class="meta"><span id="gerado"></span><button id="b-act">Actualizar</button><button id="b-sair">Sair</button></div>
+    <div class="meta"><span id="gerado"></span><button id="b-act">Actualizar</button><button id="b-lingua" onclick="mudarLingua()" title="English / Português">EN</button><button id="b-sair">Sair</button></div>
   </header>
 
   <section class="grelha kpis" id="kpis"></section>
@@ -111,6 +111,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
+<script src="i18n.js?v=15"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -120,10 +121,11 @@ const DOMINIO = 'rega-coco.example.com';
 const sb = supabase.createClient(URL_SB, CHAVE, { auth: { persistSession: true, autoRefreshToken: true } });
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const num = (n) => Math.round(n ?? 0).toLocaleString('pt-PT');
+const LOC = typeof LINGUA !== 'undefined' && LINGUA === 'en' ? 'en-GB' : 'pt-PT';
+const num = (n) => Math.round(n ?? 0).toLocaleString(LOC);
 const pct = (a, b) => (b ? (100 * a) / b : 0);
-const fmtPct = (v) => v.toLocaleString('pt-PT', { maximumFractionDigits: v < 10 ? 1 : 0 }) + '%';
-const fmtData = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-PT') : '—';
+const fmtPct = (v) => v.toLocaleString(LOC, { maximumFractionDigits: v < 10 ? 1 : 0 }) + '%';
+const fmtData = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString(LOC) : '—';
 const ddmm = (d) => d.slice(8, 10) + '/' + d.slice(5, 7);
 const TIPOS = { falta_agua: 'Falta de água', mudas_secas: 'Mudas secas', acesso_dificil: 'Acesso difícil', avaria: 'Avaria', outro: 'Outro' };
 let D = null;
@@ -153,7 +155,7 @@ function passoLimpo(max, n = 4) {
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
   return { top: step * Math.ceil(max / step), step };
 }
-const compacto = (v) => v >= 1000 ? (v / 1000).toLocaleString('pt-PT', { maximumFractionDigits: 1 }) + ' mil' : num(v);
+const compacto = (v) => v >= 1000 ? (v / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 }) + ' mil' : num(v);
 // barra com ponta arredondada (4px) e base recta
 function colunaPath(x, y, w, h) { const r = Math.min(4, w / 2, h); return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; }
 function barraPath(x, y, w, h) { const r = Math.min(4, h / 2, w); return `M${x},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h - r}Q${x + w},${y + h} ${x + w - r},${y + h}H${x}Z`; }
@@ -208,13 +210,13 @@ function tabela(alvo, cab, linhas) {
 function desenhar() {
   if (!D) return; DICAS.length = 0;
   const u = D.universo || {};
-  $('#gerado').textContent = `Actualizado ${new Date(D.gerado_em).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' })}${D.inicio ? ' · desde ' + fmtData(D.inicio) : ''}`;
+  $('#gerado').textContent = `Actualizado ${new Date(D.gerado_em).toLocaleString(LOC, { dateStyle: 'short', timeStyle: 'short' })}${D.inicio ? ' · desde ' + fmtData(D.inicio) : ''}`;
   const pA = pct(D.areas_regadas, u.areas), pV = pct(D.vivas_regadas, u.vivas);
   const kpi = (rot, val, sub, barra) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${val}</div><div class="sub">${sub}</div>${barra != null ? `<div class="barra"><i style="width:${Math.min(100, barra)}%"></i></div>` : ''}</div>`;
   $('#kpis').innerHTML =
     kpi('Plantas vivas em campos regados', fmtPct(pV), `${num(D.vivas_regadas)} de ${num(u.vivas)} plantas vivas`, pV) +
     kpi('Campos regados', fmtPct(pA), `${num(D.areas_regadas)} de ${num(u.areas)} campos`, pA) +
-    kpi('Frequência média', D.dias_medios_entre_regas != null ? `${String(D.dias_medios_entre_regas).replace('.', ',')} dias` : '—', 'entre duas regas do mesmo campo') +
+    kpi('Frequência média', D.dias_medios_entre_regas != null ? `${Number(D.dias_medios_entre_regas).toLocaleString(LOC)} dias` : '—', 'entre duas regas do mesmo campo') +
     kpi('Espera pela água', D.espera_agua_min != null ? `${num(D.espera_agua_min)} min` : '—', 'média, da entrada no campo à chegada do tuk-tuk');
   $('#kpis').innerHTML += kpi('Plantas regadas (total)', num(D.plantas_regadas_total), `em ${num(D.registos)} regas de campo`) +
     kpi('Pessoas-dia', num(D.pessoas_dia_total), 'soma das pessoas presentes por equipa e dia') +
@@ -229,9 +231,9 @@ function desenhar() {
 
   const com = (D.por_comunidade || []).map((c) => ({ ...c, p: pct(c.vivas_regadas, c.vivas) })).sort((a, b) => b.p - a.p || a.comunidade.localeCompare(b.comunidade));
   barras('#g-com', com, { valor: (c) => c.p, max: 100, rotulo: (c) => c.comunidade, texto: (c) => fmtPct(c.p),
-    dicaDe: (c) => [[fmtPct(c.p), 'das plantas vivas'], [c.comunidade], [`${c.areas_regadas} de ${c.areas} campos regados`], [c.dias_medios_entre_regas != null ? `${String(c.dias_medios_entre_regas).replace('.', ',')} dias entre regas` : 'frequência: ainda sem repetições']] });
+    dicaDe: (c) => [[fmtPct(c.p), 'das plantas vivas'], [c.comunidade], [`${c.areas_regadas} de ${c.areas} campos regados`], [c.dias_medios_entre_regas != null ? `${Number(c.dias_medios_entre_regas).toLocaleString(LOC)} dias entre regas` : 'frequência: ainda sem repetições']] });
   tabela('#t-com', [['Comunidade'], ['Campos', 1], ['Regados', 1], ['Vivas', 1], ['Vivas regadas', 1], ['%', 1], ['Regas', 1], ['Dias entre regas', 1]],
-    com.map((c) => [esc(c.comunidade), num(c.areas), num(c.areas_regadas), num(c.vivas), num(c.vivas_regadas), fmtPct(c.p), num(c.regas), c.dias_medios_entre_regas != null ? String(c.dias_medios_entre_regas).replace('.', ',') : '—']));
+    com.map((c) => [esc(c.comunidade), num(c.areas), num(c.areas_regadas), num(c.vivas), num(c.vivas_regadas), fmtPct(c.p), num(c.regas), c.dias_medios_entre_regas != null ? Number(c.dias_medios_entre_regas).toLocaleString(LOC) : '—']));
 
   const eq = (D.por_equipa || []).slice().sort((a, b) => a.comunidade?.localeCompare(b.comunidade || '') || a.nome.localeCompare(b.nome));
   tabela('#t-equipa', [['Equipa (activista)'], ['Comunidade'], ['Ronda'], ['Progresso da ronda'], ['Rondas concluídas (dias)'], ['Dias trab.', 1], ['Plantas', 1], ['Plantas/pessoa-dia', 1], ['Min/campo', 1], ['Espera água (min)', 1]],
@@ -279,7 +281,7 @@ $('#b-sair').onclick = async () => { await sb.auth.signOut(); location.reload();
 let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(desenhar, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
-if (EMBUTIDO) { $('#b-sair').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }
+if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }
 (async () => { const { data: { session } } = await sb.auth.getSession(); if (session) carregar(); else mostrarLogin(); })();
 </script>
 </body>

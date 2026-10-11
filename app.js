@@ -15,11 +15,12 @@ const CFG = {
    A duração de cada ronda concluída é o ciclo provisório da comunidade. */
 const sb = supabase.createClient(CFG.url, CFG.chave, { auth: { persistSession: true, autoRefreshToken: true } });
 const $ = (s) => document.querySelector(s);
+const LOC = typeof LINGUA !== 'undefined' && LINGUA === 'en' ? 'en-GB' : 'pt-PT';
 const hojeISO = () => new Date().toLocaleDateString('sv-SE');
-const fmtData = (d) => d ? new Date(d + (d.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('pt-PT') : '—';
-const fmtHora = (t) => t ? new Date(t).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) : '—';
+const fmtData = (d) => d ? new Date(d + (d.length === 10 ? 'T12:00:00' : '')).toLocaleDateString(LOC) : '—';
+const fmtHora = (t) => t ? new Date(t).toLocaleTimeString(LOC, { hour: '2-digit', minute: '2-digit' }) : '—';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const num = (n) => (n ?? 0).toLocaleString('pt-PT');
+const num = (n) => (n ?? 0).toLocaleString(LOC);
 
 // ---------- guardar no telefone ----------
 const LS = {
@@ -85,8 +86,8 @@ function rondaInfo(actId) {
 const souActivista = () => S.perfil?.papel === 'activista';
 // o que cada função pode fazer na app
 const FUNCOES = {
-  tecnico: { nome: 'Técnico', desc: 'vê todos os campos, a rega do dia de todas as equipas e o painel; pode fazer regas de teste.' },
-  supervisor: { nome: 'Supervisor', desc: 'o mesmo que o técnico.' },
+  tecnico: { nome: 'Técnico', desc: 'vê os campos e a rega das equipas dos seus activistas (e das que cobre) e o painel geral; grava coordenadas, atribui campos e pode fazer regas de teste.' },
+  supervisor: { nome: 'Supervisor', desc: 'o mesmo que o técnico, para as equipas dos seus técnicos; também muda a zona dos campos.' },
   director: { nome: 'Director (só leitura)', desc: 'vê todos os campos, a rega do dia e o painel; não regista regas.' },
   me: { nome: 'M&E (só leitura)', desc: 'o mesmo que o director.' },
   cliente: { nome: 'Só painel (cliente / administração)', desc: 'vê apenas o painel geral.' },
@@ -706,7 +707,7 @@ async function desenharVisitas() {
   const el = $('#g-visitas'); if (!el) return;
   if (error) { el.innerHTML = `<div class="msg erro">${esc(error.message)}</div>`; return; }
   el.innerHTML = data.length ? `<div style="overflow-x:auto"><table><tr><th>Pessoa</th><th>Última visita</th><th class="n">Visitas (30 dias)</th><th class="n">Total</th></tr>` +
-    data.map((v) => `<tr><td>${esc(v.nome)}<div class="pequeno">${esc(FUNCOES[v.papel]?.nome || (v.papel === 'gestor' ? 'Gestor' : v.papel))} · ${esc(v.utilizador || '')}</div></td><td>${new Date(v.ultima_visita).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' })}</td><td class="n">${v.visitas_30_dias}</td><td class="n">${v.visitas_total}</td></tr>`).join('') + '</table></div>' +
+    data.map((v) => `<tr><td>${esc(v.nome)}<div class="pequeno">${esc(FUNCOES[v.papel]?.nome || (v.papel === 'gestor' ? 'Gestor' : v.papel))} · ${esc(v.utilizador || '')}</div></td><td>${new Date(v.ultima_visita).toLocaleString(LOC, { dateStyle: 'short', timeStyle: 'short' })}</td><td class="n">${v.visitas_30_dias}</td><td class="n">${v.visitas_total}</td></tr>`).join('') + '</table></div>' +
     '<p class="pequeno">Conta no máximo uma visita por pessoa a cada 30 minutos.</p>'
     : '<p class="pequeno">Ainda ninguém abriu o painel.</p>';
 }
@@ -753,7 +754,7 @@ function mostrarApp() {
   $('#nav-painel').style.display = VER_PAINEL.includes(papel) ? '' : 'none';
   if (papel === 'cliente') {                               // o cliente só vê o painel
     document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.e !== 'painel') b.style.display = 'none'; });
-    $('#h-sync').style.display = 'none'; $('#h-sair').style.display = '';
+    $('#h-sync').style.display = 'none';
     mudar('painel'); return;
   }
   if (papel !== 'activista') { S.filtro = 'todas'; $('#f-ambito').value = 'todas'; }
