@@ -609,7 +609,8 @@ async function desenharGestao(msg = '') {
   desenharVisitas(); desenharCoberturas(d);
   const comLogin = new Set((d.utilizadores || []).map((u) => u.papel + '|' + u.nome));
   // lista de pessoas por função (tabela pessoas_acesso, vinda do Excel de logins); quem já tem acesso aparece desactivado
-  const pessoas = (await sb.from('pessoas_acesso').select('nome,entidade,papel,utilizador').order('nome')).data || [];
+  const rp = await sb.from('pessoas_acesso').select('nome,entidade,papel,utilizador').order('nome');
+  const pessoas = Array.isArray(rp.data) ? rp.data : [];
   const caixaNome = () => {
     const papel = $('#c-papel').value, fixo = ['tecnico', 'supervisor'].includes(papel);
     let lista = pessoas.filter((x) => x.papel === papel);
@@ -681,13 +682,24 @@ async function desenharVisitas() {
     '<p class="pequeno">Conta no máximo uma visita por pessoa a cada 30 minutos.</p>'
     : '<p class="pequeno">Ainda ninguém abriu o painel.</p>';
 }
-async function reporSenha(id, nome) {
-  const s = prompt(`Nova senha (8 ou mais caracteres) para ${nome}:`); if (!s) return;
-  try { await chamarGestor({ accao: 'repor_senha', perfil_id: id, senha: s }); aviso('Senha alterada.', 'ok'); } catch (e) { aviso(e.message, 'erro'); }
-}
-async function reporPin(id, nome) {
-  const pin = prompt(`Novo PIN de 6 dígitos para ${nome}:`); if (!pin) return;
-  try { await chamarGestor({ accao: 'repor_pin', activista_id: id, pin: pin.trim() }); aviso('PIN alterado.', 'ok'); } catch (e) { aviso(e.message, 'erro'); }
+// nova senha / novo PIN num ecrã da app (alguns navegadores não mostram a janela "prompt")
+function reporSenha(id, nome) { ecraNovaCredencial('senha', id, nome); }
+function reporPin(id, nome) { ecraNovaCredencial('pin', id, nome); }
+function ecraNovaCredencial(tipo, id, nome) {
+  const pin = tipo === 'pin';
+  folha(`<h2>${pin ? 'Novo PIN' : 'Nova senha'}</h2><p>${esc(nome)}</p>
+    <label>${pin ? 'PIN (6 dígitos)' : 'Senha (8 ou mais caracteres)'}<input id="n-cred" ${pin ? 'inputmode="numeric" maxlength="6"' : ''} autocomplete="off"></label>
+    <button class="btn" id="n-gravar">Gravar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  $('#n-cred').focus();
+  $('#n-gravar').onclick = async () => {
+    const v = $('#n-cred').value.trim();
+    if (pin ? !/^\d{6}$/.test(v) : v.length < 8) return aviso(pin ? 'O PIN tem de ter 6 dígitos.' : 'A senha tem de ter pelo menos 8 caracteres.', 'erro');
+    $('#n-gravar').disabled = true;
+    try {
+      await chamarGestor(pin ? { accao: 'repor_pin', activista_id: id, pin: v } : { accao: 'repor_senha', perfil_id: id, senha: v });
+      fecharFolha(); aviso(pin ? `PIN de ${nome} alterado.` : `Senha de ${nome} alterada.`, 'ok');
+    } catch (e) { $('#n-gravar').disabled = false; aviso(e.message, 'erro'); }
+  };
 }
 
 // ---------- navegação e arranque ----------
