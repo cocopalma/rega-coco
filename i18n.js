@@ -173,6 +173,11 @@ document.addEventListener('DOMContentLoaded', () => {
     'Rega por campo (min)': 'Watering per field (min)', 'Deslocação entre campos (min)': 'Travel between fields (min)', 'Deslocações medidas': 'Trips measured',
     'Campos regados': 'Fields watered', 'Plantas com solo húmido': 'Plants with moist soil', 'Campos não regados': 'Fields not watered', 'Plantas secas ou mortas': 'Dry or dead plants',
     'Campos sorteados entre os regados em cada dia e verificados no campo por técnicos e supervisores, planta a planta, num percurso (X, W, Z ou diagonal). Nota = % de plantas com solo húmido ÷ 10. Campo regado = pelo menos 80% das plantas observadas com solo húmido. Período = dia da rega verificada.': 'Fields drawn from those watered each day and checked on site by technicians and supervisors, plant by plant, along a route (X, W, Z or diagonal). Score = % of plants with moist soil ÷ 10. Field watered = at least 80% of observed plants with moist soil. Period = day of the checked watering.',
+    'Avisos da monitoria': 'Monitoring alerts', 'Campos verificados nos últimos 14 dias com plantas sem solo húmido.': 'Fields checked in the last 14 days with plants without moist soil.',
+    'Rever plantas': 'Check plants', 'Campo não regado': 'Field not watered', 'Resultado LQAS': 'LQAS result', 'em curso': 'in progress', 'Aceite': 'Accepted', 'Abaixo do limiar': 'Below threshold',
+    'Método LQAS: com 19 campos verificados, a área do técnico é aceite se pelo menos 13 estiverem regados (usa as 19 verificações mais recentes do período).': 'LQAS method: with 19 fields checked, the technician\'s area is accepted if at least 13 are watered (uses the 19 most recent checks in the period).',
+    ' Campo considerado regado (≥ 80%), mas reveja as plantas sem rega.': ' Field considered watered (≥ 80%), but check the plants without watering.',
+    ' Campo considerado não regado (menos de 80% das plantas com solo húmido).': ' Field considered not watered (less than 80% of plants with moist soil).',
     // erros do servidor (criação de logins)
     'Sessão inválida': 'Invalid session', 'Só o gestor pode gerir logins': 'Only the manager can manage logins', 'Pedido inválido': 'Invalid request',
     'Função inválida': 'Invalid role', 'Escreva o nome': 'Write the name', "Esta pessoa já tem acesso. Use 'Nova senha'.": "This person already has access. Use 'New password'.",
@@ -190,6 +195,8 @@ document.addEventListener('DOMContentLoaded', () => {
     'No período escolhido. Espera = minutos entre a entrada no campo e a chegada da água.': 'In the chosen period. Wait = minutes between field entry and water arrival.',
   });
   const R = [
+    [/^(.+) de (.+) plantas sem solo húmido$/, '$1 of $2 plants without moist soil'], [/^nota (.+)$/, 'score $1'], [/^Monitoria \(rega de (.+)\):$/, 'Monitoring (watering of $1):'],
+    [/^Observação: (.+)$/, 'Note: $1'],
     [/^(.+) faltas?$/, '$1 absent'], [/^·(\d+)F$/, '·$1A'], [/^Sem\. (.+)$/, 'Wk $1'], [/^(.+) pessoas-dia$/, '$1 person-days'],
     [/^Equipa = pessoas presentes \/ pessoas da equipa \(faltas a vermelho\)(; toque para mudar o número de pessoas da equipa)?\. Produtores = produtores com campos regados hoje\. % meta = plantas regadas ÷ \((\d+) × pessoas presentes\)\. Tuk-tuk = hora da 1\.ª chegada da água\. Início = entrada no 1\.º campo; Fim = saída do último\. Desloc\. = tempo médio entre a saída de um campo e a entrada no seguinte\. Alertas = regas fora da lista da equipa\.$/,
       (m, t, n) => `Team = people present / team size (absences in red)${t ? '; tap to change the team size' : ''}. Producers = producers with fields watered today. % target = plants watered ÷ (${n} × people present). Tuk-tuk = time of the first water arrival. Start = entry to the 1st field; End = exit from the last. Travel = average time between leaving one field and entering the next. Alerts = waterings outside the team list.`],

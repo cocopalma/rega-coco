@@ -157,7 +157,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <p class="desc">Campos sorteados entre os regados em cada dia e verificados no campo por técnicos e supervisores, planta a planta, num percurso (X, W, Z ou diagonal). Nota = % de plantas com solo húmido ÷ 10. Campo regado = pelo menos 80% das plantas observadas com solo húmido. Período = dia da rega verificada.</p>
     <div class="grelha kpis" id="k-mon"></div>
     <h3>Por técnico (área de supervisão)</h3>
-    <p class="desc">Método LQAS: a conclusão sobre cada técnico pede 19 campos verificados.</p>
+    <p class="desc">Método LQAS: com 19 campos verificados, a área do técnico é aceite se pelo menos 13 estiverem regados (usa as 19 verificações mais recentes do período).</p>
     <div class="tabela" id="t-mon-tec"></div>
     <h3>Por equipa</h3><div class="tabela" id="t-mon-eq"></div>
     <h3>Por pessoa que verificou</h3><div class="tabela" id="t-mon-ver"></div>
@@ -165,7 +165,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n.js?v=23"></script>
+<script src="i18n.js?v=24"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -421,9 +421,12 @@ function desenharMonitoria() {
     kpi('Nota média', M.nota_media != null ? Number(M.nota_media).toLocaleString(LOC) : '—', 'de 0 a 10') +
     kpi('Campos regados', M.verificados ? fmtPct(pct(M.solo_regado, M.verificados)) : '—', `${num(M.solo_regado)} de ${num(M.verificados)} verificados (≥ 80% das plantas com solo húmido)`) +
     kpi('Plantas com solo húmido', M.plantas_obs ? fmtPct(pct(M.plantas_humidas, M.plantas_obs)) : '—', `${num(M.plantas_humidas)} de ${num(M.plantas_obs)} plantas observadas · vivas / secas / mortas: ${num(mu.vivas || 0)} / ${num(mu.secas || 0)} / ${num(mu.mortas || 0)}`);
-  tabela('#t-mon-tec', [['Técnico'], ['Verificados', 1], ['Amostra LQAS'], ['Campos regados', 1], ['Nota média', 1]],
-    (M.por_tecnico || []).map((t) => [esc(t.tecnico), num(t.verificados), `<div class="prog"><div class="barra"><i style="width:${Math.min(100, t.verificados / 19 * 100)}%"></i></div><span>${Math.min(t.verificados, 19)}/19</span></div>`,
-      t.verificados ? fmtPct(pct(t.solo_regado, t.verificados)) : '—', t.nota_media != null ? Number(t.nota_media).toLocaleString(LOC) : '—']));
+  const LN = M.lqas_n || 19, LL = M.lqas_limiar || 13;
+  const lqas = (t) => t.verificados < LN ? '<span style="color:var(--muted)">em curso</span>'
+    : (t.lqas_regados >= LL ? `<b style="color:var(--good)">Aceite</b> (${t.lqas_regados}/${LN})` : `<b style="color:var(--crit)">Abaixo do limiar</b> (${t.lqas_regados}/${LN})`);
+  tabela('#t-mon-tec', [['Técnico'], ['Verificados', 1], ['Amostra LQAS'], ['Resultado LQAS'], ['Campos regados', 1], ['Nota média', 1]],
+    (M.por_tecnico || []).map((t) => [esc(t.tecnico), num(t.verificados), `<div class="prog"><div class="barra"><i style="width:${Math.min(100, t.verificados / LN * 100)}%"></i></div><span>${Math.min(t.verificados, LN)}/${LN}</span></div>`,
+      lqas(t), t.verificados ? fmtPct(pct(t.solo_regado, t.verificados)) : '—', t.nota_media != null ? Number(t.nota_media).toLocaleString(LOC) : '—']));
   tabela('#t-mon-eq', [['Equipa (activista)'], ['Comunidade'], ['Verificados', 1], ['Nota média', 1], ['Campos não regados', 1], ['Plantas com solo húmido', 1], ['Plantas secas ou mortas', 1]],
     (M.por_equipa || []).map((e) => [esc(e.nome), esc(e.comunidade || ''), num(e.verificados), e.nota_media != null ? Number(e.nota_media).toLocaleString(LOC) : '—',
       e.sem_sinais_rega ? `<b style="color:var(--crit)">${num(e.sem_sinais_rega)}</b>` : '0', e.plantas_obs ? fmtPct(pct(e.plantas_humidas, e.plantas_obs)) : '—', num(e.mudas_secas_mortas)]));

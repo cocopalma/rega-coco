@@ -206,7 +206,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
   return !!(S.perfil && (S.areas.length || S.perfil.papel === 'cliente'));
 }
 
@@ -251,7 +251,7 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  await sb.auth.signOut(); ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'visiveis'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  await sb.auth.signOut(); ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- mapa ----------
@@ -463,7 +463,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
     ${d != null ? `<div class="lin"><span>Distância</span><b>${d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km'} · ${rumo(S.pos, [a.latitude, a.longitude])}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${acc}${botaoMonitoria(a)}${botoesCampo(a)}`);
+   </div>${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}`);
 }
 
 // ---------- entrada ----------
@@ -638,6 +638,7 @@ async function desenharHoje() {
   const guardado = LS.get('hojeHtml');
   if (guardado && guardado.d === h && guardado.p === S.perfil.papel && !$('#hoje').innerHTML.trim()) $('#hoje').innerHTML = guardado.html;
   let html = `<div class="cartao"><h2>Hoje · ${fmtData(h)}</h2>`;
+  if (['activista', 'tecnico', 'supervisor', 'gestor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarAvisos(); }
   if (S.perfil.papel === 'activista') {
     let serv = [];
     if (navigator.onLine) { const r = await sb.from('registos_rega').select('id,area_id,entrada_em,saida_em,plantas_regadas,alerta,agua_em').eq('data', h).order('entrada_em'); serv = r.data || []; }
@@ -671,9 +672,31 @@ async function desenharHoje() {
         `<p class="pequeno">Equipa = pessoas presentes / pessoas da equipa (faltas a vermelho)${podeMudar ? '; toque para mudar o número de pessoas da equipa' : ''}. Produtores = produtores com campos regados hoje. % meta = plantas regadas ÷ (${CFG.metaPlantas} × pessoas presentes). Tuk-tuk = hora da 1.ª chegada da água. Início = entrada no 1.º campo; Fim = saída do último. Desloc. = tempo médio entre a saída de um campo e a entrada no seguinte. Alertas = regas fora da lista da equipa.</p>`;
     }
   }
-  html += `<button class="btn sec" onclick="sair()">Sair desta conta</button>`;
+  html = cartaoAvisos() + html + `<button class="btn sec" onclick="sair()">Sair desta conta</button>`;
   $('#hoje').innerHTML = html;
   if (navigator.onLine) LS.set('hojeHtml', { d: h, p: S.perfil.papel, html });
+}
+
+// ---------- avisos da monitoria à equipa (11/10/2026, Valdo) ----------
+// Campos verificados nos últimos 14 dias com plantas sem solo húmido. Vermelho = campo não regado (< 80%).
+async function carregarAvisos() {
+  const r = await sb.rpc('avisos_monitoria');
+  if (!r.error && Array.isArray(r.data)) { S.avisos = r.data; LS.set('avisos', S.avisos); }
+}
+const avisos = () => (Array.isArray(S.avisos) ? S.avisos : LS.get('avisos', []) || []);
+const textoAviso = (v) => `${v.sem_rega} de ${v.plantas_obs} plantas sem solo húmido · nota ${Number(v.nota).toLocaleString(LOC)}`;
+function cartaoAvisos() {
+  const L = avisos(); if (!L.length) return '';
+  const varias = S.perfil.papel !== 'activista';
+  return `<div class="cartao"><h2>Avisos da monitoria</h2><p class="pequeno">Campos verificados nos últimos 14 dias com plantas sem solo húmido.</p>` +
+    L.map((v) => { const a = S.areas.find((x) => x.id === v.area_id) || { produtor: v.area_id };
+      return `<div class="item" onclick="abrirFicha('${esc(v.area_id)}')"><div><div class="nome">${esc(a.produtor)}</div>
+        <div class="sub">${esc(a.pr || '')}${varias ? ' · ' + esc(nomeAct(v.activista_id)) : ''} · rega de ${fmtData(v.data_rega)} · ${textoAviso(v)}</div></div>
+        <span class="tag ${v.solo_regado ? 't-por' : 't-alerta'}">${v.solo_regado ? 'Rever plantas' : 'Campo não regado'}</span></div>`; }).join('') + '</div>';
+}
+function avisoCampo(id) {
+  const v = avisos().find((x) => x.area_id === id); if (!v) return '';
+  return `<div class="msg ${v.solo_regado ? 'info' : 'erro'}"><b>Monitoria (rega de ${fmtData(v.data_rega)}):</b> <span>${v.sem_rega} de ${v.plantas_obs} plantas sem solo húmido</span> · <span>nota ${Number(v.nota).toLocaleString(LOC)}</span>.<span>${v.solo_regado ? ' Campo considerado regado (≥ 80%), mas reveja as plantas sem rega.' : ' Campo considerado não regado (menos de 80% das plantas com solo húmido).'}</span>${v.observacao ? `<br><span>Observação: ${esc(v.observacao)}</span>` : ''}</div>`;
 }
 
 // ---------- monitoria por amostragem (técnico e supervisor) ----------
