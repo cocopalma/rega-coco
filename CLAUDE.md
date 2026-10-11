@@ -35,3 +35,6 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - `activistas.activo = false`: Amisse Dade Ali (era sazonal; campos passaram para Azize Abdala Selemane) e Chafim Abdala Salimo (desligado; 2 campos ficaram por atribuir) — 11/10/2026, informação do Nuro.
 - Rotina Carlos → comunidade Quitunda; Martins Joaquim Fernando → Senga (substituiu Aiuba Abdala Aja). Supervisor de ambos: Raul.
 - RAL = Replacement Agricultural Land: bloco de produção que vai de Senga a Macala (não é comunidade na base).
+
+## Pendentes pedidos pelo Valdo
+- Painel: frequência de rega (dias entre regas do mesmo campo) por equipa, agrupada por comunidade. Fazer depois da fase de teste dos activistas, quando o agrupamento de campos por equipa estiver confirmado (11/10/2026). Os registos já guardam activista, campo e data, por isso o cálculo cobre também as regas anteriores.
