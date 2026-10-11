@@ -170,7 +170,7 @@ async function carregarTudo() {
   if (!p.data) throw new Error('Este utilizador não tem perfil na app. Fale com o gestor.');
   if (p.data.papel === 'cliente') { S.perfil = p.data; LS.set('perfil', S.perfil); return; }   // o cliente só vê o painel
   const [ac, ar] = await Promise.all([
-    sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor').order('nome'),
+    sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo').order('nome'),
     sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999),
   ]);
   if (ac.error || ar.error) throw new Error((ac.error || ar.error).message);
@@ -230,8 +230,10 @@ function desenharMapa(enquadrar = false) {
   if (!camada) return;
   camada.clearLayers();
   const pts = [];
+  const fa = $('#f-act')?.value;
   for (const a of visiveis()) {
     if (a.latitude == null) continue;
+    if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
     const s = situacao(a);
     L.circleMarker([a.latitude, a.longitude], { radius: 8, color: '#fff', weight: 2, fillColor: COR[s.cod], fillOpacity: .95 })
       .on('click', () => abrirFicha(a.id)).addTo(camada);
@@ -252,21 +254,29 @@ function textoRonda() {
 // campos sem activista que este utilizador pode atribuir (supervisor e técnico: só os que vê; gestor: todos)
 const porAtribuir = () => (S.perfil && ['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel) ? S.areas.filter((a) => !a.activista_id) : []);
 const daMinhaEquipa = (id) => !S.visiveis || S.visiveis.includes(id);
+// a proposta vem da base com o NOME do activista; devolve o id (null se não existir ou estiver desactivado)
+function propostaId(a) {
+  const p = a.activista_proposto; if (!p) return null;
+  const t = S.activistas.find((x) => x.id === p || x.nome === p);
+  return t && t.activo !== false ? t.id : null;
+}
+const activo = (t) => t.activo !== false;
 function linhaAtribuir(a) {
-  const prop = a.activista_proposto, ok = prop && daMinhaEquipa(prop);
+  const prop = propostaId(a), ok = prop && daMinhaEquipa(prop);
   return `<div class="atrib">${prop ? `Proposta: <b>${esc(nomeAct(prop))}</b>${ok ? '' : ' <span class="pequeno">(fora da sua equipa)</span>'}` : '<span class="pequeno">Sem proposta</span>'}
     <div class="chips">${ok ? `<button class="chip on" data-acc="confirmar" data-id="${esc(a.id)}">✓ Confirmar proposta</button>` : ''}
     <button class="chip" data-acc="outro" data-id="${esc(a.id)}">Escolher outro</button></div></div>`;
 }
 function confirmarProposta(id) {
-  const a = S.areas.find((x) => x.id === id); if (!a || !a.activista_proposto) return;
-  a.activista_id = a.activista_proposto; LS.set('areas', S.areas);
+  const a = S.areas.find((x) => x.id === id), prop = a && propostaId(a); if (!prop) return;
+  a.activista_id = prop; LS.set('areas', S.areas);
   porNaFilaAlt({ tipo: 'atrib', area_id: id, activista_id: a.activista_id });
   aviso(`${a.produtor}: atribuído a ${nomeAct(a.activista_id)}.`, 'ok'); desenharMapa(); desenharLista();
 }
 function desenharLista() {
   const amb = $('#f-ambito').value, com = $('#f-com').value, sit = $('#f-sit').value, txt = $('#f-txt').value.trim().toLowerCase();
   let L2 = (amb === 'meus' && S.perfil?.papel === 'activista') ? minhas() : S.areas;
+  const fa = $('#f-act').value; if (fa) L2 = L2.filter((a) => (fa === '__sem' ? !a.activista_id : a.activista_id === fa));
   if (com) { const [c, z] = com.split('|'); L2 = L2.filter((a) => a.comunidade === c && (z === undefined || (a.zona || '') === z)); }
   if (txt) L2 = L2.filter((a) => (a.produtor || '').toLowerCase().includes(txt) || a.pr.toLowerCase().includes(txt));
   let linhas = L2.map((a) => ({ a, s: situacao(a), d: S.pos && a.latitude != null ? metros(S.pos, [a.latitude, a.longitude]) : null }));
@@ -360,9 +370,9 @@ function ecraAtribuir(id, nota = '') {
   const a = S.areas.find((x) => x.id === id), daEquipa = (t) => !S.visiveis || S.visiveis.includes(t);
   const prox = activistasProximos(a).filter((p) => daEquipa(p.id)).slice(0, 3);
   const km = (d) => d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km';
-  const resto = S.activistas.filter((t) => daEquipa(t.id) && !prox.some((p) => p.id === t.id));
+  const resto = S.activistas.filter((t) => activo(t) && daEquipa(t.id) && !prox.some((p) => p.id === t.id));
   folha(`${nota}<h2>${esc(a.produtor)}</h2><p class="pequeno">${esc(a.pr)} · ${esc(a.comunidade)} · activista actual: <b>${esc(nomeAct(a.activista_id))}</b></p>
-    ${a.activista_proposto ? `<div class="msg info">Proposta da base: <b>${esc(nomeAct(a.activista_proposto))}</b></div>` : ''}
+    ${propostaId(a) ? `<div class="msg info">Proposta da base: <b>${esc(nomeAct(propostaId(a)))}</b></div>` : ''}
     <label>Atribuir a<select id="t-act">
       ${prox.length ? `<optgroup label="Mais próximos (campo da lista mais perto)">${prox.map((p) => `<option value="${p.id}">${esc(nomeAct(p.id))} — ${km(p.d)} (${esc(p.com)})</option>`).join('')}</optgroup>` : ''}
       <optgroup label="Todos">${resto.map((t) => `<option value="${t.id}">${esc(t.nome)} — ${esc(t.comunidade_principal || '')}</option>`).join('')}</optgroup>
@@ -370,7 +380,7 @@ function ecraAtribuir(id, nota = '') {
     <p class="pequeno">Regra: rega o activista da comunidade onde o campo está. Confirme antes de gravar.</p>
     <button class="btn" onclick="gravarAtribuicao('${esc(id)}')">Gravar</button>
     <button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
-  if (a.activista_proposto && daEquipa(a.activista_proposto)) $('#t-act').value = a.activista_proposto;
+  if (propostaId(a) && daEquipa(propostaId(a))) $('#t-act').value = propostaId(a);
 }
 function gravarAtribuicao(id) {
   const a = S.areas.find((x) => x.id === id), novo = $('#t-act').value;
@@ -597,7 +607,7 @@ const sugerirUtilizador = (nome) => nome.normalize('NFD').replace(/[̀-ͯ]/g, ''
 async function desenharGestao(msg = '') {
   $('#gestao').innerHTML = '<p>A carregar…</p>';
   let d; try { d = await chamarGestor({ accao: 'listar' }); } catch (e) { $('#gestao').innerHTML = `<div class="msg erro">${esc(e.message)}</div>`; return; }
-  const sem = d.activistas.filter((a) => !a.tem_login), com = d.activistas.filter((a) => a.tem_login);
+  const sem = d.activistas.filter((a) => !a.tem_login && a.activo !== false), com = d.activistas.filter((a) => a.tem_login);
   $('#gestao').innerHTML = `${msg}<div class="cartao"><h2>Criar login de activista</h2>
     <label>Activista<select id="g-act">${sem.map((a) => `<option value="${a.id}" data-u="${sugerirUtilizador(a.nome)}">${esc(a.nome)} — ${esc(a.comunidade_principal || '')}</option>`).join('')}</select></label>
     <label>Utilizador<input id="g-user" autocapitalize="none"></label>
@@ -748,6 +758,12 @@ function mostrarApp() {
   }
   if (papel !== 'activista') { S.filtro = 'todas'; $('#f-ambito').value = 'todas'; }
   const coms = [...new Set(S.areas.map((a) => a.comunidade))].sort();
+  if (!souActivista()) {                                  // filtro por activista (supervisor, técnico, gestor…)
+    const comCampos = new Set(S.areas.map((a) => a.activista_id).filter(Boolean));
+    const acts = S.activistas.filter((t) => comCampos.has(t.id)).sort((x, y) => x.nome.localeCompare(y.nome));
+    $('#f-act').innerHTML = '<option value="">Todos os activistas</option>' + acts.map((t) => `<option value="${t.id}">${esc(t.nome)}</option>`).join('') + '<option value="__sem">(sem activista)</option>';
+    $('#f-act').style.display = '';
+  }
   $('#f-com').innerHTML = '<option value="">Todas as comunidades</option>' + coms.map((c) => `<option value="${esc(c)}">${esc(c)}</option>` +
     zonasDe(c).map((z) => `<option value="${esc(c)}|${esc(z)}">&nbsp;&nbsp;${esc(c)} › ${esc(z)}</option>`).join('') +
     (zonasDe(c).length ? `<option value="${esc(c)}|">&nbsp;&nbsp;${esc(c)} › zona por definir</option>` : '')).join('');
@@ -767,6 +783,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#b-centrar').onclick = () => { if (S.pos) mapa.setView(S.pos, 16); else lerGPS().then(() => mapa.setView(S.pos, 16)).catch((e) => aviso(e.message, 'erro')); };
   $('#b-filtro').onclick = () => { S.filtro = S.filtro === 'meus' ? 'todas' : 'meus'; desenharMapa(true); };
   ['#f-ambito', '#f-com', '#f-sit'].forEach((s) => $(s).onchange = desenharLista);
+  $('#f-act').onchange = () => { desenharLista(); desenharMapa(true); };
   $('#f-txt').oninput = desenharLista;
   $('#lista').onclick = (e) => {
     const b = e.target.closest('button[data-acc]');

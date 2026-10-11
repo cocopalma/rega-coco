@@ -24,4 +24,10 @@ Tabela `pessoas_acesso` (nome, entidade, papel, utilizador; sem senhas), copiada
 Funções no Excel → papel: Técnico=tecnico, Supervisor=supervisor, Director (só leitura)=director, M&E (só leitura)=me, Só painel (cliente / administração)=cliente.
 
 ## Zonas
-Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Muah, Bagala, Quelimane (11/10/2026). Zona inicial: Oliveira → Incularino, Sitambur → Muah; Razaque (Bagala/Quelimane) por definir pelo supervisor. Gestor e supervisor mudam a zona na ficha do campo (RPC `definir_zona`, fica em `alteracoes_areas`). A comunidade do campo não muda.
+Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quilaua, Muah, Bagala, Quelimane (11/10/2026, Nuro). Oliveira = Incularino e Quilaua, Sitambur = Muah, Razaque = Bagala e Quelimane; só os campos do Sitambur têm zona definida, os outros ficam para o supervisor (Nuro) definir. Gestor e supervisor mudam a zona na ficha do campo (RPC `definir_zona`, fica em `alteracoes_areas`). A comunidade do campo não muda.
+
+## Notas de dados
+- `areas.activista_proposto` guarda o NOME do activista (não o id); a app converte com `propostaId()`.
+- `activistas.activo = false`: Amisse Dade Ali (era sazonal; campos passaram para Azize Abdala Selemane) e Chafim Abdala Salimo (desligado; 2 campos ficaram por atribuir) — 11/10/2026, informação do Nuro.
+- Rotina Carlos → comunidade Quitunda; Martins Joaquim Fernando → Senga (substituiu Aiuba Abdala Aja). Supervisor de ambos: Raul.
+- RAL = Replacement Agricultural Land: bloco de produção que vai de Senga a Macala (não é comunidade na base).
