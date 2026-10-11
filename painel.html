@@ -68,6 +68,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 #login input{width:100%;font:inherit;padding:11px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--ink);margin-top:6px}
 #login label{display:block;margin-top:12px;font-weight:600;font-size:14px}
 #login button{width:100%;margin-top:14px;font:inherit;font-weight:700;border:0;border-radius:10px;padding:13px;background:#2e7d4a;color:#fff;cursor:pointer}
+#login button.lingua{background:none;color:var(--ink2);border:1px solid var(--border);font-weight:600}
 .erro{color:var(--crit);font-size:14px;margin-top:10px}
 </style>
 </head>
@@ -80,6 +81,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <label>Senha<input id="l-pin" type="password" autocomplete="current-password"></label>
     <button id="l-entrar">Entrar</button>
     <div id="l-msg"></div>
+    <button id="l-lingua" class="lingua" onclick="mudarLingua()">English</button>
   </div>
 </div>
 
@@ -111,7 +113,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n.js?v=15"></script>
+<script src="i18n.js?v=16"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
