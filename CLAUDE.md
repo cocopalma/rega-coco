@@ -49,6 +49,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Equipa, meta e tempos (11/10/2026, Valdo)
 - Equipa por número (os nomes virão depois): `activistas.equipa_tamanho` (5 = equipa típica dada pelo Valdo: 1 activista + 4 sazonais); o activista regista as pessoas presentes no início do dia (Hoje › Pessoas hoje › Alterar) e em cada saída; gestor, técnico e supervisor mudam no Hoje (RPC `definir_equipa_tamanho`). Faltas = tamanho − pessoas presentes (máximo de `registos_rega.pessoas` no dia, senão `jornadas.pessoas`).
 - Nesta fase as equipas escolhem os campos; a "% face ao plano" é a meta de 140 plantas por pessoa por dia (`CFG.metaPlantas`, `META` no painel, `config.meta_plantas_pessoa_dia`): % = plantas ÷ (140 × pessoas presentes). Hoje: coluna "% meta"; painel: secção "Meta" por dia / semana / período (RPC `painel_plantas_dia_equipa` devolve pessoas e tamanho).
+- Gráficos no painel (11/10/2026, Valdo): % da meta por dia (colunas, linha 100%), % da meta por equipa (barras), deslocação média por equipa (barras), nota média por equipa na monitoria (barras, linha nota 8). Funções `colunas`/`barras` aceitam `ref`/`refTxt` (linha de referência) e `fmt`.
 - Tempo entre campos: Hoje coluna "Desloc." (média saída → entrada seguinte); painel "Tempo por campo e deslocação" (RPC `painel_tempos_equipa`).
 
 ## Pendentes pedidos pelo Valdo

@@ -137,12 +137,17 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 
   <section class="card sec" id="s-meta"><h2>Meta: 140 plantas por pessoa por dia</h2>
     <p class="desc">% da meta = plantas regadas ÷ (140 × pessoas presentes). Faltas = pessoas da equipa que não estiveram presentes (soma dos dias com rega).</p>
+    <div class="grelha dois" style="margin-bottom:12px">
+      <div><h3 style="font-size:14px;margin:4px 0">% da meta por dia (todas as equipas)</h3><div id="g-meta-dia"></div></div>
+      <div><h3 style="font-size:14px;margin:4px 0">% da meta por equipa no período</h3><div id="g-meta-eq"></div></div>
+    </div>
     <div class="vista" role="group" id="v-meta"><button data-v="dia">Por dia</button><button data-v="semana">Por semana</button><button data-v="periodo">Período</button></div>
     <div class="tabela" id="t-meta" style="max-height:none"></div></section>
 
   <section class="card sec"><h2>Tempo por campo e deslocação entre campos</h2>
     <p class="desc">Médias por equipa no período. Rega = da entrada à saída do campo. Deslocação = da saída de um campo à entrada no seguinte, no mesmo dia.</p>
-    <div class="tabela" id="t-tempos"></div></section>
+    <h3 style="font-size:14px;margin:4px 0">Deslocação média entre campos (min)</h3><div id="g-tempos"></div>
+    <details><summary>Ver tabela</summary><div class="tabela" id="t-tempos"></div></details></section>
 
   <section class="card sec"><h2>Chegada da água (tuk-tuk) por equipa</h2>
     <p class="desc" id="d-agua">Últimos 14 dias. Espera = minutos entre a entrada no campo e a chegada da água.</p>
@@ -159,13 +164,14 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <h3>Por técnico (área de supervisão)</h3>
     <p class="desc">Método LQAS: com 19 campos verificados, a área do técnico é aceite se pelo menos 13 estiverem regados (usa as 19 verificações mais recentes do período).</p>
     <div class="tabela" id="t-mon-tec"></div>
-    <h3>Por equipa</h3><div class="tabela" id="t-mon-eq"></div>
+    <h3>Por equipa</h3><p class="desc">Nota média (0 a 10) dos campos verificados de cada equipa.</p><div id="g-mon-eq"></div>
+    <details><summary>Ver tabela</summary><div class="tabela" id="t-mon-eq"></div></details>
     <h3>Por pessoa que verificou</h3><div class="tabela" id="t-mon-ver"></div>
   </section>
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n.js?v=24"></script>
+<script src="i18n.js?v=25"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -249,36 +255,39 @@ function colunaPath(x, y, w, h) { const r = Math.min(4, w / 2, h); return `M${x}
 function barraPath(x, y, w, h) { const r = Math.min(4, h / 2, w); return `M${x},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h - r}Q${x + w},${y + h} ${x + w - r},${y + h}H${x}Z`; }
 
 // ---------- gráfico de colunas (uma série) ----------
-function colunas(alvo, dados, { valor, rotulo, dicaDe }) {
+function colunas(alvo, dados, { valor, rotulo, dicaDe, fmt = compacto, ref, refTxt }) {
   const el = $(alvo);
   if (!dados.length) { el.innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
   const W = Math.max(320, el.clientWidth || 520), H = 240, pl = 48, pr = 8, pt = 22, pb = 28;
   const iw = W - pl - pr, ih = H - pt - pb;
-  const { top, step } = passoLimpo(Math.max(...dados.map(valor)));
+  const { top, step } = passoLimpo(Math.max(...dados.map(valor), ref || 0));
   const banda = iw / dados.length, bw = Math.max(3, Math.min(24, banda - 2));
   const salto = Math.ceil(dados.length / Math.max(1, Math.floor(iw / 46)));
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de colunas">`;
   for (let v = 0; v <= top + 1e-9; v += step) { const y = pt + ih - (v / top) * ih;
-    s += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="var(--${v === 0 ? 'axis' : 'grid'})" stroke-width="1"/><text x="${pl - 8}" y="${y + 4}" text-anchor="end">${compacto(v)}</text>`; }
+    s += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="var(--${v === 0 ? 'axis' : 'grid'})" stroke-width="1"/><text x="${pl - 8}" y="${y + 4}" text-anchor="end">${fmt(v)}</text>`; }
   let iMax = 0; dados.forEach((d, i) => { if (valor(d) > valor(dados[iMax])) iMax = i; });
   dados.forEach((d, i) => {
     const v = valor(d), h = (v / top) * ih, x = pl + i * banda + (banda - bw) / 2, y = pt + ih - h;
     s += `<g class="marca-dados" tabindex="0" data-dica="${dica(dicaDe(d))}"><rect x="${pl + i * banda}" y="${pt}" width="${banda}" height="${ih}" fill="transparent"/>` +
       (h > 0 ? `<path class="vis" d="${colunaPath(x, y, bw, h)}" fill="var(--s1)"/>` : '') + '</g>';
-    if (i === iMax || i === dados.length - 1) s += `<text class="valor" x="${x + bw / 2}" y="${y - 6}" text-anchor="middle">${compacto(v)}</text>`;
+    if (i === iMax || i === dados.length - 1) s += `<text class="valor" x="${x + bw / 2}" y="${y - 6}" text-anchor="middle">${fmt(v)}</text>`;
     if (i % salto === 0) s += `<text x="${pl + i * banda + banda / 2}" y="${H - 8}" text-anchor="middle">${esc(rotulo(d))}</text>`;
   });
+  if (ref != null) { const y = pt + ih - (ref / top) * ih; s += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="var(--ink2)" stroke-width="1.5" stroke-dasharray="5 4"/><text class="lbl" x="${W - pr}" y="${y - 6}" text-anchor="end">${esc(refTxt || '')}</text>`; }
   el.innerHTML = s + '</svg>';
 }
 
 // ---------- barras horizontais (uma série) ----------
-function barras(alvo, dados, { valor, rotulo, texto, dicaDe, max }) {
+function barras(alvo, dados, { valor, rotulo, texto, dicaDe, max, ref, refTxt }) {
   const el = $(alvo);
   if (!dados.length) { el.innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
   const W = Math.max(320, el.clientWidth || 520), linha = 30, H = dados.length * linha + 8;
   const pl = Math.min(150, W * 0.36), pr = 56, iw = W - pl - pr;
   const top = max ?? Math.max(...dados.map(valor), 1);
-  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de barras"><line x1="${pl}" x2="${pl}" y1="0" y2="${H - 8}" stroke="var(--axis)"/>`;
+  const xr = ref != null ? pl + (ref / top) * iw : null, sobe = xr != null && refTxt ? 18 : 0;
+  let s = `<svg viewBox="0 ${-sobe} ${W} ${H + sobe}" role="img" aria-label="Gráfico de barras"><line x1="${pl}" x2="${pl}" y1="0" y2="${H - 8}" stroke="var(--axis)"/>` +
+    (xr != null ? `<line x1="${xr}" x2="${xr}" y1="0" y2="${H - 8}" stroke="var(--ink2)" stroke-width="1.5" stroke-dasharray="5 4"/>${refTxt ? `<text class="lbl" x="${xr}" y="-6" text-anchor="middle">${esc(refTxt)}</text>` : ''}` : '');
   dados.forEach((d, i) => {
     const v = valor(d), w = Math.max(0, (v / top) * iw), y = i * linha + 4, bh = 18;
     s += `<g class="marca-dados" tabindex="0" data-dica="${dica(dicaDe(d))}"><rect x="0" y="${y - 3}" width="${W}" height="${linha}" fill="transparent"/>` +
@@ -372,8 +381,19 @@ function desenharPlantasDiaEquipa() {
 
 // ---------- meta de plantas por pessoa e tempos ----------
 const segunda = (d) => { const t = new Date(d + 'T12:00:00'); t.setDate(t.getDate() - ((t.getDay() + 6) % 7)); return t.toLocaleDateString('sv-SE'); };
+function graficosMeta(L) {
+  const pcV = (o) => (o.pessoas ? (100 * o.plantas) / (META * o.pessoas) : 0), fmtP = (v) => Math.round(v) + '%';
+  const dia = {}; for (const x of L) { if (!x.pessoas) continue; const o = (dia[x.data] ??= { data: x.data, plantas: 0, pessoas: 0, equipas: 0 }); o.plantas += x.plantas; o.pessoas += x.pessoas; o.equipas++; }
+  colunas('#g-meta-dia', Object.values(dia).sort((a, b) => a.data.localeCompare(b.data)).slice(-30), { valor: pcV, rotulo: (d) => ddmm(d.data), fmt: fmtP, ref: 100, refTxt: 'meta 100%',
+    dicaDe: (d) => [[fmtP(pcV(d)), 'da meta'], [fmtData(d.data)], [`${num(d.plantas)} plantas · ${num(d.pessoas)} pessoas · ${num(d.equipas)} equipas`]] });
+  const eq = {}; for (const x of L) { if (!x.pessoas) continue; const o = (eq[x.equipa] ??= { equipa: x.equipa, comunidade: x.comunidade, plantas: 0, pessoas: 0 }); o.plantas += x.plantas; o.pessoas += x.pessoas; }
+  const le = Object.values(eq).sort((a, b) => pcV(b) - pcV(a));
+  barras('#g-meta-eq', le, { valor: pcV, rotulo: (d) => d.equipa, texto: (d) => fmtP(pcV(d)), max: Math.max(100, ...le.map(pcV)), ref: 100, refTxt: 'meta',
+    dicaDe: (d) => [[fmtP(pcV(d)), 'da meta'], [`${d.equipa} · ${d.comunidade}`], [`${num(d.plantas)} plantas · ${num(d.pessoas)} pessoas-dia`]] });
+}
 function desenharMeta() {
   const L = Array.isArray(DP) ? DP : []; if (!$('#t-meta')) return;
+  graficosMeta(L);
   document.querySelectorAll('#v-meta button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === VM)));
   if (!L.length) { $('#t-meta').innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
   const chave = (d) => (VM === 'semana' ? segunda(d) : VM === 'periodo' ? 'p' : d);
@@ -406,6 +426,9 @@ function desenharTempos() {
   if (!$('#t-tempos')) return;
   const L = Array.isArray(DT) ? DT : [];
   if (!L.length) { $('#t-tempos').innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
+  const lt = L.filter((t) => t.deslocacao_min != null).sort((a, b) => b.deslocacao_min - a.deslocacao_min);
+  barras('#g-tempos', lt, { valor: (t) => +t.deslocacao_min, rotulo: (t) => t.equipa, texto: (t) => num(t.deslocacao_min) + ' min',
+    dicaDe: (t) => [[num(t.deslocacao_min) + ' min', 'de deslocação média'], [t.equipa], [`Rega por campo: ${t.rega_min != null ? num(t.rega_min) + ' min' : '—'}`], [`${num(t.deslocacoes)} deslocações medidas`]] });
   tabela('#t-tempos', [['Equipa'], ['Rega por campo (min)', 1], ['Deslocação entre campos (min)', 1], ['Deslocações medidas', 1]],
     L.map((t) => [esc(t.equipa), t.rega_min != null ? num(t.rega_min) : '—', t.deslocacao_min != null ? num(t.deslocacao_min) : '—', num(t.deslocacoes)]));
 }
@@ -427,6 +450,9 @@ function desenharMonitoria() {
   tabela('#t-mon-tec', [['Técnico'], ['Verificados', 1], ['Amostra LQAS'], ['Resultado LQAS'], ['Campos regados', 1], ['Nota média', 1]],
     (M.por_tecnico || []).map((t) => [esc(t.tecnico), num(t.verificados), `<div class="prog"><div class="barra"><i style="width:${Math.min(100, t.verificados / LN * 100)}%"></i></div><span>${Math.min(t.verificados, LN)}/${LN}</span></div>`,
       lqas(t), t.verificados ? fmtPct(pct(t.solo_regado, t.verificados)) : '—', t.nota_media != null ? Number(t.nota_media).toLocaleString(LOC) : '—']));
+  const le = (M.por_equipa || []).filter((e) => e.nota_media != null).sort((a, b) => b.nota_media - a.nota_media);
+  barras('#g-mon-eq', le, { valor: (e) => +e.nota_media, rotulo: (e) => e.nome, texto: (e) => Number(e.nota_media).toLocaleString(LOC), max: 10, ref: 8, refTxt: 'nota 8 (80%)',
+    dicaDe: (e) => [[Number(e.nota_media).toLocaleString(LOC), 'nota média'], [`${e.nome} · ${e.comunidade || ''}`], [`${num(e.verificados)} campos verificados · ${num(e.sem_sinais_rega)} não regados`]] });
   tabela('#t-mon-eq', [['Equipa (activista)'], ['Comunidade'], ['Verificados', 1], ['Nota média', 1], ['Campos não regados', 1], ['Plantas com solo húmido', 1], ['Plantas secas ou mortas', 1]],
     (M.por_equipa || []).map((e) => [esc(e.nome), esc(e.comunidade || ''), num(e.verificados), e.nota_media != null ? Number(e.nota_media).toLocaleString(LOC) : '—',
       e.sem_sinais_rega ? `<b style="color:var(--crit)">${num(e.sem_sinais_rega)}</b>` : '0', e.plantas_obs ? fmtPct(pct(e.plantas_humidas, e.plantas_obs)) : '—', num(e.mudas_secas_mortas)]));

@@ -178,6 +178,9 @@ document.addEventListener('DOMContentLoaded', () => {
     'Método LQAS: com 19 campos verificados, a área do técnico é aceite se pelo menos 13 estiverem regados (usa as 19 verificações mais recentes do período).': 'LQAS method: with 19 fields checked, the technician\'s area is accepted if at least 13 are watered (uses the 19 most recent checks in the period).',
     ' Campo considerado regado (≥ 80%), mas reveja as plantas sem rega.': ' Field considered watered (≥ 80%), but check the plants without watering.',
     ' Campo considerado não regado (menos de 80% das plantas com solo húmido).': ' Field considered not watered (less than 80% of plants with moist soil).',
+    '% da meta por dia (todas as equipas)': '% of target per day (all teams)', '% da meta por equipa no período': '% of target per team in the period',
+    'meta 100%': 'target 100%', 'meta': 'target', 'da meta': 'of target', 'Deslocação média entre campos (min)': 'Average travel between fields (min)', 'de deslocação média': 'average travel',
+    'Nota média (0 a 10) dos campos verificados de cada equipa.': 'Average score (0 to 10) of each team\'s checked fields.', 'nota 8 (80%)': 'score 8 (80%)', 'nota média': 'average score',
     // erros do servidor (criação de logins)
     'Sessão inválida': 'Invalid session', 'Só o gestor pode gerir logins': 'Only the manager can manage logins', 'Pedido inválido': 'Invalid request',
     'Função inválida': 'Invalid role', 'Escreva o nome': 'Write the name', "Esta pessoa já tem acesso. Use 'Nova senha'.": "This person already has access. Use 'New password'.",
@@ -195,6 +198,8 @@ document.addEventListener('DOMContentLoaded', () => {
     'No período escolhido. Espera = minutos entre a entrada no campo e a chegada da água.': 'In the chosen period. Wait = minutes between field entry and water arrival.',
   });
   const R = [
+    [/^(.+) campos verificados$/, '$1 fields checked'], [/^(.+) não regados$/, '$1 not watered'], [/^(.+) deslocações medidas$/, '$1 trips measured'], [/^Rega por campo: (.+)$/, 'Watering per field: $1'],
+    [/^(.+) pessoas$/, '$1 people'],
     [/^(.+) de (.+) plantas sem solo húmido$/, '$1 of $2 plants without moist soil'], [/^nota (.+)$/, 'score $1'], [/^Monitoria \(rega de (.+)\):$/, 'Monitoring (watering of $1):'],
     [/^Observação: (.+)$/, 'Note: $1'],
     [/^(.+) faltas?$/, '$1 absent'], [/^·(\d+)F$/, '·$1A'], [/^Sem\. (.+)$/, 'Wk $1'], [/^(.+) pessoas-dia$/, '$1 person-days'],
