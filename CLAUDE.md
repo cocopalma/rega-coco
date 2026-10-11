@@ -13,7 +13,7 @@ Servidor: Supabase, projecto `fgzdqnvobgfzjetbbxcm`. Responder sempre em portugu
 - Activista: os seus campos (pode ver todos no mapa); regista regas da sua lista.
 - Técnico: campos dos activistas com `activistas.tecnico` = o seu nome (+ colegas que cobre) e campos sem activista dessas comunidades.
 - Supervisor: o mesmo por `activistas.supervisor`. Coberturas na tabela `coberturas` (o gestor gere na app).
-- Director: lê tudo, não regista. Cliente / administração: só o painel.
+- Director e M&E (papel `me`): leem tudo, não registam. Cliente / administração: só o painel.
 
 ## Atribuir campos sem activista
 Desde 11/10/2026 faz-se na app (decisão do Valdo): separador Campos › filtro "Por atribuir" › "✓ Confirmar proposta" (usa `areas.activista_proposto`) ou "Escolher outro". Supervisor e técnico só atribuem a activistas da sua equipa; o gestor a qualquer um. Cada alteração fica em `alteracoes_areas`.

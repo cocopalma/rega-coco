@@ -88,10 +88,11 @@ const FUNCOES = {
   tecnico: { nome: 'Técnico', desc: 'vê todos os campos, a rega do dia de todas as equipas e o painel; pode fazer regas de teste.' },
   supervisor: { nome: 'Supervisor', desc: 'o mesmo que o técnico.' },
   director: { nome: 'Director (só leitura)', desc: 'vê todos os campos, a rega do dia e o painel; não regista regas.' },
+  me: { nome: 'M&E (só leitura)', desc: 'o mesmo que o director.' },
   cliente: { nome: 'Só painel (cliente / administração)', desc: 'vê apenas o painel geral.' },
 };
 const PODE_REGAR = ['activista', 'tecnico', 'supervisor', 'gestor'];
-const VER_PAINEL = ['tecnico', 'supervisor', 'gestor', 'director', 'cliente'];
+const VER_PAINEL = ['tecnico', 'supervisor', 'gestor', 'director', 'me', 'cliente'];
 function situacao(a) {
   const u = ultimaRega(a);
   if (!a.activista_id) return { cod: 'sem', txt: 'Sem activista', u };

@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// Criação e gestão dos logins: activistas (utilizador + PIN) e outros acessos (técnico, supervisor, director, cliente: utilizador + senha).
+// Criação e gestão dos logins: activistas (utilizador + PIN) e outros acessos (técnico, supervisor, director, M&E, cliente: utilizador + senha).
 // Só um utilizador com papel 'gestor' em public.perfis pode usar esta função.
 const DOMINIO = "rega-coco.example.com"; // endereço interno, nunca recebe emails
 const cors = {
@@ -12,7 +12,7 @@ const cors = {
 const resp = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 const RE_USER = /^[a-z0-9._-]{3,30}$/;
-const PAPEIS_OUTROS = ["tecnico", "supervisor", "director", "cliente"];
+const PAPEIS_OUTROS = ["tecnico", "supervisor", "director", "me", "cliente"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
