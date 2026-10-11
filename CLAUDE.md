@@ -7,7 +7,7 @@ Servidor: Supabase, projecto `fgzdqnvobgfzjetbbxcm`. Responder sempre em portugu
 - `index.html`, `app.js`, `sw.js`, `manifest.webmanifest`, ícones — a app (activistas, técnicos, supervisores, director, gestor, cliente).
 - `painel.html` — painel geral (também aberto dentro da app, separador Painel, com `?embutido=1`).
 - `supabase/functions/gestor-activistas/index.ts` — cópia da função de servidor que cria logins (publicar com o conector Supabase).
-- Ao mudar a app, subir `VERSAO` em `sw.js` para os telefones receberem a nova versão.
+- Ao mudar a app, subir `VERSAO` em `sw.js` e o `?v=` de `app.js` em `index.html` para os telefones receberem a nova versão.
 
 ## Quem vê o quê (regras no servidor, RLS)
 - Activista: os seus campos (pode ver todos no mapa); regista regas da sua lista.
