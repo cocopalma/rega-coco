@@ -147,7 +147,15 @@ document.addEventListener('DOMContentLoaded', () => {
     'Acção desconhecida': 'Unknown action', 'Método não permitido': 'Method not allowed',
   };
   // textos com partes variáveis (números, horas, nomes)
+  Object.assign(D, {
+    'Tudo': 'All time', 'Ontem': 'Yesterday', '7 dias': '7 days', '30 dias': '30 days', 'Período': 'Period', 'De': 'From', 'Até': 'To', 'Aplicar': 'Apply',
+    'Todo o histórico': 'All records', 'A data "De" tem de ser anterior ou igual à data "Até".': 'The "From" date must be on or before the "To" date.',
+    'Ronda, progresso e rondas concluídas mostram o estado actual; as restantes colunas referem-se ao período escolhido.': 'Round, progress and completed rounds show the current state; the other columns refer to the chosen period.',
+    'No período escolhido. Espera = minutos entre a entrada no campo e a chegada da água.': 'In the chosen period. Wait = minutes between field entry and water arrival.',
+  });
   const R = [
+    [/^Todo o histórico: (.+) a (.+)$/, 'All records: $1 to $2'], [/^Dia: (.+)$/, 'Day: $1'],
+    [/^Período: (.+) a (.+)$/, (m, x, y) => `Period: ${x === 'início' ? 'start' : x} to ${y === 'hoje' ? 'today' : y}`],
     [/^(.+) de (.+) campos regados$/, '$1 of $2 fields watered'], [/^(.+) dias entre regas$/, (m, a) => `${a.replace(',', '.')} days between waterings`],
     [/^(.+) de (.+) campos$/, '$1 of $2 fields'], [/^(.+) de (.+) plantas vivas$/, '$1 of $2 live plants'], [/^(.+) campos$/, '$1 fields'], [/^(.+) campos por atribuir\.$/, '$1 fields to assign.'], [/^(.+) campos · ordenados pela distância$/, '$1 fields · sorted by distance'],
     [/^(\d+) por enviar$/, '$1 to send'], [/^Sinc\. (.+)$/, 'Sync $1'], [/^(.+) plantas$/, '$1 plants'], [/^(.+) plantas vivas$/, '$1 live plants'],
