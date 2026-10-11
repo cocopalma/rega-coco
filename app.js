@@ -154,12 +154,13 @@ async function sincronizarAgora(silencioso) {
       LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); alteradas++;
     }
   }
+  if (!erro) erro = await enviarMonitorias();
   if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
   actSync();
   if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   b.textContent = n ? `${n} por enviar` : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0);
 }
@@ -178,7 +179,7 @@ async function carregarTudo() {
   S.perfil = p.data; S.activistas = ac.data; S.areas = aplicarPendentes(ar.data);
   const zs = await sb.from('zonas').select('comunidade,zona').order('zona'); if (!zs.error) { S.zonas = zs.data; LS.set('zonas', S.zonas); }
   S.visiveis = null;
-  if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { const v = await sb.rpc('meus_activistas'); S.visiveis = v.error ? null : v.data; LS.set('visiveis', S.visiveis); }
+  if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { const v = await sb.rpc('meus_activistas'); S.visiveis = v.error ? null : v.data; LS.set('visiveis', S.visiveis); await carregarMonitoria(); }
   LS.set('perfil', S.perfil); LS.set('activistas', S.activistas); LS.set('areas', S.areas);
   await carregarEstado();
 }
@@ -195,7 +196,7 @@ async function carregarEstado() {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {});
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []);
   return !!(S.perfil && (S.areas.length || S.perfil.papel === 'cliente'));
 }
 
@@ -452,7 +453,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
     ${d != null ? `<div class="lin"><span>Distância</span><b>${d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km'} · ${rumo(S.pos, [a.latitude, a.longitude])}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${acc}${botoesCampo(a)}`);
+   </div>${acc}${botaoMonitoria(a)}${botoesCampo(a)}`);
 }
 
 // ---------- entrada ----------
@@ -610,6 +611,7 @@ async function desenharHoje() {
       <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div></div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
+    if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarMonitoria(); html = cartaoMonitoria() + html; }
     const r = await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h);
     if (r.error) html += `<div class="msg erro">${esc(r.error.message)}</div></div>`;
     else {
@@ -624,6 +626,104 @@ async function desenharHoje() {
   }
   html += `<button class="btn sec" onclick="sair()">Sair desta conta</button>`;
   $('#hoje').innerHTML = html;
+}
+
+// ---------- monitoria por amostragem (técnico e supervisor) ----------
+// A partir das 18:00 o servidor sorteia campos regados nesse dia; cada pessoa recebe a sua lista (sem campos repetidos entre pessoas).
+// A verificação faz-se no campo (GPS), com nota de 0 a 10 e uma fotografia reduzida no telefone (~150 KB). Funciona sem rede.
+async function carregarMonitoria() {
+  const r = await sb.rpc('monitoria_lista');
+  if (!r.error && Array.isArray(r.data)) { S.mon = r.data; LS.set('mon', S.mon); }
+}
+const monFeita = (m) => m.feita || LS.get('filaMon', []).some((x) => x.amostra_id === m.amostra_id) || (LS.get('monFeitas', [])).includes(m.amostra_id);
+function cartaoMonitoria() {
+  const lista = Array.isArray(S.mon) ? S.mon : [];
+  if (!lista.length) return '<div class="cartao"><h2>Monitoria</h2><p class="pequeno">Sem campos para verificar. A lista sai a partir das 18:00, com campos regados nesse dia.</p></div>';
+  const feitas = lista.filter(monFeita).length;
+  return `<div class="cartao"><h2>Monitoria · regas de ${fmtData(lista[0].data_rega)}</h2><p class="pequeno">${feitas} de ${lista.length} campos verificados.</p>` +
+    lista.map((m) => { const a = S.areas.find((x) => x.id === m.area_id) || { produtor: m.area_id };
+      const d = S.pos && a.latitude != null ? metros(S.pos, [a.latitude, a.longitude]) : null;
+      return `<div class="item" onclick="abrirFicha('${esc(m.area_id)}')"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr || '')} · ${esc(a.comunidade || '')} · ${esc(nomeAct(m.activista_id))}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div></div>
+        ${monFeita(m) ? '<span class="tag t-feita">Verificado</span>' : '<span class="tag t-por">Por verificar</span>'}</div>`; }).join('') + '</div>';
+}
+function botaoMonitoria(a) {
+  const m = (Array.isArray(S.mon) ? S.mon : []).find((x) => x.area_id === a.id);
+  if (!m) return '';
+  return monFeita(m) ? '<div class="msg ok">Monitoria: campo já verificado.</div>'
+    : `<button class="btn" onclick="ecraMonitoria('${esc(m.amostra_id)}')">✓ Verificar este campo (monitoria)</button>`;
+}
+const escolha = (id, ops) => `<div class="chips" id="${id}">${ops.map(([v, t]) => `<button class="chip" data-v="${v}">${t}</button>`).join('')}</div>`;
+function ecraMonitoria(amostraId) {
+  const m = S.mon.find((x) => x.amostra_id === amostraId), a = S.areas.find((x) => x.id === m.area_id) || {};
+  S.monFoto = null;
+  folha(`<h2>${esc(a.produtor)}</h2><p class="pequeno">${esc(a.pr || '')} · ${esc(a.comunidade || '')} · ${esc(nomeAct(m.activista_id))} · rega de ${fmtData(m.data_rega)}</p>
+    <label>O solo mostra sinais de rega?</label>${escolha('m-solo', [['1', 'Sim'], ['0', 'Não']])}
+    <label>Estado das mudas</label>${escolha('m-mudas', [['vivas', 'Vivas'], ['secas', 'Secas'], ['mortas', 'Mortas']])}
+    <label>Nota (0 a 10)</label>${escolha('m-nota', Array.from({ length: 11 }, (_, i) => [String(i), String(i)]))}
+    <label>Fotografia do campo<input id="m-foto" type="file" accept="image/*" capture="environment"></label>
+    <img id="m-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
+    <textarea id="m-obs" rows="2" placeholder="Observação (opcional)"></textarea>
+    <button class="btn" id="m-gravar" onclick="gravarMonitoria('${esc(amostraId)}')">Gravar verificação</button>
+    <button class="btn sec" onclick="abrirFicha('${esc(m.area_id)}')">Voltar</button>`);
+  ['m-solo', 'm-mudas', 'm-nota'].forEach((g) => document.querySelectorAll(`#${g} .chip`).forEach((b) => b.onclick = () => {
+    document.querySelectorAll(`#${g} .chip`).forEach((x) => x.classList.toggle('on', x === b)); }));
+  $('#m-foto').onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    try { S.monFoto = await reduzirFoto(f); const img = $('#m-prev'); img.src = URL.createObjectURL(S.monFoto); img.style.display = ''; }
+    catch { S.monFoto = null; aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); }
+  };
+}
+const escolhido = (g) => document.querySelector(`#${g} .chip.on`)?.dataset.v;
+// reduz a fotografia no telefone: lado maior 1024 px, JPEG 60% (≈150 KB em vez de 3–5 MB)
+async function reduzirFoto(f) {
+  let img;
+  try { img = await createImageBitmap(f, { imageOrientation: 'from-image' }); }
+  catch { img = await new Promise((ok, falha) => { const i = new Image(); i.onload = () => ok(i); i.onerror = falha; i.src = URL.createObjectURL(f); }); }
+  const k = Math.min(1, 1024 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return await new Promise((ok, falha) => c.toBlob((b) => (b ? ok(b) : falha(new Error('foto'))), 'image/jpeg', 0.6));
+}
+// fotografias à espera de envio: ficam na base de dados do telefone (IndexedDB)
+const FOTOS = {
+  db: null,
+  abrir() { return (this.db ||= new Promise((ok, falha) => { const r = indexedDB.open('rega-coco', 1); r.onupgradeneeded = () => r.result.createObjectStore('fotos'); r.onsuccess = () => ok(r.result); r.onerror = () => falha(r.error); })); },
+  async op(modo, fn) { const db = await this.abrir(); return new Promise((ok, falha) => { const t = db.transaction('fotos', modo), q = fn(t.objectStore('fotos')); t.oncomplete = () => ok(q?.result); t.onerror = () => falha(t.error); }); },
+  guardar(k, v) { return this.op('readwrite', (st) => st.put(v, k)); },
+  ler(k) { return this.op('readonly', (st) => st.get(k)); },
+  apagar(k) { return this.op('readwrite', (st) => st.delete(k)); },
+};
+async function gravarMonitoria(amostraId) {
+  const m = S.mon.find((x) => x.amostra_id === amostraId), a = S.areas.find((x) => x.id === m.area_id) || {};
+  const solo = escolhido('m-solo'), mudas = escolhido('m-mudas'), nota = escolhido('m-nota');
+  if (solo == null || !mudas || nota == null) { alert('Responda às duas perguntas e escolha a nota.'); return; }
+  if (!S.monFoto) { alert('Tire a fotografia do campo.'); return; }
+  const foto = S.monFoto, obs = $('#m-obs').value.trim();
+  $('#m-gravar').disabled = true;
+  let g; try { g = await validarPosicao(a); } catch (e) { $('#m-gravar').disabled = false; return aviso(e.message, 'erro'); }
+  if (g.valido === false) { $('#m-gravar').disabled = false; return aviso(`Está a ${g.dist} m do campo. A verificação faz-se no campo (até ${CFG.margemGPS} m).`, 'erro'); }
+  const reg = { id: crypto.randomUUID(), amostra_id: amostraId, verificador_id: S.perfil.id, area_id: m.area_id, data_rega: m.data_rega, feito_em: new Date().toISOString(),
+    lat: g.lat, lon: g.lon, gps_precisao_m: g.precisao, distancia_m: g.dist, gps_valido: g.valido,
+    solo_regado: solo === '1', mudas_estado: mudas, nota: +nota, observacao: obs || null };
+  try { await FOTOS.guardar(reg.id, foto); } catch { reg.sem_foto_local = true; S.fotosMem = { ...(S.fotosMem || {}), [reg.id]: foto }; }
+  const f = LS.get('filaMon', []); f.push(reg); LS.set('filaMon', f); actSync();
+  abrirFicha(m.area_id, `<div class="msg ok">Verificação guardada${navigator.onLine ? '' : ' no telefone (será enviada quando houver rede)'}.</div>`);
+  sincronizar(true);
+}
+async function enviarMonitorias() {
+  for (const x of LS.get('filaMon', [])) {
+    let foto = null; try { foto = await FOTOS.ler(x.id); } catch {} foto = foto || S.fotosMem?.[x.id] || null;
+    const caminho = `${S.perfil.id}/${x.id}.jpg`;
+    if (foto) { const up = await sb.storage.from('monitoria-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
+    const { sem_foto_local, ...linha } = x;
+    const r = await sb.from('monitorias').insert({ ...linha, foto_path: foto ? caminho : null });
+    if (r.error && !r.error.code) return r.error.message;                         // sem rede: fica na fila
+    if (r.error && r.error.code !== '23505') aviso(`Verificação não gravada: ${r.error.message}`, 'erro');   // 23505 = já estava no servidor
+    LS.set('monFeitas', [...LS.get('monFeitas', []), x.amostra_id].slice(-50));
+    LS.set('filaMon', LS.get('filaMon', []).filter((y) => y.id !== x.id));
+    try { await FOTOS.apagar(x.id); } catch {}
+  }
+  return null;
 }
 
 // ---------- gestão (gestor) ----------
@@ -660,10 +760,20 @@ async function desenharGestao(msg = '') {
     <label>Até (vazio = até terminar)<input id="k-ate" type="date"></label>
     <button class="btn" id="k-gravar">Gravar cobertura</button>
     <div id="k-lista"><p class="pequeno">A carregar…</p></div></div>
+    <div class="cartao"><h2>Monitoria por amostragem</h2>
+    <p class="pequeno">Cada técnico e supervisor recebe, a partir das 18:00, uma lista de campos regados nesse dia para verificar. Listas diferentes para cada pessoa, campos sorteados.</p>
+    <label>Campos por dia, por pessoa<input id="m-n" type="number" inputmode="numeric" min="1" max="10"></label>
+    <button class="btn sec" id="m-gravar-n">Gravar</button></div>
     <div class="cartao"><h2>Quem viu o painel</h2><div id="g-visitas"><p class="pequeno">A carregar…</p></div></div>
     <div class="cartao"><h2>Acessos criados (${(d.utilizadores || []).length})</h2>
     ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div><button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button></div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
   desenharVisitas(); desenharCoberturas(d);
+  sb.from('config').select('valor').eq('chave', 'monitoria_campos_por_dia').maybeSingle().then(({ data }) => { if (data && $('#m-n')) $('#m-n').value = data.valor; });
+  $('#m-gravar-n').onclick = async () => {
+    const n = parseInt($('#m-n').value, 10);
+    const { error } = await sb.rpc('definir_monitoria_campos', { p_n: n });
+    aviso(error ? error.message : `Monitoria: ${n} campos por dia, por pessoa.`, error ? 'erro' : 'ok');
+  };
   const comLogin = new Set((d.utilizadores || []).map((u) => u.papel + '|' + u.nome));
   // lista de pessoas por função (tabela pessoas_acesso, vinda do Excel de logins); quem já tem acesso aparece desactivado
   const rp = await sb.from('pessoas_acesso').select('nome,entidade,papel,utilizador').order('nome');

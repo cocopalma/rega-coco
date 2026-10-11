@@ -137,6 +137,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // direcções
     'Norte': 'North', 'Nordeste': 'North-east', 'Este': 'East', 'Sudeste': 'South-east', 'Sul': 'South', 'Sudoeste': 'South-west', 'Oeste': 'West', 'Noroeste': 'North-west',
     'fora da lista': 'outside list',
+    // monitoria
+    'Monitoria': 'Monitoring', 'Monitoria por amostragem': 'Sample-based monitoring', 'Verificado': 'Checked', 'Por verificar': 'To check',
+    'Sem campos para verificar. A lista sai a partir das 18:00, com campos regados nesse dia.': 'No fields to check. The list is issued from 18:00, with fields watered that day.',
+    'Monitoria: campo já verificado.': 'Monitoring: field already checked.', '✓ Verificar este campo (monitoria)': '✓ Check this field (monitoring)',
+    'O solo mostra sinais de rega?': 'Does the soil show signs of watering?', 'Sim': 'Yes', 'Não': 'No', 'Estado das mudas': 'Seedling condition',
+    'Vivas': 'Alive', 'Secas': 'Dry', 'Mortas': 'Dead', 'Nota (0 a 10)': 'Score (0 to 10)', 'Fotografia do campo': 'Photo of the field',
+    'Observação (opcional)': 'Note (optional)', 'Gravar verificação': 'Save check', 'Responda às duas perguntas e escolha a nota.': 'Answer both questions and choose the score.',
+    'Tire a fotografia do campo.': 'Take the photo of the field.', 'Não foi possível ler a fotografia. Tire outra.': 'Could not read the photo. Take another one.',
+    'Verificação guardada.': 'Check saved.', 'Verificação guardada no telefone (será enviada quando houver rede).': 'Check saved on the phone (it will be sent when there is network).',
+    'Cada técnico e supervisor recebe, a partir das 18:00, uma lista de campos regados nesse dia para verificar. Listas diferentes para cada pessoa, campos sorteados.': 'From 18:00 each technician and supervisor receives a list of fields watered that day to check. Different lists for each person, fields drawn at random.',
+    'Campos por dia, por pessoa': 'Fields per day, per person',
+    'Campos sorteados entre os regados em cada dia e verificados no campo por técnicos e supervisores (nota de 0 a 10). Período = dia da rega verificada.': 'Fields drawn from those watered each day and checked on site by technicians and supervisors (score 0 to 10). Period = day of the watering checked.',
+    'Por técnico (área de supervisão)': 'By technician (supervision area)', 'Método LQAS: a conclusão sobre cada técnico pede 19 campos verificados.': 'LQAS method: a conclusion on each technician requires 19 checked fields.',
+    'Por equipa': 'By team', 'Por pessoa que verificou': 'By person who checked', 'Campos verificados': 'Fields checked', 'Nota média': 'Average score', 'de 0 a 10': 'from 0 to 10',
+    'Solo com sinais de rega': 'Soil with signs of watering', 'vivas / secas / mortas': 'alive / dry / dead', 'Verificados': 'Checked', 'Amostra LQAS': 'LQAS sample',
+    'Sem sinais de rega': 'No signs of watering', 'Mudas secas ou mortas': 'Dry or dead seedlings', 'Sorteados': 'Drawn', 'Nota média dada': 'Average score given', 'Pessoa': 'Person',
     // erros do servidor (criação de logins)
     'Sessão inválida': 'Invalid session', 'Só o gestor pode gerir logins': 'Only the manager can manage logins', 'Pedido inválido': 'Invalid request',
     'Função inválida': 'Invalid role', 'Escreva o nome': 'Write the name', "Esta pessoa já tem acesso. Use 'Nova senha'.": "This person already has access. Use 'New password'.",
@@ -154,6 +170,11 @@ document.addEventListener('DOMContentLoaded', () => {
     'No período escolhido. Espera = minutos entre a entrada no campo e a chegada da água.': 'In the chosen period. Wait = minutes between field entry and water arrival.',
   });
   const R = [
+    [/^Monitoria · regas de (.+)$/, 'Monitoring · waterings of $1'], [/^(\d+) de (\d+) campos verificados\.$/, '$1 of $2 fields checked.'],
+    [/^de (.+) sorteados$/, 'of $1 drawn'], [/^(.+) de (.+) campos verificados$/, '$1 of $2 fields checked'], [/^rega de (.+)$/, 'watering of $1'],
+    [/^Monitoria: (\d+) campos por dia, por pessoa\.$/, 'Monitoring: $1 fields per day, per person.'],
+    [/^Está a (.+) m do campo\. A verificação faz-se no campo \(até (.+) m\)\.$/, 'You are $1 m from the field. The check is done at the field (within $2 m).'],
+    [/^Verificação não gravada: (.+)$/, 'Check not saved: $1'],
     [/^Todo o histórico: (.+) a (.+)$/, 'All records: $1 to $2'], [/^Dia: (.+)$/, 'Day: $1'],
     [/^Período: (.+) a (.+)$/, (m, x, y) => `Period: ${x === 'início' ? 'start' : x} to ${y === 'hoje' ? 'today' : y}`],
     [/^(.+) de (.+) campos regados$/, '$1 of $2 fields watered'], [/^(.+) dias entre regas$/, (m, a) => `${a.replace(',', '.')} days between waterings`],

@@ -39,6 +39,8 @@ h1{margin:2px 0 0;font-size:26px;letter-spacing:-.01em}
 .barra{height:6px;border-radius:3px;background:var(--track);margin-top:10px;overflow:hidden}
 .barra i{display:block;height:100%;background:var(--s1);border-radius:3px}
 .card h2{font-size:16px;margin:0}
+#s-mon h3{font-size:14px;margin:18px 0 4px}
+#s-mon .kpis{margin:12px 0 4px}
 .card .desc{color:var(--ink2);font-size:13px;margin:2px 0 12px}
 .sec{margin-top:14px}
 svg{display:block;width:100%;height:auto;overflow:visible}
@@ -132,10 +134,20 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <div class="card"><h2>Constrangimentos registados</h2><p class="desc">Número de registos com cada constrangimento.</p><div id="g-constr"></div></div>
     <div class="card"><h2>Qualidade dos registos</h2><p class="desc">Controlo dos dados recebidos.</p><div id="qualidade"></div></div>
   </section>
+
+  <section class="card sec" id="s-mon"><h2>Monitoria por amostragem</h2>
+    <p class="desc">Campos sorteados entre os regados em cada dia e verificados no campo por técnicos e supervisores (nota de 0 a 10). Período = dia da rega verificada.</p>
+    <div class="grelha kpis" id="k-mon"></div>
+    <h3>Por técnico (área de supervisão)</h3>
+    <p class="desc">Método LQAS: a conclusão sobre cada técnico pede 19 campos verificados.</p>
+    <div class="tabela" id="t-mon-tec"></div>
+    <h3>Por equipa</h3><div class="tabela" id="t-mon-eq"></div>
+    <h3>Por pessoa que verificou</h3><div class="tabela" id="t-mon-ver"></div>
+  </section>
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n.js?v=19"></script>
+<script src="i18n.js?v=20"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -152,7 +164,7 @@ const fmtPct = (v) => v.toLocaleString(LOC, { maximumFractionDigits: v < 10 ? 1 
 const fmtData = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString(LOC) : '—';
 const ddmm = (d) => d.slice(8, 10) + '/' + d.slice(5, 7);
 const TIPOS = { falta_agua: 'Falta de água', mudas_secas: 'Mudas secas', acesso_dificil: 'Acesso difícil', avaria: 'Avaria', outro: 'Outro' };
-let D = null;
+let D = null, DM = null;   // DM = monitoria
 
 // ---------- período (filtro) ----------
 // datas no fuso de Maputo, em AAAA-MM-DD
@@ -320,14 +332,36 @@ function desenhar() {
     <tr><td>GPS fora do campo</td><td class="n">${num(D.gps_invalido)}</td></tr></tbody></table>`;
 }
 
+// ---------- monitoria ----------
+function desenharMonitoria() {
+  const M = DM; if (!$('#s-mon')) return;
+  if (!M) { $('#s-mon').hidden = true; return; }
+  $('#s-mon').hidden = false;
+  const kpi = (rot, val, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${val}</div><div class="sub">${sub}</div></div>`;
+  const mu = M.mudas || {};
+  $('#k-mon').innerHTML = kpi('Campos verificados', `${num(M.verificados)}`, `de ${num(M.amostrados)} sorteados`) +
+    kpi('Nota média', M.nota_media != null ? Number(M.nota_media).toLocaleString(LOC) : '—', 'de 0 a 10') +
+    kpi('Solo com sinais de rega', M.verificados ? fmtPct(pct(M.solo_regado, M.verificados)) : '—', `${num(M.solo_regado)} de ${num(M.verificados)} campos verificados`) +
+    kpi('Estado das mudas', `${num(mu.vivas || 0)} / ${num(mu.secas || 0)} / ${num(mu.mortas || 0)}`, 'vivas / secas / mortas');
+  tabela('#t-mon-tec', [['Técnico'], ['Verificados', 1], ['Amostra LQAS'], ['Solo com sinais de rega', 1], ['Nota média', 1]],
+    (M.por_tecnico || []).map((t) => [esc(t.tecnico), num(t.verificados), `<div class="prog"><div class="barra"><i style="width:${Math.min(100, t.verificados / 19 * 100)}%"></i></div><span>${Math.min(t.verificados, 19)}/19</span></div>`,
+      t.verificados ? fmtPct(pct(t.solo_regado, t.verificados)) : '—', t.nota_media != null ? Number(t.nota_media).toLocaleString(LOC) : '—']));
+  tabela('#t-mon-eq', [['Equipa (activista)'], ['Comunidade'], ['Verificados', 1], ['Nota média', 1], ['Sem sinais de rega', 1], ['Mudas secas ou mortas', 1]],
+    (M.por_equipa || []).map((e) => [esc(e.nome), esc(e.comunidade || ''), num(e.verificados), e.nota_media != null ? Number(e.nota_media).toLocaleString(LOC) : '—',
+      e.sem_sinais_rega ? `<b style="color:var(--crit)">${num(e.sem_sinais_rega)}</b>` : '0', num(e.mudas_secas_mortas)]));
+  tabela('#t-mon-ver', [['Pessoa'], ['Função'], ['Sorteados', 1], ['Verificados', 1], ['Nota média dada', 1]],
+    (M.por_verificador || []).map((v) => [esc(v.nome), v.papel === 'supervisor' ? 'Supervisor' : 'Técnico', num(v.amostrados), num(v.verificados), v.nota_media != null ? Number(v.nota_media).toLocaleString(LOC) : '—']));
+}
+
 // ---------- dados e sessão ----------
 async function carregar() {
   document.body.style.opacity = D ? '.6' : '';
   const [de, ate] = datasDe(P);
-  const { data, error } = await sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate });
+  const [{ data, error }, mon] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate })]);
+  DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar();
+  D = data; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharMonitoria();
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
 function mostrarLogin(msg = '') { $('#painel').style.display = 'none'; $('#login').style.display = ''; $('#l-msg').innerHTML = msg ? `<div class="erro">${esc(msg)}</div>` : ''; }
@@ -341,7 +375,7 @@ $('#l-entrar').onclick = entrar;
 $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(); });
 $('#b-act').onclick = carregar;
 $('#b-sair').onclick = async () => { await sb.auth.signOut(); location.reload(); };
-let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(desenhar, 150); });
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharMonitoria(); }, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
 if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }
