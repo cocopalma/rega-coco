@@ -40,12 +40,16 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Monitoria por amostragem (11/10/2026, decisões do Valdo)
 - Técnicos e supervisores verificam campos regados; listas diferentes por pessoa (`monitoria_amostra`, único por dia+campo). Sorteio feito no servidor (RPC `monitoria_lista`) a partir das 18:00 com as regas desse dia (antes das 18:00: último dia de trabalho anterior). Lista recebida à noite, verificação no dia seguinte.
 - Quantos: `config.monitoria_campos_por_dia` (2 por pessoa por dia; o gestor muda em Gestão, RPC `definir_monitoria_campos`). Método LQAS: 19 campos verificados por técnico para concluir (~2 semanas a 2/dia).
-- Ficha: "O solo mostra sinais de rega?" (sim/não), "Estado das mudas" (vivas/secas/mortas), nota 0–10, fotografia obrigatória reduzida no telefone (1024 px, JPEG 60%, ~80–150 KB) guardada em IndexedDB até haver rede; bucket privado `monitoria-fotos/<perfil>/<id>.jpg`. GPS: só no campo (200 m).
+- Ficha por planta (11/10/2026, Valdo): o técnico escolhe o percurso (X, W, Z, diagonal; a app mostra o desenho) e regista cada planta: "Solo húmido (rega efectiva)?" sim/não + viva/seca/morta. Nº de plantas a observar = Cochran com correcção para população finita (95%, ±10%, p=80%; `CFG.monZ/monMargem/monP` em app.js), o técnico pode corrigir o nº de plantas do campo. Nota = % plantas com solo húmido ÷ 10 (app). Campo regado = ≥ 80% (`CFG.monLimiar`), guardado em `monitorias.solo_regado`. Colunas novas: metodo, plantas_no_campo, plantas_alvo, plantas_obs (jsonb), pct_humido, n_vivas/n_secas/n_mortas. Fotografia obrigatória reduzida no telefone (1024 px, JPEG 60%, ~80–150 KB) guardada em IndexedDB até haver rede; bucket privado `monitoria-fotos/<perfil>/<id>.jpg`. GPS: só no campo (200 m).
 - Tabela `monitorias`; painel: secção "Monitoria por amostragem" (RPC `painel_monitoria(p_de,p_ate)`, filtra pelo dia da rega verificada).
 - O cliente / administração não vê a secção da monitoria no painel, por enquanto (11/10/2026, Valdo): `painel_monitoria` devolve null ao papel cliente.
-- Por definir pelo Valdo: limiar LQAS; monitoria por planta (método de amostragem X/W/Z escolhido pelo técnico, resultado por planta, nota calculada pela app, % mínima de plantas com rega efectiva para o campo contar como regado).
+- Por definir pelo Valdo: limiar LQAS (recomendado 13 de 19 para 80%); confirmar os parâmetros da amostra por planta.
+
+## Equipa, meta e tempos (11/10/2026, Valdo)
+- Equipa por número (os nomes virão depois): `activistas.equipa_tamanho` (padrão 5); gestor, técnico e supervisor mudam no Hoje (RPC `definir_equipa_tamanho`). Faltas = tamanho − pessoas presentes (máximo de `registos_rega.pessoas` no dia, senão `jornadas.pessoas`).
+- Nesta fase as equipas escolhem os campos; a "% face ao plano" é a meta de 140 plantas por pessoa por dia (`CFG.metaPlantas`, `META` no painel, `config.meta_plantas_pessoa_dia`): % = plantas ÷ (140 × pessoas presentes). Hoje: coluna "% meta"; painel: secção "Meta" por dia / semana / período (RPC `painel_plantas_dia_equipa` devolve pessoas e tamanho).
+- Tempo entre campos: Hoje coluna "Desloc." (média saída → entrada seguinte); painel "Tempo por campo e deslocação" (RPC `painel_tempos_equipa`).
 
 ## Pendentes pedidos pelo Valdo
-- Hoje (técnicos/supervisores): registar a equipa que trabalhou (nomes) e indicador de faltas — falta saber quem mantém a lista de membros.
-- Painel: % de campos regados face ao plano (dia, semana, período) — falta definir o plano diário.
+- Nomes dos membros de cada equipa (o Valdo envia) para registar quem trabalhou.
 - Painel: frequência de rega (dias entre regas do mesmo campo) por equipa, agrupada por comunidade. Fazer depois da fase de teste dos activistas, quando o agrupamento de campos por equipa estiver confirmado (11/10/2026). Os registos já guardam activista, campo e data, por isso o cálculo cobre também as regas anteriores.

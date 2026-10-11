@@ -42,6 +42,10 @@ h1{margin:2px 0 0;font-size:26px;letter-spacing:-.01em}
 tr.grupo td{background:var(--surface)}
 #s-mon h3{font-size:14px;margin:18px 0 4px}
 #s-mon .kpis{margin:12px 0 4px}
+.vista{display:flex;gap:6px;margin:0 0 10px}
+.vista button{font:inherit;font-size:13px;color:var(--ink2);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:4px 12px;cursor:pointer}
+.vista button[aria-pressed="true"]{background:var(--marca);border-color:var(--marca);color:var(--page);font-weight:600}
+.falta{color:var(--crit);font-weight:700}
 .card .desc{color:var(--ink2);font-size:13px;margin:2px 0 12px}
 .sec{margin-top:14px}
 svg{display:block;width:100%;height:auto;overflow:visible}
@@ -131,6 +135,15 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <p class="desc" id="d-pde">Equipas agrupadas por comunidade. Últimos 14 dias com registos do período escolhido.</p>
     <div class="tabela" id="t-pde" style="max-height:none"></div></section>
 
+  <section class="card sec" id="s-meta"><h2>Meta: 140 plantas por pessoa por dia</h2>
+    <p class="desc">% da meta = plantas regadas ÷ (140 × pessoas presentes). Faltas = pessoas da equipa que não estiveram presentes (soma dos dias com rega).</p>
+    <div class="vista" role="group" id="v-meta"><button data-v="dia">Por dia</button><button data-v="semana">Por semana</button><button data-v="periodo">Período</button></div>
+    <div class="tabela" id="t-meta" style="max-height:none"></div></section>
+
+  <section class="card sec"><h2>Tempo por campo e deslocação entre campos</h2>
+    <p class="desc">Médias por equipa no período. Rega = da entrada à saída do campo. Deslocação = da saída de um campo à entrada no seguinte, no mesmo dia.</p>
+    <div class="tabela" id="t-tempos"></div></section>
+
   <section class="card sec"><h2>Chegada da água (tuk-tuk) por equipa</h2>
     <p class="desc" id="d-agua">Últimos 14 dias. Espera = minutos entre a entrada no campo e a chegada da água.</p>
     <div class="tabela" id="t-agua"></div></section>
@@ -141,7 +154,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
   </section>
 
   <section class="card sec" id="s-mon"><h2>Monitoria por amostragem</h2>
-    <p class="desc">Campos sorteados entre os regados em cada dia e verificados no campo por técnicos e supervisores (nota de 0 a 10). Período = dia da rega verificada.</p>
+    <p class="desc">Campos sorteados entre os regados em cada dia e verificados no campo por técnicos e supervisores, planta a planta, num percurso (X, W, Z ou diagonal). Nota = % de plantas com solo húmido ÷ 10. Campo regado = pelo menos 80% das plantas observadas com solo húmido. Período = dia da rega verificada.</p>
     <div class="grelha kpis" id="k-mon"></div>
     <h3>Por técnico (área de supervisão)</h3>
     <p class="desc">Método LQAS: a conclusão sobre cada técnico pede 19 campos verificados.</p>
@@ -152,7 +165,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n.js?v=22"></script>
+<script src="i18n.js?v=23"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -169,7 +182,9 @@ const fmtPct = (v) => v.toLocaleString(LOC, { maximumFractionDigits: v < 10 ? 1 
 const fmtData = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString(LOC) : '—';
 const ddmm = (d) => d.slice(8, 10) + '/' + d.slice(5, 7);
 const TIPOS = { falta_agua: 'Falta de água', mudas_secas: 'Mudas secas', acesso_dificil: 'Acesso difícil', avaria: 'Avaria', outro: 'Outro' };
-let D = null, DM = null, DP = null;   // DM = monitoria; DP = plantas por dia e equipa
+let D = null, DM = null, DP = null, DT = null;   // DM = monitoria; DP = plantas por dia e equipa; DT = tempos
+const META = 140;   // plantas por pessoa por dia (Valdo, 11/10/2026)
+let VM = 'dia'; try { VM = localStorage.getItem('rega.painel.meta') || 'dia'; } catch {}
 
 // ---------- período (filtro) ----------
 // datas no fuso de Maputo, em AAAA-MM-DD
@@ -355,6 +370,46 @@ function desenharPlantasDiaEquipa() {
   $('#t-pde').innerHTML = h + '</tbody></table>';
 }
 
+// ---------- meta de plantas por pessoa e tempos ----------
+const segunda = (d) => { const t = new Date(d + 'T12:00:00'); t.setDate(t.getDate() - ((t.getDay() + 6) % 7)); return t.toLocaleDateString('sv-SE'); };
+function desenharMeta() {
+  const L = Array.isArray(DP) ? DP : []; if (!$('#t-meta')) return;
+  document.querySelectorAll('#v-meta button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === VM)));
+  if (!L.length) { $('#t-meta').innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
+  const chave = (d) => (VM === 'semana' ? segunda(d) : VM === 'periodo' ? 'p' : d);
+  const cols = [...new Set(L.map((x) => chave(x.data)))].sort().slice(VM === 'semana' ? -8 : -14);
+  const ac = {};   // equipa|coluna -> {plantas, pessoas, faltas, dias}
+  for (const x of L) { const k = x.comunidade + '|' + x.equipa, c = chave(x.data); const o = (ac[k + '|' + c] ??= { plantas: 0, pessoas: 0, faltas: 0, dias: 0 });
+    o.plantas += x.plantas; o.pessoas += x.pessoas || 0; o.dias++; if (x.pessoas && x.tamanho) o.faltas += Math.max(0, x.tamanho - x.pessoas); }
+  const grupos = {}; for (const x of L) (grupos[x.comunidade] ??= new Set()).add(x.equipa);
+  const pc = (o) => (o && o.pessoas ? Math.round(100 * o.plantas / (META * o.pessoas)) + '%' : '—');
+  const soma = (os) => os.reduce((t, o) => { if (o) { t.plantas += o.plantas; t.pessoas += o.pessoas; t.faltas += o.faltas; t.dias += o.dias; } return t; }, { plantas: 0, pessoas: 0, faltas: 0, dias: 0 });
+  let h;
+  if (VM === 'periodo') {
+    h = '<table><thead><tr><th>Equipa</th><th class="n">Dias com rega</th><th class="n">Pessoas-dia</th><th class="n">Faltas</th><th class="n">Plantas</th><th class="n">Meta</th><th class="n">% da meta</th></tr></thead><tbody>';
+    const lin = (nome, o, grupo) => `<tr${grupo ? ' class="grupo"' : ''}><td${grupo ? '' : ' style="padding-left:18px"'}>${grupo ? `<b>${esc(nome)}</b>` : esc(nome)}</td><td class="n">${num(o.dias)}</td><td class="n">${num(o.pessoas)}</td><td class="n">${o.faltas ? `<span class="falta">${num(o.faltas)}</span>` : '0'}</td><td class="n">${num(o.plantas)}</td><td class="n">${num(META * o.pessoas)}</td><td class="n"><b>${pc(o)}</b></td></tr>`;
+    for (const com of Object.keys(grupos).sort()) { const eqs = [...grupos[com]].sort();
+      h += lin(com, soma(eqs.map((e) => ac[com + '|' + e + '|p'])), true); for (const e of eqs) h += lin(e, ac[com + '|' + e + '|p'] || soma([]), false); }
+  } else {
+    const rot = (c) => (VM === 'semana' ? 'Sem. ' + ddmm(c) : ddmm(c));
+    h = `<table><thead><tr><th>Equipa</th>${cols.map((c) => `<th class="n">${rot(c)}</th>`).join('')}<th class="n">Total</th></tr></thead><tbody>`;
+    for (const com of Object.keys(grupos).sort()) { const eqs = [...grupos[com]].sort();
+      h += `<tr class="grupo"><td><b>${esc(com)}</b></td>${cols.map((c) => `<td class="n"><b>${pc(soma(eqs.map((e) => ac[com + '|' + e + '|' + c])))}</b></td>`).join('')}<td class="n"><b>${pc(soma(cols.flatMap((c) => eqs.map((e) => ac[com + '|' + e + '|' + c]))))}</b></td></tr>`;
+      for (const e of eqs) { const k = com + '|' + e + '|';
+        h += `<tr><td style="padding-left:18px">${esc(e)}</td>${cols.map((c) => { const o = ac[k + c]; return `<td class="n" title="${o ? `${num(o.plantas)} plantas · ${num(o.pessoas)} pessoas-dia${o.faltas ? ` · ${num(o.faltas)} faltas` : ''}` : ''}">${o ? pc(o) + (o.faltas ? ` <span class="falta">·${o.faltas}F</span>` : '') : '<span style="color:var(--muted)">—</span>'}</td>`; }).join('')}<td class="n">${pc(soma(cols.map((c) => ac[k + c])))}</td></tr>`; }
+    }
+    h += '</tbody></table><p class="desc" style="margin-top:8px">F = faltas nesse dia ou semana. Passe o dedo ou o rato sobre a célula para ver plantas e pessoas.</p>';
+  }
+  $('#t-meta').innerHTML = h + (VM === 'periodo' ? '</tbody></table>' : '');
+}
+function desenharTempos() {
+  if (!$('#t-tempos')) return;
+  const L = Array.isArray(DT) ? DT : [];
+  if (!L.length) { $('#t-tempos').innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
+  tabela('#t-tempos', [['Equipa'], ['Rega por campo (min)', 1], ['Deslocação entre campos (min)', 1], ['Deslocações medidas', 1]],
+    L.map((t) => [esc(t.equipa), t.rega_min != null ? num(t.rega_min) : '—', t.deslocacao_min != null ? num(t.deslocacao_min) : '—', num(t.deslocacoes)]));
+}
+
 // ---------- monitoria ----------
 function desenharMonitoria() {
   const M = DM; if (!$('#s-mon')) return;
@@ -364,14 +419,14 @@ function desenharMonitoria() {
   const mu = M.mudas || {};
   $('#k-mon').innerHTML = kpi('Campos verificados', `${num(M.verificados)}`, `de ${num(M.amostrados)} sorteados`) +
     kpi('Nota média', M.nota_media != null ? Number(M.nota_media).toLocaleString(LOC) : '—', 'de 0 a 10') +
-    kpi('Solo com sinais de rega', M.verificados ? fmtPct(pct(M.solo_regado, M.verificados)) : '—', `${num(M.solo_regado)} de ${num(M.verificados)} campos verificados`) +
-    kpi('Estado das mudas', `${num(mu.vivas || 0)} / ${num(mu.secas || 0)} / ${num(mu.mortas || 0)}`, 'vivas / secas / mortas');
-  tabela('#t-mon-tec', [['Técnico'], ['Verificados', 1], ['Amostra LQAS'], ['Solo com sinais de rega', 1], ['Nota média', 1]],
+    kpi('Campos regados', M.verificados ? fmtPct(pct(M.solo_regado, M.verificados)) : '—', `${num(M.solo_regado)} de ${num(M.verificados)} verificados (≥ 80% das plantas com solo húmido)`) +
+    kpi('Plantas com solo húmido', M.plantas_obs ? fmtPct(pct(M.plantas_humidas, M.plantas_obs)) : '—', `${num(M.plantas_humidas)} de ${num(M.plantas_obs)} plantas observadas · vivas / secas / mortas: ${num(mu.vivas || 0)} / ${num(mu.secas || 0)} / ${num(mu.mortas || 0)}`);
+  tabela('#t-mon-tec', [['Técnico'], ['Verificados', 1], ['Amostra LQAS'], ['Campos regados', 1], ['Nota média', 1]],
     (M.por_tecnico || []).map((t) => [esc(t.tecnico), num(t.verificados), `<div class="prog"><div class="barra"><i style="width:${Math.min(100, t.verificados / 19 * 100)}%"></i></div><span>${Math.min(t.verificados, 19)}/19</span></div>`,
       t.verificados ? fmtPct(pct(t.solo_regado, t.verificados)) : '—', t.nota_media != null ? Number(t.nota_media).toLocaleString(LOC) : '—']));
-  tabela('#t-mon-eq', [['Equipa (activista)'], ['Comunidade'], ['Verificados', 1], ['Nota média', 1], ['Sem sinais de rega', 1], ['Mudas secas ou mortas', 1]],
+  tabela('#t-mon-eq', [['Equipa (activista)'], ['Comunidade'], ['Verificados', 1], ['Nota média', 1], ['Campos não regados', 1], ['Plantas com solo húmido', 1], ['Plantas secas ou mortas', 1]],
     (M.por_equipa || []).map((e) => [esc(e.nome), esc(e.comunidade || ''), num(e.verificados), e.nota_media != null ? Number(e.nota_media).toLocaleString(LOC) : '—',
-      e.sem_sinais_rega ? `<b style="color:var(--crit)">${num(e.sem_sinais_rega)}</b>` : '0', num(e.mudas_secas_mortas)]));
+      e.sem_sinais_rega ? `<b style="color:var(--crit)">${num(e.sem_sinais_rega)}</b>` : '0', e.plantas_obs ? fmtPct(pct(e.plantas_humidas, e.plantas_obs)) : '—', num(e.mudas_secas_mortas)]));
   tabela('#t-mon-ver', [['Pessoa'], ['Função'], ['Sorteados', 1], ['Verificados', 1], ['Nota média dada', 1]],
     (M.por_verificador || []).map((v) => [esc(v.nome), v.papel === 'supervisor' ? 'Supervisor' : 'Técnico', num(v.amostrados), num(v.verificados), v.nota_media != null ? Number(v.nota_media).toLocaleString(LOC) : '—']));
 }
@@ -382,17 +437,17 @@ const CHAVE_CACHE = () => 'rega.painel.cache.' + new Date().toLocaleDateString('
 function lerCache() { try { return JSON.parse(localStorage.getItem(CHAVE_CACHE()) || 'null'); } catch { return null; } }
 async function carregar() {
   const c = !D && lerCache();
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMonitoria(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharMonitoria(); }
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
-  const [{ data, error }, mon, pde] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate })]);
-  DP = pde.error ? null : pde.data;
+  const [{ data, error }, mon, pde, tem] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa', { p_de: de, p_ate: ate })]);
+  DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) return;   // sem rede: fica o último painel guardado
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMonitoria();
-  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP })); } catch {}
+  D = data; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharMonitoria();
+  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT })); } catch {}
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
 function mostrarLogin(msg = '') { $('#painel').style.display = 'none'; $('#login').style.display = ''; $('#l-msg').innerHTML = msg ? `<div class="erro">${esc(msg)}</div>` : ''; }
@@ -406,7 +461,8 @@ $('#l-entrar').onclick = entrar;
 $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(); });
 $('#b-act').onclick = carregar;
 $('#b-sair').onclick = async () => { try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {} await sb.auth.signOut(); location.reload(); };
-let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMonitoria(); }, 150); });
+document.querySelectorAll('#v-meta button').forEach((b) => b.onclick = () => { VM = b.dataset.v; try { localStorage.setItem('rega.painel.meta', VM); } catch {} desenharMeta(); });
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharMonitoria(); }, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
 if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }

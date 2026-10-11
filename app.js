@@ -9,6 +9,10 @@ const CFG = {
   margemGPS: 200,      // metros: distância máxima ao centro do campo para validar (a afinar no terreno)
   precisaoCoord: 10,   // metros: pior precisão aceite para gravar a coordenada de um campo (a afinar no terreno)
   precisaoIdeal: 5,    // metros: precisão recomendada
+  metaPlantas: 140,    // plantas por pessoa por dia (meta do Valdo, 11/10/2026)
+  // monitoria por planta (11/10/2026): amostra de Cochran com correcção para população finita
+  monZ: 1.96, monMargem: 0.10, monP: 0.80,   // 95% de confiança, ±10%, proporção esperada 80%
+  monLimiar: 80,       // % mínima de plantas com solo húmido para o campo contar como regado
 };
 /* Regra da fase de aprendizagem (1–2 semanas): cada equipa rega a sua lista em "rondas".
    Um campo da lista não pode ser regado de novo enquanto a equipa não regar todos os campos da lista.
@@ -170,7 +174,7 @@ function actSync() {
 async function carregarTudo() {
   const [p, ac, ar, zs, est] = await Promise.all([
     sb.from('perfis').select('id,nome,papel,activista_id').eq('id', S.user.id).maybeSingle(),
-    sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo').order('nome'),
+    sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
     sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
     sb.rpc('estado_ronda'),
@@ -603,6 +607,32 @@ function sugerirProximo(feito, nota = '') {
 }
 
 // ---------- hoje ----------
+const tamanhoEquipa = (id) => (S.activistas.find((t) => t.id === id) || {}).equipa_tamanho || 5;
+// "4/5 · 1 falta" (faltas a vermelho)
+function textoEquipa(presentes, tamanho) {
+  const f = tamanho - presentes;
+  return `${presentes}/${tamanho}` + (f > 0 ? ` <span style="color:var(--crit,#b42318);font-weight:700">· ${f} ${f === 1 ? 'falta' : 'faltas'}</span>` : '');
+}
+// tempo médio (min) entre a saída de um campo e a entrada no seguinte, no mesmo dia
+function deslocacao(regs) {
+  const o = regs.filter((x) => x.entrada_em && x.saida_em).sort((a, b) => a.entrada_em.localeCompare(b.entrada_em)), m = [];
+  for (let i = 1; i < o.length; i++) { const d = (new Date(o[i].entrada_em) - new Date(o[i - 1].saida_em)) / 60000; if (d >= 0) m.push(d); }
+  return m.length ? Math.round(m.reduce((a, b) => a + b, 0) / m.length) : null;
+}
+function ecraTamanho(id) {
+  folha(`<h2>${esc(nomeAct(id))}</h2>
+    <label>Quantas pessoas tem esta equipa (incluindo o activista)?<input id="t-n" type="number" inputmode="numeric" min="1" max="30" value="${tamanhoEquipa(id)}"></label>
+    <p class="pequeno">Serve para mostrar as faltas: pessoas presentes no dia comparadas com este número.</p>
+    <button class="btn" onclick="gravarTamanho('${esc(id)}')">Guardar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+}
+async function gravarTamanho(id) {
+  const n = parseInt($('#t-n').value, 10);
+  if (!(n >= 1 && n <= 30)) { alert('Escreva um número entre 1 e 30.'); return; }
+  const r = await sb.rpc('definir_equipa_tamanho', { p_activista: id, p_n: n });
+  if (r.error) return aviso(r.error.message, 'erro');
+  const t = S.activistas.find((x) => x.id === id); if (t) t.equipa_tamanho = n; LS.set('activistas', S.activistas);
+  fecharFolha(); desenharHoje();
+}
 async function desenharHoje() {
   const h = hojeISO(), local = filaRegistos().filter((r) => r.data === h);
   const guardado = LS.get('hojeHtml');
@@ -615,7 +645,7 @@ async function desenharHoje() {
     const tot = todos.reduce((s, x) => s + (x.plantas_regadas || 0), 0);
     const j = jornadaHoje();
     html += `<div class="lin"><span>Ronda</span><b>${textoRonda()}</b></div>
-      <div class="lin"><span>Pessoas hoje</span><b>${j ? j.pessoas : '—'} <button class="chip" onclick="ecraJornada()">${j ? 'Alterar' : 'Registar'}</button></b></div>
+      <div class="lin"><span>Pessoas hoje</span><b>${j ? textoEquipa(j.pessoas, tamanhoEquipa(S.perfil.activista_id)) : '—'} <button class="chip" onclick="ecraJornada()">${j ? 'Alterar' : 'Registar'}</button></b></div>
       <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div></div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
@@ -623,15 +653,22 @@ async function desenharHoje() {
     const r = await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h);
     if (r.error) html += `<div class="msg erro">${esc(r.error.message)}</div></div>`;
     else {
-      // uma linha por equipa: produtores com rega, campos, plantas, chegada do tuk-tuk, início (1.ª entrada) e fim (última saída)
-      const g = {}; for (const x of r.data) { const k = x.activista_id; g[k] ??= { campos: 0, plantas: 0, alertas: 0, teste: 0, ini: null, fim: null, prod: new Set(), agua: null };
-        const o = g[k]; o.campos++; o.plantas += x.plantas_regadas || 0; if (x.alerta) o.alertas++; if (x.teste) o.teste++;
+      // uma linha por equipa: produtores com rega, pessoas (faltas), campos, plantas, tuk-tuk, início, fim e deslocação entre campos
+      const g = {}; for (const x of r.data) { const k = x.activista_id; g[k] ??= { campos: 0, plantas: 0, alertas: 0, teste: 0, ini: null, fim: null, prod: new Set(), agua: null, pessoas: 0, regs: [] };
+        const o = g[k]; o.campos++; o.plantas += x.plantas_regadas || 0; if (x.alerta) o.alertas++; if (x.teste) o.teste++; o.regs.push(x);
         o.prod.add((S.areas.find((a) => a.id === x.area_id) || {}).produtor || x.area_id); if (x.agua_em && (!o.agua || x.agua_em < o.agua)) o.agua = x.agua_em;
+        if (x.pessoas > o.pessoas) o.pessoas = x.pessoas;
         if (!o.ini || x.entrada_em < o.ini) o.ini = x.entrada_em; if (!o.fim || x.saida_em > o.fim) o.fim = x.saida_em; }
+      const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
       html += `<div class="lin"><span>Registos recebidos</span><b>${r.data.length}</b></div><button class="btn sec" onclick="mudar('painel')">Abrir painel geral</button></div>
-        <div style="overflow-x:auto"><table><tr><th>Activista</th><th class="n">Produtores</th><th class="n">Campos</th><th class="n">Plantas</th><th>Tuk-tuk</th><th>Início</th><th>Fim</th><th class="n">Alertas</th></tr>` +
-        Object.entries(g).map(([k, o]) => `<tr><td>${esc(nomeAct(k))}${o.teste ? ' <span class="pequeno">(teste)</span>' : ''}</td><td class="n">${o.prod.size}</td><td class="n">${o.campos}</td><td class="n">${num(o.plantas)}</td><td>${fmtHora(o.agua)}</td><td>${fmtHora(o.ini)}</td><td>${fmtHora(o.fim)}</td><td class="n">${o.alertas}</td></tr>`).join('') + '</table></div>' +
-        '<p class="pequeno">Produtores = produtores com campos regados hoje. Tuk-tuk = hora da 1.ª chegada da água. Início = entrada no 1.º campo; Fim = saída do último. Alertas = regas fora da lista da equipa.</p>';
+        <div style="overflow-x:auto"><table><tr><th>Activista</th><th>Equipa</th><th class="n">Produtores</th><th class="n">Campos</th><th class="n">Plantas</th><th class="n">% meta</th><th>Tuk-tuk</th><th>Início</th><th>Fim</th><th class="n">Desloc.</th><th class="n">Alertas</th></tr>` +
+        Object.entries(g).map(([k, o]) => { const tam = tamanhoEquipa(k), d = deslocacao(o.regs);
+          const eq = o.pessoas ? textoEquipa(o.pessoas, tam) : '—';
+          return `<tr><td>${esc(nomeAct(k))}${o.teste ? ' <span class="pequeno">(teste)</span>' : ''}</td>
+          <td>${podeMudar && S.activistas.some((t) => t.id === k) ? `<button class="chip" onclick="ecraTamanho('${esc(k)}')">${eq}</button>` : eq}</td>
+          <td class="n">${o.prod.size}</td><td class="n">${o.campos}</td><td class="n">${num(o.plantas)}</td><td class="n">${o.pessoas ? Math.round(100 * o.plantas / (CFG.metaPlantas * o.pessoas)) + '%' : '—'}</td>
+          <td>${fmtHora(o.agua)}</td><td>${fmtHora(o.ini)}</td><td>${fmtHora(o.fim)}</td><td class="n">${d != null ? d + ' min' : '—'}</td><td class="n">${o.alertas}</td></tr>`; }).join('') + '</table></div>' +
+        `<p class="pequeno">Equipa = pessoas presentes / pessoas da equipa (faltas a vermelho)${podeMudar ? '; toque para mudar o número de pessoas da equipa' : ''}. Produtores = produtores com campos regados hoje. % meta = plantas regadas ÷ (${CFG.metaPlantas} × pessoas presentes). Tuk-tuk = hora da 1.ª chegada da água. Início = entrada no 1.º campo; Fim = saída do último. Desloc. = tempo médio entre a saída de um campo e a entrada no seguinte. Alertas = regas fora da lista da equipa.</p>`;
     }
   }
   html += `<button class="btn sec" onclick="sair()">Sair desta conta</button>`;
@@ -664,26 +701,70 @@ function botaoMonitoria(a) {
     : `<button class="btn" onclick="ecraMonitoria('${esc(m.amostra_id)}')">✓ Verificar este campo (monitoria)</button>`;
 }
 const escolha = (id, ops) => `<div class="chips" id="${id}">${ops.map(([v, t]) => `<button class="chip" data-v="${v}">${t}</button>`).join('')}</div>`;
+// Monitoria por planta (11/10/2026, Valdo): o técnico escolhe o percurso (X, W, Z, diagonal) e regista cada planta observada:
+// solo húmido (rega efectiva) sim/não + viva/seca/morta. Nota = % de plantas com solo húmido ÷ 10. Campo regado se ≥ 80%.
+// Número de plantas a observar: amostra de Cochran (95%, ±10%, p = 80%) com correcção para população finita.
+// Nos campos pequenos a amostra aproxima-se do total de plantas (até 6 plantas: todas).
+function tamanhoAmostra(N) {
+  if (!(N > 0)) return 0;
+  const n0 = CFG.monZ ** 2 * CFG.monP * (1 - CFG.monP) / CFG.monMargem ** 2;
+  return Math.min(N, Math.ceil(n0 / (1 + (n0 - 1) / N)));
+}
+const METODOS = { X: 'M12 12L88 88M88 12L12 88', W: 'M10 12L30 88L50 30L70 88L90 12', Z: 'M12 12L88 12L12 88L88 88', Diagonal: 'M12 12L88 88' };
+const desenhoMetodo = (m) => `<svg viewBox="0 0 100 100" width="96" height="96" aria-hidden="true" style="flex:none"><rect x="4" y="4" width="92" height="92" rx="6" fill="#eef4ea" stroke="#9fb59a"/><path d="${METODOS[m]}" fill="none" stroke="#1f5130" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 9"/><path d="${METODOS[m]}" fill="none" stroke="#1f5130" stroke-width="1.5" opacity=".5"/></svg>`;
 function ecraMonitoria(amostraId) {
   const m = S.mon.find((x) => x.amostra_id === amostraId), a = S.areas.find((x) => x.id === m.area_id) || {};
   S.monFoto = null;
+  S.monP = { amostraId, metodo: null, N: plantasN(a) || 0, obs: [], h: null, e: null };
   folha(`<h2>${esc(a.produtor)}</h2><p class="pequeno">${esc(a.pr || '')} · ${esc(a.comunidade || '')} · ${esc(nomeAct(m.activista_id))} · rega de ${fmtData(m.data_rega)}</p>
-    <label>O solo mostra sinais de rega?</label>${escolha('m-solo', [['1', 'Sim'], ['0', 'Não']])}
-    <label>Estado das mudas</label>${escolha('m-mudas', [['vivas', 'Vivas'], ['secas', 'Secas'], ['mortas', 'Mortas']])}
-    <label>Nota (0 a 10)</label>${escolha('m-nota', Array.from({ length: 11 }, (_, i) => [String(i), String(i)]))}
+    <label>Percurso no campo</label>${escolha('m-metodo', Object.keys(METODOS).map((k) => [k, k]))}
+    <div id="m-desenho" style="display:flex;gap:12px;align-items:center;margin-top:8px"></div>
+    <label>Plantas no campo<input id="m-N" type="number" inputmode="numeric" min="1" value="${S.monP.N || ''}"></label>
+    <p class="pequeno">Na base: ${plantasTxt(a)}. Se no campo há outro número, corrija.</p>
+    <div id="m-planta"></div>
     <label>Fotografia do campo<input id="m-foto" type="file" accept="image/*" capture="environment"></label>
     <img id="m-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
     <textarea id="m-obs" rows="2" placeholder="Observação (opcional)"></textarea>
     <button class="btn" id="m-gravar" onclick="gravarMonitoria('${esc(amostraId)}')">Gravar verificação</button>
     <button class="btn sec" onclick="abrirFicha('${esc(m.area_id)}')">Voltar</button>`);
-  ['m-solo', 'm-mudas', 'm-nota'].forEach((g) => document.querySelectorAll(`#${g} .chip`).forEach((b) => b.onclick = () => {
-    document.querySelectorAll(`#${g} .chip`).forEach((x) => x.classList.toggle('on', x === b)); }));
+  document.querySelectorAll('#m-metodo .chip').forEach((b) => b.onclick = () => {
+    document.querySelectorAll('#m-metodo .chip').forEach((x) => x.classList.toggle('on', x === b)); S.monP.metodo = b.dataset.v; desenharPlantaMon(); });
+  $('#m-N').oninput = () => { S.monP.N = parseInt($('#m-N').value, 10) || 0; desenharPlantaMon(); };
   $('#m-foto').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     try { S.monFoto = await reduzirFoto(f); const img = $('#m-prev'); img.src = URL.createObjectURL(S.monFoto); img.style.display = ''; }
     catch { S.monFoto = null; aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); }
   };
+  desenharPlantaMon();
 }
+function resumoMon(obs) {
+  const n = obs.length, h = obs.filter((o) => o.humido).length, pc = n ? Math.round(1000 * h / n) / 10 : 0;
+  return { n, h, pct: pc, nota: Math.round(pc) / 10, regado: n > 0 && pc >= CFG.monLimiar,
+    vivas: obs.filter((o) => o.estado === 'viva').length, secas: obs.filter((o) => o.estado === 'seca').length, mortas: obs.filter((o) => o.estado === 'morta').length };
+}
+function desenharPlantaMon() {
+  const P = S.monP, alvo = tamanhoAmostra(P.N), r = resumoMon(P.obs), el = $('#m-planta'); if (!el) return;
+  $('#m-desenho').innerHTML = P.metodo ? desenhoMetodo(P.metodo) + `<p class="pequeno" style="margin:0">Siga o percurso ${esc(P.metodo)} e observe as plantas a intervalos regulares${alvo && P.N > alvo ? ` (cerca de 1 em cada ${Math.max(1, Math.round(P.N / alvo))})` : ' (todas as plantas)'}.</p>` : '';
+  if (!P.metodo || !alvo) { el.innerHTML = `<p class="pequeno">${!P.metodo ? 'Escolha o percurso.' : 'Escreva o número de plantas no campo.'}</p>`; return; }
+  const feito = r.n >= alvo;
+  el.innerHTML = `<div class="cartao" style="margin-top:10px">
+      <div class="lin"><span>Plantas a observar</span><b>${alvo}${alvo === P.N ? ' (todas)' : ` de ${P.N}`}</b></div>
+      <div class="lin"><span>Observadas</span><b>${r.n} de ${alvo}</b></div>
+      <div class="lin"><span>Com solo húmido</span><b>${r.n ? r.pct.toLocaleString(LOC) + '%' : '—'}</b></div>
+      <div class="lin"><span>Nota</span><b>${r.n ? r.nota.toLocaleString(LOC) : '—'}</b></div>
+      <div class="lin"><span>Campo regado (≥ ${CFG.monLimiar}%)</span><b>${r.n ? (r.regado ? 'Sim' : '<span style="color:#b42318">Não</span>') : '—'}</b></div>
+      <div class="lin"><span>Vivas / secas / mortas</span><b>${r.vivas} / ${r.secas} / ${r.mortas}</b></div></div>
+    <h3 style="margin:14px 0 4px">${feito ? 'Amostra completa' : `Planta ${r.n + 1}`}</h3>
+    ${feito ? '<p class="pequeno">Pode observar mais plantas, se quiser.</p>' : ''}
+    <label>Solo húmido (rega efectiva)?</label>${escolha('m-h', [['1', 'Sim'], ['0', 'Não']])}
+    <label>Estado da planta</label>${escolha('m-e', [['viva', 'Viva'], ['seca', 'Seca'], ['morta', 'Morta']])}
+    ${r.n ? '<button class="btn sec" onclick="desfazerPlantaMon()">Desfazer a última planta</button>' : ''}`;
+  for (const [g, k] of [['m-h', 'h'], ['m-e', 'e']]) document.querySelectorAll(`#${g} .chip`).forEach((b) => b.onclick = () => {
+    P[k] = b.dataset.v; document.querySelectorAll(`#${g} .chip`).forEach((x) => x.classList.toggle('on', x === b));
+    if (P.h != null && P.e != null) { P.obs.push({ humido: P.h === '1', estado: P.e }); P.h = P.e = null; desenharPlantaMon(); }
+  });
+}
+function desfazerPlantaMon() { S.monP.obs.pop(); desenharPlantaMon(); }
 const escolhido = (g) => document.querySelector(`#${g} .chip.on`)?.dataset.v;
 // reduz a fotografia no telefone: lado maior 1024 px, JPEG 60% (≈150 KB em vez de 3–5 MB)
 async function reduzirFoto(f) {
@@ -706,8 +787,9 @@ const FOTOS = {
 };
 async function gravarMonitoria(amostraId) {
   const m = S.mon.find((x) => x.amostra_id === amostraId), a = S.areas.find((x) => x.id === m.area_id) || {};
-  const solo = escolhido('m-solo'), mudas = escolhido('m-mudas'), nota = escolhido('m-nota');
-  if (solo == null || !mudas || nota == null) { alert('Responda às duas perguntas e escolha a nota.'); return; }
+  const P = S.monP, alvo = tamanhoAmostra(P.N), r = resumoMon(P.obs);
+  if (!P.metodo) { alert('Escolha o percurso.'); return; }
+  if (!alvo || r.n < alvo) { alert(`Observe ${alvo} plantas (faltam ${Math.max(0, alvo - r.n)}).`); return; }
   if (!S.monFoto) { alert('Tire a fotografia do campo.'); return; }
   const foto = S.monFoto, obs = $('#m-obs').value.trim();
   $('#m-gravar').disabled = true;
@@ -715,7 +797,8 @@ async function gravarMonitoria(amostraId) {
   if (g.valido === false) { $('#m-gravar').disabled = false; return aviso(`Está a ${g.dist} m do campo. A verificação faz-se no campo (até ${CFG.margemGPS} m).`, 'erro'); }
   const reg = { id: crypto.randomUUID(), amostra_id: amostraId, verificador_id: S.perfil.id, area_id: m.area_id, data_rega: m.data_rega, feito_em: new Date().toISOString(),
     lat: g.lat, lon: g.lon, gps_precisao_m: g.precisao, distancia_m: g.dist, gps_valido: g.valido,
-    solo_regado: solo === '1', mudas_estado: mudas, nota: +nota, observacao: obs || null };
+    solo_regado: r.regado, mudas_estado: null, nota: r.nota, observacao: obs || null,
+    metodo: P.metodo, plantas_no_campo: P.N, plantas_alvo: alvo, plantas_obs: P.obs, pct_humido: r.pct, n_vivas: r.vivas, n_secas: r.secas, n_mortas: r.mortas };
   try { await FOTOS.guardar(reg.id, foto); } catch { reg.sem_foto_local = true; S.fotosMem = { ...(S.fotosMem || {}), [reg.id]: foto }; }
   const f = LS.get('filaMon', []); f.push(reg); LS.set('filaMon', f); actSync();
   abrirFicha(m.area_id, `<div class="msg ok">Verificação guardada${navigator.onLine ? '' : ' no telefone (será enviada quando houver rede)'}.</div>`);
