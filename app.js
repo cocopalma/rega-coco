@@ -166,25 +166,31 @@ function actSync() {
 }
 
 // ---------- dados ----------
+// todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
-  const p = await sb.from('perfis').select('id,nome,papel,activista_id').eq('id', S.user.id).maybeSingle();
+  const [p, ac, ar, zs, est] = await Promise.all([
+    sb.from('perfis').select('id,nome,papel,activista_id').eq('id', S.user.id).maybeSingle(),
+    sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo').order('nome'),
+    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999),
+    sb.from('zonas').select('comunidade,zona').order('zona'),
+    sb.rpc('estado_ronda'),
+  ]);
   if (p.error) throw new Error(p.error.message);
   if (!p.data) throw new Error('Este utilizador não tem perfil na app. Fale com o gestor.');
   if (p.data.papel === 'cliente') { S.perfil = p.data; LS.set('perfil', S.perfil); return; }   // o cliente só vê o painel
-  const [ac, ar] = await Promise.all([
-    sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo').order('nome'),
-    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999),
-  ]);
   if (ac.error || ar.error) throw new Error((ac.error || ar.error).message);
   S.perfil = p.data; S.activistas = ac.data; S.areas = aplicarPendentes(ar.data);
-  const zs = await sb.from('zonas').select('comunidade,zona').order('zona'); if (!zs.error) { S.zonas = zs.data; LS.set('zonas', S.zonas); }
+  if (!zs.error) { S.zonas = zs.data; LS.set('zonas', S.zonas); }
   S.visiveis = null;
-  if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { const v = await sb.rpc('meus_activistas'); S.visiveis = v.error ? null : v.data; LS.set('visiveis', S.visiveis); await carregarMonitoria(); }
+  if (['tecnico', 'supervisor'].includes(S.perfil.papel)) {
+    const [v] = await Promise.all([sb.rpc('meus_activistas'), carregarMonitoria()]);
+    S.visiveis = v.error ? null : v.data; LS.set('visiveis', S.visiveis);
+  }
   LS.set('perfil', S.perfil); LS.set('activistas', S.activistas); LS.set('areas', S.areas);
-  await carregarEstado();
+  await carregarEstado(est);
 }
-async function carregarEstado() {
-  const { data, error } = await sb.rpc('estado_ronda');
+async function carregarEstado(pronto) {
+  const { data, error } = pronto || await sb.rpc('estado_ronda');
   if (error) return;
   S.estado = {}; for (const e of data) S.estado[e.area_id] = { u: e.ultima_rega, ronda: e.ronda_actual, feita: e.regada_na_ronda };
   LS.set('estado', S.estado); LS.set('estadoEm', new Date().toISOString());
@@ -241,7 +247,7 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  await sb.auth.signOut(); ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada'].forEach(LS.del); location.reload();
+  await sb.auth.signOut(); ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'visiveis'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- mapa ----------
@@ -599,6 +605,8 @@ function sugerirProximo(feito, nota = '') {
 // ---------- hoje ----------
 async function desenharHoje() {
   const h = hojeISO(), local = filaRegistos().filter((r) => r.data === h);
+  const guardado = LS.get('hojeHtml');
+  if (guardado && guardado.d === h && guardado.p === S.perfil.papel && !$('#hoje').innerHTML.trim()) $('#hoje').innerHTML = guardado.html;
   let html = `<div class="cartao"><h2>Hoje · ${fmtData(h)}</h2>`;
   if (S.perfil.papel === 'activista') {
     let serv = [];
@@ -626,6 +634,7 @@ async function desenharHoje() {
   }
   html += `<button class="btn sec" onclick="sair()">Sair desta conta</button>`;
   $('#hoje').innerHTML = html;
+  if (navigator.onLine) LS.set('hojeHtml', { d: h, p: S.perfil.papel, html });
 }
 
 // ---------- monitoria por amostragem (técnico e supervisor) ----------
@@ -734,8 +743,13 @@ async function chamarGestor(corpo) {
 }
 const sugerirUtilizador = (nome) => nome.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/\s+/)[0].replace(/[^a-z0-9]/g, '');
 async function desenharGestao(msg = '') {
-  $('#gestao').innerHTML = '<p>A carregar…</p>';
-  let d; try { d = await chamarGestor({ accao: 'listar' }); } catch (e) { $('#gestao').innerHTML = `<div class="msg erro">${esc(e.message)}</div>`; return; }
+  const guardado = LS.get('gestaoListar');
+  if (guardado) montarGestao(guardado, msg); else $('#gestao').innerHTML = '<p>A carregar…</p>';
+  let d; try { d = await chamarGestor({ accao: 'listar' }); } catch (e) { if (!guardado) $('#gestao').innerHTML = `<div class="msg erro">${esc(e.message)}</div>`; return; }
+  LS.set('gestaoListar', d);
+  if (!guardado || JSON.stringify(guardado) !== JSON.stringify(d)) montarGestao(d, msg);
+}
+async function montarGestao(d, msg = '') {
   const sem = d.activistas.filter((a) => !a.tem_login && a.activo !== false), com = d.activistas.filter((a) => a.tem_login);
   $('#gestao').innerHTML = `${msg}<div class="cartao"><h2>Criar login de activista</h2>
     <label>Activista<select id="g-act">${sem.map((a) => `<option value="${a.id}" data-u="${sugerirUtilizador(a.nome)}">${esc(a.nome)} — ${esc(a.comunidade_principal || '')}</option>`).join('')}</select></label>
@@ -939,6 +953,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (session) {
     S.user = session.user;
     const temLocal = carregarDoTelefone();
+    if (temLocal && S.perfil) {                           // abre logo com os dados do telefone; o servidor actualiza por trás
+      mostrarApp();
+      if (navigator.onLine) carregarTudo().then(() => { if ($('#e-hoje').classList.contains('on')) desenharHoje(); }).catch(() => {}).finally(() => sincronizar(true));
+      return;
+    }
     if (navigator.onLine) { try { await carregarTudo(); } catch (e) { if (!temLocal) { $('#login').style.display = 'block'; msgEntrada(`<div class="msg erro">${esc(e.message)}</div>`); return; } } }
     if (S.perfil) { mostrarApp(); sincronizar(true); return; }
   }

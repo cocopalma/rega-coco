@@ -147,7 +147,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n.js?v=20"></script>
+<script src="i18n.js?v=21"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -354,14 +354,21 @@ function desenharMonitoria() {
 }
 
 // ---------- dados e sessão ----------
+// último painel visto fica no telefone: aparece logo e é actualizado quando chega a resposta do servidor
+const CHAVE_CACHE = () => 'rega.painel.cache.' + new Date().toLocaleDateString('sv-SE') + JSON.stringify(P);
+function lerCache() { try { return JSON.parse(localStorage.getItem(CHAVE_CACHE()) || 'null'); } catch { return null; } }
 async function carregar() {
-  document.body.style.opacity = D ? '.6' : '';
+  const c = !D && lerCache();
+  if (c) { D = c.D; DM = c.DM; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharMonitoria(); }
+  document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
   const [{ data, error }, mon] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate })]);
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
+  if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) return;   // sem rede: fica o último painel guardado
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
   D = data; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharMonitoria();
+  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM })); } catch {}
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
 function mostrarLogin(msg = '') { $('#painel').style.display = 'none'; $('#login').style.display = ''; $('#l-msg').innerHTML = msg ? `<div class="erro">${esc(msg)}</div>` : ''; }
@@ -374,7 +381,7 @@ async function entrar() {
 $('#l-entrar').onclick = entrar;
 $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(); });
 $('#b-act').onclick = carregar;
-$('#b-sair').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+$('#b-sair').onclick = async () => { try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {} await sb.auth.signOut(); location.reload(); };
 let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharMonitoria(); }, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
