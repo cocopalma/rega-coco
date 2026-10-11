@@ -22,3 +22,6 @@ O Excel v3 (colunas AK–AN de validação) e o comando "aplica os activistas pr
 ## Lista de pessoas para criar acessos
 Tabela `pessoas_acesso` (nome, entidade, papel, utilizador; sem senhas), copiada da aba `OUTROS_ACESSOS` do Excel `Plano de rega - base/Logins_activistas_RegaCoco_20261010.xlsx`. Em Gestão › Outros acessos, o nome escolhe-se desta lista conforme a função. Quando o Valdo actualizar o Excel, sincronizar a tabela (ler o Excel; nunca copiar a coluna de senhas).
 Funções no Excel → papel: Técnico=tecnico, Supervisor=supervisor, Director (só leitura)=director, M&E (só leitura)=me, Só painel (cliente / administração)=cliente.
+
+## Zonas
+Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Muah, Bagala, Quelimane (11/10/2026). Zona inicial: Oliveira → Incularino, Sitambur → Muah; Razaque (Bagala/Quelimane) por definir pelo supervisor. Gestor e supervisor mudam a zona na ficha do campo (RPC `definir_zona`, fica em `alteracoes_areas`). A comunidade do campo não muda.

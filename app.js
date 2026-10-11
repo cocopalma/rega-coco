@@ -146,6 +146,7 @@ async function sincronizarAgora(silencioso) {
     for (const x of LS.get('filaAlt', [])) {
       const r4 = x.tipo === 'coord'
         ? await sb.rpc('gravar_coordenada', { p_area: x.area_id, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao })
+        : x.tipo === 'zona' ? await sb.rpc('definir_zona', { p_area: x.area_id, p_zona: x.zona })
         : await sb.rpc('atribuir_area', { p_area: x.area_id, p_activista: x.activista_id });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
       if (r4.error) aviso(`Não foi gravado (${x.area_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
@@ -170,10 +171,11 @@ async function carregarTudo() {
   if (p.data.papel === 'cliente') { S.perfil = p.data; LS.set('perfil', S.perfil); return; }   // o cliente só vê o painel
   const [ac, ar] = await Promise.all([
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor').order('nome'),
-    sb.from('areas').select('id,pr,area_n,comunidade,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999),
+    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999),
   ]);
   if (ac.error || ar.error) throw new Error((ac.error || ar.error).message);
   S.perfil = p.data; S.activistas = ac.data; S.areas = aplicarPendentes(ar.data);
+  const zs = await sb.from('zonas').select('comunidade,zona').order('zona'); if (!zs.error) { S.zonas = zs.data; LS.set('zonas', S.zonas); }
   S.visiveis = null;
   if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { const v = await sb.rpc('meus_activistas'); S.visiveis = v.error ? null : v.data; LS.set('visiveis', S.visiveis); }
   LS.set('perfil', S.perfil); LS.set('activistas', S.activistas); LS.set('areas', S.areas);
@@ -192,7 +194,7 @@ async function carregarEstado() {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {});
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {});
   return !!(S.perfil && (S.areas.length || S.perfil.papel === 'cliente'));
 }
 
@@ -265,7 +267,7 @@ function confirmarProposta(id) {
 function desenharLista() {
   const amb = $('#f-ambito').value, com = $('#f-com').value, sit = $('#f-sit').value, txt = $('#f-txt').value.trim().toLowerCase();
   let L2 = (amb === 'meus' && S.perfil?.papel === 'activista') ? minhas() : S.areas;
-  if (com) L2 = L2.filter((a) => a.comunidade === com);
+  if (com) { const [c, z] = com.split('|'); L2 = L2.filter((a) => a.comunidade === c && (z === undefined || (a.zona || '') === z)); }
   if (txt) L2 = L2.filter((a) => (a.produtor || '').toLowerCase().includes(txt) || a.pr.toLowerCase().includes(txt));
   let linhas = L2.map((a) => ({ a, s: situacao(a), d: S.pos && a.latitude != null ? metros(S.pos, [a.latitude, a.longitude]) : null }));
   if (sit) linhas = linhas.filter((x) => x.s.cod === sit);
@@ -274,7 +276,7 @@ function desenharLista() {
     (porAtribuir().length && sit !== 'sem' ? `<div class="msg info">${porAtribuir().length} campos por atribuir. <button class="chip" onclick="$('#f-sit').value='sem';desenharLista()">Ver</button></div>` : '') +
     `<p class="pequeno">${linhas.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` +
     linhas.slice(0, 300).map(({ a, s, d }) => `<div class="item" data-id="${esc(a.id)}"><div>
-      <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
+      <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
       </div><span class="tag t-${s.cod}">${s.txt}</span>${s.cod === 'sem' && podeAtribuir(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
 }
 
@@ -289,7 +291,22 @@ function botoesCampo(a) {
   if (PODE_COORD.includes(S.perfil.papel) && (a.latitude == null || ['gestor', 'supervisor'].includes(S.perfil.papel)))
     h += `<button class="btn sec" onclick="ecraCoordenada('${esc(a.id)}')">📍 ${a.latitude == null ? 'Gravar a coordenada deste campo' : 'Corrigir a coordenada (estou no campo)'}</button>`;
   if (podeAtribuir(a)) h += `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">👤 ${a.activista_id ? 'Mudar o activista deste campo' : 'Atribuir a um activista'}</button>`;
+  if (['gestor', 'supervisor'].includes(S.perfil.papel) && zonasDe(a.comunidade).length) h += `<button class="btn sec" onclick="ecraZona('${esc(a.id)}')">🗂 ${a.zona ? 'Mudar a zona' : 'Definir a zona'}</button>`;
   return h;
+}
+// zonas dentro de uma comunidade (ex.: Palma › Incularino)
+const zonasDe = (com) => (Array.isArray(S.zonas) ? S.zonas : []).filter((z) => z.comunidade === com).map((z) => z.zona);
+function ecraZona(id) {
+  const a = S.areas.find((x) => x.id === id);
+  folha(`<h2>${esc(a.produtor)}</h2><p class="pequeno">${esc(a.pr)} · ${esc(a.comunidade)} · activista: <b>${esc(nomeAct(a.activista_id))}</b></p>
+    <label>Zona<select id="z-zona"><option value="">(por definir)</option>${zonasDe(a.comunidade).map((z) => `<option ${z === a.zona ? 'selected' : ''}>${esc(z)}</option>`).join('')}</select></label>
+    <button class="btn" onclick="gravarZona('${esc(id)}')">Gravar</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
+}
+function gravarZona(id) {
+  const a = S.areas.find((x) => x.id === id), z = $('#z-zona').value || null;
+  a.zona = z; LS.set('areas', S.areas);
+  porNaFilaAlt({ tipo: 'zona', area_id: id, zona: z }); desenharLista();
+  abrirFicha(id, `<div class="msg ok">Zona ${z ? 'definida: ' + esc(z) : 'retirada'}.${navigator.onLine ? '' : ' Será enviada quando houver rede.'}</div>`);
 }
 function porNaFilaAlt(x) { const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), ...x }); LS.set('filaAlt', f); actSync(); sincronizar(true); }
 // leitura contínua do GPS: mostra a precisão a melhorar e só deixa gravar abaixo do limite
@@ -363,12 +380,12 @@ function gravarAtribuicao(id) {
   abrirFicha(id, `<div class="msg ok">Campo atribuído a ${esc(nomeAct(novo))}.${navigator.onLine ? '' : ' Será enviado quando houver rede.'}</div>`);
 }
 async function recarregarAreas() {
-  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999);
+  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999);
   if (ar.error) return;
   S.areas = aplicarPendentes(ar.data); LS.set('areas', S.areas);
 }
 function aplicarPendentes(lista) {                          // o que ainda não foi enviado continua a valer neste telefone
-  for (const x of LS.get('filaAlt', [])) { const a = lista.find((y) => y.id === x.area_id); if (!a) continue; if (x.tipo === 'coord') { a.latitude = x.lat; a.longitude = x.lon; } else a.activista_id = x.activista_id; }
+  for (const x of LS.get('filaAlt', [])) { const a = lista.find((y) => y.id === x.area_id); if (!a) continue; if (x.tipo === 'coord') { a.latitude = x.lat; a.longitude = x.lon; } else if (x.tipo === 'zona') a.zona = x.zona; else a.activista_id = x.activista_id; }
   return lista;
 }
 
@@ -389,6 +406,7 @@ function abrirFicha(id, nota = '') {
    <div class="cartao" style="margin:8px 0">
     <div class="lin"><span>PR · área</span><b>${esc(a.pr)} · ${a.area_n ?? '—'}</b></div>
     <div class="lin"><span>Comunidade</span><b>${esc(a.comunidade)}</b></div>
+    ${zonasDe(a.comunidade).length ? `<div class="lin"><span>Zona</span><b>${a.zona ? esc(a.zona) : '<span class="pequeno">por definir</span>'}</b></div>` : ''}
     <div class="lin"><span>Activista</span><b>${esc(nomeAct(a.activista_id))}</b></div>
     <div class="lin"><span>Plantas</span><b>${plantasTxt(a)}</b></div>
     <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div>
@@ -730,7 +748,9 @@ function mostrarApp() {
   }
   if (papel !== 'activista') { S.filtro = 'todas'; $('#f-ambito').value = 'todas'; }
   const coms = [...new Set(S.areas.map((a) => a.comunidade))].sort();
-  $('#f-com').innerHTML = '<option value="">Todas as comunidades</option>' + coms.map((c) => `<option>${esc(c)}</option>`).join('');
+  $('#f-com').innerHTML = '<option value="">Todas as comunidades</option>' + coms.map((c) => `<option value="${esc(c)}">${esc(c)}</option>` +
+    zonasDe(c).map((z) => `<option value="${esc(c)}|${esc(z)}">&nbsp;&nbsp;${esc(c)} › ${esc(z)}</option>`).join('') +
+    (zonasDe(c).length ? `<option value="${esc(c)}|">&nbsp;&nbsp;${esc(c)} › zona por definir</option>` : '')).join('');
   if (!mapa) iniciarMapa();
   desenharMapa(true); desenharLista(); actSync();
   const emCurso = LS.get('emCurso');
