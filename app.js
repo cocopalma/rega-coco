@@ -608,18 +608,30 @@ async function desenharGestao(msg = '') {
     ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div><button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button></div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
   desenharVisitas(); desenharCoberturas(d);
   const comLogin = new Set((d.utilizadores || []).map((u) => u.papel + '|' + u.nome));
-  const caixaNome = () => {                                  // técnico/supervisor: nome tem de ser igual ao da lista de activistas
-    const papel = $('#c-papel').value, lista = (d.nomes || {})[papel];
-    $('#c-nome-caixa').innerHTML = lista
-      ? `<select id="c-nome">${lista.map((n) => `<option ${comLogin.has(papel + '|' + n) ? 'disabled' : ''}>${esc(n)}</option>`).join('')}</select>`
-      : '<input id="c-nome">';
-    if (lista) { const livre = [...$('#c-nome').options].find((o) => !o.disabled); if (livre) $('#c-nome').value = livre.value; }
-    const sug = () => { $('#c-user').value = sugerirUtilizador($('#c-nome').value || ' '); };
-    $('#c-nome').oninput = sug; $('#c-nome').onchange = sug; sug();
+  // lista de pessoas por função (tabela pessoas_acesso, vinda do Excel de logins); quem já tem acesso aparece desactivado
+  const pessoas = (await sb.from('pessoas_acesso').select('nome,entidade,papel,utilizador').order('nome')).data || [];
+  const caixaNome = () => {
+    const papel = $('#c-papel').value, fixo = ['tecnico', 'supervisor'].includes(papel);
+    let lista = pessoas.filter((x) => x.papel === papel);
+    if (fixo) {                                               // técnico/supervisor: o nome tem de ser igual ao da lista de activistas
+      const validos = (d.nomes || {})[papel] || [];
+      lista = validos.map((n) => lista.find((x) => x.nome === n) || { nome: n, utilizador: null });
+    }
+    $('#c-nome-caixa').innerHTML = `<select id="c-nome">${lista.map((x) => `<option value="${esc(x.nome)}" data-u="${esc((x.utilizador || '').toLowerCase())}" ${comLogin.has(papel + '|' + x.nome) ? 'disabled' : ''}>${esc(x.nome)}${x.entidade ? ' — ' + esc(x.entidade) : ''}${comLogin.has(papel + '|' + x.nome) ? ' (já tem acesso)' : ''}</option>`).join('')}
+      ${fixo ? '' : '<option value="__outro">Outra pessoa (escrever o nome)…</option>'}</select><input id="c-nome-outro" placeholder="Nome completo" style="display:none">`;
+    const sel = $('#c-nome'), outro = $('#c-nome-outro');
+    const livre = [...sel.options].find((o) => !o.disabled); if (livre) sel.value = livre.value;
+    const sug = () => {
+      const o = sel.selectedOptions[0], escrever = sel.value === '__outro';
+      outro.style.display = escrever ? '' : 'none';
+      $('#c-user').value = escrever ? sugerirUtilizador(outro.value || ' ') : (o?.dataset.u || sugerirUtilizador(sel.value || ' '));
+    };
+    sel.onchange = sug; outro.oninput = sug; sug();
   };
+  const nomeEscolhido = () => ($('#c-nome').value === '__outro' ? $('#c-nome-outro').value : $('#c-nome').value).trim();
   $('#c-papel').onchange = caixaNome; caixaNome();
   $('#c-criar').onclick = async () => {
-    const corpo = { accao: 'criar_utilizador', nome: $('#c-nome').value.trim(), papel: $('#c-papel').value, utilizador: $('#c-user').value.trim().toLowerCase(), senha: $('#c-senha').value };
+    const corpo = { accao: 'criar_utilizador', nome: nomeEscolhido(), papel: $('#c-papel').value, utilizador: $('#c-user').value.trim().toLowerCase(), senha: $('#c-senha').value };
     try { const r = await chamarGestor(corpo); desenharGestao(`<div class="msg ok">Acesso criado: ${esc(r.nome)} → utilizador <b>${esc(r.utilizador)}</b>.</div>`); }
     catch (e) { aviso(e.message, 'erro'); }
   };
