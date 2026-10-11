@@ -9,7 +9,7 @@ function mudarLingua() {
 }
 // botões de língua: mostram a língua para onde se muda
 document.addEventListener('DOMContentLoaded', () => {
-  for (const [id, pt, en] of [['h-lingua', 'EN', 'PT'], ['b-lingua', 'EN', 'PT'], ['l-lingua', 'English', 'Português']]) {
+  for (const [id, pt, en] of [['h-lingua', 'EN', 'PT'], ['b-lingua', 'EN', 'PT'], ['lc-lingua', 'EN', 'PT'], ['le-lingua', 'EN', 'PT'], ['l-lingua', 'English', 'Português']]) {
     const b = document.getElementById(id); if (b) b.textContent = LINGUA === 'en' ? en : pt;
   }
 });
@@ -28,7 +28,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // login
     'Entrar com o utilizador e o PIN dados pelo gestor.': 'Sign in with the username and PIN given by the manager.',
     'Utilizador (ou email do gestor)': 'Username (or manager email)', 'Utilizador (ou email)': 'Username (or email)',
-    'PIN / senha': 'PIN / password', 'Entrar': 'Sign in', 'A entrar…': 'Signing in…', 'Senha': 'Password',
+    'PIN / senha': 'PIN / password',
+    'Bom dia.': 'Good morning.', 'Boa tarde.': 'Good afternoon.', 'Boa noite.': 'Good evening.', 'Entre para registar a rega.': 'Sign in to record watering.',
+    'Técnico / Supervisor': 'Technician / Supervisor', 'o seu utilizador': 'your username', 'PIN (6 números)': 'PIN (6 digits)', 'Mostrar': 'Show', 'Esconder': 'Hide',
+    'O utilizador e o PIN são dados pelo gestor.': 'The username and PIN are given by the manager.', 'O utilizador e a senha são dados pelo gestor.': 'The username and password are given by the manager.',
+    'Outros acessos (escritório)': 'Other access (office)', 'Acesso de escritório: entrar com o utilizador e a senha dados pelo gestor.': 'Office access: sign in with the username and password given by the manager.',
+    'Esqueceu a senha? Fale com o gestor.': 'Forgot your password? Talk to the manager.', 'Voltar ao acesso de campo': 'Back to field access', 'Entrar': 'Sign in', 'A entrar…': 'Signing in…', 'Senha': 'Password',
     'Utilizador ou PIN errado.': 'Wrong username or PIN.', 'Utilizador ou senha errados.': 'Wrong username or password.',
     'Este utilizador não tem perfil na app. Fale com o gestor.': 'This user has no profile in the app. Talk to the manager.',
     'Este utilizador não tem acesso ao painel.': 'This user has no access to the dashboard.',

@@ -1,6 +1,6 @@
 // Service worker: guarda a app e as bibliotecas para funcionar sem rede.
 // Os pedidos ao Supabase nunca são guardados aqui (a fila offline está na app).
-const VERSAO = 'rega-v17';
+const VERSAO = 'rega-v18';
 const BASE = ['./', 'index.html', 'app.js', 'i18n.js', 'painel.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js'];
@@ -33,7 +33,7 @@ self.addEventListener('fetch', (e) => {
     : e.request.mode === 'navigate' ? new Request(e.request.url, { cache: 'no-cache', credentials: 'same-origin' })
     : new Request(e.request, { cache: 'no-cache' });
   e.respondWith(fetch(pedido).then((r) => {
-    if (r.ok && (u.origin === location.origin || ['unpkg.com', 'cdn.jsdelivr.net'].includes(u.hostname))) { const copia = r.clone(); caches.open(VERSAO).then((c) => c.put(e.request, copia)); }
+    if (r.ok && (u.origin === location.origin || ['unpkg.com', 'cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'].includes(u.hostname))) { const copia = r.clone(); caches.open(VERSAO).then((c) => c.put(e.request, copia)); }
     return r;
   }).catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('index.html'))));
 });

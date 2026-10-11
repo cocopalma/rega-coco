@@ -200,14 +200,42 @@ function carregarDoTelefone() {
 }
 
 // ---------- login ----------
+// ---------- ecrã de entrada ----------
+// C (campo): activista com PIN, técnico/supervisor com senha; B (escritório): restantes funções. O telefone lembra o último usado.
+function modoEntrada(m) {
+  if (m) { try { localStorage.setItem('rega.entrada', m); } catch {} } else { try { m = localStorage.getItem('rega.entrada'); } catch {} }
+  m = ['activista', 'tecnico', 'escritorio'].includes(m) ? m : 'activista';
+  S.modoEntrada = m;
+  $('#l-campo').style.display = m === 'escritorio' ? 'none' : '';
+  $('#l-escr').style.display = m === 'escritorio' ? '' : 'none';
+  document.querySelectorAll('.l-seg button').forEach((b) => b.classList.toggle('on', b.dataset.m === m));
+  $('#l-pinbox').style.display = m === 'activista' ? '' : 'none';
+  $('#l-senhabox').style.display = m === 'tecnico' ? '' : 'none';
+  $('#l-nota').textContent = m === 'tecnico' ? 'O utilizador e a senha são dados pelo gestor.' : 'O utilizador e o PIN são dados pelo gestor.';
+  const h = new Date().getHours();
+  $('#l-saud').textContent = h < 12 ? 'Bom dia.' : h < 18 ? 'Boa tarde.' : 'Boa noite.';
+  msgEntrada('');
+}
+function msgEntrada(html) {
+  const escr = S.modoEntrada === 'escritorio';
+  $('#l-msg').innerHTML = escr ? '' : html; $('#le-msg').innerHTML = escr ? html : '';
+}
+function pinCaixas() {
+  const v = $('#l-pin').value, foco = document.activeElement === $('#l-pin');
+  document.querySelectorAll('.l-pin i').forEach((c, i) => { c.textContent = i < v.length ? '•' : ''; c.classList.toggle('cur', foco && i === Math.min(v.length, 5)); });
+}
 async function entrar() {
-  const u = $('#l-user').value.trim().toLowerCase(), pin = $('#l-pin').value;
+  const m = S.modoEntrada || 'activista';
+  const u = (m === 'escritorio' ? $('#le-user') : $('#l-user')).value.trim().toLowerCase();
+  const pin = m === 'escritorio' ? $('#le-senha').value : m === 'tecnico' ? $('#l-senha').value : $('#l-pin').value;
   const email = u.includes('@') ? u : `${u}@${CFG.dominio}`;
-  $('#l-msg').innerHTML = '<div class="msg info">A entrar…</div>';
+  msgEntrada('<div class="msg info">A entrar…</div>');
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pin });
-  if (error) { $('#l-msg').innerHTML = `<div class="msg erro">${/Invalid login/i.test(error.message) ? 'Utilizador ou PIN errado.' : esc(error.message)}</div>`; return; }
+  if (error) { msgEntrada(`<div class="msg erro">${/Invalid login/i.test(error.message) ? (m === 'activista' ? 'Utilizador ou PIN errado.' : 'Utilizador ou senha errados.') : esc(error.message)}</div>`); return; }
   S.user = data.user;
-  try { await carregarTudo(); } catch (e) { $('#l-msg').innerHTML = `<div class="msg erro">${esc(e.message)}</div>`; return; }
+  try { await carregarTudo(); } catch (e) { msgEntrada(`<div class="msg erro">${esc(e.message)}</div>`); return; }
+  const papel = S.perfil?.papel;                          // da próxima vez abre o ecrã desta função
+  try { localStorage.setItem('rega.entrada', papel === 'activista' ? 'activista' : ['tecnico', 'supervisor'].includes(papel) ? 'tecnico' : 'escritorio'); } catch {}
   mostrarApp();
 }
 async function sair() {
@@ -775,8 +803,10 @@ function mostrarApp() {
   else if (souActivista() && S.perfil.activista_id && !jornadaHoje()) ecraJornada();
 }
 document.addEventListener('DOMContentLoaded', async () => {
-  $('#l-entrar').onclick = entrar;
-  $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(); });
+  document.querySelectorAll('#login [data-m]').forEach((b) => { b.onclick = () => modoEntrada(b.dataset.m); });
+  ['input', 'focus', 'blur'].forEach((ev) => $('#l-pin').addEventListener(ev, pinCaixas));
+  $('#l-mostrar').onclick = () => { const i = $('#l-senha'); i.type = i.type === 'password' ? 'text' : 'password'; $('#l-mostrar').textContent = i.type === 'password' ? 'Mostrar' : 'Esconder'; };
+  modoEntrada();
   $('#nav').onclick = (e) => { if (e.target.dataset.e) mudar(e.target.dataset.e); };
   $('#h-sync').onclick = () => sincronizar();
   $('#h-sair').onclick = () => sair();
@@ -799,8 +829,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (session) {
     S.user = session.user;
     const temLocal = carregarDoTelefone();
-    if (navigator.onLine) { try { await carregarTudo(); } catch (e) { if (!temLocal) { $('#login').style.display = 'flex'; $('#l-msg').innerHTML = `<div class="msg erro">${esc(e.message)}</div>`; return; } } }
+    if (navigator.onLine) { try { await carregarTudo(); } catch (e) { if (!temLocal) { $('#login').style.display = 'block'; msgEntrada(`<div class="msg erro">${esc(e.message)}</div>`); return; } } }
     if (S.perfil) { mostrarApp(); sincronizar(true); return; }
   }
-  $('#login').style.display = 'flex';
+  $('#login').style.display = 'block';
 });

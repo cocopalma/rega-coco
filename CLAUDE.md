@@ -10,6 +10,9 @@ Servidor: Supabase, projecto `fgzdqnvobgfzjetbbxcm`. Responder sempre em portugu
 - `supabase/functions/gestor-activistas/index.ts` — cópia da função de servidor que cria logins (publicar com o conector Supabase).
 - Ao mudar a app, subir `VERSAO` em `sw.js` e o `?v=` de `app.js` e `i18n.js` em `index.html` (e de `i18n.js` em `painel.html`) para os telefones receberem a nova versão.
 
+## Ecrã de entrada (11/10/2026, escolha do Valdo)
+Um só link para todos. Ecrã C (campo, fundo areia, letras grandes para o sol): botões Activista (PIN em 6 caixas) e Técnico / Supervisor (senha). Ligação "Outros acessos (escritório)" abre o ecrã B (faixa verde): director, M&E, gestor, cliente, administração. O telefone lembra o último ecrã (`localStorage rega.entrada`, gravado conforme a função de quem entrou). Desenho original: artifact "Rega Coco — ecrã de entrada".
+
 ## Quem vê o quê (regras no servidor, RLS)
 - Activista: os seus campos (pode ver todos no mapa); regista regas da sua lista.
 - Técnico: campos dos activistas com `activistas.tecnico` = o seu nome (+ colegas que cobre) e campos sem activista dessas comunidades.
