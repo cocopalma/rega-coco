@@ -42,7 +42,10 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Quantos: `config.monitoria_campos_por_dia` (2 por pessoa por dia; o gestor muda em Gestão, RPC `definir_monitoria_campos`). Método LQAS: 19 campos verificados por técnico para concluir (~2 semanas a 2/dia).
 - Ficha: "O solo mostra sinais de rega?" (sim/não), "Estado das mudas" (vivas/secas/mortas), nota 0–10, fotografia obrigatória reduzida no telefone (1024 px, JPEG 60%, ~80–150 KB) guardada em IndexedDB até haver rede; bucket privado `monitoria-fotos/<perfil>/<id>.jpg`. GPS: só no campo (200 m).
 - Tabela `monitorias`; painel: secção "Monitoria por amostragem" (RPC `painel_monitoria(p_de,p_ate)`, filtra pelo dia da rega verificada).
-- Por definir pelo Valdo: limiar LQAS de aceitação (ex.: 80% dos campos com sinais de rega).
+- O cliente / administração não vê a secção da monitoria no painel, por enquanto (11/10/2026, Valdo): `painel_monitoria` devolve null ao papel cliente.
+- Por definir pelo Valdo: limiar LQAS; monitoria por planta (método de amostragem X/W/Z escolhido pelo técnico, resultado por planta, nota calculada pela app, % mínima de plantas com rega efectiva para o campo contar como regado).
 
 ## Pendentes pedidos pelo Valdo
+- Hoje (técnicos/supervisores): registar a equipa que trabalhou (nomes) e indicador de faltas — falta saber quem mantém a lista de membros.
+- Painel: % de campos regados face ao plano (dia, semana, período) — falta definir o plano diário.
 - Painel: frequência de rega (dias entre regas do mesmo campo) por equipa, agrupada por comunidade. Fazer depois da fase de teste dos activistas, quando o agrupamento de campos por equipa estiver confirmado (11/10/2026). Os registos já guardam activista, campo e data, por isso o cálculo cobre também as regas anteriores.

@@ -39,6 +39,7 @@ h1{margin:2px 0 0;font-size:26px;letter-spacing:-.01em}
 .barra{height:6px;border-radius:3px;background:var(--track);margin-top:10px;overflow:hidden}
 .barra i{display:block;height:100%;background:var(--s1);border-radius:3px}
 .card h2{font-size:16px;margin:0}
+tr.grupo td{background:var(--surface)}
 #s-mon h3{font-size:14px;margin:18px 0 4px}
 #s-mon .kpis{margin:12px 0 4px}
 .card .desc{color:var(--ink2);font-size:13px;margin:2px 0 12px}
@@ -126,6 +127,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <p class="desc" id="d-equipa" hidden>Ronda, progresso e rondas concluídas mostram o estado actual; as restantes colunas referem-se ao período escolhido.</p>
     <div class="tabela" id="t-equipa" style="max-height:none"></div></section>
 
+  <section class="card sec" id="s-pde"><h2>Plantas regadas por dia, por equipa</h2>
+    <p class="desc" id="d-pde">Equipas agrupadas por comunidade. Últimos 14 dias com registos do período escolhido.</p>
+    <div class="tabela" id="t-pde" style="max-height:none"></div></section>
+
   <section class="card sec"><h2>Chegada da água (tuk-tuk) por equipa</h2>
     <p class="desc" id="d-agua">Últimos 14 dias. Espera = minutos entre a entrada no campo e a chegada da água.</p>
     <div class="tabela" id="t-agua"></div></section>
@@ -147,7 +152,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n.js?v=21"></script>
+<script src="i18n.js?v=22"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -164,7 +169,7 @@ const fmtPct = (v) => v.toLocaleString(LOC, { maximumFractionDigits: v < 10 ? 1 
 const fmtData = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString(LOC) : '—';
 const ddmm = (d) => d.slice(8, 10) + '/' + d.slice(5, 7);
 const TIPOS = { falta_agua: 'Falta de água', mudas_secas: 'Mudas secas', acesso_dificil: 'Acesso difícil', avaria: 'Avaria', outro: 'Outro' };
-let D = null, DM = null;   // DM = monitoria
+let D = null, DM = null, DP = null;   // DM = monitoria; DP = plantas por dia e equipa
 
 // ---------- período (filtro) ----------
 // datas no fuso de Maputo, em AAAA-MM-DD
@@ -332,6 +337,24 @@ function desenhar() {
     <tr><td>GPS fora do campo</td><td class="n">${num(D.gps_invalido)}</td></tr></tbody></table>`;
 }
 
+// ---------- plantas por dia e por equipa ----------
+function desenharPlantasDiaEquipa() {
+  const L = Array.isArray(DP) ? DP : []; if (!$('#t-pde')) return;
+  const todosDias = [...new Set(L.map((x) => x.data))].sort(), dias = todosDias.slice(-14);
+  $('#d-pde').textContent = `Equipas agrupadas por comunidade.${todosDias.length > 14 ? ` Últimos 14 dias com registos (de ${todosDias.length}).` : ''}`;
+  if (!L.length) { $('#t-pde').innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
+  const v = {}; for (const x of L) v[x.comunidade + '|' + x.equipa + '|' + x.data] = x.plantas;
+  const grupos = {}; for (const x of L) (grupos[x.comunidade] ??= new Set()).add(x.equipa);
+  const cel = (n) => `<td class="n">${n ? num(n) : '<span style="color:var(--muted)">—</span>'}</td>`;
+  let h = `<table><thead><tr><th>Equipa</th>${dias.map((d) => `<th class="n">${ddmm(d)}</th>`).join('')}<th class="n">Total</th></tr></thead><tbody>`;
+  for (const com of Object.keys(grupos).sort()) {
+    const eqs = [...grupos[com]].sort(), somaDia = (d) => eqs.reduce((t, e) => t + (v[com + '|' + e + '|' + d] || 0), 0);
+    h += `<tr class="grupo"><td><b>${esc(com)}</b></td>${dias.map((d) => `<td class="n"><b>${somaDia(d) ? num(somaDia(d)) : ''}</b></td>`).join('')}<td class="n"><b>${num(dias.reduce((t, d) => t + somaDia(d), 0))}</b></td></tr>`;
+    for (const e of eqs) h += `<tr><td style="padding-left:18px">${esc(e)}</td>${dias.map((d) => cel(v[com + '|' + e + '|' + d])).join('')}<td class="n">${num(dias.reduce((t, d) => t + (v[com + '|' + e + '|' + d] || 0), 0))}</td></tr>`;
+  }
+  $('#t-pde').innerHTML = h + '</tbody></table>';
+}
+
 // ---------- monitoria ----------
 function desenharMonitoria() {
   const M = DM; if (!$('#s-mon')) return;
@@ -359,16 +382,17 @@ const CHAVE_CACHE = () => 'rega.painel.cache.' + new Date().toLocaleDateString('
 function lerCache() { try { return JSON.parse(localStorage.getItem(CHAVE_CACHE()) || 'null'); } catch { return null; } }
 async function carregar() {
   const c = !D && lerCache();
-  if (c) { D = c.D; DM = c.DM; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharMonitoria(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMonitoria(); }
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
-  const [{ data, error }, mon] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate })]);
+  const [{ data, error }, mon, pde] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate })]);
+  DP = pde.error ? null : pde.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) return;   // sem rede: fica o último painel guardado
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharMonitoria();
-  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM })); } catch {}
+  D = data; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMonitoria();
+  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP })); } catch {}
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
 function mostrarLogin(msg = '') { $('#painel').style.display = 'none'; $('#login').style.display = ''; $('#l-msg').innerHTML = msg ? `<div class="erro">${esc(msg)}</div>` : ''; }
@@ -382,7 +406,7 @@ $('#l-entrar').onclick = entrar;
 $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(); });
 $('#b-act').onclick = carregar;
 $('#b-sair').onclick = async () => { try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {} await sb.auth.signOut(); location.reload(); };
-let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharMonitoria(); }, 150); });
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMonitoria(); }, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
 if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }

@@ -623,13 +623,15 @@ async function desenharHoje() {
     const r = await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h);
     if (r.error) html += `<div class="msg erro">${esc(r.error.message)}</div></div>`;
     else {
-      const g = {}; for (const x of r.data) { const k = x.activista_id; g[k] ??= { campos: 0, plantas: 0, alertas: 0, teste: 0, ini: null, fim: null, pessoas: 0, agua: null };
+      // uma linha por equipa: produtores com rega, campos, plantas, chegada do tuk-tuk, início (1.ª entrada) e fim (última saída)
+      const g = {}; for (const x of r.data) { const k = x.activista_id; g[k] ??= { campos: 0, plantas: 0, alertas: 0, teste: 0, ini: null, fim: null, prod: new Set(), agua: null };
         const o = g[k]; o.campos++; o.plantas += x.plantas_regadas || 0; if (x.alerta) o.alertas++; if (x.teste) o.teste++;
-        o.pessoas = Math.max(o.pessoas, x.pessoas || 0); if (x.agua_em && (!o.agua || x.agua_em < o.agua)) o.agua = x.agua_em;
+        o.prod.add((S.areas.find((a) => a.id === x.area_id) || {}).produtor || x.area_id); if (x.agua_em && (!o.agua || x.agua_em < o.agua)) o.agua = x.agua_em;
         if (!o.ini || x.entrada_em < o.ini) o.ini = x.entrada_em; if (!o.fim || x.saida_em > o.fim) o.fim = x.saida_em; }
       html += `<div class="lin"><span>Registos recebidos</span><b>${r.data.length}</b></div><button class="btn sec" onclick="mudar('painel')">Abrir painel geral</button></div>
-        <div style="overflow-x:auto"><table><tr><th>Activista</th><th class="n">Pessoas</th><th class="n">Campos</th><th class="n">Plantas</th><th>1.ª água</th><th>Horas</th><th class="n">Alertas</th></tr>` +
-        Object.entries(g).map(([k, o]) => `<tr><td>${esc(nomeAct(k))}${o.teste ? ' <span class="pequeno">(teste)</span>' : ''}</td><td class="n">${o.pessoas || '—'}</td><td class="n">${o.campos}</td><td class="n">${num(o.plantas)}</td><td>${fmtHora(o.agua)}</td><td>${fmtHora(o.ini)}–${fmtHora(o.fim)}</td><td class="n">${o.alertas}</td></tr>`).join('') + '</table></div>';
+        <div style="overflow-x:auto"><table><tr><th>Activista</th><th class="n">Produtores</th><th class="n">Campos</th><th class="n">Plantas</th><th>Tuk-tuk</th><th>Início</th><th>Fim</th><th class="n">Alertas</th></tr>` +
+        Object.entries(g).map(([k, o]) => `<tr><td>${esc(nomeAct(k))}${o.teste ? ' <span class="pequeno">(teste)</span>' : ''}</td><td class="n">${o.prod.size}</td><td class="n">${o.campos}</td><td class="n">${num(o.plantas)}</td><td>${fmtHora(o.agua)}</td><td>${fmtHora(o.ini)}</td><td>${fmtHora(o.fim)}</td><td class="n">${o.alertas}</td></tr>`).join('') + '</table></div>' +
+        '<p class="pequeno">Produtores = produtores com campos regados hoje. Tuk-tuk = hora da 1.ª chegada da água. Início = entrada no 1.º campo; Fim = saída do último. Alertas = regas fora da lista da equipa.</p>';
     }
   }
   html += `<button class="btn sec" onclick="sair()">Sair desta conta</button>`;

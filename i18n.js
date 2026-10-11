@@ -137,6 +137,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // direcções
     'Norte': 'North', 'Nordeste': 'North-east', 'Este': 'East', 'Sudeste': 'South-east', 'Sul': 'South', 'Sudoeste': 'South-west', 'Oeste': 'West', 'Noroeste': 'North-west',
     'fora da lista': 'outside list',
+    'Produtores': 'Producers', 'Tuk-tuk': 'Tuk-tuk', 'Início': 'Start', 'Fim': 'End',
+    'Produtores = produtores com campos regados hoje. Tuk-tuk = hora da 1.ª chegada da água. Início = entrada no 1.º campo; Fim = saída do último. Alertas = regas fora da lista da equipa.': 'Producers = producers with fields watered today. Tuk-tuk = time of the first water arrival. Start = entry to the first field; End = exit from the last. Alerts = waterings outside the team list.',
+    'Plantas regadas por dia, por equipa': 'Plants watered per day, per team', 'Equipas agrupadas por comunidade.': 'Teams grouped by community.',
     // monitoria
     'Monitoria': 'Monitoring', 'Monitoria por amostragem': 'Sample-based monitoring', 'Verificado': 'Checked', 'Por verificar': 'To check',
     'Sem campos para verificar. A lista sai a partir das 18:00, com campos regados nesse dia.': 'No fields to check. The list is issued from 18:00, with fields watered that day.',
@@ -170,6 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'No período escolhido. Espera = minutos entre a entrada no campo e a chegada da água.': 'In the chosen period. Wait = minutes between field entry and water arrival.',
   });
   const R = [
+    [/^Equipas agrupadas por comunidade\. Últimos 14 dias com registos \(de (\d+)\)\.$/, 'Teams grouped by community. Last 14 days with records (of $1).'],
     [/^Monitoria · regas de (.+)$/, 'Monitoring · waterings of $1'], [/^(\d+) de (\d+) campos verificados\.$/, '$1 of $2 fields checked.'],
     [/^de (.+) sorteados$/, 'of $1 drawn'], [/^(.+) de (.+) campos verificados$/, '$1 of $2 fields checked'], [/^rega de (.+)$/, 'watering of $1'],
     [/^Monitoria: (\d+) campos por dia, por pessoa\.$/, 'Monitoring: $1 fields per day, per person.'],
