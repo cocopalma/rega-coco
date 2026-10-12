@@ -742,8 +742,10 @@ function ecraMonitoria(amostraId) {
   folha(`<h2>${esc(a.produtor)}</h2><p class="pequeno">${esc(a.pr || '')} · ${esc(a.comunidade || '')} · ${esc(nomeAct(m.activista_id))} · rega de ${fmtData(m.data_rega)}</p>
     <label>Percurso no campo</label>${escolha('m-metodo', Object.keys(METODOS).map((k) => [k, k]))}
     <div id="m-desenho" style="display:flex;gap:12px;align-items:center;margin-top:8px"></div>
-    <label>Plantas no campo<input id="m-N" type="number" inputmode="numeric" min="1" value="${S.monP.N || ''}"></label>
-    <p class="pequeno">Na base: ${plantasTxt(a)}. Se no campo há outro número, corrija.</p>
+    <div class="cartao" style="margin-top:10px"><div class="lin"><span>Plantas no campo</span><b id="m-Nv">${S.monP.N ? num(S.monP.N) : '—'}</b></div>
+      <p class="pequeno" id="m-Nfonte" style="margin:4px 0 0">${S.monP.N ? `Da base (${plantasTxt(a)}). A app calcula a amostra a partir deste número.` : 'A base não tem o número de plantas deste campo. Conte as plantas e escreva o número.'}</p>
+      <div id="m-Nedit" ${S.monP.N ? 'hidden' : ''}><label>Plantas que existem hoje no campo<input id="m-N" type="number" inputmode="numeric" min="1" value="${S.monP.N || ''}"></label></div>
+      ${S.monP.N ? `<button class="chip" id="m-Nmudar" style="margin-top:6px">O número de plantas mudou? Corrigir</button>` : ''}</div>
     <div id="m-planta"></div>
     <label>Fotografia do campo<input id="m-foto" type="file" accept="image/*" capture="environment"></label>
     <img id="m-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
@@ -752,7 +754,9 @@ function ecraMonitoria(amostraId) {
     <button class="btn sec" onclick="abrirFicha('${esc(m.area_id)}')">Voltar</button>`);
   document.querySelectorAll('#m-metodo .chip').forEach((b) => b.onclick = () => {
     document.querySelectorAll('#m-metodo .chip').forEach((x) => x.classList.toggle('on', x === b)); S.monP.metodo = b.dataset.v; desenharPlantaMon(); });
-  $('#m-N').oninput = () => { S.monP.N = parseInt($('#m-N').value, 10) || 0; desenharPlantaMon(); };
+  $('#m-N').oninput = () => { S.monP.N = parseInt($('#m-N').value, 10) || 0; S.monP.Ncorrigido = true; $('#m-Nv').textContent = S.monP.N ? num(S.monP.N) : '—';
+    $('#m-Nfonte').textContent = 'Corrigido no campo. A app recalcula a amostra.'; desenharPlantaMon(); };
+  if ($('#m-Nmudar')) $('#m-Nmudar').onclick = () => { $('#m-Nedit').hidden = false; $('#m-Nmudar').remove(); $('#m-N').focus(); };
   $('#m-foto').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     try { S.monFoto = await reduzirFoto(f); const img = $('#m-prev'); img.src = URL.createObjectURL(S.monFoto); img.style.display = ''; }

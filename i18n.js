@@ -181,6 +181,10 @@ document.addEventListener('DOMContentLoaded', () => {
     '% da meta por dia (todas as equipas)': '% of target per day (all teams)', '% da meta por equipa no período': '% of target per team in the period',
     'meta 100%': 'target 100%', 'meta': 'target', 'da meta': 'of target', 'Deslocação média entre campos (min)': 'Average travel between fields (min)', 'de deslocação média': 'average travel',
     'Nota média (0 a 10) dos campos verificados de cada equipa.': 'Average score (0 to 10) of each team\'s checked fields.', 'nota 8 (80%)': 'score 8 (80%)', 'nota média': 'average score',
+    'A app calcula a amostra a partir deste número.': 'The app calculates the sample from this number.',
+    'A base não tem o número de plantas deste campo. Conte as plantas e escreva o número.': 'The database has no plant count for this field. Count the plants and write the number.',
+    'Plantas que existem hoje no campo': 'Plants in the field today', 'O número de plantas mudou? Corrigir': 'Has the number of plants changed? Correct it',
+    'Corrigido no campo. A app recalcula a amostra.': 'Corrected in the field. The app recalculates the sample.',
     // erros do servidor (criação de logins)
     'Sessão inválida': 'Invalid session', 'Só o gestor pode gerir logins': 'Only the manager can manage logins', 'Pedido inválido': 'Invalid request',
     'Função inválida': 'Invalid role', 'Escreva o nome': 'Write the name', "Esta pessoa já tem acesso. Use 'Nova senha'.": "This person already has access. Use 'New password'.",
@@ -198,6 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'No período escolhido. Espera = minutos entre a entrada no campo e a chegada da água.': 'In the chosen period. Wait = minutes between field entry and water arrival.',
   });
   const R = [
+    [/^Da base \((.+)\)\. A app calcula a amostra a partir deste número\.$/, (m, a) => `From the database (${tr(a)}). The app calculates the sample from this number.`],
     [/^(.+) campos verificados$/, '$1 fields checked'], [/^(.+) não regados$/, '$1 not watered'], [/^(.+) deslocações medidas$/, '$1 trips measured'], [/^Rega por campo: (.+)$/, 'Watering per field: $1'],
     [/^(.+) pessoas$/, '$1 people'],
     [/^(.+) de (.+) plantas sem solo húmido$/, '$1 of $2 plants without moist soil'], [/^nota (.+)$/, 'score $1'], [/^Monitoria \(rega de (.+)\):$/, 'Monitoring (watering of $1):'],
