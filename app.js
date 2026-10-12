@@ -169,10 +169,14 @@ async function sincronizarAgora(silencioso) {
   if (!erro) erro = await enviarMonitorias();
   if (!erro) {                                           // chuva medida no pluviómetro
     for (const c of LS.get('filaChuva', [])) {
-      const r5 = await sb.from('chuva').upsert(c, { onConflict: 'data,comunidade,activista_id' });
+      let foto = null; try { foto = await FOTOS.ler(c.id); } catch {} foto = foto || S.fotosMem?.[c.id] || null;
+      const caminho = `${S.perfil.id}/${c.id}.jpg`;
+      if (foto) { const up = await sb.storage.from('chuva-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) { erro = up.error.message; break; } }
+      const r5 = await sb.from('chuva').upsert({ ...c, foto_path: foto ? caminho : null }, { onConflict: 'data,comunidade,activista_id' });
       if (r5.error && !r5.error.code) { erro = r5.error.message; break; }
       if (r5.error) aviso(`Chuva não gravada: ${r5.error.message}`, 'erro');
       LS.set('filaChuva', LS.get('filaChuva', []).filter((y) => y.id !== c.id));
+      try { await FOTOS.apagar(c.id); } catch {}
     }
   }
   if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
@@ -671,18 +675,32 @@ function textoChuvaHoje() {
 }
 function ecraChuva() {
   const coms = minhasComunidades(), h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
-  folha(`<h2>Chuva</h2><p class="pequeno">Leia o pluviómetro da comunidade e escreva os milímetros. Se não choveu, carregue em "Não choveu".</p>
+  const agora = new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+  S.chuvaFoto = null;
+  folha(`<h2>Chuva</h2><p class="pequeno">Leia o pluviómetro da comunidade, escreva os milímetros e tire uma fotografia da leitura. Se não choveu, carregue em "Não choveu".</p>
     <label>Dia da chuva<select id="c-data"><option value="${h}">Hoje · ${fmtData(h)}</option><option value="${ontem}">Ontem · ${fmtData(ontem)}</option></select></label>
+    <label>Hora da leitura<input id="c-hora" type="time" value="${agora}"></label>
     <label>Comunidade<select id="c-com">${coms.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
     <label>Chuva no pluviómetro (mm)<input id="c-mm" type="number" inputmode="decimal" min="0" max="500" step="0.1"></label>
     <button class="chip" onclick="$('#c-mm').value='0'">Não choveu (0 mm)</button>
+    <label>Fotografia da leitura do pluviómetro<input id="c-foto" type="file" accept="image/*" capture="environment"></label>
+    <img id="c-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
     <textarea id="c-obs" rows="2" placeholder="Observação (opcional)"></textarea>
     <button class="btn" onclick="gravarChuva()">Guardar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  $('#c-foto').onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    try { S.chuvaFoto = await reduzirFoto(f); const img = $('#c-prev'); img.src = URL.createObjectURL(S.chuvaFoto); img.style.display = ''; }
+    catch { S.chuvaFoto = null; aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); }
+  };
 }
-function gravarChuva() {
+async function gravarChuva() {
   const mm = parseFloat(String($('#c-mm').value).replace(',', '.'));
   if (!(mm >= 0 && mm <= 500)) { alert('Escreva os milímetros (0 a 500).'); return; }
-  const c = { id: crypto.randomUUID(), data: $('#c-data').value, comunidade: $('#c-com').value, mm, activista_id: S.perfil.activista_id, user_id: S.perfil.id, observacao: $('#c-obs').value.trim() || null };
+  const hora = $('#c-hora').value; if (!hora) { alert('Escreva a hora da leitura.'); return; }
+  if (!S.chuvaFoto) { alert('Tire a fotografia da leitura do pluviómetro.'); return; }
+  const data = $('#c-data').value, [hh, mi] = hora.split(':'), t = new Date(data + 'T00:00:00'); t.setHours(+hh, +mi, 0, 0);
+  const c = { id: crypto.randomUUID(), data, comunidade: $('#c-com').value, mm, lida_em: t.toISOString(), activista_id: S.perfil.activista_id, user_id: S.perfil.id, observacao: $('#c-obs').value.trim() || null };
+  try { await FOTOS.guardar(c.id, S.chuvaFoto); } catch { S.fotosMem = { ...(S.fotosMem || {}), [c.id]: S.chuvaFoto }; }
   const f = LS.get('filaChuva', []).filter((x) => !(x.data === c.data && x.comunidade === c.comunidade)); f.push(c); LS.set('filaChuva', f);
   const g = LS.get('chuvaFeita', {}) || {}; g[c.data + '|' + c.comunidade] = mm; LS.set('chuvaFeita', g);
   fecharFolha(); actSync(); sincronizar(true); if ($('#e-hoje').classList.contains('on')) desenharHoje();

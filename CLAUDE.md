@@ -61,7 +61,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Gráficos aplicados da pré-visualização: plantas por comunidade, progresso da ronda, espera pela água, monitoria por técnico (linha LQAS). Plantas por pessoa por dia não foi escolhido.
 
 ## Chuva e balanço hídrico (12/10/2026, sugestão do Albino, decisões do Valdo)
-- Há pluviómetros nas comunidades; o activista regista a chuva (Hoje › Chuva (pluviómetro) › Registar): dia (hoje/ontem), comunidade (das suas áreas), mm. Tabela `chuva` (único por dia+comunidade+activista; corrige-se gravando de novo), fila `filaChuva` sem rede.
+- Há pluviómetros nas comunidades; o activista regista a chuva (Hoje › Chuva (pluviómetro) › Registar): dia (hoje/ontem), hora da leitura, comunidade (das suas áreas), mm e fotografia obrigatória da leitura (reduzida no telefone, bucket privado `chuva-fotos/<perfil>/<id>.jpg`; colunas `lida_em`, `foto_path`; 12/10/2026, Valdo). Tabela `chuva` (único por dia+comunidade+activista; corrige-se gravando de novo), fila `filaChuva` sem rede.
 - Painel: secção "Chuva por comunidade" (RPC `painel_chuva`): total no período por comunidade e tabela por dia.
 - Fase 2 (por fazer): balanço hídrico por comunidade para decidir regar ou não e por quantos dias. Faltam os parâmetros agronómicos (ETo, Kc do coqueiro jovem, água útil do solo e profundidade das raízes, chuva efectiva, limite para voltar a regar) — o Valdo vai pedir ao Albino ou ao Paulo. Não inventar estes valores.
 
