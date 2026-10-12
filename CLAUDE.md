@@ -47,10 +47,17 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Avisos à equipa (11/10/2026, Valdo): campos verificados nos últimos 14 dias com plantas sem solo húmido aparecem no Hoje (cartão "Avisos da monitoria") e na ficha do campo, para o activista e para técnico/supervisor/gestor (RPC `avisos_monitoria`). Vermelho = campo não regado (< 80%).
 
 ## Equipa, meta e tempos (11/10/2026, Valdo)
-- Equipa por número (os nomes virão depois): `activistas.equipa_tamanho` (5 = equipa típica dada pelo Valdo: 1 activista + 4 sazonais); o activista regista as pessoas presentes no início do dia (Hoje › Pessoas hoje › Alterar) e em cada saída; gestor, técnico e supervisor mudam no Hoje (RPC `definir_equipa_tamanho`). Faltas = tamanho − pessoas presentes (máximo de `registos_rega.pessoas` no dia, senão `jornadas.pessoas`).
+- Equipa por número (os nomes virão depois): `activistas.equipa_tamanho` = "Pessoas declaradas a 09/10" do RH (folha EQUIPAS da base de 09/10) para 14 activistas; os outros ficam null = "por definir" (sem faltas) até alguém pôr o número (12/10/2026, Valdo); o activista regista as pessoas presentes no início do dia (Hoje › Pessoas hoje › Alterar) e em cada saída; gestor, técnico e supervisor mudam no Hoje (RPC `definir_equipa_tamanho`). Faltas = tamanho − pessoas presentes (máximo de `registos_rega.pessoas` no dia, senão `jornadas.pessoas`).
 - Nesta fase as equipas escolhem os campos; a "% face ao plano" é a meta de 140 plantas por pessoa por dia (`CFG.metaPlantas`, `META` no painel, `config.meta_plantas_pessoa_dia`): % = plantas ÷ (140 × pessoas presentes). Hoje: coluna "% meta"; painel: secção "Meta" por dia / semana / período (RPC `painel_plantas_dia_equipa` devolve pessoas e tamanho).
 - Gráficos no painel (11/10/2026, Valdo): % da meta por dia (colunas, linha 100%), % da meta por equipa (barras), deslocação média por equipa (barras), nota média por equipa na monitoria (barras, linha nota 8). Funções `colunas`/`barras` aceitam `ref`/`refTxt` (linha de referência) e `fmt`.
 - Tempo entre campos: Hoje coluna "Desloc." (média saída → entrada seguinte); painel "Tempo por campo e deslocação" (RPC `painel_tempos_equipa`).
+
+## Feedback do teste de campo (12/10/2026, Nuro, decisões do Valdo)
+- Entrada sem rede: quem já entrou no telefone pode voltar a entrar sem rede. O telefone guarda só uma impressão PBKDF2 da senha/PIN (`localStorage rega.acessoOff`, nunca a senha); a senha fica só em memória (`S.credPend`) e a app autentica-se quando houver rede (`autenticarPendente`, chamado no início da sincronização). Primeira entrada no telefone exige rede.
+- Regas de teste (técnico/supervisor/gestor): não contam para a ronda nem para o painel, mas o próprio vê os campos com a cor roxa "Regado em teste" (últimos 14 dias, `rega.meusTestes` + fila local).
+- Painel: zonas de Palma por baixo da comunidade no gráfico "Plantas vivas regadas por comunidade" (RPC `painel_zonas`, pelo local do campo, `areas.zona`).
+- Monitoria: cobertura morta registada em cada planta da amostra (`plantas_obs[].cobertura`).
+- Gráficos aplicados da pré-visualização: plantas por comunidade, progresso da ronda, espera pela água, monitoria por técnico (linha LQAS). Plantas por pessoa por dia não foi escolhido.
 
 ## Pendentes pedidos pelo Valdo
 - Nomes dos membros de cada equipa (o Valdo envia) para registar quem trabalhou.

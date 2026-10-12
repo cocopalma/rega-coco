@@ -185,6 +185,16 @@ document.addEventListener('DOMContentLoaded', () => {
     'A base não tem o número de plantas deste campo. Conte as plantas e escreva o número.': 'The database has no plant count for this field. Count the plants and write the number.',
     'Plantas que existem hoje no campo': 'Plants in the field today', 'O número de plantas mudou? Corrigir': 'Has the number of plants changed? Correct it',
     'Corrigido no campo. A app recalcula a amostra.': 'Corrected in the field. The app recalculates the sample.',
+    'Regado em teste (por si)': 'Watered in a test (by you)', 'Sem rede. A primeira entrada neste telefone precisa de internet. Depois disso, pode entrar sem rede.': 'No network. The first sign-in on this phone needs internet. After that, you can sign in without network.',
+    'Entrou sem rede. Os registos ficam no telefone e são enviados quando houver rede.': 'Signed in without network. Records stay on the phone and are sent when there is network.',
+    'A senha ou o PIN mudou. Entre de novo com rede; os registos continuam guardados no telefone.': 'The password or PIN has changed. Sign in again with network; records remain saved on the phone.',
+    'A rede caiu durante a entrada. Tente de novo.': 'The network dropped during sign-in. Try again.', 'Escreva o utilizador e o PIN.': 'Write the username and PIN.', 'Escreva o utilizador e a senha.': 'Write the username and password.',
+    'Tem cobertura morta?': 'Is there mulch?', 'Com cobertura morta': 'With mulch', 'Com cobertura morta, um campo regado na véspera ainda mostra humidade.': 'With mulch, a field watered the day before still shows moisture.',
+    'Plantas com cobertura morta': 'Plants with mulch', 'Solo húmido com e sem cobertura morta': 'Moist soil with and without mulch',
+    '(equipa por definir)': '(team size not set)',
+    'Progresso da ronda actual': 'Current round progress', 'Plantas regadas por comunidade no período': 'Plants watered per community in the period', 'Ver tabela por dia': 'See table by day',
+    'Espera média pela água, por equipa (min)': 'Average wait for water, per team (min)', 'da lista regada': 'of the list watered', 'de espera média': 'average wait', 'campos regados': 'fields watered',
+    'zona por definir': 'zone not set', '% das plantas vivas da comunidade em campos já regados pela app. Em Palma, por zona (bairro onde fica o campo).': '% of the community\'s live plants in fields already watered through the app. In Palma, by zone (neighbourhood where the field is).',
     // erros do servidor (criação de logins)
     'Sessão inválida': 'Invalid session', 'Só o gestor pode gerir logins': 'Only the manager can manage logins', 'Pedido inválido': 'Invalid request',
     'Função inválida': 'Invalid role', 'Escreva o nome': 'Write the name', "Esta pessoa já tem acesso. Use 'Nova senha'.": "This person already has access. Use 'New password'.",
@@ -202,6 +212,8 @@ document.addEventListener('DOMContentLoaded', () => {
     'No período escolhido. Espera = minutos entre a entrada no campo e a chegada da água.': 'In the chosen period. Wait = minutes between field entry and water arrival.',
   });
   const R = [
+    [/^› (.+)$/, (m, a) => '› ' + tr(a)], [/^Ronda (\d+): (\d+) de (\d+) campos$/, 'Round $1: $2 of $3 fields'], [/^(\d+) de (\d+) campos verificados$/, '$1 of $2 fields checked'],
+    [/^Regado em teste \((.+)\)$/, 'Watered in a test ($1)'],
     [/^Da base \((.+)\)\. A app calcula a amostra a partir deste número\.$/, (m, a) => `From the database (${tr(a)}). The app calculates the sample from this number.`],
     [/^(.+) campos verificados$/, '$1 fields checked'], [/^(.+) não regados$/, '$1 not watered'], [/^(.+) deslocações medidas$/, '$1 trips measured'], [/^Rega por campo: (.+)$/, 'Watering per field: $1'],
     [/^(.+) pessoas$/, '$1 people'],

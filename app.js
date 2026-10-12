@@ -104,9 +104,16 @@ function situacao(a) {
   let feita, n;
   if (souActivista() && a.activista_id === S.perfil.activista_id) { const ri = rondaInfo(a.activista_id); feita = ri.feitas.has(a.id); n = ri.n; }
   else { const e = S.estado[a.id] || {}; feita = !!e.feita; n = e.ronda || 1; }
+  if (!feita && !souActivista()) { const t = testeEm(a.id); if (t) return { cod: 'teste', txt: `Regado em teste (${fmtData(t).slice(0, 5)})`, u, n }; }
   return feita ? { cod: 'feita', txt: `Regada na ronda ${n}`, u, n } : { cod: 'por', txt: `Por regar (ronda ${n})`, u, n };
 }
-const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b' };
+// regas de teste do próprio técnico/supervisor (12/10/2026, Valdo): não contam para a ronda, mas o campo aparece com a cor "Teste"
+function testeEm(id) {
+  let d = (LS.get('meusTestes', {}) || {})[id] || null;
+  for (const r of filaRegistos()) if (r.teste && r.area_id === id && (!d || r.data > d)) d = r.data;
+  return d;
+}
+const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a' };
 const plantasTxt = (a) => (a.vivas > 0 ? `${num(a.vivas)} plantas vivas` : `${num(a.instaladas)} mudas plantadas`);
 const plantasN = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
 const nomeAct = (id) => (S.activistas.find((x) => x.id === id) || {}).nome || '(por atribuir)';
@@ -124,6 +131,7 @@ async function sincronizar(silencioso = false) {
 async function sincronizarAgora(silencioso) {
   const f = filaRegistos();
   if (!navigator.onLine) { actSync(); if (!silencioso) aviso('Sem rede. Os registos ficam guardados no telefone.', 'info'); return; }
+  if (S.credPend && !(await autenticarPendente())) { actSync(); return; }
   let enviados = 0, erro = null;
   for (const reg of f) {
     const { constr, ...linha } = reg;
@@ -202,6 +210,10 @@ async function carregarEstado(pronto) {
     const r = await sb.from('registos_rega').select('id,area_id,activista_id,data,ronda,plantas_regadas,teste')
       .eq('activista_id', S.perfil.activista_id).eq('teste', false).gt('plantas_regadas', 0).range(0, 9999);
     if (!r.error) LS.set('meusRegs', r.data);
+  } else if (PODE_REGAR.includes(S.perfil?.papel) && S.perfil?.id) {   // as minhas regas de teste dos últimos 14 dias
+    const desde = new Date(Date.now() - 14 * 864e5).toLocaleDateString('sv-SE');
+    const r = await sb.from('registos_rega').select('area_id,data').eq('teste', true).eq('user_id', S.perfil.id).gte('data', desde).range(0, 999);
+    if (!r.error) { const t = {}; for (const x of r.data) if (!t[x.area_id] || x.data > t[x.area_id]) t[x.area_id] = x.data; LS.set('meusTestes', t); }
   }
   desenharMapa(); desenharLista();
 }
@@ -235,23 +247,58 @@ function pinCaixas() {
   const v = $('#l-pin').value, foco = document.activeElement === $('#l-pin');
   document.querySelectorAll('.l-pin i').forEach((c, i) => { c.textContent = i < v.length ? '•' : ''; c.classList.toggle('cur', foco && i === Math.min(v.length, 5)); });
 }
+// Entrada sem rede (12/10/2026, Valdo): quem já entrou neste telefone pode voltar a entrar sem rede.
+// O telefone guarda só uma impressão da senha/PIN (PBKDF2), nunca a senha. A ligação ao servidor faz-se quando houver rede.
+const b64 = (u8) => btoa(String.fromCharCode(...u8)), deB64 = (t) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
+async function impressao(segredo, sal) {
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(segredo), 'PBKDF2', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: sal, iterations: 150000 }, k, 256));
+}
+async function guardarAcessoOff(email, segredo) {
+  try { const sal = crypto.getRandomValues(new Uint8Array(16)); LS.set('acessoOff', { email, sal: b64(sal), imp: b64(await impressao(segredo, sal)), perfil: S.perfil }); } catch {}
+}
+async function entrarSemRede(email, segredo) {
+  const a = LS.get('acessoOff');
+  if (!a || a.email !== email) return 'Sem rede. A primeira entrada neste telefone precisa de internet. Depois disso, pode entrar sem rede.';
+  let ok = false; try { ok = b64(await impressao(segredo, deB64(a.sal))) === a.imp; } catch {}
+  if (!ok) return S.modoEntrada === 'activista' ? 'Utilizador ou PIN errado.' : 'Utilizador ou senha errados.';
+  S.perfil = a.perfil; LS.set('perfil', S.perfil); carregarDoTelefone(); S.perfil = a.perfil;
+  S.credPend = { email, segredo };                        // só em memória: serve para ligar ao servidor quando houver rede
+  mostrarApp(); aviso('Entrou sem rede. Os registos ficam no telefone e são enviados quando houver rede.', 'info');
+  return null;
+}
+// liga ao servidor depois de uma entrada sem rede
+async function autenticarPendente() {
+  if (!S.credPend) return true;
+  const { data, error } = await sb.auth.signInWithPassword({ email: S.credPend.email, password: S.credPend.segredo });
+  if (error && /fetch|network|Failed/i.test(error.message)) return false;          // ainda sem rede
+  if (error) { S.credPend = null; LS.del('acessoOff'); aviso('A senha ou o PIN mudou. Entre de novo com rede; os registos continuam guardados no telefone.', 'erro'); setTimeout(() => location.reload(), 4000); return false; }
+  S.user = data.user; S.credPend = null;
+  carregarTudo().then(() => { if ($('#e-hoje').classList.contains('on')) desenharHoje(); }).catch(() => {});
+  return true;
+}
+const semRede = (e) => !navigator.onLine || /Failed to fetch|NetworkError|Load failed|network/i.test(e?.message || '');
 async function entrar() {
   const m = S.modoEntrada || 'activista';
   const u = (m === 'escritorio' ? $('#le-user') : $('#l-user')).value.trim().toLowerCase();
   const pin = m === 'escritorio' ? $('#le-senha').value : m === 'tecnico' ? $('#l-senha').value : $('#l-pin').value;
   const email = u.includes('@') ? u : `${u}@${CFG.dominio}`;
+  if (!u || !pin) { msgEntrada(`<div class="msg erro">${m === 'activista' ? 'Escreva o utilizador e o PIN.' : 'Escreva o utilizador e a senha.'}</div>`); return; }
   msgEntrada('<div class="msg info">A entrar…</div>');
+  if (!navigator.onLine) { const e = await entrarSemRede(email, pin); if (e) msgEntrada(`<div class="msg erro">${esc(e)}</div>`); return; }
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pin });
+  if (error && semRede(error)) { const e = await entrarSemRede(email, pin); if (e) msgEntrada(`<div class="msg erro">${esc(e)}</div>`); return; }
   if (error) { msgEntrada(`<div class="msg erro">${/Invalid login/i.test(error.message) ? (m === 'activista' ? 'Utilizador ou PIN errado.' : 'Utilizador ou senha errados.') : esc(error.message)}</div>`); return; }
   S.user = data.user;
-  try { await carregarTudo(); } catch (e) { msgEntrada(`<div class="msg erro">${esc(e.message)}</div>`); return; }
+  try { await carregarTudo(); } catch (e) { msgEntrada(`<div class="msg erro">${esc(semRede(e) ? 'A rede caiu durante a entrada. Tente de novo.' : e.message)}</div>`); return; }
+  if (S.perfil?.papel !== 'cliente') guardarAcessoOff(email, pin);
   const papel = S.perfil?.papel;                          // da próxima vez abre o ecrã desta função
   try { localStorage.setItem('rega.entrada', papel === 'activista' ? 'activista' : ['tecnico', 'supervisor'].includes(papel) ? 'tecnico' : 'escritorio'); } catch {}
   mostrarApp();
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  await sb.auth.signOut(); ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- mapa ----------
@@ -607,9 +654,10 @@ function sugerirProximo(feito, nota = '') {
 }
 
 // ---------- hoje ----------
-const tamanhoEquipa = (id) => (S.activistas.find((t) => t.id === id) || {}).equipa_tamanho || 5;
+const tamanhoEquipa = (id) => (S.activistas.find((t) => t.id === id) || {}).equipa_tamanho || null;   // null = por definir
 // "4/5 · 1 falta" (faltas a vermelho)
 function textoEquipa(presentes, tamanho) {
+  if (!tamanho) return `${presentes} <span class="pequeno">(equipa por definir)</span>`;
   const f = tamanho - presentes;
   return `${presentes}/${tamanho}` + (f > 0 ? ` <span style="color:var(--crit,#b42318);font-weight:700">· ${f} ${f === 1 ? 'falta' : 'faltas'}</span>` : '');
 }
@@ -621,7 +669,7 @@ function deslocacao(regs) {
 }
 function ecraTamanho(id) {
   folha(`<h2>${esc(nomeAct(id))}</h2>
-    <label>Quantas pessoas tem esta equipa (incluindo o activista)?<input id="t-n" type="number" inputmode="numeric" min="1" max="30" value="${tamanhoEquipa(id)}"></label>
+    <label>Quantas pessoas tem esta equipa (incluindo o activista)?<input id="t-n" type="number" inputmode="numeric" min="1" max="30" value="${tamanhoEquipa(id) ?? ''}"></label>
     <p class="pequeno">Serve para mostrar as faltas: pessoas presentes no dia comparadas com este número.</p>
     <button class="btn" onclick="gravarTamanho('${esc(id)}')">Guardar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
 }
@@ -738,7 +786,7 @@ const desenhoMetodo = (m) => `<svg viewBox="0 0 100 100" width="96" height="96" 
 function ecraMonitoria(amostraId) {
   const m = S.mon.find((x) => x.amostra_id === amostraId), a = S.areas.find((x) => x.id === m.area_id) || {};
   S.monFoto = null;
-  S.monP = { amostraId, metodo: null, N: plantasN(a) || 0, obs: [], h: null, e: null };
+  S.monP = { amostraId, metodo: null, N: plantasN(a) || 0, obs: [], h: null, e: null, c: null };
   folha(`<h2>${esc(a.produtor)}</h2><p class="pequeno">${esc(a.pr || '')} · ${esc(a.comunidade || '')} · ${esc(nomeAct(m.activista_id))} · rega de ${fmtData(m.data_rega)}</p>
     <label>Percurso no campo</label>${escolha('m-metodo', Object.keys(METODOS).map((k) => [k, k]))}
     <div id="m-desenho" style="display:flex;gap:12px;align-items:center;margin-top:8px"></div>
@@ -767,7 +815,8 @@ function ecraMonitoria(amostraId) {
 function resumoMon(obs) {
   const n = obs.length, h = obs.filter((o) => o.humido).length, pc = n ? Math.round(1000 * h / n) / 10 : 0;
   return { n, h, pct: pc, nota: Math.round(pc) / 10, regado: n > 0 && pc >= CFG.monLimiar,
-    vivas: obs.filter((o) => o.estado === 'viva').length, secas: obs.filter((o) => o.estado === 'seca').length, mortas: obs.filter((o) => o.estado === 'morta').length };
+    vivas: obs.filter((o) => o.estado === 'viva').length, secas: obs.filter((o) => o.estado === 'seca').length, mortas: obs.filter((o) => o.estado === 'morta').length,
+    cob: obs.filter((o) => o.cobertura).length };
 }
 function desenharPlantaMon() {
   const P = S.monP, alvo = tamanhoAmostra(P.N), r = resumoMon(P.obs), el = $('#m-planta'); if (!el) return;
@@ -780,15 +829,18 @@ function desenharPlantaMon() {
       <div class="lin"><span>Com solo húmido</span><b>${r.n ? r.pct.toLocaleString(LOC) + '%' : '—'}</b></div>
       <div class="lin"><span>Nota</span><b>${r.n ? r.nota.toLocaleString(LOC) : '—'}</b></div>
       <div class="lin"><span>Campo regado (≥ ${CFG.monLimiar}%)</span><b>${r.n ? (r.regado ? 'Sim' : '<span style="color:#b42318">Não</span>') : '—'}</b></div>
-      <div class="lin"><span>Vivas / secas / mortas</span><b>${r.vivas} / ${r.secas} / ${r.mortas}</b></div></div>
+      <div class="lin"><span>Vivas / secas / mortas</span><b>${r.vivas} / ${r.secas} / ${r.mortas}</b></div>
+      <div class="lin"><span>Com cobertura morta</span><b>${r.n ? `${r.cob} de ${r.n}` : '—'}</b></div></div>
     <h3 style="margin:14px 0 4px">${feito ? 'Amostra completa' : `Planta ${r.n + 1}`}</h3>
     ${feito ? '<p class="pequeno">Pode observar mais plantas, se quiser.</p>' : ''}
     <label>Solo húmido (rega efectiva)?</label>${escolha('m-h', [['1', 'Sim'], ['0', 'Não']])}
     <label>Estado da planta</label>${escolha('m-e', [['viva', 'Viva'], ['seca', 'Seca'], ['morta', 'Morta']])}
+    <label>Tem cobertura morta?</label>${escolha('m-c', [['1', 'Sim'], ['0', 'Não']])}
+    <p class="pequeno">Com cobertura morta, um campo regado na véspera ainda mostra humidade.</p>
     ${r.n ? '<button class="btn sec" onclick="desfazerPlantaMon()">Desfazer a última planta</button>' : ''}`;
-  for (const [g, k] of [['m-h', 'h'], ['m-e', 'e']]) document.querySelectorAll(`#${g} .chip`).forEach((b) => b.onclick = () => {
+  for (const [g, k] of [['m-h', 'h'], ['m-e', 'e'], ['m-c', 'c']]) document.querySelectorAll(`#${g} .chip`).forEach((b) => b.onclick = () => {
     P[k] = b.dataset.v; document.querySelectorAll(`#${g} .chip`).forEach((x) => x.classList.toggle('on', x === b));
-    if (P.h != null && P.e != null) { P.obs.push({ humido: P.h === '1', estado: P.e }); P.h = P.e = null; desenharPlantaMon(); }
+    if (P.h != null && P.e != null && P.c != null) { P.obs.push({ humido: P.h === '1', estado: P.e, cobertura: P.c === '1' }); P.h = P.e = P.c = null; desenharPlantaMon(); }
   });
 }
 function desfazerPlantaMon() { S.monP.obs.pop(); desenharPlantaMon(); }
@@ -1022,6 +1074,8 @@ function mostrarApp() {
     mudar('painel'); return;
   }
   if (papel !== 'activista') { S.filtro = 'todas'; $('#f-ambito').value = 'todas'; }
+  $('#leg-teste').style.display = PODE_REGAR.includes(papel) && papel !== 'activista' ? '' : 'none';
+  const tOpt = document.querySelector('#f-sit option[value="teste"]'); if (tOpt) tOpt.hidden = papel === 'activista';
   const coms = [...new Set(S.areas.map((a) => a.comunidade))].sort();
   if (!souActivista()) {                                  // filtro por activista (supervisor, técnico, gestor…)
     const comCampos = new Set(S.areas.map((a) => a.activista_id).filter(Boolean));
