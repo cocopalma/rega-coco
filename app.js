@@ -167,12 +167,20 @@ async function sincronizarAgora(silencioso) {
     }
   }
   if (!erro) erro = await enviarMonitorias();
+  if (!erro) {                                           // chuva medida no pluviómetro
+    for (const c of LS.get('filaChuva', [])) {
+      const r5 = await sb.from('chuva').upsert(c, { onConflict: 'data,comunidade,activista_id' });
+      if (r5.error && !r5.error.code) { erro = r5.error.message; break; }
+      if (r5.error) aviso(`Chuva não gravada: ${r5.error.message}`, 'erro');
+      LS.set('filaChuva', LS.get('filaChuva', []).filter((y) => y.id !== c.id));
+    }
+  }
   if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
   actSync();
   if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   b.textContent = n ? `${n} por enviar` : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0);
 }
@@ -653,6 +661,33 @@ function sugerirProximo(feito, nota = '') {
     <button class="btn sec" onclick="fecharFolha()">Escolher outro campo</button>`);
 }
 
+// ---------- chuva (12/10/2026, Valdo; sugestão do Albino) ----------
+// O activista lê o pluviómetro da comunidade e regista os milímetros. Funciona sem rede (fila "filaChuva").
+const minhasComunidades = () => { const t = S.activistas.find((x) => x.id === S.perfil?.activista_id);
+  return [...new Set([t?.comunidade_principal, ...minhas().map((a) => a.comunidade)].filter(Boolean))].sort(); };
+function textoChuvaHoje() {
+  const h = hojeISO(), g = LS.get('chuvaFeita', {}) || {}, v = Object.entries(g).filter(([k]) => k.startsWith(h + '|'));
+  return v.length ? v.map(([k, mm]) => `${num(mm)} mm${v.length > 1 ? ' (' + esc(k.split('|')[1]) + ')' : ''}`).join(', ') : '—';
+}
+function ecraChuva() {
+  const coms = minhasComunidades(), h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
+  folha(`<h2>Chuva</h2><p class="pequeno">Leia o pluviómetro da comunidade e escreva os milímetros. Se não choveu, carregue em "Não choveu".</p>
+    <label>Dia da chuva<select id="c-data"><option value="${h}">Hoje · ${fmtData(h)}</option><option value="${ontem}">Ontem · ${fmtData(ontem)}</option></select></label>
+    <label>Comunidade<select id="c-com">${coms.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
+    <label>Chuva no pluviómetro (mm)<input id="c-mm" type="number" inputmode="decimal" min="0" max="500" step="0.1"></label>
+    <button class="chip" onclick="$('#c-mm').value='0'">Não choveu (0 mm)</button>
+    <textarea id="c-obs" rows="2" placeholder="Observação (opcional)"></textarea>
+    <button class="btn" onclick="gravarChuva()">Guardar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+}
+function gravarChuva() {
+  const mm = parseFloat(String($('#c-mm').value).replace(',', '.'));
+  if (!(mm >= 0 && mm <= 500)) { alert('Escreva os milímetros (0 a 500).'); return; }
+  const c = { id: crypto.randomUUID(), data: $('#c-data').value, comunidade: $('#c-com').value, mm, activista_id: S.perfil.activista_id, user_id: S.perfil.id, observacao: $('#c-obs').value.trim() || null };
+  const f = LS.get('filaChuva', []).filter((x) => !(x.data === c.data && x.comunidade === c.comunidade)); f.push(c); LS.set('filaChuva', f);
+  const g = LS.get('chuvaFeita', {}) || {}; g[c.data + '|' + c.comunidade] = mm; LS.set('chuvaFeita', g);
+  fecharFolha(); actSync(); sincronizar(true); if ($('#e-hoje').classList.contains('on')) desenharHoje();
+  aviso(`Chuva guardada: ${num(mm)} mm em ${c.comunidade}.`, 'ok');
+}
 // ---------- hoje ----------
 const tamanhoEquipa = (id) => (S.activistas.find((t) => t.id === id) || {}).equipa_tamanho || null;   // null = por definir
 // "4/5 · 1 falta" (faltas a vermelho)
@@ -695,6 +730,7 @@ async function desenharHoje() {
     const j = jornadaHoje();
     html += `<div class="lin"><span>Ronda</span><b>${textoRonda()}</b></div>
       <div class="lin"><span>Pessoas hoje</span><b>${j ? textoEquipa(j.pessoas, tamanhoEquipa(S.perfil.activista_id)) : '—'} <button class="chip" onclick="ecraJornada()">${j ? 'Alterar' : 'Registar'}</button></b></div>
+      <div class="lin"><span>Chuva (pluviómetro)</span><b>${textoChuvaHoje()} <button class="chip" onclick="ecraChuva()">Registar</button></b></div>
       <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div></div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {

@@ -60,6 +60,12 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Campos retirados da rega (12/10/2026, listas do Nuro de 10/10 no grupo de alinhamento, confirmado pelo Valdo): 20 campos de Palma com `areas.activa = false`, motivo em `alteracoes_areas.motivo` (campo 'activa'): Muah sem mudas (5), Muah com acesso a água (2), Incularino sem mudas (8 campos, 7 produtores), Incularino sem acesso de tuk-tuk (5) — estes 5 voltam quando houver caminho para tuk-tuk. A lista de Olumbe de 06/10 (campanha 2025) já não estava na base.
 - Gráficos aplicados da pré-visualização: plantas por comunidade, progresso da ronda, espera pela água, monitoria por técnico (linha LQAS). Plantas por pessoa por dia não foi escolhido.
 
+## Chuva e balanço hídrico (12/10/2026, sugestão do Albino, decisões do Valdo)
+- Há pluviómetros nas comunidades; o activista regista a chuva (Hoje › Chuva (pluviómetro) › Registar): dia (hoje/ontem), comunidade (das suas áreas), mm. Tabela `chuva` (único por dia+comunidade+activista; corrige-se gravando de novo), fila `filaChuva` sem rede.
+- Painel: secção "Chuva por comunidade" (RPC `painel_chuva`): total no período por comunidade e tabela por dia.
+- Fase 2 (por fazer): balanço hídrico por comunidade para decidir regar ou não e por quantos dias. Faltam os parâmetros agronómicos (ETo, Kc do coqueiro jovem, água útil do solo e profundidade das raízes, chuva efectiva, limite para voltar a regar) — o Valdo vai pedir ao Albino ou ao Paulo. Não inventar estes valores.
+
 ## Pendentes pedidos pelo Valdo
+- Documento do RH com o tamanho das 12 equipas "por definir" (o Valdo vai pedir).
 - Nomes dos membros de cada equipa (o Valdo envia) para registar quem trabalhou.
 - Painel: frequência de rega (dias entre regas do mesmo campo) por equipa, agrupada por comunidade. Fazer depois da fase de teste dos activistas, quando o agrupamento de campos por equipa estiver confirmado (11/10/2026). Os registos já guardam activista, campo e data, por isso o cálculo cobre também as regas anteriores.

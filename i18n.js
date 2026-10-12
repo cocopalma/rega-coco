@@ -196,6 +196,12 @@ document.addEventListener('DOMContentLoaded', () => {
     'Progresso da ronda actual': 'Current round progress', 'Plantas regadas por comunidade no período': 'Plants watered per community in the period', 'Ver tabela por dia': 'See table by day',
     'Espera média pela água, por equipa (min)': 'Average wait for water, per team (min)', 'da lista regada': 'of the list watered', 'de espera média': 'average wait', 'campos regados': 'fields watered',
     'zona por definir': 'zone not set', '% das plantas vivas da comunidade em campos já regados pela app. Em Palma, por zona (bairro onde fica o campo).': '% of the community\'s live plants in fields already watered through the app. In Palma, by zone (neighbourhood where the field is).',
+    'Chuva': 'Rain', 'Chuva (pluviómetro)': 'Rain (rain gauge)', 'Registar': 'Record', 'Dia da chuva': 'Day of the rain',
+    'Leia o pluviómetro da comunidade e escreva os milímetros. Se não choveu, carregue em "Não choveu".': 'Read the community rain gauge and write the millimetres. If it did not rain, tap "No rain".',
+    'Chuva no pluviómetro (mm)': 'Rain in the gauge (mm)', 'Não choveu (0 mm)': 'No rain (0 mm)', 'Escreva os milímetros (0 a 500).': 'Write the millimetres (0 to 500).',
+    'Chuva por comunidade': 'Rain per community', 'Chuva total no período (mm)': 'Total rain in the period (mm)',
+    'Milímetros medidos nos pluviómetros e registados pelos activistas. Dias sem registo aparecem com —.': 'Millimetres measured in the rain gauges and recorded by the activists. Days without a record show —.',
+    'Ainda sem registos de chuva.': 'No rain records yet.', 'no período': 'in the period',
     // erros do servidor (criação de logins)
     'Sessão inválida': 'Invalid session', 'Só o gestor pode gerir logins': 'Only the manager can manage logins', 'Pedido inválido': 'Invalid request',
     'Função inválida': 'Invalid role', 'Escreva o nome': 'Write the name', "Esta pessoa já tem acesso. Use 'Nova senha'.": "This person already has access. Use 'New password'.",
@@ -213,6 +219,8 @@ document.addEventListener('DOMContentLoaded', () => {
     'No período escolhido. Espera = minutos entre a entrada no campo e a chegada da água.': 'In the chosen period. Wait = minutes between field entry and water arrival.',
   });
   const R = [
+    [/^(\d+) dias com chuva em (\d+) dias registados$/, '$1 rainy days out of $2 days recorded'], [/^(.+) mm$/, '$1 mm'],
+    [/^Chuva guardada: (.+) mm em (.+)\.$/, 'Rain saved: $1 mm in $2.'], [/^Chuva não gravada: (.+)$/, 'Rain not saved: $1'], [/^Hoje · (.+)$/, 'Today · $1'], [/^Ontem · (.+)$/, 'Yesterday · $1'],
     [/^› (.+)$/, (m, a) => '› ' + tr(a)], [/^Ronda (\d+): (\d+) de (\d+) campos$/, 'Round $1: $2 of $3 fields'], [/^(\d+) de (\d+) campos verificados$/, '$1 of $2 fields checked'],
     [/^Regado em teste \((.+)\)$/, 'Watered in a test ($1)'],
     [/^Da base \((.+)\)\. A app calcula a amostra a partir deste número\.$/, (m, a) => `From the database (${tr(a)}). The app calculates the sample from this number.`],
