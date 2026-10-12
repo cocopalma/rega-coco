@@ -203,6 +203,9 @@ document.addEventListener('DOMContentLoaded', () => {
     'Chuva por comunidade': 'Rain per community', 'Chuva total no período (mm)': 'Total rain in the period (mm)',
     'Milímetros medidos nos pluviómetros e registados pelos activistas. Dias sem registo aparecem com —.': 'Millimetres measured in the rain gauges and recorded by the activists. Days without a record show —.',
     'Ainda sem registos de chuva.': 'No rain records yet.', 'no período': 'in the period',
+    'A abrir a fotografia…': 'Opening the photo…', 'A fotografia ainda não chegou ao servidor.': 'The photo has not reached the server yet.', 'Sem acesso a esta fotografia ou sem rede.': 'No access to this photo or no network.',
+    'Toque para fechar.': 'Tap to close.', 'Monitoria deste campo': 'Monitoring of this field', 'Ver fotografia': 'See photo', 'não regado': 'not watered',
+    '📷 = toque para ver a fotografia da leitura do pluviómetro.': '📷 = tap to see the photo of the rain gauge reading.',
     // erros do servidor (criação de logins)
     'Sessão inválida': 'Invalid session', 'Só o gestor pode gerir logins': 'Only the manager can manage logins', 'Pedido inválido': 'Invalid request',
     'Função inválida': 'Invalid role', 'Escreva o nome': 'Write the name', "Esta pessoa já tem acesso. Use 'Nova senha'.": "This person already has access. Use 'New password'.",

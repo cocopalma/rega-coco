@@ -46,6 +46,7 @@ tr.grupo td{background:var(--surface)}
 .vista button{font:inherit;font-size:13px;color:var(--ink2);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:4px 12px;cursor:pointer}
 .vista button[aria-pressed="true"]{background:var(--marca);border-color:var(--marca);color:var(--page);font-weight:600}
 .falta{color:var(--crit);font-weight:700}
+.foto-btn{font:inherit;font-size:13px;background:none;border:0;color:var(--s1);cursor:pointer;padding:0;text-decoration:underline}
 .card .desc{color:var(--ink2);font-size:13px;margin:2px 0 12px}
 .sec{margin-top:14px}
 svg{display:block;width:100%;height:auto;overflow:visible}
@@ -180,7 +181,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n.js?v=30"></script>
+<script src="i18n.js?v=31"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -456,6 +457,21 @@ function desenharTempos() {
     L.map((t) => [esc(t.equipa), t.rega_min != null ? num(t.rega_min) : '—', t.deslocacao_min != null ? num(t.deslocacao_min) : '—', num(t.deslocacoes)]));
 }
 
+// ---------- fotografia do pluviómetro: só se descarrega quando se toca (não atrasa o painel) ----------
+async function verFotoChuva(k) {
+  const lista = (window.FOTOS_CHUVA || {})[k] || []; if (!lista.length) return;
+  const m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px;color:#fff;text-align:center;overflow:auto';
+  m.innerHTML = '<p>A abrir a fotografia…</p>'; m.onclick = () => m.remove(); document.body.appendChild(m);
+  const partes = [];
+  for (const f of lista) {
+    const r = await sb.storage.from('chuva-fotos').createSignedUrl(f.path, 600);
+    const leg = `${k.split('|')[0]} · ${fmtData(k.split('|')[1])}${f.lida_em ? ' ' + new Date(f.lida_em).toLocaleTimeString(LOC, { hour: '2-digit', minute: '2-digit' }) : ''} · ${Number(f.mm).toLocaleString(LOC)} mm${f.activista ? ' · ' + f.activista : ''}`;
+    partes.push(r.error ? `<p>${esc('Sem acesso a esta fotografia ou sem rede.')}</p>` : `<img src="${esc(r.data.signedUrl)}" alt="" style="max-width:100%;max-height:70vh;border-radius:8px"><p>${esc(leg)}</p>`);
+  }
+  m.innerHTML = partes.join('') + '<p style="color:#ddd;font-size:12px">Toque para fechar.</p>';
+}
+
 // ---------- chuva ----------
 function desenharChuva() {
   if (!$('#t-chuva')) return;
@@ -466,8 +482,13 @@ function desenharChuva() {
   barras('#g-chuva', Object.values(tot).sort((a, b) => b.mm - a.mm), { valor: (c) => c.mm, rotulo: (c) => c.comunidade, texto: (c) => fmm(c.mm) + ' mm',
     dicaDe: (c) => [[fmm(c.mm) + ' mm', 'no período'], [c.comunidade], [`${c.comChuva} dias com chuva em ${c.dias} dias registados`]] });
   const dias = [...new Set(L.map((x) => x.data))].sort().slice(-14), v = {}; for (const x of L) v[x.comunidade + '|' + x.data] = x.mm;
+  const fotos = {}; for (const x of L) if (Array.isArray(x.fotos) && x.fotos.length) fotos[x.comunidade + '|' + x.data] = x.fotos;
+  window.FOTOS_CHUVA = fotos;
+  const cel = (c, d) => { const k = c + '|' + d; if (v[k] == null) return '<span style="color:var(--muted)">—</span>';
+    return fotos[k] ? `<button class="foto-btn" onclick="verFotoChuva('${esc(k).replace(/'/g, '&#39;')}')" title="Ver fotografia">${fmm(v[k])} 📷</button>` : fmm(v[k]); };
   $('#t-chuva').innerHTML = `<table><thead><tr><th>Comunidade</th>${dias.map((d) => `<th class="n">${ddmm(d)}</th>`).join('')}<th class="n">Total</th></tr></thead><tbody>` +
-    Object.keys(tot).sort().map((c) => `<tr><td>${esc(c)}</td>${dias.map((d) => `<td class="n">${v[c + '|' + d] != null ? fmm(v[c + '|' + d]) : '<span style="color:var(--muted)">—</span>'}</td>`).join('')}<td class="n"><b>${fmm(tot[c].mm)}</b></td></tr>`).join('') + '</tbody></table>';
+    Object.keys(tot).sort().map((c) => `<tr><td>${esc(c)}</td>${dias.map((d) => `<td class="n">${cel(c, d)}</td>`).join('')}<td class="n"><b>${fmm(tot[c].mm)}</b></td></tr>`).join('') + '</tbody></table>' +
+    (Object.keys(fotos).length ? '<p class="desc" style="margin-top:8px">📷 = toque para ver a fotografia da leitura do pluviómetro.</p>' : '');
 }
 
 // ---------- monitoria ----------

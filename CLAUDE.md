@@ -65,6 +65,11 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Painel: secção "Chuva por comunidade" (RPC `painel_chuva`): total no período por comunidade e tabela por dia.
 - Fase 2 EM STANDBY (12/10/2026, decisão do Valdo): balanço hídrico por comunidade para decidir regar ou não e por quantos dias. Faltam os parâmetros agronómicos (ETo, Kc do coqueiro jovem, água útil do solo e profundidade das raízes, chuva efectiva, limite para voltar a regar) — o Valdo vai pedir ao Albino ou ao Paulo. Não inventar estes valores. Pesquisa feita (12/10): FAO-56 areia 50–110 mm/m de água útil; SoilGrids (ISRIC, estimativa de modelo, 250 m) dá franco-argilo-arenoso (~50% areia, ~30% argila) e 110–155 mm/m em 0–30 cm nas 16 comunidades — contradiz "solo arenoso"; proposta: análise de textura em 3–4 comunidades antes de escolher valores.
 
+## Fotografias visíveis (12/10/2026, Valdo: sem tornar a app lenta)
+- Só se descarregam quando se toca: o servidor devolve apenas o caminho; a imagem vem por URL assinado (10 min) ao tocar.
+- Chuva: painel › Chuva por comunidade › Ver tabela por dia › valores com 📷 (`painel_chuva` devolve `fotos` só a técnico, supervisor, gestor, director e M&E).
+- Monitoria: ficha do campo › "Monitoria deste campo" (RPC `monitorias_campo`, carregada depois de abrir a ficha; não aparece ao activista nem ao cliente); fotografia só para quem verificou, gestor, director e M&E (regras do bucket).
+
 ## Pendentes pedidos pelo Valdo
 - Documento do RH com o tamanho das 12 equipas "por definir" (o Valdo vai pedir).
 - Nomes dos membros de cada equipa (o Valdo envia) para registar quem trabalhou.

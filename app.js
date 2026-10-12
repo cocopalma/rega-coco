@@ -522,7 +522,8 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
     ${d != null ? `<div class="lin"><span>Distância</span><b>${d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km'} · ${rumo(S.pos, [a.latitude, a.longitude])}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}`);
+   </div>${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}<div id="f-mon"></div>`);
+  if (navigator.onLine && !souActivista() && S.perfil.papel !== 'cliente') monitoriasDoCampo(a.id);   // a pedido, não atrasa a ficha
 }
 
 // ---------- entrada ----------
@@ -777,6 +778,22 @@ async function desenharHoje() {
   html = cartaoAvisos() + html + `<button class="btn sec" onclick="sair()">Sair desta conta</button>`;
   $('#hoje').innerHTML = html;
   if (navigator.onLine) LS.set('hojeHtml', { d: h, p: S.perfil.papel, html });
+}
+
+// ---------- fotografias (12/10/2026, Valdo): só se descarregam quando se toca em "Ver fotografia" ----------
+async function verFoto(balde, caminho, legenda = '') {
+  const m = document.createElement('div');
+  m.id = 'foto-modal'; m.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;color:#fff;text-align:center';
+  m.innerHTML = '<p>A abrir a fotografia…</p>'; m.onclick = () => m.remove(); document.body.appendChild(m);
+  const r = await sb.storage.from(balde).createSignedUrl(caminho, 600);
+  if (r.error) { m.innerHTML = `<p>${esc(/not found|Object/i.test(r.error.message) ? 'A fotografia ainda não chegou ao servidor.' : 'Sem acesso a esta fotografia ou sem rede.')}</p><p class="pequeno">Toque para fechar.</p>`; return; }
+  m.innerHTML = `<img src="${esc(r.data.signedUrl)}" alt="" style="max-width:100%;max-height:80vh;border-radius:8px"><p style="margin-top:10px">${esc(legenda)}</p><p class="pequeno" style="color:#ddd">Toque para fechar.</p>`;
+}
+async function monitoriasDoCampo(id) {
+  const r = await sb.rpc('monitorias_campo', { p_area: id }); const el = $('#f-mon');
+  if (r.error || !el || !Array.isArray(r.data) || !r.data.length) return;
+  el.innerHTML = `<div class="cartao" style="margin-top:10px"><h2>Monitoria deste campo</h2>` + r.data.map((v) => `<div class="lin"><span>${fmtData(v.data_rega)} · ${esc(v.verificador || '')}</span><b>nota ${Number(v.nota).toLocaleString(LOC)}${v.solo_regado === false ? ' · <span style="color:#b42318">não regado</span>' : ''}
+      ${v.foto_path ? ` <button class="chip" onclick="verFoto('monitoria-fotos', '${esc(v.foto_path)}', 'Monitoria · rega de ${esc(fmtData(v.data_rega))} · nota ${esc(String(v.nota))}')">Ver fotografia</button>` : ''}</b></div>`).join('') + '</div>';
 }
 
 // ---------- avisos da monitoria à equipa (11/10/2026, Valdo) ----------
