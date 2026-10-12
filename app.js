@@ -816,7 +816,7 @@ function resumoMon(obs) {
   const n = obs.length, h = obs.filter((o) => o.humido).length, pc = n ? Math.round(1000 * h / n) / 10 : 0;
   return { n, h, pct: pc, nota: Math.round(pc) / 10, regado: n > 0 && pc >= CFG.monLimiar,
     vivas: obs.filter((o) => o.estado === 'viva').length, secas: obs.filter((o) => o.estado === 'seca').length, mortas: obs.filter((o) => o.estado === 'morta').length,
-    cob: obs.filter((o) => o.cobertura).length };
+    cob: obs.filter((o) => o.cobertura).length, cava: obs.filter((o) => o.cavaroda).length };
 }
 function desenharPlantaMon() {
   const P = S.monP, alvo = tamanhoAmostra(P.N), r = resumoMon(P.obs), el = $('#m-planta'); if (!el) return;
@@ -830,17 +830,17 @@ function desenharPlantaMon() {
       <div class="lin"><span>Nota</span><b>${r.n ? r.nota.toLocaleString(LOC) : '—'}</b></div>
       <div class="lin"><span>Campo regado (≥ ${CFG.monLimiar}%)</span><b>${r.n ? (r.regado ? 'Sim' : '<span style="color:#b42318">Não</span>') : '—'}</b></div>
       <div class="lin"><span>Vivas / secas / mortas</span><b>${r.vivas} / ${r.secas} / ${r.mortas}</b></div>
-      <div class="lin"><span>Com cobertura morta</span><b>${r.n ? `${r.cob} de ${r.n}` : '—'}</b></div></div>
+      <div class="lin"><span>Com mulching / com cava-roda</span><b>${r.n ? `${r.cob} / ${r.cava} de ${r.n}` : '—'}</b></div></div>
     <h3 style="margin:14px 0 4px">${feito ? 'Amostra completa' : `Planta ${r.n + 1}`}</h3>
     ${feito ? '<p class="pequeno">Pode observar mais plantas, se quiser.</p>' : ''}
     <label>Solo húmido (rega efectiva)?</label>${escolha('m-h', [['1', 'Sim'], ['0', 'Não']])}
     <label>Estado da planta</label>${escolha('m-e', [['viva', 'Viva'], ['seca', 'Seca'], ['morta', 'Morta']])}
-    <label>Tem cobertura morta?</label>${escolha('m-c', [['1', 'Sim'], ['0', 'Não']])}
-    <p class="pequeno">Com cobertura morta, um campo regado na véspera ainda mostra humidade.</p>
+    <label>Mulching e cava-roda</label>${escolha('m-c', [['ambos', 'Os dois'], ['mulching', 'Só mulching'], ['cava', 'Só cava-roda'], ['nenhum', 'Nenhum']])}
+    <p class="pequeno">Com mulching (cobertura morta), um campo regado na véspera ainda mostra humidade.</p>
     ${r.n ? '<button class="btn sec" onclick="desfazerPlantaMon()">Desfazer a última planta</button>' : ''}`;
   for (const [g, k] of [['m-h', 'h'], ['m-e', 'e'], ['m-c', 'c']]) document.querySelectorAll(`#${g} .chip`).forEach((b) => b.onclick = () => {
     P[k] = b.dataset.v; document.querySelectorAll(`#${g} .chip`).forEach((x) => x.classList.toggle('on', x === b));
-    if (P.h != null && P.e != null && P.c != null) { P.obs.push({ humido: P.h === '1', estado: P.e, cobertura: P.c === '1' }); P.h = P.e = P.c = null; desenharPlantaMon(); }
+    if (P.h != null && P.e != null && P.c != null) { P.obs.push({ humido: P.h === '1', estado: P.e, cobertura: ['ambos', 'mulching'].includes(P.c), cavaroda: ['ambos', 'cava'].includes(P.c) }); P.h = P.e = P.c = null; desenharPlantaMon(); }
   });
 }
 function desfazerPlantaMon() { S.monP.obs.pop(); desenharPlantaMon(); }

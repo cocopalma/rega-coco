@@ -56,7 +56,8 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Entrada sem rede: quem já entrou no telefone pode voltar a entrar sem rede. O telefone guarda só uma impressão PBKDF2 da senha/PIN (`localStorage rega.acessoOff`, nunca a senha); a senha fica só em memória (`S.credPend`) e a app autentica-se quando houver rede (`autenticarPendente`, chamado no início da sincronização). Primeira entrada no telefone exige rede.
 - Regas de teste (técnico/supervisor/gestor): não contam para a ronda nem para o painel, mas o próprio vê os campos com a cor roxa "Regado em teste" (últimos 14 dias, `rega.meusTestes` + fila local).
 - Painel: zonas de Palma por baixo da comunidade no gráfico "Plantas vivas regadas por comunidade" (RPC `painel_zonas`, pelo local do campo, `areas.zona`).
-- Monitoria: cobertura morta registada em cada planta da amostra (`plantas_obs[].cobertura`).
+- Monitoria: mulching (cobertura morta) e cava-roda agrupados numa só pergunta por planta da amostra (Os dois / Só mulching / Só cava-roda / Nenhum) → `plantas_obs[].cobertura` e `.cavaroda`.
+- Campos retirados da rega (12/10/2026, listas do Nuro de 10/10 no grupo de alinhamento, confirmado pelo Valdo): 20 campos de Palma com `areas.activa = false`, motivo em `alteracoes_areas.motivo` (campo 'activa'): Muah sem mudas (5), Muah com acesso a água (2), Incularino sem mudas (8 campos, 7 produtores), Incularino sem acesso de tuk-tuk (5) — estes 5 voltam quando houver caminho para tuk-tuk. A lista de Olumbe de 06/10 (campanha 2025) já não estava na base.
 - Gráficos aplicados da pré-visualização: plantas por comunidade, progresso da ronda, espera pela água, monitoria por técnico (linha LQAS). Plantas por pessoa por dia não foi escolhido.
 
 ## Pendentes pedidos pelo Valdo
