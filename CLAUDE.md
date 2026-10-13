@@ -82,3 +82,8 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Guia de uma página para os activistas (entrar, registar rega e chuva, sem rede): fica para mais tarde (Valdo, 13/10/2026).
 - Nomes dos membros de cada equipa (o Valdo envia) para registar quem trabalhou.
 - Painel: frequência de rega (dias entre regas do mesmo campo) por equipa, agrupada por comunidade. Fazer depois da fase de teste dos activistas, quando o agrupamento de campos por equipa estiver confirmado (11/10/2026). Os registos já guardam activista, campo e data, por isso o cálculo cobre também as regas anteriores.
+- Teste da v34 no terreno (polígonos, 50 m da borda, entrada sem rede, cor de teste) pelo Nuro e Raul: marcado para 14/10/2026 (a 13/10 estiveram em reuniões).
+
+## Decisões de 13/10/2026 (Valdo)
+- Secção de monitoria do painel continua escondida ao cliente ("não agora").
+- Testes só com os supervisores, por agora. Logins de activistas e técnicos ficam para mais tarde; o Valdo cria-os na app (não precisa de passo-a-passo).
