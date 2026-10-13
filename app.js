@@ -7,7 +7,7 @@ const CFG = {
   chave: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZnemRxbnZvYmdmempldGJieGNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NDgyMzUsImV4cCI6MjEwNzIyNDIzNX0.1bSDbPLWMvhIG2fzu_Ta2vm1qV1NutzMEmii3wbN7mY',
   dominio: 'rega-coco.example.com', // utilizadores dos activistas: <utilizador>@este-dominio
   margemGPS: 200,      // metros: distância máxima ao centro do campo para validar (campos sem polígono; a afinar no terreno)
-  margemPoligono: 200, // metros: distância máxima à borda do polígono (13/10/2026, provisório: o mesmo valor; Valdo/Dalmar a definir)
+  margemPoligono: 50,  // metros: distância máxima à borda do polígono (13/10/2026, Valdo)
   precisaoCoord: 10,   // metros: pior precisão aceite para gravar a coordenada de um campo (a afinar no terreno)
   precisaoIdeal: 5,    // metros: precisão recomendada
   metaPlantas: 140,    // plantas por pessoa por dia (meta do Valdo, 11/10/2026)
