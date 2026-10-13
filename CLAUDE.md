@@ -68,7 +68,12 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Fotografias visíveis (12/10/2026, Valdo: sem tornar a app lenta)
 - Só se descarregam quando se toca: o servidor devolve apenas o caminho; a imagem vem por URL assinado (10 min) ao tocar.
 - Chuva: painel › Chuva por comunidade › Ver tabela por dia › valores com 📷 (`painel_chuva` devolve `fotos` só a técnico, supervisor, gestor, director e M&E).
-- Monitoria: ficha do campo › "Monitoria deste campo" (RPC `monitorias_campo`, carregada depois de abrir a ficha; não aparece ao activista nem ao cliente); fotografia para quem verificou, técnicos, supervisores, gestor, director e M&E (regras do bucket; técnicos e supervisores desde 13/10/2026, Valdo).
+- Monitoria: ficha do campo › "Monitoria deste campo" (RPC `monitorias_campo`, carregada depois de abrir a ficha). Desde 13/10/2026 (Valdo) todos os papéis vêem as fotografias (chuva e monitoria), incluindo activista e cliente; o cliente não abre fichas e a secção de monitoria do painel continua escondida ao cliente.
+
+## Polígonos das áreas (13/10/2026, pedido do Dalmar via Valdo)
+- `areas.poligono` jsonb [[lon,lat],...] (simplificado ~2 m) e `areas.poligono_fonte`. Fonte: KMZ do Dalmar `A_DIA_A_DIA/06_MAPA_KMZ/Poligonos_Executados_Rega.kmz` (09/10), casado pelo PR e pelo ponto da área (ponto dentro do polígono: 353; polígono a ≤ 25 m: 7). 360 áreas com polígono (357 activas de 701); 339 áreas sem PR no KMZ; 22 com polígono do PR a > 100 m (não usado).
+- App: distância ao campo = 0 dentro do polígono, senão à linha mais próxima (`distCampo`); sem polígono, ao ponto. Margem `CFG.margemPoligono` = 200 m (provisório, igual à anterior; Valdo/Dalmar a definir). Mapa desenha os polígonos (canvas) e um ponto pequeno.
+- Funções temporárias `tmp_areas_para_poligonos` e `tmp_gravar_poligonos` ficaram sem permissão de execução e sem chave; apagar quando o Supabase deixar (DROP pede confirmação que não aparece).
 
 ## Pendentes pedidos pelo Valdo
 - Documento do RH com o tamanho das 12 equipas "por definir" (o Valdo vai pedir).

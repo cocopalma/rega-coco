@@ -6,7 +6,8 @@ const CFG = {
   url: 'https://fgzdqnvobgfzjetbbxcm.supabase.co',
   chave: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZnemRxbnZvYmdmempldGJieGNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NDgyMzUsImV4cCI6MjEwNzIyNDIzNX0.1bSDbPLWMvhIG2fzu_Ta2vm1qV1NutzMEmii3wbN7mY',
   dominio: 'rega-coco.example.com', // utilizadores dos activistas: <utilizador>@este-dominio
-  margemGPS: 200,      // metros: distância máxima ao centro do campo para validar (a afinar no terreno)
+  margemGPS: 200,      // metros: distância máxima ao centro do campo para validar (campos sem polígono; a afinar no terreno)
+  margemPoligono: 200, // metros: distância máxima à borda do polígono (13/10/2026, provisório: o mesmo valor; Valdo/Dalmar a definir)
   precisaoCoord: 10,   // metros: pior precisão aceite para gravar a coordenada de um campo (a afinar no terreno)
   precisaoIdeal: 5,    // metros: precisão recomendada
   metaPlantas: 140,    // plantas por pessoa por dia (meta do Valdo, 11/10/2026)
@@ -40,6 +41,32 @@ function metros(a, b) {
   const dLat = (b[0] - a[0]) * r, dLon = (b[1] - a[1]) * r;
   const x = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(x));
+}
+// Distância ao campo (13/10/2026, pedido do Dalmar): com polígono, 0 dentro e, fora, a distância à linha mais próxima do polígono;
+// sem polígono, a distância ao ponto do campo (centroide).
+function dentroPoligono(lat, lon, pol) {
+  let d = false;
+  for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) {
+    const [xi, yi] = pol[i], [xj, yj] = pol[j];
+    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-15) + xi) d = !d;
+  }
+  return d;
+}
+function distPoligono(lat, lon, pol) {
+  if (dentroPoligono(lat, lon, pol)) return 0;
+  const kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 110540; let best = Infinity;
+  for (let i = 0; i < pol.length; i++) {
+    const [x1, y1] = pol[i], [x2, y2] = pol[(i + 1) % pol.length];
+    const ax = (x1 - lon) * kx, ay = (y1 - lat) * ky, bx = (x2 - lon) * kx, by = (y2 - lat) * ky, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    const t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+  }
+  return best;
+}
+const temPoligono = (a) => Array.isArray(a.poligono) && a.poligono.length >= 3;
+function distCampo(a, pos) {
+  if (temPoligono(a)) return distPoligono(pos[0], pos[1], a.poligono);
+  return a.latitude != null ? metros(pos, [a.latitude, a.longitude]) : null;
 }
 function rumo(a, b) {
   const r = Math.PI / 180, y = Math.sin((b[1] - a[1]) * r) * Math.cos(b[0] * r);
@@ -195,7 +222,7 @@ async function carregarTudo() {
   const [p, ac, ar, zs, est] = await Promise.all([
     sb.from('perfis').select('id,nome,papel,activista_id').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
-    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999),
+    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono').eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
     sb.rpc('estado_ronda'),
   ]);
@@ -316,7 +343,7 @@ async function sair() {
 // ---------- mapa ----------
 let mapa, camada, eu;
 function iniciarMapa() {
-  mapa = L.map('mapa', { zoomControl: true }).setView([-10.75, 40.45], 11);
+  mapa = L.map('mapa', { zoomControl: true, preferCanvas: true }).setView([-10.75, 40.45], 11);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
   camada = L.layerGroup().addTo(mapa);
   if (navigator.geolocation) navigator.geolocation.watchPosition((p) => {
@@ -334,7 +361,9 @@ function desenharMapa(enquadrar = false) {
     if (a.latitude == null) continue;
     if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
     const s = situacao(a);
-    L.circleMarker([a.latitude, a.longitude], { radius: 8, color: '#fff', weight: 2, fillColor: COR[s.cod], fillOpacity: .95 })
+    if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { color: COR[s.cod], weight: 2, fillColor: COR[s.cod], fillOpacity: .25 })
+      .on('click', () => abrirFicha(a.id)).addTo(camada);
+    L.circleMarker([a.latitude, a.longitude], { radius: temPoligono(a) ? 5 : 8, color: '#fff', weight: 2, fillColor: COR[s.cod], fillOpacity: .95 })
       .on('click', () => abrirFicha(a.id)).addTo(camada);
     pts.push([a.latitude, a.longitude]);
   }
@@ -378,11 +407,12 @@ function desenharLista() {
   const fa = $('#f-act').value; if (fa) L2 = L2.filter((a) => (fa === '__sem' ? !a.activista_id : a.activista_id === fa));
   if (com) { const [c, z] = com.split('|'); L2 = L2.filter((a) => a.comunidade === c && (z === undefined || (a.zona || '') === z)); }
   if (txt) L2 = L2.filter((a) => (a.produtor || '').toLowerCase().includes(txt) || a.pr.toLowerCase().includes(txt));
-  let linhas = L2.map((a) => ({ a, s: situacao(a), d: S.pos && a.latitude != null ? metros(S.pos, [a.latitude, a.longitude]) : null }));
+  let linhas = L2.map((a) => ({ a, s: situacao(a), d: S.pos ? distCampo(a, S.pos) : null }));
   if (sit) linhas = linhas.filter((x) => x.s.cod === sit);
   linhas.sort((x, y) => (x.s.cod === 'feita') - (y.s.cod === 'feita') || (x.d ?? 1e12) - (y.d ?? 1e12));   // por regar primeiro
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
     (porAtribuir().length && sit !== 'sem' ? `<div class="msg info">${porAtribuir().length} campos por atribuir. <button class="chip" onclick="$('#f-sit').value='sem';desenharLista()">Ver</button></div>` : '') +
+    (sit ? `<div class="msg info">Filtro: ${esc($('#f-sit').selectedOptions[0]?.textContent || '')}. <button class="chip" onclick="$('#f-sit').value='';desenharLista()">← Ver todos os campos</button></div>` : '') +
     `<p class="pequeno">${linhas.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` +
     linhas.slice(0, 300).map(({ a, s, d }) => `<div class="item" data-id="${esc(a.id)}"><div>
       <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
@@ -489,7 +519,7 @@ function gravarAtribuicao(id) {
   abrirFicha(id, `<div class="msg ok">Campo atribuído a ${esc(nomeAct(novo))}.${navigator.onLine ? '' : ' Será enviado quando houver rede.'}</div>`);
 }
 async function recarregarAreas() {
-  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio').eq('activa', true).order('comunidade').range(0, 4999);
+  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono').eq('activa', true).order('comunidade').range(0, 4999);
   if (ar.error) return;
   S.areas = aplicarPendentes(ar.data); LS.set('areas', S.areas);
 }
@@ -501,7 +531,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
 function abrirFicha(id, nota = '') {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   const s = situacao(a), emCurso = LS.get('emCurso');
-  const d = S.pos && a.latitude != null ? metros(S.pos, [a.latitude, a.longitude]) : null;
+  const d = S.pos ? distCampo(a, S.pos) : null;
   const podeRegar = PODE_REGAR.includes(S.perfil.papel) && (S.perfil.papel === 'activista' || a.activista_id);
   let acc = '';
   if (emCurso && emCurso.area_id === a.id) acc = (emCurso.agua_em
@@ -520,20 +550,21 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Plantas</span><b>${plantasTxt(a)}</b></div>
     <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div>
     <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
-    ${d != null ? `<div class="lin"><span>Distância</span><b>${d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km'} · ${rumo(S.pos, [a.latitude, a.longitude])}</b></div>` : ''}
+    ${d != null ? `<div class="lin"><span>Distância${temPoligono(a) ? ' (à borda)' : ''}</span><b>${d === 0 ? 'dentro do campo' : (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') + (a.latitude != null ? ' · ' + rumo(S.pos, [a.latitude, a.longitude]) : '')}</b></div>` : ''}
+    <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
    </div>${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}<div id="f-mon"></div>`);
-  if (navigator.onLine && !souActivista() && S.perfil.papel !== 'cliente') monitoriasDoCampo(a.id);   // a pedido, não atrasa a ficha
+  if (navigator.onLine && S.perfil.papel !== 'cliente') monitoriasDoCampo(a.id);   // a pedido, não atrasa a ficha
 }
 
 // ---------- entrada ----------
 async function validarPosicao(a) {
   const c = await lerGPS();
   const precisao = Math.round(c.accuracy);
-  if (a.latitude == null) return { lat: c.latitude, lon: c.longitude, precisao, dist: null, valido: null };
-  const dist = Math.round(metros([c.latitude, c.longitude], [a.latitude, a.longitude]));
-  const valido = dist <= CFG.margemGPS + Math.min(precisao, 50);
-  return { lat: c.latitude, lon: c.longitude, precisao, dist, valido };
+  if (a.latitude == null && !temPoligono(a)) return { lat: c.latitude, lon: c.longitude, precisao, dist: null, valido: null };
+  const dist = Math.round(distCampo(a, [c.latitude, c.longitude]));
+  const valido = dist <= (temPoligono(a) ? CFG.margemPoligono : CFG.margemGPS) + Math.min(precisao, 50);
+  return { lat: c.latitude, lon: c.longitude, precisao, dist, valido, poligono: temPoligono(a) };
 }
 // ---------- início do dia: pessoas presentes na equipa ----------
 const jornadaHoje = () => { const j = LS.get('jornada'); return j && j.data === hojeISO() ? j : null; };
@@ -566,7 +597,7 @@ async function marcarEntrada(id) {
   if (souActivista() && S.perfil.activista_id && !jornadaHoje()) return ecraJornada(id);
   folha('<h2>A ler o GPS…</h2><p class="pequeno">Pode levar até 30 segundos. Fique em céu aberto.</p>');
   let g; try { g = await validarPosicao(a); } catch (e) { return abrirFicha(id, `<div class="msg erro">${esc(e.message)}</div>`); }
-  if (g.valido === false) return abrirFicha(id, `<div class="msg erro">Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Só pode marcar a entrada até ${CFG.margemGPS} m do campo.</div>`);
+  if (g.valido === false) return abrirFicha(id, `<div class="msg erro">Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Só pode marcar a entrada até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'} do campo.</div>`);
   const ent = { area_id: id, entrada_em: new Date().toISOString(), entrada_lat: g.lat, entrada_lon: g.lon, gps_precisao_m: g.precisao, distancia_area_m: g.dist, gps_valido: g.valido };
   const sug = LS.get('sugestao');
   if (sug) { ent.area_sugerida_id = sug.area_id; ent.seguiu_sugestao = sug.area_id === id; LS.del('sugestao'); }
@@ -578,7 +609,7 @@ async function marcarEntrada(id) {
       <button class="btn aviso" onclick="confirmarAlerta()">Regar mesmo assim</button>
       <button class="btn sec" onclick="LS.del('pendenteAlerta');abrirFicha('${esc(id)}')">Não regar este campo</button>`);
   }
-  LS.set('emCurso', ent); abrirFicha(id, `<div class="msg ok">Entrada marcada às ${fmtHora(ent.entrada_em)}${g.dist != null ? ` · a ${g.dist} m do campo` : ''}.</div>`);
+  LS.set('emCurso', ent); abrirFicha(id, `<div class="msg ok">Entrada marcada às ${fmtHora(ent.entrada_em)}${g.dist === 0 ? ' · dentro do campo' : g.dist != null ? ` · a ${g.dist} m do campo` : ''}.</div>`);
 }
 function confirmarAlerta() {
   const m = $('#a-motivo').value.trim();
@@ -622,7 +653,7 @@ async function marcarSaida() {
   const tipos = [...document.querySelectorAll('#s-chips .chip.on')].map((b) => b.dataset.k), obs = $('#s-obs').value.trim();
   folha('<h2>A ler o GPS…</h2><p class="pequeno">A confirmar que ainda está no campo.</p>');
   let g; try { g = await validarPosicao(a); } catch (e) { ecraSaida(); return aviso(e.message, 'erro'); }
-  if (g.valido === false) { ecraSaida(); return aviso(`Está a ${g.dist} m do campo. Marque a saída ainda no campo (até ${CFG.margemGPS} m).`, 'erro'); }
+  if (g.valido === false) { ecraSaida(); return aviso(`Está a ${g.dist} m do campo. Marque a saída ainda no campo (até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'}).`, 'erro'); }
   const actId = S.perfil.activista_id || a.activista_id;
   const antes = actId ? rondaInfo(actId) : null;
   const reg = {
@@ -832,7 +863,7 @@ function cartaoMonitoria() {
   const feitas = lista.filter(monFeita).length;
   return `<div class="cartao"><h2>Monitoria · regas de ${fmtData(lista[0].data_rega)}</h2><p class="pequeno">${feitas} de ${lista.length} campos verificados.</p>` +
     lista.map((m) => { const a = S.areas.find((x) => x.id === m.area_id) || { produtor: m.area_id };
-      const d = S.pos && a.latitude != null ? metros(S.pos, [a.latitude, a.longitude]) : null;
+      const d = S.pos ? distCampo(a, S.pos) : null;
       return `<div class="item" onclick="abrirFicha('${esc(m.area_id)}')"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr || '')} · ${esc(a.comunidade || '')} · ${esc(nomeAct(m.activista_id))}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div></div>
         ${monFeita(m) ? '<span class="tag t-feita">Verificado</span>' : '<span class="tag t-por">Por verificar</span>'}</div>`; }).join('') + '</div>';
 }
@@ -944,7 +975,7 @@ async function gravarMonitoria(amostraId) {
   const foto = S.monFoto, obs = $('#m-obs').value.trim();
   $('#m-gravar').disabled = true;
   let g; try { g = await validarPosicao(a); } catch (e) { $('#m-gravar').disabled = false; return aviso(e.message, 'erro'); }
-  if (g.valido === false) { $('#m-gravar').disabled = false; return aviso(`Está a ${g.dist} m do campo. A verificação faz-se no campo (até ${CFG.margemGPS} m).`, 'erro'); }
+  if (g.valido === false) { $('#m-gravar').disabled = false; return aviso(`Está a ${g.dist} m do campo. A verificação faz-se no campo (até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'}).`, 'erro'); }
   const reg = { id: crypto.randomUUID(), amostra_id: amostraId, verificador_id: S.perfil.id, area_id: m.area_id, data_rega: m.data_rega, feito_em: new Date().toISOString(),
     lat: g.lat, lon: g.lon, gps_precisao_m: g.precisao, distancia_m: g.dist, gps_valido: g.valido,
     solo_regado: r.regado, mudas_estado: null, nota: r.nota, observacao: obs || null,

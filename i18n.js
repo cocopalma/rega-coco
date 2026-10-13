@@ -206,6 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'A abrir a fotografia…': 'Opening the photo…', 'A fotografia ainda não chegou ao servidor.': 'The photo has not reached the server yet.', 'Sem acesso a esta fotografia ou sem rede.': 'No access to this photo or no network.',
     'Toque para fechar.': 'Tap to close.', 'Monitoria deste campo': 'Monitoring of this field', 'Ver fotografia': 'See photo', 'não regado': 'not watered',
     '📷 = toque para ver a fotografia da leitura do pluviómetro.': '📷 = tap to see the photo of the rain gauge reading.',
+    'Distância (à borda)': 'Distance (to boundary)', 'dentro do campo': 'inside the field', 'Limite do campo': 'Field boundary', 'polígono': 'polygon', 'só ponto (sem polígono)': 'point only (no polygon)', '← Ver todos os campos': '← See all fields',
     // erros do servidor (criação de logins)
     'Sessão inválida': 'Invalid session', 'Só o gestor pode gerir logins': 'Only the manager can manage logins', 'Pedido inválido': 'Invalid request',
     'Função inválida': 'Invalid role', 'Escreva o nome': 'Write the name', "Esta pessoa já tem acesso. Use 'Nova senha'.": "This person already has access. Use 'New password'.",
@@ -223,6 +224,10 @@ document.addEventListener('DOMContentLoaded', () => {
     'No período escolhido. Espera = minutos entre a entrada no campo e a chegada da água.': 'In the chosen period. Wait = minutes between field entry and water arrival.',
   });
   const R = [
+    [/^Está a (.+) m do campo \(precisão ±(.+) m\)\. Só pode marcar a entrada até (.+) m da borda do campo\.$/, 'You are $1 m from the field (accuracy ±$2 m). You can only record entry within $3 m of the field boundary.'],
+    [/^Está a (.+) m do campo\. Marque a saída ainda no campo \(até (.+) m da borda\)\.$/, 'You are $1 m from the field. Record the exit while still at the field (within $2 m of the boundary).'],
+    [/^Está a (.+) m do campo\. A verificação faz-se no campo \(até (.+) m da borda\)\.$/, 'You are $1 m from the field. The check is done at the field (within $2 m of the boundary).'],
+    [/^Entrada marcada às (\S+) · dentro do campo\.$/, 'Entry recorded at $1 · inside the field.'], [/^Filtro: (.+)\.$/, (m, a) => `Filter: ${tr(a)}.`],
     [/^(\d+) dias com chuva em (\d+) dias registados$/, '$1 rainy days out of $2 days recorded'], [/^(.+) mm$/, '$1 mm'],
     [/^Chuva guardada: (.+) mm em (.+)\.$/, 'Rain saved: $1 mm in $2.'], [/^Chuva não gravada: (.+)$/, 'Rain not saved: $1'], [/^Hoje · (.+)$/, 'Today · $1'], [/^Ontem · (.+)$/, 'Yesterday · $1'],
     [/^› (.+)$/, (m, a) => '› ' + tr(a)], [/^Ronda (\d+): (\d+) de (\d+) campos$/, 'Round $1: $2 of $3 fields'], [/^(\d+) de (\d+) campos verificados$/, '$1 of $2 fields checked'],
