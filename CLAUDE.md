@@ -68,7 +68,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Fotografias visíveis (12/10/2026, Valdo: sem tornar a app lenta)
 - Só se descarregam quando se toca: o servidor devolve apenas o caminho; a imagem vem por URL assinado (10 min) ao tocar.
 - Chuva: painel › Chuva por comunidade › Ver tabela por dia › valores com 📷 (`painel_chuva` devolve `fotos` só a técnico, supervisor, gestor, director e M&E).
-- Monitoria: ficha do campo › "Monitoria deste campo" (RPC `monitorias_campo`, carregada depois de abrir a ficha; não aparece ao activista nem ao cliente); fotografia só para quem verificou, gestor, director e M&E (regras do bucket).
+- Monitoria: ficha do campo › "Monitoria deste campo" (RPC `monitorias_campo`, carregada depois de abrir a ficha; não aparece ao activista nem ao cliente); fotografia para quem verificou, técnicos, supervisores, gestor, director e M&E (regras do bucket; técnicos e supervisores desde 13/10/2026, Valdo).
 
 ## Pendentes pedidos pelo Valdo
 - Documento do RH com o tamanho das 12 equipas "por definir" (o Valdo vai pedir).
