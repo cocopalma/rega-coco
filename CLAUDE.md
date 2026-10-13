@@ -73,7 +73,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Polígonos das áreas (13/10/2026, pedido do Dalmar via Valdo)
 - `areas.poligono` jsonb [[lon,lat],...] (simplificado ~2 m) e `areas.poligono_fonte`. Fontes (KMZ do Dalmar de 09/10): `A_DIA_A_DIA/06_MAPA_KMZ/Poligonos_Executados_Rega.kmz` e `B_PLANO_DE_REGA/04_MAPAS_KMZ/Plano_Rega_Semanal.kmz` (+ Plano_Rega_Equipa_Hoje), casados pelo PR (no nome do polígono) e pelo ponto da área: 622 de 721 áreas (603 de 701 activas). Sem polígono: 69 áreas cujo PR não está em nenhum KMZ e 30 com o polígono do PR a > 100 m do ponto (não usado).
 - App: distância ao campo = 0 dentro do polígono, senão à linha mais próxima (`distCampo`); sem polígono, ao ponto. Margem `CFG.margemPoligono` = 50 m da borda (13/10/2026, Valdo); sem polígono continua `CFG.margemGPS` = 200 m ao ponto. Mapa desenha os polígonos (canvas) e um ponto pequeno.
-- Funções temporárias `tmp_areas_para_poligonos` e `tmp_gravar_poligonos` ficaram sem permissão de execução e sem chave; apagar quando o Supabase deixar (DROP pede confirmação que não aparece).
+- Funções temporárias de importação (`tmp_areas_para_poligonos`, `tmp_gravar_poligonos`) e a chave foram apagadas pelo Valdo no SQL Editor (13/10/2026). Para nova importação, criar de novo e apagar no fim.
 - "Sair": só o botão do topo; o "Sair desta conta" no fim do Hoje foi retirado (13/10/2026, Valdo).
 
 ## Pendentes pedidos pelo Valdo
