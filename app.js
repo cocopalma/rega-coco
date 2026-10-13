@@ -806,7 +806,7 @@ async function desenharHoje() {
         `<p class="pequeno">Equipa = pessoas presentes / pessoas da equipa (faltas a vermelho)${podeMudar ? '; toque para mudar o número de pessoas da equipa' : ''}. Produtores = produtores com campos regados hoje. % meta = plantas regadas ÷ (${CFG.metaPlantas} × pessoas presentes). Tuk-tuk = hora da 1.ª chegada da água. Início = entrada no 1.º campo; Fim = saída do último. Desloc. = tempo médio entre a saída de um campo e a entrada no seguinte. Alertas = regas fora da lista da equipa.</p>`;
     }
   }
-  html = cartaoAvisos() + html + `<button class="btn sec" onclick="sair()">Sair desta conta</button>`;
+  html = cartaoAvisos() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   $('#hoje').innerHTML = html;
   if (navigator.onLine) LS.set('hojeHtml', { d: h, p: S.perfil.papel, html });
 }
