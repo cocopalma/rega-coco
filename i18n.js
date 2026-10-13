@@ -123,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'produtividade média': 'average productivity', 'Equipas activas': 'Active teams', 'Plantas regadas por dia': 'Plants watered per day',
     'Registos da app com plantas regadas (exclui testes).': 'App records with plants watered (tests excluded).', 'Ver tabela': 'View table',
     'Plantas vivas regadas por comunidade': 'Live plants watered per community', '% das plantas vivas da comunidade em campos já regados pela app.': '% of the community’s live plants in fields already watered through the app.',
-    'Equipas — rondas e produtividade': 'Teams — rounds and productivity',
+    'Equipas — rondas e produtividade': 'Teams — rounds and productivity', 'Equipas — rondas': 'Teams — rounds', 'A produtividade por equipa está na secção': 'Productivity by team is in the section', ', mais abaixo.': ', further down.',
     'Cada equipa rega toda a sua lista antes de repetir um campo. A duração de cada ronda concluída é o ciclo provisório da comunidade.': 'Each team waters its whole list before repeating a field. The length of each completed round is the community’s provisional cycle.',
     'Chegada da água (tuk-tuk) por equipa': 'Water (tuk-tuk) arrival per team', 'Últimos 14 dias. Espera = minutos entre a entrada no campo e a chegada da água.': 'Last 14 days. Wait = minutes between field entry and water arrival.',
     'Constrangimentos registados': 'Constraints recorded', 'Número de registos com cada constrangimento.': 'Number of records with each constraint.',
