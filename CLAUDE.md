@@ -63,6 +63,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Chuva e balanço hídrico (12/10/2026, sugestão do Albino, decisões do Valdo)
 - Há pluviómetros nas comunidades; o activista regista a chuva (Hoje › Chuva (pluviómetro) › Registar): dia (hoje/ontem), hora da leitura, comunidade (das suas áreas), mm e fotografia obrigatória da leitura (reduzida no telefone, bucket privado `chuva-fotos/<perfil>/<id>.jpg`; colunas `lida_em`, `foto_path`; 12/10/2026, Valdo). Tabela `chuva` (único por dia+comunidade+activista; corrige-se gravando de novo), fila `filaChuva` sem rede.
 - Painel: secção "Chuva por comunidade" (RPC `painel_chuva`): total no período por comunidade e tabela por dia.
+- Chuva de teste (13/10/2026, Valdo, para o teste dos supervisores): técnico, supervisor e gestor registam no Hoje ("Chuva (pluviómetro) · teste"), comunidades das áreas que vêem; `chuva.teste = true`, `activista_id` null, upsert por `id` (o telefone reutiliza o id por dia+comunidade em `rega.chuvaTesteIds`). `painel_chuva` ignora `teste`. RLS: activista só grava `teste = false`; os outros só `teste = true`.
 - Fase 2 EM STANDBY (12/10/2026, decisão do Valdo): balanço hídrico por comunidade para decidir regar ou não e por quantos dias. Faltam os parâmetros agronómicos (ETo, Kc do coqueiro jovem, água útil do solo e profundidade das raízes, chuva efectiva, limite para voltar a regar) — o Valdo vai pedir ao Albino ou ao Paulo. Não inventar estes valores. Pesquisa feita (12/10): FAO-56 areia 50–110 mm/m de água útil; SoilGrids (ISRIC, estimativa de modelo, 250 m) dá franco-argilo-arenoso (~50% areia, ~30% argila) e 110–155 mm/m em 0–30 cm nas 16 comunidades — contradiz "solo arenoso"; proposta: análise de textura em 3–4 comunidades antes de escolher valores.
 
 ## Fotografias visíveis (12/10/2026, Valdo: sem tornar a app lenta)
@@ -82,7 +83,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Guia de uma página para os activistas (entrar, registar rega e chuva, sem rede): fica para mais tarde (Valdo, 13/10/2026).
 - Nomes dos membros de cada equipa (o Valdo envia) para registar quem trabalhou.
 - Painel: frequência de rega (dias entre regas do mesmo campo) por equipa, agrupada por comunidade. Fazer depois da fase de teste dos activistas, quando o agrupamento de campos por equipa estiver confirmado (11/10/2026). Os registos já guardam activista, campo e data, por isso o cálculo cobre também as regas anteriores.
-- Teste da v34 no terreno (polígonos, 50 m da borda, entrada sem rede, cor de teste) pelo Nuro e Raul: marcado para 14/10/2026 (a 13/10 estiveram em reuniões).
+- Teste da v35 no terreno (polígonos, 50 m da borda, entrada sem rede, cor de teste, chuva de teste) pelo Nuro e Raul: marcado para 14/10/2026 (a 13/10 estiveram em reuniões).
 
 ## Decisões de 13/10/2026 (Valdo)
 - Secção de monitoria do painel continua escondida ao cliente ("não agora").

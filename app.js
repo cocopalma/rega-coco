@@ -199,7 +199,7 @@ async function sincronizarAgora(silencioso) {
       let foto = null; try { foto = await FOTOS.ler(c.id); } catch {} foto = foto || S.fotosMem?.[c.id] || null;
       const caminho = `${S.perfil.id}/${c.id}.jpg`;
       if (foto) { const up = await sb.storage.from('chuva-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) { erro = up.error.message; break; } }
-      const r5 = await sb.from('chuva').upsert({ ...c, foto_path: foto ? caminho : null }, { onConflict: 'data,comunidade,activista_id' });
+      const r5 = await sb.from('chuva').upsert({ ...c, teste: !!c.teste, foto_path: foto ? caminho : null }, { onConflict: c.teste ? 'id' : 'data,comunidade,activista_id' });
       if (r5.error && !r5.error.code) { erro = r5.error.message; break; }
       if (r5.error) aviso(`Chuva não gravada: ${r5.error.message}`, 'erro');
       LS.set('filaChuva', LS.get('filaChuva', []).filter((y) => y.id !== c.id));
@@ -337,7 +337,7 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- mapa ----------
@@ -699,7 +699,11 @@ function sugerirProximo(feito, nota = '') {
 
 // ---------- chuva (12/10/2026, Valdo; sugestão do Albino) ----------
 // O activista lê o pluviómetro da comunidade e regista os milímetros. Funciona sem rede (fila "filaChuva").
-const minhasComunidades = () => { const t = S.activistas.find((x) => x.id === S.perfil?.activista_id);
+// Técnico, supervisor e gestor registam chuva só em teste (13/10/2026, Valdo): não conta no painel.
+const chuvaTeste = () => S.perfil?.papel !== 'activista';
+const minhasComunidades = () => {
+  if (chuvaTeste()) return [...new Set(S.areas.map((a) => a.comunidade).filter(Boolean))].sort();
+  const t = S.activistas.find((x) => x.id === S.perfil?.activista_id);
   return [...new Set([t?.comunidade_principal, ...minhas().map((a) => a.comunidade)].filter(Boolean))].sort(); };
 function textoChuvaHoje() {
   const h = hojeISO(), g = LS.get('chuvaFeita', {}) || {}, v = Object.entries(g).filter(([k]) => k.startsWith(h + '|'));
@@ -709,7 +713,7 @@ function ecraChuva() {
   const coms = minhasComunidades(), h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
   const agora = new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
   S.chuvaFoto = null;
-  folha(`<h2>Chuva</h2><p class="pequeno">Leia o pluviómetro da comunidade, escreva os milímetros e tire uma fotografia da leitura. Se não choveu, carregue em "Não choveu".</p>
+  folha(`<h2>Chuva</h2>${chuvaTeste() ? '<div class="msg info">Registo de teste: não conta no painel.</div>' : ''}<p class="pequeno">Leia o pluviómetro da comunidade, escreva os milímetros e tire uma fotografia da leitura. Se não choveu, carregue em "Não choveu".</p>
     <label>Dia da chuva<select id="c-data"><option value="${h}">Hoje · ${fmtData(h)}</option><option value="${ontem}">Ontem · ${fmtData(ontem)}</option></select></label>
     <label>Hora da leitura<input id="c-hora" type="time" value="${agora}"></label>
     <label>Comunidade<select id="c-com">${coms.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
@@ -731,12 +735,16 @@ async function gravarChuva() {
   const hora = $('#c-hora').value; if (!hora) { alert('Escreva a hora da leitura.'); return; }
   if (!S.chuvaFoto) { alert('Tire a fotografia da leitura do pluviómetro.'); return; }
   const data = $('#c-data').value, [hh, mi] = hora.split(':'), t = new Date(data + 'T00:00:00'); t.setHours(+hh, +mi, 0, 0);
-  const c = { id: crypto.randomUUID(), data, comunidade: $('#c-com').value, mm, lida_em: t.toISOString(), activista_id: S.perfil.activista_id, user_id: S.perfil.id, observacao: $('#c-obs').value.trim() || null };
+  const teste = chuvaTeste(), com = $('#c-com').value;
+  // no teste não há activista: o mesmo dia+comunidade reutiliza o id para corrigir em vez de duplicar
+  const ids = LS.get('chuvaTesteIds', {}) || {}, id = (teste && ids[data + '|' + com]) || crypto.randomUUID();
+  if (teste) { ids[data + '|' + com] = id; LS.set('chuvaTesteIds', ids); }
+  const c = { id, data, comunidade: com, mm, lida_em: t.toISOString(), activista_id: teste ? null : S.perfil.activista_id, user_id: S.perfil.id, observacao: $('#c-obs').value.trim() || null, teste };
   try { await FOTOS.guardar(c.id, S.chuvaFoto); } catch { S.fotosMem = { ...(S.fotosMem || {}), [c.id]: S.chuvaFoto }; }
   const f = LS.get('filaChuva', []).filter((x) => !(x.data === c.data && x.comunidade === c.comunidade)); f.push(c); LS.set('filaChuva', f);
   const g = LS.get('chuvaFeita', {}) || {}; g[c.data + '|' + c.comunidade] = mm; LS.set('chuvaFeita', g);
   fecharFolha(); actSync(); sincronizar(true); if ($('#e-hoje').classList.contains('on')) desenharHoje();
-  aviso(`Chuva guardada: ${num(mm)} mm em ${c.comunidade}.`, 'ok');
+  aviso(`Chuva guardada: ${num(mm)} mm em ${c.comunidade}.` + (teste ? ' (teste)' : ''), 'ok');
 }
 // ---------- hoje ----------
 const tamanhoEquipa = (id) => (S.activistas.find((t) => t.id === id) || {}).equipa_tamanho || null;   // null = por definir
@@ -795,6 +803,7 @@ async function desenharHoje() {
         if (x.pessoas > o.pessoas) o.pessoas = x.pessoas;
         if (!o.ini || x.entrada_em < o.ini) o.ini = x.entrada_em; if (!o.fim || x.saida_em > o.fim) o.fim = x.saida_em; }
       const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
+      if (podeMudar) html += `<div class="lin"><span>Chuva (pluviómetro) · teste</span><b>${textoChuvaHoje()} <button class="chip" onclick="ecraChuva()">Registar</button></b></div>`;
       html += `<div class="lin"><span>Registos recebidos</span><b>${r.data.length}</b></div><button class="btn sec" onclick="mudar('painel')">Abrir painel geral</button></div>
         <div style="overflow-x:auto"><table><tr><th>Activista</th><th>Equipa</th><th class="n">Produtores</th><th class="n">Campos</th><th class="n">Plantas</th><th class="n">% meta</th><th>Tuk-tuk</th><th>Início</th><th>Fim</th><th class="n">Desloc.</th><th class="n">Alertas</th></tr>` +
         Object.entries(g).map(([k, o]) => { const tam = tamanhoEquipa(k), d = deslocacao(o.regs);
