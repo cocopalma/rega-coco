@@ -714,7 +714,15 @@ function locaisChuva() {
 const nomeLocal = (com, zona) => zona ? `${com} › ${zona}` : com;
 function textoChuvaHoje() {
   const h = hojeISO(), g = LS.get('chuvaFeita', {}) || {}, v = Object.entries(g).filter(([k]) => k.startsWith(h + '|'));
-  return v.length ? v.map(([k, mm]) => `${num(mm)} mm${v.length > 1 ? ' (' + esc(k.split('|').slice(1).join('|')) + ')' : ''}`).join(', ') : '—';
+  return v.length ? v.map(([k, mm]) => `${num(mm)} mm (${esc(k.split('|').slice(1).join('|'))})`).join(', ') : '—';
+}
+// linha da chuva no Hoje: depois de registada mostra "✓ Registado" em vez de pedir outra vez (14/10/2026, Nuro)
+function linhaChuva(rotulo) {
+  const h = hojeISO(), feita = Object.keys(LS.get('chuvaFeita', {}) || {}).some((k) => k.startsWith(h + '|'));
+  return feita
+    ? `<div class="lin"><span>${rotulo}</span><b><span style="color:var(--ok,#2e7d32)">✓ Registado</span> ${textoChuvaHoje()}</b></div>
+       <p class="pequeno" style="margin:2px 0 6px;text-align:right"><button class="chip" onclick="ecraChuva()">Corrigir ou outra comunidade</button></p>`
+    : `<div class="lin"><span>${rotulo}</span><b>— <button class="chip" onclick="ecraChuva()">Registar</button></b></div>`;
 }
 // ---------- fotografia e rascunhos (14/10/2026, Nuro) ----------
 // Em telefones com pouca memória, o Android fecha o Chrome quando a câmara abre e o formulário perdia-se.
@@ -745,7 +753,8 @@ function ecraChuva(r) {
   folha(`<h2>Chuva</h2>${r?.camara ? AVISO_CAMARA : ''}${chuvaTeste() ? '<div class="msg info">Registo de teste: não conta no painel.</div>' : ''}<p class="pequeno">Leia o pluviómetro da comunidade, escreva os milímetros e tire uma fotografia da leitura. Se não choveu, carregue em "Não choveu".</p>
     <label>Dia da chuva<select id="c-data"><option value="${h}">Hoje · ${fmtData(h)}</option><option value="${ontem}">Ontem · ${fmtData(ontem)}</option></select></label>
     <label>Hora da leitura<input id="c-hora" type="time" value="${agora}"></label>
-    <label>Comunidade<select id="c-com">${locais.map((l, i) => `<option value="${i}">${esc(nomeLocal(l.com, l.zona))}</option>`).join('')}</select></label>
+    <label>Comunidade<select id="c-com">${locais.map((l, i) => { const feito = (LS.get('chuvaFeita', {}) || {})[h + '|' + nomeLocal(l.com, l.zona)];
+      return `<option value="${i}">${esc(nomeLocal(l.com, l.zona))}${feito != null ? ` · registado hoje (${num(feito)} mm)` : ''}</option>`; }).join('')}</select></label>
     <label>Chuva no pluviómetro (mm)<input id="c-mm" type="number" inputmode="decimal" min="0" max="500" step="0.1"></label>
     <button class="chip" onclick="$('#c-mm').value='0';$('#c-mm').dispatchEvent(new Event('input'))">Não choveu (0 mm)</button>
     ${campoFoto('c-foto', 'Fotografia da leitura do pluviómetro')}
@@ -758,8 +767,11 @@ function ecraChuva(r) {
     if (r.hora) $('#c-hora').value = r.hora; if (r.mm != null) $('#c-mm').value = r.mm; if (r.obs) $('#c-obs').value = r.obs;
     const i = locais.findIndex((l) => nomeLocal(l.com, l.zona) === r.local); if (i >= 0) $('#c-com').value = String(i);
   }
+  else {                                                // começa no primeiro local ainda sem registo hoje
+    const fe = LS.get('chuvaFeita', {}) || {}, i = locais.findIndex((l) => fe[h + '|' + nomeLocal(l.com, l.zona)] == null); if (i > 0) $('#c-com').value = String(i);
+  }
   const guardar = () => rascGuardar('rascChuva', { perfil: S.perfil?.id, camara: false, data: $('#c-data').value, hora: $('#c-hora').value, mm: $('#c-mm').value, obs: $('#c-obs').value,
-    local: $('#c-com').selectedOptions[0]?.textContent || '' });
+    local: (() => { const l = S.chuvaLocais?.[+$('#c-com').value]; return l ? nomeLocal(l.com, l.zona) : ''; })() });
   ['#c-data', '#c-hora', '#c-com', '#c-mm', '#c-obs'].forEach((q) => $(q).addEventListener('input', guardar));
   ['#c-data', '#c-com'].forEach((q) => $(q).addEventListener('change', guardar));
   if (r?.camara) setTimeout(guardar, 0); else guardar();
@@ -825,13 +837,13 @@ async function desenharHoje() {
     const j = jornadaHoje();
     html += `<div class="lin"><span>Ronda</span><b>${textoRonda()}</b></div>
       <div class="lin"><span>Pessoas hoje</span><b>${j ? textoEquipa(j.pessoas, tamanhoEquipa(S.perfil.activista_id)) : '—'} <button class="chip" onclick="ecraJornada()">${j ? 'Alterar' : 'Registar'}</button></b></div>
-      <div class="lin"><span>Chuva (pluviómetro)</span><b>${textoChuvaHoje()} <button class="chip" onclick="ecraChuva()">Registar</button></b></div>
+      ${linhaChuva('Chuva (pluviómetro)')}
       <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div></div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
     if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarMonitoria(); html = cartaoMonitoria() + html; }
     const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
-    if (podeMudar) html += `<div class="lin"><span>Chuva (pluviómetro) · teste</span><b>${textoChuvaHoje()} <button class="chip" onclick="ecraChuva()">Registar</button></b></div>`;
+    if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste');
     // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
     const r = navigator.onLine ? await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h) : { error: { semRede: true } };
     if (r.error && (r.error.semRede || /fetch|network|rede/i.test(r.error.message || ''))) html += `<div class="msg info">Sem rede. O resumo das equipas aparece quando houver rede.</div></div>`;
