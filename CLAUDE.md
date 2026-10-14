@@ -97,6 +97,12 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Pedido do Raul (via Valdo, 14/10): 9 áreas voltaram à rega — PR032518-2, PR033764-2, PR400946-2 (Rotina Carlos), PR033806-1…4 e PR2169523-2 (Julia Jaime), PR033832-2 (Biena). Já estavam na rega: PR2274367-1, PR228241-1, PR2277247-1, PR2277248-1, PR228397-1, PR400893-1 (sem activista: era do Chafim). PR401409 (Daniel Severiano Lhiucuto) não existe; na base está Daniel Severino Lhiucuto PR228223-1 (Senga, já na rega). 8 das 9 áreas não têm coordenada.
 - Câmara dentro da app (`camaraNaApp`, getUserMedia, vídeo + botão "📷 Tirar"): no telefone do Nuro a câmara do sistema fechava o Chrome ao guardar a foto. Sem getUserMedia, usa a câmara do sistema; sem autorização, avisa e sugere a galeria. Teste: `rega-test/teste_camara_voltar.py`.
 
+## Medir a área no campo (15/10/2026, pedido do Valdo; funciona sem rede)
+- Ficha do campo › "📐 Medir a área (andar à volta do campo)": técnico só em campos sem limite; supervisor e gestor também "de novo". A pessoa anda pela borda; o GPS marca um ponto a cada 3 m (`PASSO_MEDIR`) só com precisão ≤ `CFG.precisaoCoord`; "Marcar canto", "Desfazer", "Recomeçar"; ecrã ligado (Wake Lock). Desenho, perímetro e área ao vivo; no fim simplifica (Douglas-Peucker 1 m), avisa se o último ponto ficou a > 20 m do início, mostra plantas/ha.
+- Rascunho `rega.rascMedir` (pontos a cada ponto): se a app fechar a meio da volta, reabre e continua; se a pessoa sair, os pontos ficam para quando voltar a medir esse campo.
+- Grava pela fila `filaAlt` (tipo 'poligono') → RPC `gravar_poligono(p_area, p_pontos, p_precisao, p_medido_em)`: valida papel/visibilidade, 3–3000 pontos dentro da zona, área 4 m² a 50 ha; grava `poligono`, `area_m2`, `area_medida_em`, `poligono_fonte` "Medido na app dd/mm/aaaa (GPS ±x m)", e a coordenada (centro) se faltava; regista em `alteracoes_areas` (campo 'poligono', constraint alargada). A ficha mostra a área (medida, ou calculada do polígono do KMZ).
+- A 15/10: 108 campos activos sem polígono (39 também sem coordenada). Teste: `rega-test/teste_medir.py`.
+
 ## Pendentes pedidos pelo Valdo
 - Documento do RH com o tamanho das 12 equipas "por definir" (o Valdo vai pedir).
 - Lista de todos os campos a regar com coordenadas (e polígonos), pedida pelo Valdo ao Dalmar a 13/10/2026: quando chegar, voltar a casar os polígonos e resolver as 69 áreas sem polígono e as 30 com polígono do PR a > 100 m.

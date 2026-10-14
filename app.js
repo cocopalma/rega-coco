@@ -187,6 +187,7 @@ async function sincronizarAgora(silencioso) {
       const r4 = x.tipo === 'coord'
         ? await sb.rpc('gravar_coordenada', { p_area: x.area_id, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao })
         : x.tipo === 'zona' ? await sb.rpc('definir_zona', { p_area: x.area_id, p_zona: x.zona })
+        : x.tipo === 'poligono' ? await sb.rpc('gravar_poligono', { p_area: x.area_id, p_pontos: x.pontos, p_precisao: x.precisao, p_medido_em: x.medido_em })
         : await sb.rpc('atribuir_area', { p_area: x.area_id, p_activista: x.activista_id });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
       if (r4.error) aviso(`Não foi gravado (${x.area_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
@@ -222,7 +223,7 @@ async function carregarTudo() {
   const [p, ac, ar, zs, est] = await Promise.all([
     sb.from('perfis').select('id,nome,papel,activista_id').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
-    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em').eq('activa', true).order('comunidade').range(0, 4999),
+    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2').eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
     sb.rpc('estado_ronda'),
   ]);
@@ -337,7 +338,7 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- mapa ----------
@@ -420,6 +421,142 @@ function desenharLista() {
       </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}<span class="tag t-${s.cod}">${s.txt}</span>${s.cod === 'sem' && podeAtribuir(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
 }
 
+// ---------- medir a área andando à volta do campo (15/10/2026, Valdo) ----------
+// Técnico (campos sem limite), supervisor e gestor. O GPS marca um ponto a cada 3 m andados (só com precisão até
+// CFG.precisaoCoord); também se pode marcar à mão. Os pontos ficam no telefone (rascunho) e a medição envia-se
+// pela fila de alterações quando houver rede.
+const PASSO_MEDIR = 3;               // metros entre pontos automáticos
+let vigiaMedir = null, travaEcra = null;
+function pararMedicao() {
+  if (vigiaMedir != null) { navigator.geolocation.clearWatch(vigiaMedir); vigiaMedir = null; }
+  if (travaEcra) { travaEcra.release().catch(() => {}); travaEcra = null; }
+}
+const centroPontos = (P) => [P.reduce((s, p) => s + p[0], 0) / P.length, P.reduce((s, p) => s + p[1], 0) / P.length];
+function emMetros(P) { const lat0 = centroPontos(P)[1] * Math.PI / 180; return P.map(([lo, la]) => [lo * Math.cos(lat0) * 111320, la * 110540]); }
+function areaPontos(P) {
+  if (!Array.isArray(P) || P.length < 3) return 0;
+  const m = emMetros(P); let s = 0;
+  for (let i = 0; i < m.length; i++) { const [x1, y1] = m[i], [x2, y2] = m[(i + 1) % m.length]; s += x1 * y2 - x2 * y1; }
+  return Math.abs(s) / 2;
+}
+function perimetroPontos(P, fechar) {
+  const m = emMetros(P); let s = 0;
+  for (let i = 1; i < m.length; i++) s += Math.hypot(m[i][0] - m[i - 1][0], m[i][1] - m[i - 1][1]);
+  if (fechar && m.length > 2) s += Math.hypot(m[0][0] - m[m.length - 1][0], m[0][1] - m[m.length - 1][1]);
+  return s;
+}
+const textoArea = (m2) => m2 >= 10000 ? `${(m2 / 10000).toLocaleString(LOC, { maximumFractionDigits: 2 })} ha (${num(Math.round(m2))} m²)` : `${num(Math.round(m2))} m²`;
+// simplifica o traçado (Douglas-Peucker, tolerância em metros) para não guardar milhares de pontos
+function simplificar(P, tol = 1) {
+  if (P.length < 4) return P;
+  const m = emMetros(P), manter = new Array(P.length).fill(false); manter[0] = manter[P.length - 1] = true;
+  const pilha = [[0, P.length - 1]];
+  while (pilha.length) {
+    const [i, j] = pilha.pop(); let dmax = 0, k = -1;
+    const [x1, y1] = m[i], [x2, y2] = m[j], L = Math.hypot(x2 - x1, y2 - y1) || 1e-9;
+    for (let t = i + 1; t < j; t++) { const d = Math.abs((x2 - x1) * (y1 - m[t][1]) - (x1 - m[t][0]) * (y2 - y1)) / L; if (d > dmax) { dmax = d; k = t; } }
+    if (dmax > tol) { manter[k] = true; pilha.push([i, k], [k, j]); }
+  }
+  return P.filter((_, i) => manter[i]);
+}
+function desenhoPontos(P, pos) {
+  const todos = pos ? [...P, pos] : P; if (!todos.length) return '';
+  const m = emMetros(todos), xs = m.map((p) => p[0]), ys = m.map((p) => p[1]);
+  const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(10, Math.max(...xs) - x0), h = Math.max(10, Math.max(...ys) - y0), k = 180 / Math.max(w, h);
+  const pt = ([x, y]) => `${(10 + (x - x0) * k).toFixed(1)},${(190 - (y - y0) * k).toFixed(1)}`;
+  const linha = m.slice(0, P.length).map(pt).join(' ');
+  return `<svg viewBox="0 0 200 200" width="100%" style="max-height:220px;background:#eef4ea;border-radius:10px" aria-hidden="true">
+    ${P.length > 2 ? `<polygon points="${linha}" fill="rgba(46,125,50,.25)" stroke="#1f5130" stroke-width="2"/>` : `<polyline points="${linha}" fill="none" stroke="#1f5130" stroke-width="2"/>`}
+    ${P.length ? `<circle cx="${pt(m[0]).split(',')[0]}" cy="${pt(m[0]).split(',')[1]}" r="5" fill="#d84315"/>` : ''}
+    ${pos ? `<circle cx="${pt(m[m.length - 1]).split(',')[0]}" cy="${pt(m[m.length - 1]).split(',')[1]}" r="5" fill="#1565c0"/>` : ''}</svg>`;
+}
+function ecraMedir(id, r) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  pararVigia();
+  const rr = r && r.area_id === id ? r : (rascLer('rascMedir')?.area_id === id && rascLer('rascMedir')?.perfil === S.perfil?.id ? rascLer('rascMedir') : null);
+  S.medir = { id, pts: rr?.pts || [], prec: null, pos: null, a_andar: false, melhor: rr?.melhor || null };
+  const continuar = !!(r && r.a_andar);
+  folha(`<h2>Medir a área · ${esc(a.produtor)}</h2>
+    ${rr?.pts?.length ? `<div class="msg info">Medição recuperada: ${rr.pts.length} pontos já marcados. Continue de onde parou.</div>` : ''}
+    <div class="msg info"><b>Como medir:</b> vá a um canto do campo e carregue em «Começar». Ande devagar pela borda, à volta do campo todo, até voltar ao ponto vermelho. O telefone marca pontos sozinho a cada ${PASSO_MEDIR} m. Nos cantos pode carregar em «Marcar canto». Mantenha a app aberta e o ecrã ligado.</div>
+    <div class="cartao"><div class="lin"><span>Precisão do GPS</span><b id="md-prec">—</b></div>
+      <div class="lin"><span>Pontos</span><b id="md-n">0</b></div>
+      <div class="lin"><span>Distância andada</span><b id="md-per">0 m</b></div>
+      <div class="lin"><span>Área até agora</span><b id="md-area">—</b></div></div>
+    <div id="md-des" style="margin:8px 0"></div>
+    <button class="btn" id="md-ir">▶ Começar</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"><button class="chip" id="md-canto">📍 Marcar canto</button><button class="chip" id="md-desf">↶ Desfazer último ponto</button><button class="chip" id="md-limpar">Recomeçar</button></div>
+    <button class="btn" id="md-fim" disabled>✓ Terminar e gravar a área</button>
+    <button class="btn sec" onclick="pausarMedicao();pararMedicao();abrirFicha('${esc(id)}')">Sair (os pontos ficam guardados no telefone)</button>`);
+  $('#md-ir').onclick = () => (S.medir.a_andar ? pausarMedicao() : comecarMedicao());
+  $('#md-canto').onclick = () => { const p = S.medir.pos; if (!p) return aviso('Ainda sem posição do GPS.', 'erro'); if (p.prec > CFG.precisaoCoord) return aviso(`Precisão fraca (±${p.prec} m). Espere uns segundos.`, 'erro'); juntarPonto(p, true); };
+  $('#md-desf').onclick = () => { S.medir.pts.pop(); guardarMedicao(); mostrarMedicao(); };
+  $('#md-limpar').onclick = () => { if (S.medir.pts.length && !confirm('Apagar os pontos marcados e recomeçar?')) return; S.medir.pts = []; S.medir.melhor = null; guardarMedicao(); mostrarMedicao(); };
+  $('#md-fim').onclick = terminarMedicao;
+  mostrarMedicao();
+  if (!navigator.geolocation) return aviso('Este telefone não tem GPS disponível no navegador.', 'erro');
+  if (continuar) comecarMedicao();
+  vigiaMedir = navigator.geolocation.watchPosition((p) => {
+    if (!$('#md-prec')) return pararMedicao();
+    const ponto = { lon: p.coords.longitude, lat: p.coords.latitude, prec: Math.round(p.coords.accuracy) };
+    S.medir.pos = ponto;
+    if (S.medir.a_andar && ponto.prec <= CFG.precisaoCoord) {
+      const u = S.medir.pts[S.medir.pts.length - 1];
+      if (!u || metros([u[1], u[0]], [ponto.lat, ponto.lon]) >= PASSO_MEDIR) juntarPonto(ponto, false);
+    }
+    mostrarMedicao();
+  }, (e) => { const el = $('#md-prec'); if (el) el.textContent = e.code === 1 ? 'sem autorização de localização' : 'sem sinal de GPS'; },
+  { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 });
+}
+async function comecarMedicao() {
+  S.medir.a_andar = true; guardarMedicao(); $('#md-ir').textContent = '⏸ Pausar';
+  try { if (navigator.wakeLock) travaEcra = await navigator.wakeLock.request('screen'); } catch {}
+  const p = S.medir.pos; if (p && p.prec <= CFG.precisaoCoord && !S.medir.pts.length) juntarPonto(p, true);
+}
+function pausarMedicao() { S.medir.a_andar = false; guardarMedicao(); $('#md-ir').textContent = '▶ Continuar'; if (travaEcra) { travaEcra.release().catch(() => {}); travaEcra = null; } }
+function juntarPonto(p, manual) {
+  S.medir.pts.push([+p.lon.toFixed(7), +p.lat.toFixed(7)]);
+  S.medir.melhor = Math.max(S.medir.melhor || 0, p.prec);         // pior precisão usada (para registo)
+  guardarMedicao(); mostrarMedicao();
+  if (manual && navigator.vibrate) navigator.vibrate(60);
+}
+const guardarMedicao = () => rascGuardar('rascMedir', { area_id: S.medir.id, perfil: S.perfil?.id, pts: S.medir.pts, melhor: S.medir.melhor, a_andar: !!S.medir.a_andar });
+function mostrarMedicao() {
+  const M = S.medir; if (!M || !$('#md-n')) return;
+  const el = $('#md-prec');
+  if (M.pos) { el.textContent = `±${M.pos.prec} m`; el.style.color = M.pos.prec <= CFG.precisaoIdeal ? '#1b5e20' : M.pos.prec <= CFG.precisaoCoord ? '#ef8f00' : '#c62828'; }
+  $('#md-n').textContent = M.pts.length;
+  $('#md-per').textContent = `${num(Math.round(M.pts.length > 1 ? perimetroPontos(M.pts, false) : 0))} m`;
+  $('#md-area').textContent = M.pts.length >= 3 ? textoArea(areaPontos(M.pts)) : '—';
+  $('#md-des').innerHTML = desenhoPontos(M.pts, M.pos ? [M.pos.lon, M.pos.lat] : null);
+  $('#md-fim').disabled = M.pts.length < 4;
+}
+function terminarMedicao() {
+  const M = S.medir; if (M.pts.length < 4) return;
+  pausarMedicao();
+  const P = simplificar(M.pts, 1), area = areaPontos(P), a = S.areas.find((x) => x.id === M.id);
+  const fim = M.pts[M.pts.length - 1], dFecho = metros([fim[1], fim[0]], [M.pts[0][1], M.pts[0][0]]);
+  folha(`<h2>Área medida · ${esc(a.produtor)}</h2>
+    ${dFecho > 20 ? `<div class="msg erro">O último ponto está a ${Math.round(dFecho)} m do início. Se não deu a volta completa, volte e continue a medir.</div>` : ''}
+    <div class="cartao"><div class="lin"><span>Área</span><b>${textoArea(area)}</b></div>
+      <div class="lin"><span>Perímetro</span><b>${num(Math.round(perimetroPontos(P, true)))} m</b></div>
+      <div class="lin"><span>Pontos</span><b>${P.length}</b></div>
+      ${a.vivas ? `<div class="lin"><span>Plantas vivas na base</span><b>${num(a.vivas)} (${(a.vivas / (area / 10000)).toLocaleString(LOC, { maximumFractionDigits: 0 })} por ha)</b></div>` : ''}</div>
+    ${desenhoPontos(P)}
+    <button class="btn" onclick="gravarMedicao()">Gravar esta área</button>
+    <button class="btn sec" onclick="ecraMedir('${esc(M.id)}')">Voltar e continuar a medir</button>`);
+  S.medir.final = P;
+}
+function gravarMedicao() {
+  const M = S.medir, P = M.final, a = S.areas.find((x) => x.id === M.id); if (!P || !a) return;
+  const area = Math.round(areaPontos(P) * 10) / 10;
+  a.poligono = P; a.area_m2 = area; if (a.latitude == null) { const c = centroPontos(P); a.latitude = c[1]; a.longitude = c[0]; }
+  LS.set('areas', S.areas);
+  porNaFilaAlt({ tipo: 'poligono', area_id: a.id, pontos: P, area_m2: area, precisao: M.melhor || null, medido_em: new Date().toISOString() });
+  LS.del('rascMedir'); S.medir = null;
+  desenharMapa(true); desenharLista();
+  abrirFicha(a.id, `<div class="msg ok">Área gravada: ${textoArea(area)}${navigator.onLine ? '' : ' (no telefone; é enviada quando houver rede)'}.</div>`);
+}
 // ---------- campos fora do plano que voltam à rega (14/10/2026, Nuro / Valdo) ----------
 // O servidor tem as áreas do Controlo_Rega_Areas com REGA = NÃO (e as retiradas a 12/10) com activa = false.
 // Não vêm para o telefone: só se procuram quando o supervisor ou o gestor abre este ecrã (precisa de rede).
@@ -478,6 +615,8 @@ function botoesCampo(a) {
   let h = '';
   if (PODE_COORD.includes(S.perfil.papel) && (a.latitude == null || ['gestor', 'supervisor'].includes(S.perfil.papel)))
     h += `<button class="btn sec" onclick="ecraCoordenada('${esc(a.id)}')">📍 ${a.latitude == null ? 'Gravar a coordenada deste campo' : 'Corrigir a coordenada (estou no campo)'}</button>`;
+  if (PODE_COORD.includes(S.perfil.papel) && (!temPoligono(a) || ['gestor', 'supervisor'].includes(S.perfil.papel)))
+    h += `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 ${temPoligono(a) ? 'Medir a área de novo (andar à volta)' : 'Medir a área (andar à volta do campo)'}</button>`;
   if (podeAtribuir(a)) h += `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">👤 ${a.activista_id ? 'Mudar o activista deste campo' : 'Atribuir a um activista'}</button>`;
   if (['gestor', 'supervisor'].includes(S.perfil.papel) && zonasDe(a.comunidade).length) h += `<button class="btn sec" onclick="ecraZona('${esc(a.id)}')">🗂 ${a.zona ? 'Mudar a zona' : 'Definir a zona'}</button>`;
   return h;
@@ -499,7 +638,7 @@ function gravarZona(id) {
 function porNaFilaAlt(x) { const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), ...x }); LS.set('filaAlt', f); actSync(); sincronizar(true); }
 // leitura contínua do GPS: mostra a precisão a melhorar e só deixa gravar abaixo do limite
 let vigiaCoord = null;
-function pararVigia() { if (vigiaCoord != null) { navigator.geolocation.clearWatch(vigiaCoord); vigiaCoord = null; } }
+function pararVigia() { if (vigiaCoord != null) { navigator.geolocation.clearWatch(vigiaCoord); vigiaCoord = null; } pararMedicao(); }
 function ecraCoordenada(id) {
   const a = S.areas.find((x) => x.id === id);
   pararVigia(); S.coordPendente = null;
@@ -568,12 +707,14 @@ function gravarAtribuicao(id) {
   abrirFicha(id, `<div class="msg ok">Campo atribuído a ${esc(nomeAct(novo))}.${navigator.onLine ? '' : ' Será enviado quando houver rede.'}</div>`);
 }
 async function recarregarAreas() {
-  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em').eq('activa', true).order('comunidade').range(0, 4999);
+  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2').eq('activa', true).order('comunidade').range(0, 4999);
   if (ar.error) return;
   S.areas = aplicarPendentes(ar.data); LS.set('areas', S.areas);
 }
 function aplicarPendentes(lista) {                          // o que ainda não foi enviado continua a valer neste telefone
-  for (const x of LS.get('filaAlt', [])) { const a = lista.find((y) => y.id === x.area_id); if (!a) continue; if (x.tipo === 'coord') { a.latitude = x.lat; a.longitude = x.lon; } else if (x.tipo === 'zona') a.zona = x.zona; else a.activista_id = x.activista_id; }
+  for (const x of LS.get('filaAlt', [])) { const a = lista.find((y) => y.id === x.area_id); if (!a) continue; if (x.tipo === 'coord') { a.latitude = x.lat; a.longitude = x.lon; } else if (x.tipo === 'zona') a.zona = x.zona;
+    else if (x.tipo === 'poligono') { a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
+    else a.activista_id = x.activista_id; }
   return lista;
 }
 
@@ -602,6 +743,7 @@ function abrirFicha(id, nota = '') {
     ${d != null ? `<div class="lin"><span>Distância${temPoligono(a) ? ' (à borda)' : ''}</span><b>${d === 0 ? 'dentro do campo' : (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') + (a.latitude != null ? ' · ' + rumo(S.pos, [a.latitude, a.longitude]) : '')}</b></div>` : ''}
     ${eNovo(a) ? `<div class="lin"><span>Na rega desde</span><b>${fmtData(a.reactivada_em.slice(0, 10))} <span class="tag t-novo">Novo na rega</span></b></div>` : ''}
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
+    ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
    </div>${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}<div id="f-mon"></div>`);
   if (navigator.onLine && S.perfil.papel !== 'cliente') monitoriasDoCampo(a.id);   // a pedido, não atrasa a ficha
@@ -1344,6 +1486,8 @@ function mostrarApp() {
 // formulário que estava aberto quando o telefone fechou a app (ex.: ao abrir a câmara) volta a abrir
 function retomarRascunhos() {
   try {
+    const rd = rascLer('rascMedir');
+    if (rd && rd.a_andar && rd.perfil === S.perfil?.id && rd.pts?.length && S.areas.some((x) => x.id === rd.area_id)) return ecraMedir(rd.area_id, rd);
     const rm = rascLer('rascMon');
     if (rm && rm.perfil === S.perfil?.id && (S.mon || []).some((x) => x.amostra_id === rm.amostraId)) return ecraMonitoria(rm.amostraId, rm);
     const rc = rascLer('rascChuva');
