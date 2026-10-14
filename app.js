@@ -222,7 +222,7 @@ async function carregarTudo() {
   const [p, ac, ar, zs, est] = await Promise.all([
     sb.from('perfis').select('id,nome,papel,activista_id').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
-    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono').eq('activa', true).order('comunidade').range(0, 4999),
+    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em').eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
     sb.rpc('estado_ronda'),
   ]);
@@ -413,12 +413,61 @@ function desenharLista() {
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
     (porAtribuir().length && sit !== 'sem' ? `<div class="msg info">${porAtribuir().length} campos por atribuir. <button class="chip" onclick="$('#f-sit').value='sem';desenharLista()">Ver</button></div>` : '') +
     (sit ? `<div class="msg info">Filtro: ${esc($('#f-sit').selectedOptions[0]?.textContent || '')}. <button class="chip" onclick="$('#f-sit').value='';desenharLista()">← Ver todos os campos</button></div>` : '') +
+    (['supervisor', 'gestor'].includes(S.perfil?.papel) ? `<button class="btn sec" onclick="ecraVoltarRega()">➕ Voltar a pôr um campo na rega</button>` : '') +
     `<p class="pequeno">${linhas.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` +
     linhas.slice(0, 300).map(({ a, s, d }) => `<div class="item" data-id="${esc(a.id)}"><div>
       <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
-      </div><span class="tag t-${s.cod}">${s.txt}</span>${s.cod === 'sem' && podeAtribuir(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
+      </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}<span class="tag t-${s.cod}">${s.txt}</span>${s.cod === 'sem' && podeAtribuir(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
 }
 
+// ---------- campos fora do plano que voltam à rega (14/10/2026, Nuro / Valdo) ----------
+// O servidor tem as áreas do Controlo_Rega_Areas com REGA = NÃO (e as retiradas a 12/10) com activa = false.
+// Não vêm para o telefone: só se procuram quando o supervisor ou o gestor abre este ecrã (precisa de rede).
+const eNovo = (a) => a.reactivada_em && Date.now() - new Date(a.reactivada_em) < 14 * 864e5;
+function ecraVoltarRega() {
+  folha(`<h2>Voltar a pôr um campo na rega</h2>
+    <p class="pequeno">Campos que estão fora do plano de rega. Procure pelo nome do produtor ou pelo PR (pelo menos 3 letras). Precisa de rede.</p>
+    <input id="vr-txt" type="search" placeholder="Nome do produtor ou PR" autocomplete="off">
+    <div id="vr-res" style="margin-top:8px"></div>
+    <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+  let t; $('#vr-txt').oninput = () => { clearTimeout(t); t = setTimeout(procurarForaPlano, 400); };
+  $('#vr-txt').focus();
+}
+async function procurarForaPlano() {
+  const q = $('#vr-txt').value.trim(), el = $('#vr-res'); if (!el) return;
+  if (q.length < 3) { el.innerHTML = ''; return; }
+  if (!navigator.onLine) { el.innerHTML = '<div class="msg info">Sem rede. Esta procura precisa de internet.</div>'; return; }
+  el.innerHTML = '<p class="pequeno">A procurar…</p>';
+  const r = await sb.rpc('areas_fora_plano', { p_txt: q });
+  if ($('#vr-txt')?.value.trim() !== q) return;
+  if (r.error) { el.innerHTML = `<div class="msg erro">${esc(r.error.message)}</div>`; return; }
+  const L = r.data || [];
+  if (!L.length) { el.innerHTML = '<div class="msg info">Nenhum campo fora do plano com esse nome ou PR. Se o campo existe, envie o PR ao gestor.</div>'; return; }
+  S.foraPlano = L;
+  el.innerHTML = `<p class="pequeno">${L.length === 40 ? 'Primeiros 40 resultados. Escreva mais letras para afinar.' : L.length + ' campos'}</p>` + L.map((a, i) => `<div class="cartao" style="margin:6px 0;padding:10px 12px">
+    <div class="nome"><b>${esc(a.produtor || '—')}</b></div>
+    <div class="sub pequeno">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${a.vivas != null ? num(a.vivas) + ' vivas' : '—'}${a.instaladas != null ? ' de ' + num(a.instaladas) + ' plantadas' : ''}${a.data_plantio ? ' · plantio ' + fmtData(a.data_plantio) : ''}</div>
+    <div class="sub pequeno">${a.agua_origem === 'COM' ? 'Na base: tinha água' : a.agua_origem === 'SEM' ? 'Na base: sem água' : ''}${a.n_regas_origem ? ` · ${a.n_regas_origem} regas antes${a.ultima_rega_origem ? ' (última ' + fmtData(a.ultima_rega_origem) + ')' : ''}` : ''}${a.activista_origem ? ' · activista: ' + esc(a.activista_origem) : ''}${a.tem_coord ? '' : ' · <b>sem coordenada</b>'}</div>
+    ${a.motivo_saida ? `<div class="sub pequeno">Saiu da rega: ${esc(a.motivo_saida)}</div>` : ''}
+    <button class="chip" style="margin-top:6px" onclick="confirmarVoltaRega(${i})">Voltar a regar</button></div>`).join('');
+}
+function confirmarVoltaRega(i) {
+  const a = S.foraPlano[i];
+  folha(`<h2>${esc(a.produtor || a.pr)}</h2><p class="pequeno">${esc(a.pr)} · ${esc(a.comunidade)} · ${a.vivas != null ? num(a.vivas) + ' vivas' : '—'}</p>
+    <p>Este campo volta à lista de rega a partir de agora.</p>
+    <label>Motivo (opcional)<textarea id="vr-motivo" rows="2" placeholder="Ex.: o poço secou"></textarea></label>
+    <button class="btn" id="vr-ok" onclick="voltarRega(${i})">Voltar a regar</button><button class="btn sec" onclick="ecraVoltarRega()">Cancelar</button>`);
+}
+async function voltarRega(i) {
+  const a = S.foraPlano[i]; if (!navigator.onLine) return aviso('Sem rede. Tente quando houver rede.', 'erro');
+  $('#vr-ok').disabled = true;
+  const r = await sb.rpc('voltar_a_regar', { p_area: a.id, p_motivo: $('#vr-motivo').value.trim() || null });
+  if (r.error) { $('#vr-ok').disabled = false; return aviso(r.error.message, 'erro'); }
+  await recarregarAreas(); await carregarEstado().catch(() => {});
+  aviso(`${a.produtor || a.pr} voltou à rega.${r.data?.activista_id ? '' : ' Falta atribuir o activista.'}`, 'ok');
+  if (S.areas.some((x) => x.id === a.id)) abrirFicha(a.id); else fecharFolha();
+  desenharLista(); desenharMapa(true);
+}
 // ---------- ficha do campo ----------
 function folha(html) { $('#folha-c').innerHTML = html; $('#folha').classList.add('on'); }
 function fecharFolha() { pararVigia(); $('#folha').classList.remove('on'); }
@@ -519,7 +568,7 @@ function gravarAtribuicao(id) {
   abrirFicha(id, `<div class="msg ok">Campo atribuído a ${esc(nomeAct(novo))}.${navigator.onLine ? '' : ' Será enviado quando houver rede.'}</div>`);
 }
 async function recarregarAreas() {
-  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono').eq('activa', true).order('comunidade').range(0, 4999);
+  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em').eq('activa', true).order('comunidade').range(0, 4999);
   if (ar.error) return;
   S.areas = aplicarPendentes(ar.data); LS.set('areas', S.areas);
 }
@@ -551,6 +600,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div>
     <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
     ${d != null ? `<div class="lin"><span>Distância${temPoligono(a) ? ' (à borda)' : ''}</span><b>${d === 0 ? 'dentro do campo' : (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') + (a.latitude != null ? ' · ' + rumo(S.pos, [a.latitude, a.longitude]) : '')}</b></div>` : ''}
+    ${eNovo(a) ? `<div class="lin"><span>Na rega desde</span><b>${fmtData(a.reactivada_em.slice(0, 10))} <span class="tag t-novo">Novo na rega</span></b></div>` : ''}
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
    </div>${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}<div id="f-mon"></div>`);
@@ -733,12 +783,44 @@ const rascLer = (k) => { const r = LS.get(k); return r && Date.now() - (r.ts || 
 const rascGuardar = (k, v) => LS.set(k, { ...(LS.get(k) || {}), ...v, ts: Date.now() });
 function campoFoto(id, rotulo) {
   return `<label>${rotulo}</label><div class="foto-esc" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
-    <label class="chip" for="${id}-cam" data-cam="1">📷 Tirar fotografia</label><label class="chip" for="${id}">🖼️ Escolher da galeria</label>
+    <button type="button" class="chip" id="${id}-cambtn">📷 Tirar fotografia</button><label class="chip" for="${id}">🖼️ Escolher da galeria</label>
     <input id="${id}-cam" type="file" accept="image/*" capture="environment" hidden><input id="${id}" type="file" accept="image/*" hidden></div>`;
+}
+// Câmara dentro da app (14/10/2026, Nuro): com a câmara do sistema o Android fechava o Chrome ao guardar a foto.
+// Aqui a imagem vem do vídeo da câmara, sem sair da página. Se o telefone não deixar, usa a câmara do sistema.
+async function camaraNaApp(aoFoto) {
+  if (!navigator.mediaDevices?.getUserMedia) return false;
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1600 }, height: { ideal: 1200 } }, audio: false }); }
+  catch (e) {
+    if (e && e.name === 'NotAllowedError') { aviso('A app não tem autorização para usar a câmara. Autorize a câmara no Chrome (cadeado ao lado do endereço) ou use «Escolher da galeria».', 'erro'); return true; }
+    return false;
+  }
+  const ov = document.createElement('div'); ov.id = 'cam-ov';
+  ov.style.cssText = 'position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column';
+  ov.innerHTML = `<video autoplay playsinline muted style="flex:1;min-height:0;width:100%;object-fit:contain;background:#000"></video>
+    <div style="display:flex;gap:12px;justify-content:center;padding:16px 16px calc(16px + env(safe-area-inset-bottom));background:#000">
+      <button type="button" class="btn sec" id="cam-x" style="width:auto;margin:0">Cancelar</button><button type="button" class="btn" id="cam-ok" style="width:auto;margin:0;min-width:140px">📷 Tirar</button></div>`;
+  document.body.appendChild(ov);
+  const v = ov.querySelector('video'); v.srcObject = stream;
+  const fechar = () => { stream.getTracks().forEach((t) => t.stop()); ov.remove(); };
+  ov.querySelector('#cam-x').onclick = fechar;
+  ov.querySelector('#cam-ok').onclick = () => {
+    if (!v.videoWidth) return;
+    const k = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight)), c = document.createElement('canvas');
+    c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k); c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+    fechar(); c.toBlob((b) => aoFoto(b), 'image/jpeg', 0.85);
+  };
+  return true;
 }
 function ligarFoto(id, rasc, aoLer) {
   const abrir = () => { if (rasc) rascGuardar(rasc, { camara: true }); };
-  document.querySelectorAll(`label[for="${id}-cam"], label[for="${id}"]`).forEach((l) => l.addEventListener('click', abrir));
+  document.querySelectorAll(`label[for="${id}"]`).forEach((l) => l.addEventListener('click', abrir));
+  $(`#${id}-cambtn`).onclick = async () => {
+    const ok = await camaraNaApp(async (b) => { if (!b) return aviso('Não foi possível ler a fotografia. Tire outra.', 'erro');
+      try { await aoLer(await reduzirFoto(b)); } catch { aoLer(null); aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); } });
+    if (!ok) { abrir(); $(`#${id}-cam`).click(); }               // sem câmara na página: câmara do sistema
+  };
   for (const i of [$(`#${id}-cam`), $(`#${id}`)]) i.onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     if (rasc) rascGuardar(rasc, { camara: false });

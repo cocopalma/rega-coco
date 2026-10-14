@@ -89,13 +89,19 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Coerência (14/10): RLS `registos_inserir` e `jornadas_inserir` passaram a exigir activista → `teste = false`, técnico/supervisor/gestor → `teste = true` (como a chuva). Todas as RPC usadas existem, com security definer e só para `authenticated`. `estado_areas` existe mas a app já não a usa. Aviso do Supabase "Leaked password protection" desligado (definição de Auth).
 - 6 campos de Incularino pedidos pelo Nuro (14/10): Adremane Abdala campo 1 (353 plantadas / 220 vivas) e campo 3 (730/344), Mussa Iassine Imide (143/95), Abdala Salimo Mussa (232/226, poço secou), Salimo Sufiane (101/77, fonte secou), Sumail Amade (479/366, poço secou). Não estão na base; faltam o PR de cada produtor, o activista e a coordenada — não criar sem PR.
 
+## Campos fora do plano e câmara na app (14/10/2026, pedido do Nuro, decisões do Valdo)
+- Importadas para `areas` as 1188 linhas com REGA = NÃO da folha AREAS do `Controlo_Rega_Areas.xlsx` (entrega do Dalmar de 09/10; a pasta "COCO_REGA-2 - Dalmar2" de 14/10 é igual, 28 ficheiros com o mesmo md5): `activa = false`, `fonte` "… REGA=NÃO (fora do plano)", `area_n` = seguinte ao maior do PR, `activista_origem`, `agua_origem` (COM/SEM/SEM_GEO), `n_regas_origem`, `ultima_rega_origem`, `situacao_origem`. Sem telefones. Total na base: 1909 (701 activas). Função temporária `tmp_importar_fora_plano` desactivada (corpo só dá erro, sem execute) — apagar quando o Supabase deixar.
+- App: Campos › "➕ Voltar a pôr um campo na rega" (supervisor e gestor; precisa de rede): procura por produtor/PR (RPC `areas_fora_plano`, máx. 40, ≥ 3 letras) nos campos com `activa = false` (inclui os 20 retirados a 12/10) → "Voltar a regar" com motivo opcional (RPC `voltar_a_regar`: activa = true, `reactivada_em/por`, activista da origem se estiver activo, registo em `alteracoes_areas`). Etiqueta "Novo na rega" 14 dias. Os campos inactivos não vão para o telefone (a app só carrega `activa = true`); `estado_ronda` passou a filtrar `a.activa`.
+- Dos 6 campos do Nuro: Mussa Iassine Imide PR24510014-1, Abdala Salimo Mussa PR396000-1, Sumail Amade PR2457647-1 (sem coordenada), Adremane Abdala PR693305-1…13 (Ncalanga/Ncumbi na base); Salimo Sufiane não está na base.
+- Câmara dentro da app (`camaraNaApp`, getUserMedia, vídeo + botão "📷 Tirar"): no telefone do Nuro a câmara do sistema fechava o Chrome ao guardar a foto. Sem getUserMedia, usa a câmara do sistema; sem autorização, avisa e sugere a galeria. Teste: `rega-test/teste_camara_voltar.py`.
+
 ## Pendentes pedidos pelo Valdo
 - Documento do RH com o tamanho das 12 equipas "por definir" (o Valdo vai pedir).
 - Lista de todos os campos a regar com coordenadas (e polígonos), pedida pelo Valdo ao Dalmar a 13/10/2026: quando chegar, voltar a casar os polígonos e resolver as 69 áreas sem polígono e as 30 com polígono do PR a > 100 m.
 - Guia de uma página para os activistas (entrar, registar rega e chuva, sem rede): fica para mais tarde (Valdo, 13/10/2026).
 - Nomes dos membros de cada equipa (o Valdo envia) para registar quem trabalhou.
 - Painel: frequência de rega (dias entre regas do mesmo campo) por equipa, agrupada por comunidade. Fazer depois da fase de teste dos activistas, quando o agrupamento de campos por equipa estiver confirmado (11/10/2026). Os registos já guardam activista, campo e data, por isso o cálculo cobre também as regas anteriores.
-- 6 campos de Incularino (ver Teste do Nuro de 14/10): falta o PR de cada produtor e o activista.
+- Salimo Sufiane (Incularino, pedido do Nuro a 14/10): não está na base do Dalmar; falta o PR.
 - Teste da v35 no terreno (polígonos, 50 m da borda, entrada sem rede, cor de teste, chuva de teste) pelo Nuro e Raul: marcado para 14/10/2026 (a 13/10 estiveram em reuniões).
 
 ## Decisões de 13/10/2026 (Valdo)
