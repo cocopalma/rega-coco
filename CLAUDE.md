@@ -78,12 +78,23 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Funções temporárias de importação (`tmp_areas_para_poligonos`, `tmp_gravar_poligonos`) e a chave foram apagadas pelo Valdo no SQL Editor (13/10/2026). Para nova importação, criar de novo e apagar no fim.
 - "Sair": só o botão do topo; o "Sair desta conta" no fim do Hoje foi retirado (13/10/2026, Valdo).
 
+## Teste do Nuro de 14/10/2026 (WhatsApp) e teste de coerência
+- Abrir sem rede ficava em branco: com o token expirado, `sb.auth.getSession()` tenta renovar ~30 s. App e painel esperam no máximo 1,5 s (8 s com rede) e usam a sessão guardada (`sessaoGuardada()`, chave `sb-<ref>-auth-token`). Teste: `rega-test/teste_abrir_sem_rede.py`.
+- Hoje (técnico/supervisor/gestor) sem rede: não pede ao servidor; mostra "Sem rede…" e a linha da chuva de teste.
+- Painel sem rede: mostra o último painel guardado para o mesmo período (mesmo de outro dia), com aviso "Sem rede: painel guardado no telefone (data)"; sem nenhum guardado, mensagem em vez do ecrã de entrada.
+- Chuva por bairro em Palma: `chuva.zona`; locais = comunidade, ou comunidade › zona quando a comunidade tem zonas (tabela `zonas`). Índice único `chuva_dia_local_activista` (data, comunidade, zona, activista_id) NULLS NOT DISTINCT (substituiu a restrição antiga). `painel_chuva` agrupa por zona; o painel mostra "Palma › Incularino".
+- Fotografia (chuva e monitoria): o Android fechava o Chrome ao abrir a câmara e perdia o formulário. Agora: botões "📷 Tirar fotografia" e "🖼️ Escolher da galeria" (`campoFoto`/`ligarFoto`); rascunhos `rega.rascChuva` e `rega.rascMon` (3 h, por perfil) voltam a abrir o formulário com aviso (`retomarRascunhos`).
+- Captura de ecrã da câmara: o telefone não deixa capturar o ecrã da câmara (não é da app).
+- Coerência (14/10): RLS `registos_inserir` e `jornadas_inserir` passaram a exigir activista → `teste = false`, técnico/supervisor/gestor → `teste = true` (como a chuva). Todas as RPC usadas existem, com security definer e só para `authenticated`. `estado_areas` existe mas a app já não a usa. Aviso do Supabase "Leaked password protection" desligado (definição de Auth).
+- 6 campos de Incularino pedidos pelo Nuro (14/10): Adremane Abdala campo 1 (353 plantadas / 220 vivas) e campo 3 (730/344), Mussa Iassine Imide (143/95), Abdala Salimo Mussa (232/226, poço secou), Salimo Sufiane (101/77, fonte secou), Sumail Amade (479/366, poço secou). Não estão na base; faltam o PR de cada produtor, o activista e a coordenada — não criar sem PR.
+
 ## Pendentes pedidos pelo Valdo
 - Documento do RH com o tamanho das 12 equipas "por definir" (o Valdo vai pedir).
 - Lista de todos os campos a regar com coordenadas (e polígonos), pedida pelo Valdo ao Dalmar a 13/10/2026: quando chegar, voltar a casar os polígonos e resolver as 69 áreas sem polígono e as 30 com polígono do PR a > 100 m.
 - Guia de uma página para os activistas (entrar, registar rega e chuva, sem rede): fica para mais tarde (Valdo, 13/10/2026).
 - Nomes dos membros de cada equipa (o Valdo envia) para registar quem trabalhou.
 - Painel: frequência de rega (dias entre regas do mesmo campo) por equipa, agrupada por comunidade. Fazer depois da fase de teste dos activistas, quando o agrupamento de campos por equipa estiver confirmado (11/10/2026). Os registos já guardam activista, campo e data, por isso o cálculo cobre também as regas anteriores.
+- 6 campos de Incularino (ver Teste do Nuro de 14/10): falta o PR de cada produtor e o activista.
 - Teste da v35 no terreno (polígonos, 50 m da borda, entrada sem rede, cor de teste, chuva de teste) pelo Nuro e Raul: marcado para 14/10/2026 (a 13/10 estiveram em reuniões).
 
 ## Decisões de 13/10/2026 (Valdo)

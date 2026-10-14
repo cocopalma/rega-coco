@@ -199,7 +199,7 @@ async function sincronizarAgora(silencioso) {
       let foto = null; try { foto = await FOTOS.ler(c.id); } catch {} foto = foto || S.fotosMem?.[c.id] || null;
       const caminho = `${S.perfil.id}/${c.id}.jpg`;
       if (foto) { const up = await sb.storage.from('chuva-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) { erro = up.error.message; break; } }
-      const r5 = await sb.from('chuva').upsert({ ...c, teste: !!c.teste, foto_path: foto ? caminho : null }, { onConflict: c.teste ? 'id' : 'data,comunidade,activista_id' });
+      const r5 = await sb.from('chuva').upsert({ ...c, zona: c.zona ?? null, teste: !!c.teste, foto_path: foto ? caminho : null }, { onConflict: c.teste ? 'id' : 'data,comunidade,zona,activista_id' });
       if (r5.error && !r5.error.code) { erro = r5.error.message; break; }
       if (r5.error) aviso(`Chuva não gravada: ${r5.error.message}`, 'erro');
       LS.set('filaChuva', LS.get('filaChuva', []).filter((y) => y.id !== c.id));
@@ -337,7 +337,7 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- mapa ----------
@@ -705,29 +705,65 @@ const minhasComunidades = () => {
   if (chuvaTeste()) return [...new Set(S.areas.map((a) => a.comunidade).filter(Boolean))].sort();
   const t = S.activistas.find((x) => x.id === S.perfil?.activista_id);
   return [...new Set([t?.comunidade_principal, ...minhas().map((a) => a.comunidade)].filter(Boolean))].sort(); };
+// locais de leitura: comunidade, ou comunidade › bairro quando a comunidade tem zonas (Palma; 14/10/2026, Nuro)
+function locaisChuva() {
+  const out = [];
+  for (const c of minhasComunidades()) { const zs = zonasDe(c); if (zs.length) zs.forEach((z) => out.push({ com: c, zona: z })); else out.push({ com: c, zona: null }); }
+  return out;
+}
+const nomeLocal = (com, zona) => zona ? `${com} › ${zona}` : com;
 function textoChuvaHoje() {
   const h = hojeISO(), g = LS.get('chuvaFeita', {}) || {}, v = Object.entries(g).filter(([k]) => k.startsWith(h + '|'));
-  return v.length ? v.map(([k, mm]) => `${num(mm)} mm${v.length > 1 ? ' (' + esc(k.split('|')[1]) + ')' : ''}`).join(', ') : '—';
+  return v.length ? v.map(([k, mm]) => `${num(mm)} mm${v.length > 1 ? ' (' + esc(k.split('|').slice(1).join('|')) + ')' : ''}`).join(', ') : '—';
 }
-function ecraChuva() {
-  const coms = minhasComunidades(), h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
+// ---------- fotografia e rascunhos (14/10/2026, Nuro) ----------
+// Em telefones com pouca memória, o Android fecha o Chrome quando a câmara abre e o formulário perdia-se.
+// O formulário fica guardado no telefone enquanto se preenche e volta a abrir; e há a opção de escolher a
+// fotografia da galeria (tirada antes com a câmara do telefone).
+const RASC_MAX = 3 * 3600e3;
+const rascLer = (k) => { const r = LS.get(k); return r && Date.now() - (r.ts || 0) < RASC_MAX ? r : null; };
+const rascGuardar = (k, v) => LS.set(k, { ...(LS.get(k) || {}), ...v, ts: Date.now() });
+function campoFoto(id, rotulo) {
+  return `<label>${rotulo}</label><div class="foto-esc" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+    <label class="chip" for="${id}-cam" data-cam="1">📷 Tirar fotografia</label><label class="chip" for="${id}">🖼️ Escolher da galeria</label>
+    <input id="${id}-cam" type="file" accept="image/*" capture="environment" hidden><input id="${id}" type="file" accept="image/*" hidden></div>`;
+}
+function ligarFoto(id, rasc, aoLer) {
+  const abrir = () => { if (rasc) rascGuardar(rasc, { camara: true }); };
+  document.querySelectorAll(`label[for="${id}-cam"], label[for="${id}"]`).forEach((l) => l.addEventListener('click', abrir));
+  for (const i of [$(`#${id}-cam`), $(`#${id}`)]) i.onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    if (rasc) rascGuardar(rasc, { camara: false });
+    try { await aoLer(await reduzirFoto(f)); } catch { aoLer(null); aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); }
+  };
+}
+const AVISO_CAMARA = '<div class="msg info">O telefone fechou a app ao abrir a câmara. Os dados foram recuperados. Se voltar a acontecer, tire a fotografia com a câmara do telefone e use «Escolher da galeria».</div>';
+function ecraChuva(r) {
+  const locais = locaisChuva(), h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
   const agora = new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
-  S.chuvaFoto = null;
-  folha(`<h2>Chuva</h2>${chuvaTeste() ? '<div class="msg info">Registo de teste: não conta no painel.</div>' : ''}<p class="pequeno">Leia o pluviómetro da comunidade, escreva os milímetros e tire uma fotografia da leitura. Se não choveu, carregue em "Não choveu".</p>
+  S.chuvaFoto = null; if (!r) LS.del('rascChuva');
+  folha(`<h2>Chuva</h2>${r?.camara ? AVISO_CAMARA : ''}${chuvaTeste() ? '<div class="msg info">Registo de teste: não conta no painel.</div>' : ''}<p class="pequeno">Leia o pluviómetro da comunidade, escreva os milímetros e tire uma fotografia da leitura. Se não choveu, carregue em "Não choveu".</p>
     <label>Dia da chuva<select id="c-data"><option value="${h}">Hoje · ${fmtData(h)}</option><option value="${ontem}">Ontem · ${fmtData(ontem)}</option></select></label>
     <label>Hora da leitura<input id="c-hora" type="time" value="${agora}"></label>
-    <label>Comunidade<select id="c-com">${coms.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
+    <label>Comunidade<select id="c-com">${locais.map((l, i) => `<option value="${i}">${esc(nomeLocal(l.com, l.zona))}</option>`).join('')}</select></label>
     <label>Chuva no pluviómetro (mm)<input id="c-mm" type="number" inputmode="decimal" min="0" max="500" step="0.1"></label>
-    <button class="chip" onclick="$('#c-mm').value='0'">Não choveu (0 mm)</button>
-    <label>Fotografia da leitura do pluviómetro<input id="c-foto" type="file" accept="image/*" capture="environment"></label>
+    <button class="chip" onclick="$('#c-mm').value='0';$('#c-mm').dispatchEvent(new Event('input'))">Não choveu (0 mm)</button>
+    ${campoFoto('c-foto', 'Fotografia da leitura do pluviómetro')}
     <img id="c-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
     <textarea id="c-obs" rows="2" placeholder="Observação (opcional)"></textarea>
-    <button class="btn" onclick="gravarChuva()">Guardar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
-  $('#c-foto').onchange = async (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    try { S.chuvaFoto = await reduzirFoto(f); const img = $('#c-prev'); img.src = URL.createObjectURL(S.chuvaFoto); img.style.display = ''; }
-    catch { S.chuvaFoto = null; aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); }
-  };
+    <button class="btn" onclick="gravarChuva()">Guardar</button><button class="btn sec" onclick="LS.del('rascChuva');fecharFolha()">Cancelar</button>`);
+  S.chuvaLocais = locais;
+  if (r) {                                              // repõe o rascunho
+    if (r.data && [...$('#c-data').options].some((o) => o.value === r.data)) $('#c-data').value = r.data;
+    if (r.hora) $('#c-hora').value = r.hora; if (r.mm != null) $('#c-mm').value = r.mm; if (r.obs) $('#c-obs').value = r.obs;
+    const i = locais.findIndex((l) => nomeLocal(l.com, l.zona) === r.local); if (i >= 0) $('#c-com').value = String(i);
+  }
+  const guardar = () => rascGuardar('rascChuva', { perfil: S.perfil?.id, camara: false, data: $('#c-data').value, hora: $('#c-hora').value, mm: $('#c-mm').value, obs: $('#c-obs').value,
+    local: $('#c-com').selectedOptions[0]?.textContent || '' });
+  ['#c-data', '#c-hora', '#c-com', '#c-mm', '#c-obs'].forEach((q) => $(q).addEventListener('input', guardar));
+  ['#c-data', '#c-com'].forEach((q) => $(q).addEventListener('change', guardar));
+  if (r?.camara) setTimeout(guardar, 0); else guardar();
+  ligarFoto('c-foto', 'rascChuva', (foto) => { S.chuvaFoto = foto; const img = $('#c-prev'); if (foto) { img.src = URL.createObjectURL(foto); img.style.display = ''; } else img.style.display = 'none'; });
 }
 async function gravarChuva() {
   const mm = parseFloat(String($('#c-mm').value).replace(',', '.'));
@@ -735,16 +771,17 @@ async function gravarChuva() {
   const hora = $('#c-hora').value; if (!hora) { alert('Escreva a hora da leitura.'); return; }
   if (!S.chuvaFoto) { alert('Tire a fotografia da leitura do pluviómetro.'); return; }
   const data = $('#c-data').value, [hh, mi] = hora.split(':'), t = new Date(data + 'T00:00:00'); t.setHours(+hh, +mi, 0, 0);
-  const teste = chuvaTeste(), com = $('#c-com').value;
-  // no teste não há activista: o mesmo dia+comunidade reutiliza o id para corrigir em vez de duplicar
-  const ids = LS.get('chuvaTesteIds', {}) || {}, id = (teste && ids[data + '|' + com]) || crypto.randomUUID();
-  if (teste) { ids[data + '|' + com] = id; LS.set('chuvaTesteIds', ids); }
-  const c = { id, data, comunidade: com, mm, lida_em: t.toISOString(), activista_id: teste ? null : S.perfil.activista_id, user_id: S.perfil.id, observacao: $('#c-obs').value.trim() || null, teste };
+  const teste = chuvaTeste(), loc = S.chuvaLocais[+$('#c-com').value], com = loc.com, zona = loc.zona, chave = data + '|' + nomeLocal(com, zona);
+  // no teste não há activista: o mesmo dia+local reutiliza o id para corrigir em vez de duplicar
+  const ids = LS.get('chuvaTesteIds', {}) || {}, id = (teste && ids[chave]) || crypto.randomUUID();
+  if (teste) { ids[chave] = id; LS.set('chuvaTesteIds', ids); }
+  const c = { id, data, comunidade: com, zona, mm, lida_em: t.toISOString(), activista_id: teste ? null : S.perfil.activista_id, user_id: S.perfil.id, observacao: $('#c-obs').value.trim() || null, teste };
   try { await FOTOS.guardar(c.id, S.chuvaFoto); } catch { S.fotosMem = { ...(S.fotosMem || {}), [c.id]: S.chuvaFoto }; }
-  const f = LS.get('filaChuva', []).filter((x) => !(x.data === c.data && x.comunidade === c.comunidade)); f.push(c); LS.set('filaChuva', f);
-  const g = LS.get('chuvaFeita', {}) || {}; g[c.data + '|' + c.comunidade] = mm; LS.set('chuvaFeita', g);
+  const f = LS.get('filaChuva', []).filter((x) => !(x.data === c.data && x.comunidade === c.comunidade && (x.zona || null) === zona)); f.push(c); LS.set('filaChuva', f);
+  const g = LS.get('chuvaFeita', {}) || {}; g[chave] = mm; LS.set('chuvaFeita', g);
+  LS.del('rascChuva');
   fecharFolha(); actSync(); sincronizar(true); if ($('#e-hoje').classList.contains('on')) desenharHoje();
-  aviso(`Chuva guardada: ${num(mm)} mm em ${c.comunidade}.` + (teste ? ' (teste)' : ''), 'ok');
+  aviso(`Chuva guardada: ${num(mm)} mm em ${nomeLocal(com, zona)}.` + (teste ? ' (teste)' : ''), 'ok');
 }
 // ---------- hoje ----------
 const tamanhoEquipa = (id) => (S.activistas.find((t) => t.id === id) || {}).equipa_tamanho || null;   // null = por definir
@@ -793,8 +830,12 @@ async function desenharHoje() {
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
     if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarMonitoria(); html = cartaoMonitoria() + html; }
-    const r = await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h);
-    if (r.error) html += `<div class="msg erro">${esc(r.error.message)}</div></div>`;
+    const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
+    if (podeMudar) html += `<div class="lin"><span>Chuva (pluviómetro) · teste</span><b>${textoChuvaHoje()} <button class="chip" onclick="ecraChuva()">Registar</button></b></div>`;
+    // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
+    const r = navigator.onLine ? await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h) : { error: { semRede: true } };
+    if (r.error && (r.error.semRede || /fetch|network|rede/i.test(r.error.message || ''))) html += `<div class="msg info">Sem rede. O resumo das equipas aparece quando houver rede.</div></div>`;
+    else if (r.error) html += `<div class="msg erro">${esc(r.error.message)}</div></div>`;
     else {
       // uma linha por equipa: produtores com rega, pessoas (faltas), campos, plantas, tuk-tuk, início, fim e deslocação entre campos
       const g = {}; for (const x of r.data) { const k = x.activista_id; g[k] ??= { campos: 0, plantas: 0, alertas: 0, teste: 0, ini: null, fim: null, prod: new Set(), agua: null, pessoas: 0, regs: [] };
@@ -802,8 +843,6 @@ async function desenharHoje() {
         o.prod.add((S.areas.find((a) => a.id === x.area_id) || {}).produtor || x.area_id); if (x.agua_em && (!o.agua || x.agua_em < o.agua)) o.agua = x.agua_em;
         if (x.pessoas > o.pessoas) o.pessoas = x.pessoas;
         if (!o.ini || x.entrada_em < o.ini) o.ini = x.entrada_em; if (!o.fim || x.saida_em > o.fim) o.fim = x.saida_em; }
-      const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
-      if (podeMudar) html += `<div class="lin"><span>Chuva (pluviómetro) · teste</span><b>${textoChuvaHoje()} <button class="chip" onclick="ecraChuva()">Registar</button></b></div>`;
       html += `<div class="lin"><span>Registos recebidos</span><b>${r.data.length}</b></div><button class="btn sec" onclick="mudar('painel')">Abrir painel geral</button></div>
         <div style="overflow-x:auto"><table><tr><th>Activista</th><th>Equipa</th><th class="n">Produtores</th><th class="n">Campos</th><th class="n">Plantas</th><th class="n">% meta</th><th>Tuk-tuk</th><th>Início</th><th>Fim</th><th class="n">Desloc.</th><th class="n">Alertas</th></tr>` +
         Object.entries(g).map(([k, o]) => { const tam = tamanhoEquipa(k), d = deslocacao(o.regs);
@@ -894,11 +933,12 @@ function tamanhoAmostra(N) {
 }
 const METODOS = { X: 'M12 12L88 88M88 12L12 88', W: 'M10 12L30 88L50 30L70 88L90 12', Z: 'M12 12L88 12L12 88L88 88', Diagonal: 'M12 12L88 88' };
 const desenhoMetodo = (m) => `<svg viewBox="0 0 100 100" width="96" height="96" aria-hidden="true" style="flex:none"><rect x="4" y="4" width="92" height="92" rx="6" fill="#eef4ea" stroke="#9fb59a"/><path d="${METODOS[m]}" fill="none" stroke="#1f5130" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1 9"/><path d="${METODOS[m]}" fill="none" stroke="#1f5130" stroke-width="1.5" opacity=".5"/></svg>`;
-function ecraMonitoria(amostraId) {
+function ecraMonitoria(amostraId, r) {
   const m = S.mon.find((x) => x.amostra_id === amostraId), a = S.areas.find((x) => x.id === m.area_id) || {};
   S.monFoto = null;
-  S.monP = { amostraId, metodo: null, N: plantasN(a) || 0, obs: [], h: null, e: null, c: null };
-  folha(`<h2>${esc(a.produtor)}</h2><p class="pequeno">${esc(a.pr || '')} · ${esc(a.comunidade || '')} · ${esc(nomeAct(m.activista_id))} · rega de ${fmtData(m.data_rega)}</p>
+  if (r && r.amostraId === amostraId && r.P) S.monP = r.P;   // rascunho guardado no telefone (14/10/2026)
+  else { LS.del('rascMon'); r = null; S.monP = { amostraId, metodo: null, N: plantasN(a) || 0, obs: [], h: null, e: null, c: null }; }
+  folha(`<h2>${esc(a.produtor)}</h2>${r?.camara ? AVISO_CAMARA : ''}<p class="pequeno">${esc(a.pr || '')} · ${esc(a.comunidade || '')} · ${esc(nomeAct(m.activista_id))} · rega de ${fmtData(m.data_rega)}</p>
     <label>Percurso no campo</label>${escolha('m-metodo', Object.keys(METODOS).map((k) => [k, k]))}
     <div id="m-desenho" style="display:flex;gap:12px;align-items:center;margin-top:8px"></div>
     <div class="cartao" style="margin-top:10px"><div class="lin"><span>Plantas no campo</span><b id="m-Nv">${S.monP.N ? num(S.monP.N) : '—'}</b></div>
@@ -906,21 +946,24 @@ function ecraMonitoria(amostraId) {
       <div id="m-Nedit" ${S.monP.N ? 'hidden' : ''}><label>Plantas que existem hoje no campo<input id="m-N" type="number" inputmode="numeric" min="1" value="${S.monP.N || ''}"></label></div>
       ${S.monP.N ? `<button class="chip" id="m-Nmudar" style="margin-top:6px">O número de plantas mudou? Corrigir</button>` : ''}</div>
     <div id="m-planta"></div>
-    <label>Fotografia do campo<input id="m-foto" type="file" accept="image/*" capture="environment"></label>
+    ${campoFoto('m-foto', 'Fotografia do campo')}
     <img id="m-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
     <textarea id="m-obs" rows="2" placeholder="Observação (opcional)"></textarea>
     <button class="btn" id="m-gravar" onclick="gravarMonitoria('${esc(amostraId)}')">Gravar verificação</button>
-    <button class="btn sec" onclick="abrirFicha('${esc(m.area_id)}')">Voltar</button>`);
+    <button class="btn sec" onclick="LS.del('rascMon');abrirFicha('${esc(m.area_id)}')">Voltar</button>`);
   document.querySelectorAll('#m-metodo .chip').forEach((b) => b.onclick = () => {
     document.querySelectorAll('#m-metodo .chip').forEach((x) => x.classList.toggle('on', x === b)); S.monP.metodo = b.dataset.v; desenharPlantaMon(); });
   $('#m-N').oninput = () => { S.monP.N = parseInt($('#m-N').value, 10) || 0; S.monP.Ncorrigido = true; $('#m-Nv').textContent = S.monP.N ? num(S.monP.N) : '—';
     $('#m-Nfonte').textContent = 'Corrigido no campo. A app recalcula a amostra.'; desenharPlantaMon(); };
   if ($('#m-Nmudar')) $('#m-Nmudar').onclick = () => { $('#m-Nedit').hidden = false; $('#m-Nmudar').remove(); $('#m-N').focus(); };
-  $('#m-foto').onchange = async (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    try { S.monFoto = await reduzirFoto(f); const img = $('#m-prev'); img.src = URL.createObjectURL(S.monFoto); img.style.display = ''; }
-    catch { S.monFoto = null; aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); }
-  };
+  ligarFoto('m-foto', 'rascMon', (foto) => { S.monFoto = foto; const img = $('#m-prev'); if (foto) { img.src = URL.createObjectURL(foto); img.style.display = ''; } else img.style.display = 'none'; });
+  if (r) {
+    if (r.obsTxt) $('#m-obs').value = r.obsTxt;
+    if (S.monP.metodo) document.querySelectorAll('#m-metodo .chip').forEach((x) => x.classList.toggle('on', x.dataset.v === S.monP.metodo));
+    if (S.monP.Ncorrigido) { $('#m-Nv').textContent = S.monP.N ? num(S.monP.N) : '—'; $('#m-Nfonte').textContent = 'Corrigido no campo. A app recalcula a amostra.'; $('#m-N').value = S.monP.N || ''; }
+  }
+  $('#m-obs').addEventListener('input', () => rascGuardar('rascMon', { obsTxt: $('#m-obs').value }));
+  if (r?.camara) rascGuardar('rascMon', { camara: false });
   desenharPlantaMon();
 }
 function resumoMon(obs) {
@@ -930,6 +973,7 @@ function resumoMon(obs) {
     cob: obs.filter((o) => o.cobertura).length, cava: obs.filter((o) => o.cavaroda).length };
 }
 function desenharPlantaMon() {
+  if (S.monP && $('#m-planta')) rascGuardar('rascMon', { amostraId: S.monP.amostraId, perfil: S.perfil?.id, P: S.monP });
   const P = S.monP, alvo = tamanhoAmostra(P.N), r = resumoMon(P.obs), el = $('#m-planta'); if (!el) return;
   $('#m-desenho').innerHTML = P.metodo ? desenhoMetodo(P.metodo) + `<p class="pequeno" style="margin:0">Siga o percurso ${esc(P.metodo)} e observe as plantas a intervalos regulares${alvo && P.N > alvo ? ` (cerca de 1 em cada ${Math.max(1, Math.round(P.N / alvo))})` : ' (todas as plantas)'}.</p>` : '';
   if (!P.metodo || !alvo) { el.innerHTML = `<p class="pequeno">${!P.metodo ? 'Escolha o percurso.' : 'Escreva o número de plantas no campo.'}</p>`; return; }
@@ -990,7 +1034,7 @@ async function gravarMonitoria(amostraId) {
     solo_regado: r.regado, mudas_estado: null, nota: r.nota, observacao: obs || null,
     metodo: P.metodo, plantas_no_campo: P.N, plantas_alvo: alvo, plantas_obs: P.obs, pct_humido: r.pct, n_vivas: r.vivas, n_secas: r.secas, n_mortas: r.mortas };
   try { await FOTOS.guardar(reg.id, foto); } catch { reg.sem_foto_local = true; S.fotosMem = { ...(S.fotosMem || {}), [reg.id]: foto }; }
-  const f = LS.get('filaMon', []); f.push(reg); LS.set('filaMon', f); actSync();
+  const f = LS.get('filaMon', []); f.push(reg); LS.set('filaMon', f); LS.del('rascMon'); actSync();
   abrirFicha(m.area_id, `<div class="msg ok">Verificação guardada${navigator.onLine ? '' : ' no telefone (será enviada quando houver rede)'}.</div>`);
   sincronizar(true);
 }
@@ -1203,6 +1247,20 @@ function mostrarApp() {
   if (emCurso) abrirFicha(emCurso.area_id, '<div class="msg info">Tem uma rega em curso.</div>');
   else if (souActivista() && S.perfil.activista_id && !jornadaHoje()) ecraJornada();
 }
+// formulário que estava aberto quando o telefone fechou a app (ex.: ao abrir a câmara) volta a abrir
+function retomarRascunhos() {
+  try {
+    const rm = rascLer('rascMon');
+    if (rm && rm.perfil === S.perfil?.id && (S.mon || []).some((x) => x.amostra_id === rm.amostraId)) return ecraMonitoria(rm.amostraId, rm);
+    const rc = rascLer('rascChuva');
+    if (rc && rc.perfil === S.perfil?.id && (rc.camara || rc.mm !== '')) { mudar('hoje'); return ecraChuva(rc); }
+  } catch {}
+}
+// sessão do Supabase guardada no telefone (sem pedir nada à rede)
+function sessaoGuardada() {
+  try { const s = JSON.parse(localStorage.getItem(`sb-${new URL(CFG.url).hostname.split('.')[0]}-auth-token`) || 'null'); return s && s.user ? s : null; }
+  catch { return null; }
+}
 document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('#login [data-m]').forEach((b) => { b.onclick = () => modoEntrada(b.dataset.m); });
   ['input', 'focus', 'blur'].forEach((ev) => $('#l-pin').addEventListener(ev, pinCaixas));
@@ -1226,17 +1284,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('offline', actSync);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
-  const { data: { session } } = await sb.auth.getSession();
+  // Sem rede e com a sessão expirada, getSession() fica ~30 s a tentar renovar o token e o ecrã fica branco
+  // (Nuro, 14/10/2026). Espera no máximo 1,5 s (8 s com rede) e, se não responder, usa a sessão guardada no telefone;
+  // o token renova-se sozinho quando houver rede.
+  const pedidoSessao = sb.auth.getSession().then((r) => r.data.session).catch(() => null);
+  let session = await Promise.race([pedidoSessao, new Promise((ok) => setTimeout(() => ok(undefined), navigator.onLine ? 8000 : 1500))]);
+  if (session === undefined) session = sessaoGuardada();
   if (session) {
     S.user = session.user;
     const temLocal = carregarDoTelefone();
     if (temLocal && S.perfil) {                           // abre logo com os dados do telefone; o servidor actualiza por trás
-      mostrarApp();
+      mostrarApp(); retomarRascunhos();
       if (navigator.onLine) carregarTudo().then(() => { if ($('#e-hoje').classList.contains('on')) desenharHoje(); }).catch(() => {}).finally(() => sincronizar(true));
       return;
     }
     if (navigator.onLine) { try { await carregarTudo(); } catch (e) { if (!temLocal) { $('#login').style.display = 'block'; msgEntrada(`<div class="msg erro">${esc(e.message)}</div>`); return; } } }
-    if (S.perfil) { mostrarApp(); sincronizar(true); return; }
+    if (S.perfil) { mostrarApp(); retomarRascunhos(); sincronizar(true); return; }
   }
   $('#login').style.display = 'block';
 });

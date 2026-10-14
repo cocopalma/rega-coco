@@ -140,12 +140,13 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <details><summary>Ver tabela por dia</summary><div class="tabela" id="t-pde" style="max-height:none"></div></details></section>
 
   <section class="card sec" id="s-meta"><h2>Meta: 140 plantas por pessoa por dia</h2>
-    <p class="desc">% da meta = plantas regadas ÷ (140 × pessoas presentes). Faltas = pessoas da equipa que não estiveram presentes (soma dos dias com rega).</p>
+    <p class="desc">% da meta = plantas regadas ÷ (140 × pessoas presentes).</p>
     <div class="grelha dois" style="margin-bottom:12px">
       <div><h3 style="font-size:14px;margin:4px 0">% da meta por dia (todas as equipas)</h3><div id="g-meta-dia"></div></div>
       <div><h3 style="font-size:14px;margin:4px 0">% da meta por equipa no período</h3><div id="g-meta-eq"></div></div>
     </div>
     <div class="vista" role="group" id="v-meta"><button data-v="dia">Por dia</button><button data-v="semana">Por semana</button><button data-v="periodo">Período</button></div>
+    <p class="desc">Faltas = pessoas da equipa que não estiveram presentes (soma dos dias com rega).</p>
     <div class="tabela" id="t-meta" style="max-height:none"></div></section>
 
   <section class="card sec"><h2>Tempo por campo e deslocação entre campos</h2>
@@ -182,7 +183,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n.js?v=36"></script>
+<script src="i18n.js?v=37"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -476,7 +477,8 @@ async function verFotoChuva(k) {
 // ---------- chuva ----------
 function desenharChuva() {
   if (!$('#t-chuva')) return;
-  const L = Array.isArray(DC) ? DC : [];
+  // em Palma a chuva é lida por bairro (14/10/2026, Nuro): "Palma › Incularino"
+  const L = (Array.isArray(DC) ? DC : []).map((x) => ({ ...x, comunidade: x.zona ? `${x.comunidade} › ${x.zona}` : x.comunidade }));
   if (!L.length) { $('#g-chuva').innerHTML = '<div class="vazio">Ainda sem registos de chuva.</div>'; $('#t-chuva').innerHTML = ''; return; }
   const tot = {}; for (const x of L) { const o = (tot[x.comunidade] ??= { comunidade: x.comunidade, mm: 0, dias: 0, comChuva: 0 }); o.mm += +x.mm; o.dias++; if (+x.mm > 0) o.comChuva++; }
   const fmm = (v) => Number(v).toLocaleString(LOC, { maximumFractionDigits: 1 });
@@ -525,20 +527,43 @@ function desenharMonitoria() {
 // ---------- dados e sessão ----------
 // último painel visto fica no telefone: aparece logo e é actualizado quando chega a resposta do servidor
 const CHAVE_CACHE = () => 'rega.painel.cache.' + new Date().toLocaleDateString('sv-SE') + JSON.stringify(P);
-function lerCache() { try { return JSON.parse(localStorage.getItem(CHAVE_CACHE()) || 'null'); } catch { return null; } }
+// sem rede e sem painel de hoje: usa o último guardado para o mesmo período (14/10/2026, Nuro)
+function lerCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CHAVE_CACHE()) || 'null'); if (c) return c;
+    const suf = JSON.stringify(P), ks = Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && k.endsWith(suf)).sort();
+    if (!ks.length) return null;
+    const v = JSON.parse(localStorage.getItem(ks[ks.length - 1]) || 'null'); if (v) v.antigo = v.em || ks[ks.length - 1].slice(18, 28); return v;
+  } catch { return null; }
+}
+const erroDeRede = (e) => !navigator.onLine || /fetch|network|rede|timeout/i.test(e?.message || '');
+function avisoRede(c) {
+  let el = $('#aviso-rede');
+  if (!c) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'aviso-rede'; el.className = 'card'; el.style.cssText = 'margin-bottom:12px;border-left:4px solid var(--warn,#b26b00)'; $('#painel').prepend(el); }
+  const quando = c.antigo ? (typeof c.antigo === 'number' ? new Date(c.antigo).toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : c.antigo.split('-').reverse().slice(0, 2).join('/')) : null;
+  el.textContent = quando ? `Sem rede: painel guardado no telefone (${quando}). Actualiza quando houver rede.` : 'Sem rede: painel guardado no telefone. Actualiza quando houver rede.';
+}
+function semRedeSemPainel() {
+  $('#login').style.display = 'none'; $('#painel').style.display = '';
+  let el = $('#aviso-rede'); if (!el) { el = document.createElement('div'); el.id = 'aviso-rede'; el.className = 'card'; $('#painel').prepend(el); }
+  el.textContent = 'Sem rede. O painel aparece quando houver rede; depois fica guardado no telefone.';
+}
 async function carregar() {
   const c = !D && lerCache();
   if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharMonitoria(); }
+  if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
-  if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) return;   // sem rede: fica o último painel guardado
+  if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) { if (erroDeRede(error)) avisoRede(c || { antigo: null }); return; }   // sem rede: fica o último painel guardado
+  if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharMonitoria();
-  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC })); } catch {}
+  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharMonitoria();
+  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, em: Date.now() })); } catch {}
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
 function mostrarLogin(msg = '') { $('#painel').style.display = 'none'; $('#login').style.display = ''; $('#l-msg').innerHTML = msg ? `<div class="erro">${esc(msg)}</div>` : ''; }
@@ -558,7 +583,13 @@ let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTime
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
 if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }
 marcarFiltro();
-(async () => { const { data: { session } } = await sb.auth.getSession(); if (session) carregar(); else mostrarLogin(); })();
+// sem rede, getSession() pode demorar ~30 s a tentar renovar o token: espera no máximo 1,5 s e usa a sessão guardada
+(async () => {
+  const pedido = sb.auth.getSession().then((r) => r.data.session).catch(() => null);
+  let session = await Promise.race([pedido, new Promise((ok) => setTimeout(() => ok(undefined), navigator.onLine ? 8000 : 1500))]);
+  if (session === undefined) { try { session = JSON.parse(localStorage.getItem(`sb-${new URL(URL_SB).hostname.split('.')[0]}-auth-token`) || 'null'); } catch { session = null; } }
+  if (session) carregar(); else if (!navigator.onLine) { const c = lerCache(); if (c) carregar(); else semRedeSemPainel(); } else mostrarLogin();
+})();
 </script>
 </body>
 </html>
