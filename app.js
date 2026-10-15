@@ -224,7 +224,7 @@ function actSync() {
 // todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
   const [p, ac, ar, zs, est, lc] = await Promise.all([
-    sb.from('perfis').select('id,nome,papel,activista_id').eq('id', S.user.id).maybeSingle(),
+    sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
     sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em').eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
@@ -1383,21 +1383,22 @@ async function desenharGestao(msg = '') {
 }
 async function montarGestao(d, msg = '') {
   const sem = d.activistas.filter((a) => !a.tem_login && a.activo !== false), com = d.activistas.filter((a) => a.tem_login);
-  $('#gestao').innerHTML = `${msg}<div class="cartao"><h2>Criar login de activista</h2>
+  const gere = S.perfil?.gere_acessos !== false;   // false: gestor que não cria acessos nem muda senhas/PIN (15/10/2026)
+  $('#gestao').innerHTML = `${msg}${gere ? `<div class="cartao"><h2>Criar login de activista</h2>
     <label>Activista<select id="g-act">${sem.map((a) => `<option value="${a.id}" data-u="${sugerirUtilizador(a.nome)}">${esc(a.nome)} — ${esc(a.comunidade_principal || '')}</option>`).join('')}</select></label>
     <label>Utilizador<input id="g-user" autocapitalize="none"></label>
     <label>PIN (6 dígitos)<input id="g-pin" inputmode="numeric" maxlength="6"></label>
     <p class="pequeno">Anote o PIN e entregue-o ao activista. A app não volta a mostrá-lo.</p>
-    <button class="btn" id="g-criar" ${sem.length ? '' : 'disabled'}>Criar login</button></div>
+    <button class="btn" id="g-criar" ${sem.length ? '' : 'disabled'}>Criar login</button></div>` : '<div class="msg info">Criar acessos e mudar senhas ou PIN é só com o gestor principal.</div>'}
     <div class="cartao"><h2>Activistas com login (${com.length} de ${d.activistas.length})</h2>
-    ${com.map((a) => `<div class="item"><div><div class="nome">${esc(a.nome)}</div><div class="sub">utilizador: <b>${esc(a.utilizador || '')}</b></div></div><button class="chip" onclick="reporPin('${a.id}','${esc(a.nome)}')">Novo PIN</button></div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>
-    <div class="cartao"><h2>Outros acessos</h2>
+    ${com.map((a) => `<div class="item"><div><div class="nome">${esc(a.nome)}</div><div class="sub">utilizador: <b>${esc(a.utilizador || '')}</b></div></div>${gere ? `<button class="chip" onclick="reporPin('${a.id}','${esc(a.nome)}')">Novo PIN</button>` : ''}</div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>
+    ${gere ? `<div class="cartao"><h2>Outros acessos</h2>
     <p class="pequeno">${Object.entries(FUNCOES).map(([k, f]) => `<b>${f.nome}</b>: ${f.desc}`).join('<br>')}</p>
     <label>Função<select id="c-papel">${Object.entries(FUNCOES).map(([k, f]) => `<option value="${k}">${f.nome}</option>`).join('')}</select></label>
     <label>Nome<span id="c-nome-caixa"></span></label>
     <label>Utilizador<input id="c-user" autocapitalize="none"></label>
     <label>Senha (8 ou mais caracteres)<input id="c-senha"></label>
-    <button class="btn" id="c-criar">Criar acesso</button></div>
+    <button class="btn" id="c-criar">Criar acesso</button></div>` : ''}
     <div class="cartao"><h2>Coberturas (ausências)</h2>
     <p class="pequeno">Quando um técnico ou supervisor está ausente, um colega passa a ver e gerir as equipas dele durante o período indicado.</p>
     <label>Quem cobre<select id="k-quem">${(d.utilizadores || []).filter((u) => u.papel === 'tecnico' || u.papel === 'supervisor').map((u) => `<option value="${u.id}" data-p="${u.papel}" data-n="${esc(u.nome)}">${esc(u.nome)} — ${esc(FUNCOES[u.papel].nome)}</option>`).join('')}</select></label>
@@ -1412,7 +1413,7 @@ async function montarGestao(d, msg = '') {
     <button class="btn sec" id="m-gravar-n">Gravar</button></div>
     <div class="cartao"><h2>Quem viu o painel</h2><div id="g-visitas"><p class="pequeno">A carregar…</p></div></div>
     <div class="cartao"><h2>Acessos criados (${(d.utilizadores || []).length})</h2>
-    ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div><button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button></div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
+    ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div>${gere ? `<button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button>` : ''}</div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
   desenharVisitas(); desenharCoberturas(d);
   sb.from('config').select('valor').eq('chave', 'monitoria_campos_por_dia').maybeSingle().then(({ data }) => { if (data && $('#m-n')) $('#m-n').value = data.valor; });
   $('#m-gravar-n').onclick = async () => {
@@ -1420,6 +1421,7 @@ async function montarGestao(d, msg = '') {
     const { error } = await sb.rpc('definir_monitoria_campos', { p_n: n });
     aviso(error ? error.message : `Monitoria: ${n} campos por dia, por pessoa.`, error ? 'erro' : 'ok');
   };
+  if (!gere) return;
   const comLogin = new Set((d.utilizadores || []).map((u) => u.papel + '|' + u.nome));
   // lista de pessoas por função (tabela pessoas_acesso, vinda do Excel de logins); quem já tem acesso aparece desactivado
   const rp = await sb.from('pessoas_acesso').select('nome,entidade,papel,utilizador').order('nome');
@@ -1533,7 +1535,7 @@ function mudar(e) {
 function mostrarApp() {
   const papel = S.perfil.papel;
   $('#login').style.display = 'none'; $('#app').style.display = 'flex';
-  $('#h-nome').textContent = `${S.perfil.nome}${['activista', 'cliente'].includes(papel) ? '' : ' · ' + (papel === 'gestor' ? 'Gestor' : FUNCOES[papel]?.nome || papel)}`;
+  $('#h-nome').textContent = `${S.perfil.nome}${['activista', 'cliente'].includes(papel) ? '' : ' · ' + (S.perfil.titulo || (papel === 'gestor' ? 'Gestor' : FUNCOES[papel]?.nome || papel))}`;
   $('#nav-gestao').style.display = papel === 'gestor' ? '' : 'none';
   $('#nav-painel').style.display = VER_PAINEL.includes(papel) ? '' : 'none';
   if (papel === 'cliente') {                               // o cliente só vê o painel

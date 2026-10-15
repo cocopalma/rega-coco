@@ -24,12 +24,14 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: quem, error: eU } = await admin.auth.getUser(token);
   if (eU || !quem?.user) return resp(401, { erro: "Sessão inválida" });
-  const { data: perfil } = await admin.from("perfis").select("papel").eq("id", quem.user.id).maybeSingle();
+  const { data: perfil } = await admin.from("perfis").select("papel,gere_acessos").eq("id", quem.user.id).maybeSingle();
   if (perfil?.papel !== "gestor") return resp(403, { erro: "Só o gestor pode gerir logins" });
 
   let body: any;
   try { body = await req.json(); } catch { return resp(400, { erro: "Pedido inválido" }); }
   const accao = body?.accao;
+  // gestor com gere_acessos = false (ex.: director com permissões de gestor): só pode listar, não cria nem muda senhas/PIN
+  if (accao !== "listar" && perfil?.gere_acessos === false) return resp(403, { erro: "Criar acessos e mudar senhas ou PIN é só com o gestor principal" });
   const nomeUtilizador = (e: string) => (e.endsWith("@" + DOMINIO) ? e.split("@")[0] : e || null);
   // nomes dos técnicos e supervisores tal como estão na lista de activistas (é por eles que se ligam as equipas)
   const nomesEquipa = async () => {

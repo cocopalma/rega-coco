@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'Sair': 'Log out', 'Sair desta conta': 'Log out of this account', 'Sincronizar': 'Sync', '◎ Eu': '◎ Me',
     'As minhas': 'Mine', 'Todas': 'All', 'Rega Coco': 'Rega Coco', 'Rega Coco — Palma': 'Rega Coco — Palma',
     // funções
-    'Gestor': 'Manager', 'Técnico': 'Technician', 'Supervisor': 'Supervisor', 'Director (só leitura)': 'Director (read-only)',
+    'Criar acessos e mudar senhas ou PIN é só com o gestor principal.': 'Creating access and changing passwords or PINs is only for the main manager.', 'Gestor': 'Manager', 'Técnico': 'Technician', 'Supervisor': 'Supervisor', 'Director (só leitura)': 'Director (read-only)',
     'M&E (só leitura)': 'M&E (read-only)', 'Só painel (cliente / administração)': 'Dashboard only (client / management)',
     'Activista': 'Activist', 'Projecto': 'Project', 'Cliente': 'Client', 'Administração': 'Management board',
     // login
