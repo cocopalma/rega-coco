@@ -6,7 +6,7 @@ Servidor: Supabase, projecto `fgzdqnvobgfzjetbbxcm`. Responder sempre em portugu
 ## Ficheiros
 - `index.html`, `app.js`, `sw.js`, `manifest.webmanifest`, ícones — a app (activistas, técnicos, supervisores, director, gestor, cliente).
 - `i18n.js` — tradução para inglês (botão EN/PT no cabeçalho e no ecrã de entrada; escolha guardada no telefone). Ao acrescentar textos em português na app ou no painel, acrescentar a tradução no dicionário `D` (frase exacta) ou em `R` (frase com números/nomes).
-- `painel.html` — painel geral, só aberto dentro da app (separador Painel, `?embutido=1`). Aberto directamente, reencaminha para a app: o Valdo quer um só link (11/10/2026). O cliente entra na app e só vê o Painel.
+- `painel.html` — painel geral, só aberto dentro da app (separador Painel, `?embutido=1`). Aberto directamente, reencaminha para a app: o Valdo quer um só link (11/10/2026). O cliente entra na app e vê Mapa, Campos (só leitura) e Painel (desde 15/10/2026).
 - Filtro de período no painel (11/10/2026, pedido do Valdo): Tudo / Hoje / Ontem / 7 dias / 30 dias / Período (de… até…); a escolha fica no telefone (`localStorage rega.painel.periodo`). Dados vêm da RPC `painel_resumo_periodo(p_de, p_ate)` (datas nulas = todo o histórico). A `painel_resumo()` antiga mantém-se para versões em cache. Ronda actual, progresso e rondas concluídas das equipas mostram sempre o estado actual; tudo o resto é filtrado. Frequência entre regas: intervalo calculado sobre todo o histórico, contado no dia da rega que o fecha. Chegada da água: sem período = últimos 14 dias.
 - `supabase/functions/gestor-activistas/index.ts` — cópia da função de servidor que cria logins (publicar com o conector Supabase).
 - Ao mudar a app, subir `VERSAO` em `sw.js` e o `?v=` de `app.js` e `i18n.js` em `index.html` (e de `i18n.js` em `painel.html`) para os telefones receberem a nova versão.
@@ -71,7 +71,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Fotografias visíveis (12/10/2026, Valdo: sem tornar a app lenta)
 - Só se descarregam quando se toca: o servidor devolve apenas o caminho; a imagem vem por URL assinado (10 min) ao tocar.
 - Chuva: painel › Chuva por comunidade › Ver tabela por dia › valores com 📷 (`painel_chuva` devolve `fotos` só a técnico, supervisor, gestor, director e M&E).
-- Monitoria: ficha do campo › "Monitoria deste campo" (RPC `monitorias_campo`, carregada depois de abrir a ficha). Desde 13/10/2026 (Valdo) todos os papéis vêem as fotografias (chuva e monitoria), incluindo activista e cliente; o cliente não abre fichas e a secção de monitoria do painel continua escondida ao cliente.
+- Monitoria: ficha do campo › "Monitoria deste campo" (RPC `monitorias_campo`, carregada depois de abrir a ficha). Desde 13/10/2026 (Valdo) todos os papéis vêem as fotografias (chuva e monitoria), incluindo activista e cliente; desde 15/10/2026 o cliente abre as fichas (só leitura); a secção de monitoria do painel continua escondida ao cliente.
 
 ## Polígonos das áreas (13/10/2026, pedido do Dalmar via Valdo)
 - `areas.poligono` jsonb [[lon,lat],...] (simplificado ~2 m) e `areas.poligono_fonte`. Fontes (KMZ do Dalmar de 09/10): `A_DIA_A_DIA/06_MAPA_KMZ/Poligonos_Executados_Rega.kmz` e `B_PLANO_DE_REGA/04_MAPAS_KMZ/Plano_Rega_Semanal.kmz` (+ Plano_Rega_Equipa_Hoje), casados pelo PR (no nome do polígono) e pelo ponto da área: 622 de 721 áreas (603 de 701 activas). Sem polígono: 69 áreas cujo PR não está em nenhum KMZ e 30 com o polígono do PR a > 100 m do ponto (não usado).
