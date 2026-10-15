@@ -29,7 +29,7 @@ Tabela `pessoas_acesso` (nome, entidade, papel, utilizador; sem senhas), copiada
 Funções no Excel → papel: Técnico=tecnico, Supervisor=supervisor, Director (só leitura)=director, M&E (só leitura)=me, Só painel (cliente / administração)=cliente.
 
 ## Zonas
-Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quilaua, Muah, Bagala, Quelimane (11/10/2026, Nuro). Oliveira = Incularino e Quilaua, Sitambur = Muah, Razaque = Bagala e Quelimane; só os campos do Sitambur tinham zona definida a 11/10; os outros ficam para o supervisor (Nuro) definir. A questão do Nuro "faltam reflectir produtores de Bagala, Quelimane" ficou resolvida (Valdo, 12/10/2026). Gestor e supervisor mudam a zona na ficha do campo (RPC `definir_zona`, fica em `alteracoes_areas`). Desde 15/10/2026 (Nuro/Valdo) supervisor e gestor também mudam a comunidade do campo ("🏘 Mudar a comunidade", RPC `definir_comunidade`, zona volta a null; lista de `lista_comunidades`, guardada no telefone).
+Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quilaua, Muah, Bagala, Quelimane (11/10/2026, Nuro). Oliveira = Incularino e Quilaua, Sitambur = Muah, Razaque = Bagala e Quelimane; só os campos do Sitambur tinham zona definida a 11/10; os outros ficam para o supervisor (Nuro) definir. A questão do Nuro "faltam reflectir produtores de Bagala, Quelimane" ficou resolvida (Valdo, 12/10/2026). Gestor e supervisor mudam a zona na ficha do campo (RPC `definir_zona`, fica em `alteracoes_areas`). Desde 15/10/2026 (Nuro/Valdo) técnico, supervisor e gestor também mudam a comunidade do campo ("🏘 Mudar a comunidade", RPC `definir_comunidade`, zona volta a null; lista de `lista_comunidades`, guardada no telefone).
 
 ## Notas de dados
 - `areas.activista_proposto` guarda o NOME do activista (não o id); a app converte com `propostaId()`.
@@ -106,6 +106,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Coordenada e área fechadas depois de gravadas (15/10/2026, Nuro/Valdo)
 - Primeiras medições reais (Nuro, Mondlane, 15/10): PR394688-1 8156 m² (28 pontos) e PR395335-1 9564 m² (45 pontos), GPS ±2 m.
 - Depois de gravadas, a coordenada e a área ficam fechadas para técnico e supervisor (botões escondidos; servidor recusa). Só o gestor corrige, ou carrega em "🔓 Deixar o supervisor/técnico corrigir…" (`areas.limites_abertos`, RPC `abrir_limites`); fecha sozinho depois de gravarem. Vale também para os limites vindos do KMZ.
+- O activista também mede (15/10/2026, Valdo): só campos da sua lista sem limite; fica em `areas.poligono_proposto` / `area_m2_proposta` / `proposta_em` / `proposta_por` (não muda o limite nem a regra dos 50 m). Técnico, supervisor ou gestor aprovam/recusam na ficha (cartão "Área medida pelo activista — por aprovar", RPC `aprovar_poligono`; fila `filaAlt` tipo 'aprovar'); aviso "N medições de área por aprovar" na lista. Eles próprios podem medir directamente.
 - Pedido do Nuro ainda por decidir: fotografias de evidência na entrada, chegada da água e saída (plano gratuito do Supabase; ver espaço de armazenamento antes).
 
 ## Pendentes pedidos pelo Valdo

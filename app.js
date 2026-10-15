@@ -189,6 +189,7 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'zona' ? await sb.rpc('definir_zona', { p_area: x.area_id, p_zona: x.zona })
         : x.tipo === 'comunidade' ? await sb.rpc('definir_comunidade', { p_area: x.area_id, p_comunidade: x.comunidade })
         : x.tipo === 'limites' ? await sb.rpc('abrir_limites', { p_area: x.area_id, p_abrir: x.abrir })
+        : x.tipo === 'aprovar' ? await sb.rpc('aprovar_poligono', { p_area: x.area_id, p_aprovar: x.aprovar })
         : x.tipo === 'poligono' ? await sb.rpc('gravar_poligono', { p_area: x.area_id, p_pontos: x.pontos, p_precisao: x.precisao, p_medido_em: x.medido_em })
         : await sb.rpc('atribuir_area', { p_area: x.area_id, p_activista: x.activista_id });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
@@ -225,7 +226,7 @@ async function carregarTudo() {
   const [p, ac, ar, zs, est, lc] = await Promise.all([
     sb.from('perfis').select('id,nome,papel,activista_id').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
-    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos').eq('activa', true).order('comunidade').range(0, 4999),
+    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em').eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
     sb.rpc('estado_ronda'),
     sb.rpc('lista_comunidades'),
@@ -416,6 +417,7 @@ function desenharLista() {
   if (sit) linhas = linhas.filter((x) => x.s.cod === sit);
   linhas.sort((x, y) => (x.s.cod === 'feita') - (y.s.cod === 'feita') || (x.d ?? 1e12) - (y.d ?? 1e12));   // por regar primeiro
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
+    (porAprovar().length ? `<div class="msg info">${porAprovar().length} medições de área por aprovar. <button class="chip" onclick="ecraPorAprovar()">Ver</button></div>` : '') +
     (porAtribuir().length && sit !== 'sem' ? `<div class="msg info">${porAtribuir().length} campos por atribuir. <button class="chip" onclick="$('#f-sit').value='sem';desenharLista()">Ver</button></div>` : '') +
     (sit ? `<div class="msg info">Filtro: ${esc($('#f-sit').selectedOptions[0]?.textContent || '')}. <button class="chip" onclick="$('#f-sit').value='';desenharLista()">← Ver todos os campos</button></div>` : '') +
     (['supervisor', 'gestor'].includes(S.perfil?.papel) ? `<button class="btn sec" onclick="ecraVoltarRega()">➕ Voltar a pôr um campo na rega</button>` : '') +
@@ -553,13 +555,14 @@ function terminarMedicao() {
 }
 function gravarMedicao() {
   const M = S.medir, P = M.final, a = S.areas.find((x) => x.id === M.id); if (!P || !a) return;
-  const area = Math.round(areaPontos(P) * 10) / 10;
-  a.poligono = P; a.area_m2 = area; a.limites_abertos = false; if (a.latitude == null) { const c = centroPontos(P); a.latitude = c[1]; a.longitude = c[0]; }
+  const area = Math.round(areaPontos(P) * 10) / 10, proposta = S.perfil.papel === 'activista', quando = new Date().toISOString();
+  if (proposta) { a.poligono_proposto = P; a.area_m2_proposta = area; a.proposta_em = quando; }   // activista: fica por aprovar
+  else { a.poligono = P; a.area_m2 = area; a.limites_abertos = false; a.poligono_proposto = null; if (a.latitude == null) { const c = centroPontos(P); a.latitude = c[1]; a.longitude = c[0]; } }
   LS.set('areas', S.areas);
-  porNaFilaAlt({ tipo: 'poligono', area_id: a.id, pontos: P, area_m2: area, precisao: M.melhor || null, medido_em: new Date().toISOString() });
+  porNaFilaAlt({ tipo: 'poligono', area_id: a.id, pontos: P, area_m2: area, precisao: M.melhor || null, medido_em: quando, proposta });
   LS.del('rascMedir'); S.medir = null;
   desenharMapa(true); desenharLista();
-  abrirFicha(a.id, `<div class="msg ok">Área gravada: ${textoArea(area)}${navigator.onLine ? '' : ' (no telefone; é enviada quando houver rede)'}.</div>`);
+  abrirFicha(a.id, `<div class="msg ok">${proposta ? 'Área enviada para aprovação' : 'Área gravada'}: ${textoArea(area)}${navigator.onLine ? '' : ' (no telefone; é enviada quando houver rede)'}.</div>`);
 }
 // ---------- campos fora do plano que voltam à rega (14/10/2026, Nuro / Valdo) ----------
 // O servidor tem as áreas do Controlo_Rega_Areas com REGA = NÃO (e as retiradas a 12/10) com activa = false.
@@ -619,24 +622,61 @@ function botoesCampo(a) {
   let h = '';
   // depois de gravadas, coordenada e área ficam fechadas; só o gestor corrige ou volta a abrir (15/10/2026, Nuro/Valdo)
   const gestor = S.perfil.papel === 'gestor', aberto = gestor || a.limites_abertos;
+  // área medida pelo activista à espera de aprovação (técnico, supervisor ou gestor aprovam; 15/10/2026, Valdo)
+  if (a.poligono_proposto && PODE_COORD.includes(S.perfil.papel)) h += cartaoProposta(a);
+  if (S.perfil.papel === 'activista' && a.activista_id === S.perfil.activista_id && !temPoligono(a))
+    h += a.poligono_proposto ? `<div class="msg info">Área medida: ${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}. À espera de aprovação do técnico ou do supervisor.</div>`
+      : `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 Medir a área (andar à volta do campo)</button>`;
   if (PODE_COORD.includes(S.perfil.papel) && (a.latitude == null || aberto))
     h += `<button class="btn sec" onclick="ecraCoordenada('${esc(a.id)}')">📍 ${a.latitude == null ? 'Gravar a coordenada deste campo' : 'Corrigir a coordenada (estou no campo)'}</button>`;
   if (PODE_COORD.includes(S.perfil.papel) && (!temPoligono(a) || aberto))
     h += `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 ${temPoligono(a) ? 'Medir a área de novo (andar à volta)' : 'Medir a área (andar à volta do campo)'}</button>`;
   if (podeAtribuir(a)) h += `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">👤 ${a.activista_id ? 'Mudar o activista deste campo' : 'Atribuir a um activista'}</button>`;
-  if (['gestor', 'supervisor'].includes(S.perfil.papel)) h += `<button class="btn sec" onclick="ecraComunidade('${esc(a.id)}')">🏘 Mudar a comunidade</button>`;
+  if (['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel)) h += `<button class="btn sec" onclick="ecraComunidade('${esc(a.id)}')">🏘 Mudar a comunidade</button>`;
   if (['gestor', 'supervisor'].includes(S.perfil.papel) && zonasDe(a.comunidade).length) h += `<button class="btn sec" onclick="ecraZona('${esc(a.id)}')">🗂 ${a.zona ? 'Mudar a zona' : 'Definir a zona'}</button>`;
   if (gestor && (a.latitude != null || temPoligono(a)))
     h += a.limites_abertos ? `<button class="btn sec" onclick="mudarLimites('${esc(a.id)}', false)">🔒 Fechar a correcção da coordenada e da área</button>`
       : `<button class="btn sec" onclick="mudarLimites('${esc(a.id)}', true)">🔓 Deixar o supervisor/técnico corrigir a coordenada e medir de novo</button>`;
   return h;
 }
+function cartaoProposta(a) {
+  return `<div class="cartao" style="border-left:4px solid #0b6e8a"><h3 style="margin:0 0 6px;font-size:15px">Área medida pelo activista — por aprovar</h3>
+    <div class="lin"><span>Área</span><b>${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}</b></div>
+    ${a.proposta_em ? `<div class="lin"><span>Medida em</span><b>${fmtData(String(a.proposta_em).slice(0, 10))}</b></div>` : ''}
+    ${a.vivas ? `<div class="lin"><span>Plantas vivas na base</span><b>${num(a.vivas)} (${(a.vivas / ((a.area_m2_proposta || areaPontos(a.poligono_proposto)) / 10000)).toLocaleString(LOC, { maximumFractionDigits: 0 })} por ha)</b></div>` : ''}
+    ${desenhoPontos(a.poligono_proposto)}
+    <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="margin:0" onclick="aprovarMedicao('${esc(a.id)}', true)">✓ Aprovar</button><button class="btn sec" style="margin:0" onclick="aprovarMedicao('${esc(a.id)}', false)">✗ Recusar</button></div>
+    ${temPoligono(a) ? '<p class="pequeno">Este campo já tem limite: só o gestor pode substituí-lo.</p>' : ''}</div>`;
+}
+function aplicarAprovacao(a, sim) {
+  if (sim && a.poligono_proposto) {
+    a.poligono = a.poligono_proposto; a.area_m2 = a.area_m2_proposta || areaPontos(a.poligono_proposto); a.limites_abertos = false;
+    if (a.latitude == null) { const c = centroPontos(a.poligono); a.latitude = c[1]; a.longitude = c[0]; }
+  }
+  a.poligono_proposto = null; a.area_m2_proposta = null; a.proposta_em = null;
+}
+function aprovarMedicao(id, sim) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  if (sim && temPoligono(a) && S.perfil.papel !== 'gestor') return aviso('Este campo já tem limite. Só o gestor pode substituí-lo.', 'erro');
+  if (!sim && !confirm('Recusar esta medição? O activista terá de medir de novo.')) return;
+  aplicarAprovacao(a, sim); LS.set('areas', S.areas);
+  porNaFilaAlt({ tipo: 'aprovar', area_id: id, aprovar: sim });
+  desenharMapa(true); desenharLista();
+  abrirFicha(id, `<div class="msg ok">${sim ? 'Medição aprovada: o limite do campo já vale.' : 'Medição recusada.'}</div>`);
+}
+const porAprovar = () => (S.perfil && PODE_COORD.includes(S.perfil.papel) ? S.areas.filter((a) => a.poligono_proposto) : []);
+function ecraPorAprovar() {
+  const L = porAprovar();
+  folha(`<h2>Medições de área por aprovar</h2>${L.length ? L.map((a) => `<div class="item" onclick="abrirFicha('${esc(a.id)}')"><div><div class="nome">${esc(a.produtor)}</div>
+    <div class="sub">${esc(a.pr)} · ${esc(a.comunidade)} · ${esc(nomeAct(a.activista_id))} · ${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}</div></div></div>`).join('') : '<p class="pequeno">Nada por aprovar.</p>'}
+    <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
 function mudarLimites(id, abrir) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   a.limites_abertos = abrir; LS.set('areas', S.areas); porNaFilaAlt({ tipo: 'limites', area_id: id, abrir });
   abrirFicha(id, `<div class="msg ok">${abrir ? 'O supervisor e o técnico já podem corrigir a coordenada e medir a área deste campo. Fecha de novo depois de gravarem.' : 'Correcção fechada.'}</div>`);
 }
-// mudar a comunidade do campo (15/10/2026, Nuro/Valdo): supervisor e gestor; a zona volta a "por definir"
+// mudar a comunidade do campo (15/10/2026, Nuro/Valdo): técnico, supervisor e gestor; a zona volta a "por definir"
 function ecraComunidade(id) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   const lista = [...new Set([...(S.comunidades || []), ...S.areas.map((x) => x.comunidade)].filter(Boolean))].sort((x, y) => x.localeCompare(y));
@@ -740,7 +780,7 @@ function gravarAtribuicao(id) {
   abrirFicha(id, `<div class="msg ok">Campo atribuído a ${esc(nomeAct(novo))}.${navigator.onLine ? '' : ' Será enviado quando houver rede.'}</div>`);
 }
 async function recarregarAreas() {
-  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos').eq('activa', true).order('comunidade').range(0, 4999);
+  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em').eq('activa', true).order('comunidade').range(0, 4999);
   if (ar.error) return;
   S.areas = aplicarPendentes(ar.data); LS.set('areas', S.areas);
 }
@@ -748,6 +788,8 @@ function aplicarPendentes(lista) {                          // o que ainda não 
   for (const x of LS.get('filaAlt', [])) { const a = lista.find((y) => y.id === x.area_id); if (!a) continue; if (x.tipo === 'coord') { a.latitude = x.lat; a.longitude = x.lon; } else if (x.tipo === 'zona') a.zona = x.zona;
     else if (x.tipo === 'comunidade') { a.comunidade = x.comunidade; a.zona = null; }
     else if (x.tipo === 'limites') a.limites_abertos = x.abrir;
+    else if (x.tipo === 'aprovar') aplicarAprovacao(a, x.aprovar);
+    else if (x.tipo === 'poligono' && x.proposta) { a.poligono_proposto = x.pontos; a.area_m2_proposta = x.area_m2; a.proposta_em = x.medido_em; }
     else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
     else a.activista_id = x.activista_id; }
   return lista;
