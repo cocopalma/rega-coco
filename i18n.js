@@ -1,21 +1,24 @@
-/* Rega Coco — tradução para inglês.
-   A app é escrita em português; com o inglês escolhido, este ficheiro traduz os textos à medida que aparecem no ecrã.
+/* Rega Coco — tradução para inglês e suaíli (Kiswahili, desde 15/10/2026; dicionário em i18n-sw.js).
+   A app é escrita em português; com outra língua escolhida, este ficheiro traduz os textos à medida que aparecem no ecrã.
    Os dados (nomes, comunidades, PR) não são traduzidos. A escolha fica guardada no telefone. */
 'use strict';
-const LINGUA = (() => { try { return localStorage.getItem('rega.lingua') || 'pt'; } catch { return 'pt'; } })();
+const LINGUAS = ['pt', 'en', 'sw'];                     // ordem do botão: PT → EN → SW → PT
+const LINGUA = (() => { try { const l = localStorage.getItem('rega.lingua'); return LINGUAS.includes(l) ? l : 'pt'; } catch { return 'pt'; } })();
+const PROXIMA = LINGUAS[(LINGUAS.indexOf(LINGUA) + 1) % LINGUAS.length];
 function mudarLingua() {
-  try { localStorage.setItem('rega.lingua', LINGUA === 'en' ? 'pt' : 'en'); } catch {}
+  try { localStorage.setItem('rega.lingua', PROXIMA); } catch {}
   location.reload();
 }
 // botões de língua: mostram a língua para onde se muda
 document.addEventListener('DOMContentLoaded', () => {
-  for (const [id, pt, en] of [['h-lingua', 'EN', 'PT'], ['b-lingua', 'EN', 'PT'], ['lc-lingua', 'EN', 'PT'], ['le-lingua', 'EN', 'PT'], ['l-lingua', 'English', 'Português']]) {
-    const b = document.getElementById(id); if (b) b.textContent = LINGUA === 'en' ? en : pt;
+  const curto = { pt: 'PT', en: 'EN', sw: 'SW' }[PROXIMA], longo = { pt: 'Português', en: 'English', sw: 'Kiswahili' }[PROXIMA];
+  for (const [id, txt] of [['h-lingua', curto], ['b-lingua', curto], ['lc-lingua', curto], ['le-lingua', curto], ['l-lingua', longo]]) {
+    const b = document.getElementById(id); if (b) { b.textContent = txt; b.title = 'Português / English / Kiswahili'; }
   }
 });
 (() => {
-  if (LINGUA !== 'en') return;
-  document.documentElement.lang = 'en';
+  if (LINGUA === 'pt') return;
+  document.documentElement.lang = LINGUA;
   const D = {
     // navegação e cabeçalho
     'Mapa': 'Map', 'Campos': 'Fields', 'Hoje': 'Today', 'Painel': 'Dashboard', 'Gestão': 'Admin',
@@ -339,6 +342,11 @@ document.addEventListener('DOMContentLoaded', () => {
     [/^Memória do telefone cheia: (.+)$/, 'Phone memory full: $1'], [/^Escolha o nome da lista de técnicos$/, 'Choose the name from the technicians list'],
     [/^Escolha o nome da lista de supervisores$/, 'Choose the name from the supervisors list'],
   ];
+  if (LINGUA === 'sw' && window.I18N_SW_D) {             // suaíli: as mesmas chaves e expressões, com o texto em suaíli
+    for (const k of Object.keys(D)) delete D[k];
+    Object.assign(D, window.I18N_SW_D);
+    R.splice(0, R.length, ...window.I18N_SW_R(tr));
+  }
   const SEP = / (·|—|›|→) /;
   function tr(s) {
     if (!s || !/[A-Za-zÀ-ú]/.test(s)) return s;

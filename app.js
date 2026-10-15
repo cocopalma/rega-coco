@@ -20,7 +20,7 @@ const CFG = {
    A duração de cada ronda concluída é o ciclo provisório da comunidade. */
 const sb = supabase.createClient(CFG.url, CFG.chave, { auth: { persistSession: true, autoRefreshToken: true } });
 const $ = (s) => document.querySelector(s);
-const LOC = typeof LINGUA !== 'undefined' && LINGUA === 'en' ? 'en-GB' : 'pt-PT';
+const LOC = typeof LINGUA !== 'undefined' && LINGUA !== 'pt' ? 'en-GB' : 'pt-PT';
 const hojeISO = () => new Date().toLocaleDateString('sv-SE');
 const fmtData = (d) => d ? new Date(d + (d.length === 10 ? 'T12:00:00' : '')).toLocaleDateString(LOC) : '—';
 const fmtHora = (t) => t ? new Date(t).toLocaleTimeString(LOC, { hour: '2-digit', minute: '2-digit' }) : '—';
