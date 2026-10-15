@@ -139,3 +139,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Servidor: tabelas `plantas` (id do telefone, area_id, n, lat, lon, precisao_m, estado, cavaroda, mulching, marcada_em/por, actualizada_em/por, removida) e `plantas_eventos` (histórico: marcada / estado / removida). RPC `gravar_planta`, `estado_planta` (só aplica se for mais recente), `remover_planta` (marca removida). Leitura: quem vê o campo. Escrita só técnico, supervisor e gestor (activista fica para depois do teste).
 - Contras falados com o Valdo: GPS do telefone ±2–5 m para ~8 m entre mudas (Mondlane: ~140 plantas em 0,8–1 ha); ~1 h por ha a mapear; registo muda a muda pesa para o activista.
 - Teste: `rega-test/teste_plantas.py`. Nota: `teste_medir.py` falha agora no reload sem rede (também com a v42; problema do ambiente de teste, não da app).
+
+## Revisão do suaíli (16/10/2026)
+- Tabela enviada ao Valdo: `Rega_Coco_revisao_suaili_20261016.xlsx` (cópia em `rega-test/suaili/`). Folhas: 1 Activista (198 frases vistas nos testes do activista), 2 Técnico e supervisor (333), 3 Painel (117), 4 Frases com números (116). Coluna amarela "Kiswahili corrigido"; coluna ID = `D|<frase em português>` (dicionário `I18N_SW_D`) ou `R|<índice>` (expressão `I18N_SW_R`, mesma ordem que `R`). Nas frases variáveis [1], [2] = partes da expressão e { } = parte opcional.
+- Quando voltar: para cada linha com correcção, D → substituir o valor em `I18N_SW_D`; R → reescrever a substituição da expressão nesse índice (pôr $1/$2 no lugar de [1]/[2]). Gerado por `rega-test/suaili/tabela.js`.
