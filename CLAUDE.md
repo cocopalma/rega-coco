@@ -128,5 +128,5 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Envio: antes da linha do registo, para o bucket privado `rega-fotos/<perfil>/<registo>-<tipo>.jpg`; colunas `registos_rega.foto_entrada/_rega/_saida` (caminho) e `foto_*_em` (hora). Leitura do bucket: todos os papéis (como chuva e monitoria).
 - Se o Android fechar o Chrome ao abrir a câmara: rascunho `rascFotoRega` volta ao ecrã da fotografia com aviso.
 - Ver as fotografias na app/painel: ainda não feito.
-- Armazenamento: plano gratuito do Supabase tem 1 GB; estimativa 0,5–1 GB/mês com todas as equipas → o Valdo vai passar ao Pro (25 USD/mês, 100 GB).
+- Armazenamento: estimativa 0,5–1 GB/mês com todas as equipas. Organização no plano Pro desde 15/10/2026 (confirmado; 25 USD/mês, 100 GB de ficheiros, sem pausa por inactividade).
 - Teste: `rega-test/teste_fotos_rega.py`; os testes de fluxo (teste.py, teste_en.py, teste_arranque.py) guardam as três fotografias com `fotos(pg)`.
