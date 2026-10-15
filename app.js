@@ -187,6 +187,8 @@ async function sincronizarAgora(silencioso) {
       const r4 = x.tipo === 'coord'
         ? await sb.rpc('gravar_coordenada', { p_area: x.area_id, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao })
         : x.tipo === 'zona' ? await sb.rpc('definir_zona', { p_area: x.area_id, p_zona: x.zona })
+        : x.tipo === 'comunidade' ? await sb.rpc('definir_comunidade', { p_area: x.area_id, p_comunidade: x.comunidade })
+        : x.tipo === 'limites' ? await sb.rpc('abrir_limites', { p_area: x.area_id, p_abrir: x.abrir })
         : x.tipo === 'poligono' ? await sb.rpc('gravar_poligono', { p_area: x.area_id, p_pontos: x.pontos, p_precisao: x.precisao, p_medido_em: x.medido_em })
         : await sb.rpc('atribuir_area', { p_area: x.area_id, p_activista: x.activista_id });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
@@ -220,12 +222,13 @@ function actSync() {
 // ---------- dados ----------
 // todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
-  const [p, ac, ar, zs, est] = await Promise.all([
+  const [p, ac, ar, zs, est, lc] = await Promise.all([
     sb.from('perfis').select('id,nome,papel,activista_id').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
-    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2').eq('activa', true).order('comunidade').range(0, 4999),
+    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos').eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
     sb.rpc('estado_ronda'),
+    sb.rpc('lista_comunidades'),
   ]);
   if (p.error) throw new Error(p.error.message);
   if (!p.data) throw new Error('Este utilizador não tem perfil na app. Fale com o gestor.');
@@ -233,6 +236,7 @@ async function carregarTudo() {
   if (ac.error || ar.error) throw new Error((ac.error || ar.error).message);
   S.perfil = p.data; S.activistas = ac.data; S.areas = aplicarPendentes(ar.data);
   if (!zs.error) { S.zonas = zs.data; LS.set('zonas', S.zonas); }
+  if (!lc.error && Array.isArray(lc.data)) { S.comunidades = lc.data; LS.set('comunidades', S.comunidades); }
   S.visiveis = null;
   if (['tecnico', 'supervisor'].includes(S.perfil.papel)) {
     const [v] = await Promise.all([sb.rpc('meus_activistas'), carregarMonitoria()]);
@@ -258,7 +262,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
   return !!(S.perfil && (S.areas.length || S.perfil.papel === 'cliente'));
 }
 
@@ -550,7 +554,7 @@ function terminarMedicao() {
 function gravarMedicao() {
   const M = S.medir, P = M.final, a = S.areas.find((x) => x.id === M.id); if (!P || !a) return;
   const area = Math.round(areaPontos(P) * 10) / 10;
-  a.poligono = P; a.area_m2 = area; if (a.latitude == null) { const c = centroPontos(P); a.latitude = c[1]; a.longitude = c[0]; }
+  a.poligono = P; a.area_m2 = area; a.limites_abertos = false; if (a.latitude == null) { const c = centroPontos(P); a.latitude = c[1]; a.longitude = c[0]; }
   LS.set('areas', S.areas);
   porNaFilaAlt({ tipo: 'poligono', area_id: a.id, pontos: P, area_m2: area, precisao: M.melhor || null, medido_em: new Date().toISOString() });
   LS.del('rascMedir'); S.medir = null;
@@ -613,13 +617,42 @@ const PODE_COORD = ['tecnico', 'supervisor', 'gestor'];
 const podeAtribuir = (a) => ['gestor', 'supervisor'].includes(S.perfil.papel) || (S.perfil.papel === 'tecnico' && !a.activista_id);
 function botoesCampo(a) {
   let h = '';
-  if (PODE_COORD.includes(S.perfil.papel) && (a.latitude == null || ['gestor', 'supervisor'].includes(S.perfil.papel)))
+  // depois de gravadas, coordenada e área ficam fechadas; só o gestor corrige ou volta a abrir (15/10/2026, Nuro/Valdo)
+  const gestor = S.perfil.papel === 'gestor', aberto = gestor || a.limites_abertos;
+  if (PODE_COORD.includes(S.perfil.papel) && (a.latitude == null || aberto))
     h += `<button class="btn sec" onclick="ecraCoordenada('${esc(a.id)}')">📍 ${a.latitude == null ? 'Gravar a coordenada deste campo' : 'Corrigir a coordenada (estou no campo)'}</button>`;
-  if (PODE_COORD.includes(S.perfil.papel) && (!temPoligono(a) || ['gestor', 'supervisor'].includes(S.perfil.papel)))
+  if (PODE_COORD.includes(S.perfil.papel) && (!temPoligono(a) || aberto))
     h += `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 ${temPoligono(a) ? 'Medir a área de novo (andar à volta)' : 'Medir a área (andar à volta do campo)'}</button>`;
   if (podeAtribuir(a)) h += `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">👤 ${a.activista_id ? 'Mudar o activista deste campo' : 'Atribuir a um activista'}</button>`;
+  if (['gestor', 'supervisor'].includes(S.perfil.papel)) h += `<button class="btn sec" onclick="ecraComunidade('${esc(a.id)}')">🏘 Mudar a comunidade</button>`;
   if (['gestor', 'supervisor'].includes(S.perfil.papel) && zonasDe(a.comunidade).length) h += `<button class="btn sec" onclick="ecraZona('${esc(a.id)}')">🗂 ${a.zona ? 'Mudar a zona' : 'Definir a zona'}</button>`;
+  if (gestor && (a.latitude != null || temPoligono(a)))
+    h += a.limites_abertos ? `<button class="btn sec" onclick="mudarLimites('${esc(a.id)}', false)">🔒 Fechar a correcção da coordenada e da área</button>`
+      : `<button class="btn sec" onclick="mudarLimites('${esc(a.id)}', true)">🔓 Deixar o supervisor/técnico corrigir a coordenada e medir de novo</button>`;
   return h;
+}
+function mudarLimites(id, abrir) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  a.limites_abertos = abrir; LS.set('areas', S.areas); porNaFilaAlt({ tipo: 'limites', area_id: id, abrir });
+  abrirFicha(id, `<div class="msg ok">${abrir ? 'O supervisor e o técnico já podem corrigir a coordenada e medir a área deste campo. Fecha de novo depois de gravarem.' : 'Correcção fechada.'}</div>`);
+}
+// mudar a comunidade do campo (15/10/2026, Nuro/Valdo): supervisor e gestor; a zona volta a "por definir"
+function ecraComunidade(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  const lista = [...new Set([...(S.comunidades || []), ...S.areas.map((x) => x.comunidade)].filter(Boolean))].sort((x, y) => x.localeCompare(y));
+  folha(`<h2>${esc(a.produtor)}</h2><p class="pequeno">${esc(a.pr)} · comunidade actual: <b>${esc(a.comunidade)}</b>${a.zona ? ' › ' + esc(a.zona) : ''}</p>
+    <label>Nova comunidade<select id="cm-com">${lista.map((c) => `<option ${c === a.comunidade ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+    <p class="pequeno">Mude só se o campo fica noutra comunidade. ${zonasDe(a.comunidade).length || lista.some((c) => zonasDe(c).length) ? 'A zona volta a ficar por definir.' : ''}</p>
+    <button class="btn" onclick="gravarComunidade('${esc(id)}')">Gravar</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
+}
+function gravarComunidade(id) {
+  const a = S.areas.find((x) => x.id === id), c = $('#cm-com').value; if (!a || !c) return;
+  if (c === a.comunidade) return abrirFicha(id);
+  a.comunidade = c; a.zona = null; LS.set('areas', S.areas);
+  porNaFilaAlt({ tipo: 'comunidade', area_id: id, comunidade: c });
+  desenharLista(); desenharMapa(true);
+  if (zonasDe(c).length) return ecraZona(id);
+  abrirFicha(id, `<div class="msg ok">Comunidade mudada para ${esc(c)}.</div>`);
 }
 // zonas dentro de uma comunidade (ex.: Palma › Incularino)
 const zonasDe = (com) => (Array.isArray(S.zonas) ? S.zonas : []).filter((z) => z.comunidade === com).map((z) => z.zona);
@@ -667,7 +700,7 @@ function gravarCoordenada() {
   const x = S.coordPendente; if (!x || x.precisao > CFG.precisaoCoord) return;
   pararVigia();
   const a = S.areas.find((y) => y.id === x.area_id);
-  a.latitude = x.lat; a.longitude = x.lon; LS.set('areas', S.areas);    // aparece já no mapa deste telefone
+  a.latitude = x.lat; a.longitude = x.lon; a.limites_abertos = false; LS.set('areas', S.areas);    // aparece já no mapa deste telefone
   porNaFilaAlt({ tipo: 'coord', ...x }); S.coordPendente = null; desenharMapa(); desenharLista();
   if (!a.activista_id && podeAtribuir(a)) return ecraAtribuir(a.id, '<div class="msg ok">Coordenada gravada. Agora atribua o campo a um activista.</div>');
   abrirFicha(a.id, '<div class="msg ok">Coordenada gravada.</div>');
@@ -707,13 +740,15 @@ function gravarAtribuicao(id) {
   abrirFicha(id, `<div class="msg ok">Campo atribuído a ${esc(nomeAct(novo))}.${navigator.onLine ? '' : ' Será enviado quando houver rede.'}</div>`);
 }
 async function recarregarAreas() {
-  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2').eq('activa', true).order('comunidade').range(0, 4999);
+  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos').eq('activa', true).order('comunidade').range(0, 4999);
   if (ar.error) return;
   S.areas = aplicarPendentes(ar.data); LS.set('areas', S.areas);
 }
 function aplicarPendentes(lista) {                          // o que ainda não foi enviado continua a valer neste telefone
   for (const x of LS.get('filaAlt', [])) { const a = lista.find((y) => y.id === x.area_id); if (!a) continue; if (x.tipo === 'coord') { a.latitude = x.lat; a.longitude = x.lon; } else if (x.tipo === 'zona') a.zona = x.zona;
-    else if (x.tipo === 'poligono') { a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
+    else if (x.tipo === 'comunidade') { a.comunidade = x.comunidade; a.zona = null; }
+    else if (x.tipo === 'limites') a.limites_abertos = x.abrir;
+    else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
     else a.activista_id = x.activista_id; }
   return lista;
 }

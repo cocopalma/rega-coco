@@ -29,7 +29,7 @@ Tabela `pessoas_acesso` (nome, entidade, papel, utilizador; sem senhas), copiada
 Funções no Excel → papel: Técnico=tecnico, Supervisor=supervisor, Director (só leitura)=director, M&E (só leitura)=me, Só painel (cliente / administração)=cliente.
 
 ## Zonas
-Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quilaua, Muah, Bagala, Quelimane (11/10/2026, Nuro). Oliveira = Incularino e Quilaua, Sitambur = Muah, Razaque = Bagala e Quelimane; só os campos do Sitambur tinham zona definida a 11/10; os outros ficam para o supervisor (Nuro) definir. A questão do Nuro "faltam reflectir produtores de Bagala, Quelimane" ficou resolvida (Valdo, 12/10/2026). Gestor e supervisor mudam a zona na ficha do campo (RPC `definir_zona`, fica em `alteracoes_areas`). A comunidade do campo não muda.
+Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quilaua, Muah, Bagala, Quelimane (11/10/2026, Nuro). Oliveira = Incularino e Quilaua, Sitambur = Muah, Razaque = Bagala e Quelimane; só os campos do Sitambur tinham zona definida a 11/10; os outros ficam para o supervisor (Nuro) definir. A questão do Nuro "faltam reflectir produtores de Bagala, Quelimane" ficou resolvida (Valdo, 12/10/2026). Gestor e supervisor mudam a zona na ficha do campo (RPC `definir_zona`, fica em `alteracoes_areas`). Desde 15/10/2026 (Nuro/Valdo) supervisor e gestor também mudam a comunidade do campo ("🏘 Mudar a comunidade", RPC `definir_comunidade`, zona volta a null; lista de `lista_comunidades`, guardada no telefone).
 
 ## Notas de dados
 - `areas.activista_proposto` guarda o NOME do activista (não o id); a app converte com `propostaId()`.
@@ -102,6 +102,11 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Rascunho `rega.rascMedir` (pontos a cada ponto): se a app fechar a meio da volta, reabre e continua; se a pessoa sair, os pontos ficam para quando voltar a medir esse campo.
 - Grava pela fila `filaAlt` (tipo 'poligono') → RPC `gravar_poligono(p_area, p_pontos, p_precisao, p_medido_em)`: valida papel/visibilidade, 3–3000 pontos dentro da zona, área 4 m² a 50 ha; grava `poligono`, `area_m2`, `area_medida_em`, `poligono_fonte` "Medido na app dd/mm/aaaa (GPS ±x m)", e a coordenada (centro) se faltava; regista em `alteracoes_areas` (campo 'poligono', constraint alargada). A ficha mostra a área (medida, ou calculada do polígono do KMZ).
 - A 15/10: 108 campos activos sem polígono (39 também sem coordenada). Teste: `rega-test/teste_medir.py`.
+
+## Coordenada e área fechadas depois de gravadas (15/10/2026, Nuro/Valdo)
+- Primeiras medições reais (Nuro, Mondlane, 15/10): PR394688-1 8156 m² (28 pontos) e PR395335-1 9564 m² (45 pontos), GPS ±2 m.
+- Depois de gravadas, a coordenada e a área ficam fechadas para técnico e supervisor (botões escondidos; servidor recusa). Só o gestor corrige, ou carrega em "🔓 Deixar o supervisor/técnico corrigir…" (`areas.limites_abertos`, RPC `abrir_limites`); fecha sozinho depois de gravarem. Vale também para os limites vindos do KMZ.
+- Pedido do Nuro ainda por decidir: fotografias de evidência na entrada, chegada da água e saída (plano gratuito do Supabase; ver espaço de armazenamento antes).
 
 ## Pendentes pedidos pelo Valdo
 - Documento do RH com o tamanho das 12 equipas "por definir" (o Valdo vai pedir).
