@@ -198,6 +198,9 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'limites' ? await sb.rpc('abrir_limites', { p_area: x.area_id, p_abrir: x.abrir })
         : x.tipo === 'aprovar' ? await sb.rpc('aprovar_poligono', { p_area: x.area_id, p_aprovar: x.aprovar })
         : x.tipo === 'poligono' ? await sb.rpc('gravar_poligono', { p_area: x.area_id, p_pontos: x.pontos, p_precisao: x.precisao, p_medido_em: x.medido_em })
+        : x.tipo === 'planta' ? await sb.rpc('gravar_planta', { p_id: x.planta.id, p_area: x.area_id, p_n: x.planta.n, p_lat: x.planta.lat, p_lon: x.planta.lon, p_precisao: x.planta.precisao_m, p_em: x.planta.marcada_em, p_estado: x.planta.estado, p_cavaroda: x.planta.cavaroda, p_mulching: x.planta.mulching })
+        : x.tipo === 'planta_est' ? await sb.rpc('estado_planta', { p_id: x.planta_id, p_estado: x.estado, p_cavaroda: x.cavaroda, p_mulching: x.mulching, p_em: x.em })
+        : x.tipo === 'planta_rem' ? await sb.rpc('remover_planta', { p_id: x.planta_id, p_em: x.em })
         : await sb.rpc('atribuir_area', { p_area: x.area_id, p_activista: x.activista_id });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
       if (r4.error) aviso(`Não foi gravado (${x.area_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
@@ -349,7 +352,7 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- mapa ----------
@@ -431,6 +434,144 @@ function desenharLista() {
     linhas.slice(0, 300).map(({ a, s, d }) => `<div class="item" data-id="${esc(a.id)}"><div>
       <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
       </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}<span class="tag t-${s.cod}">${s.txt}</span>${s.cod === 'sem' && podeAtribuir(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
+}
+
+// ---------- mapa de plantas (15/10/2026, pedido do Dalmar; teste com gestor/director, supervisores e técnicos) ----------
+// Cada muda fica com a sua coordenada (média das leituras do GPS durante uns segundos) e o estado: viva / seca / morta,
+// cava-roda, mulching. Funciona sem rede: as plantas ficam no telefone (rega.plantas) e vão pela fila de alterações.
+const PL_MEDIA_MS = 6000, PL_PREC = 8, PL_PERTO = 3;   // 6 s de leituras; aceita leituras até ±8 m; aviso se já há planta a < 3 m
+const COR_PLANTA = { viva: '#2e7d32', seca: '#ef8f00', morta: '#c62828' };
+let vigiaPlantas = null, travaPlantas = null;
+const plantasLocais = (id) => ((LS.get('plantas', {}) || {})[id] || []);
+function guardarPlantasLocais(id, lista) { const t = LS.get('plantas', {}) || {}; t[id] = lista; LS.set('plantas', t); }
+function pararPlantas() {
+  if (vigiaPlantas != null) { navigator.geolocation.clearWatch(vigiaPlantas); vigiaPlantas = null; }
+  if (travaPlantas) { travaPlantas.release().catch(() => {}); travaPlantas = null; }
+}
+async function carregarPlantas(id) {
+  if (!navigator.onLine) return;
+  const r = await sb.from('plantas').select('id,n,lat,lon,precisao_m,estado,cavaroda,mulching,marcada_em,actualizada_em').eq('area_id', id).eq('removida', false).order('n').range(0, 4999);
+  if (r.error || !Array.isArray(r.data)) return;
+  let lista = r.data;                                       // o que ainda está na fila do telefone fica por cima do servidor
+  for (const x of LS.get('filaAlt', [])) {
+    if (x.area_id !== id) continue;
+    if (x.tipo === 'planta' && !lista.some((p) => p.id === x.planta.id)) lista.push(x.planta);
+    if (x.tipo === 'planta_est') lista = lista.map((p) => (p.id === x.planta_id ? { ...p, estado: x.estado, cavaroda: x.cavaroda, mulching: x.mulching } : p));
+    if (x.tipo === 'planta_rem') lista = lista.filter((p) => p.id !== x.planta_id);
+  }
+  guardarPlantasLocais(id, lista);
+}
+function ecraPlantas(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  pararVigia();
+  S.pl = { id, pos: null, sel: null, lendo: false, leituras: [] };
+  folha(`<h2>Mapa das plantas · ${esc(a.produtor)}</h2>
+    <div class="msg info"><b>Teste.</b> Pare junto a cada muda e carregue em «Marcar planta aqui»: o telefone faz a média do GPS durante uns segundos. Para mudar o estado de uma muda, toque no ponto do desenho ou em «Planta mais perto de mim».</div>
+    <div class="cartao"><div class="lin"><span>Precisão do GPS</span><b id="pl-prec">—</b></div><div id="pl-resumo"></div></div>
+    <div id="pl-des" style="margin:8px 0"></div>
+    <p class="pequeno" style="margin:0 0 6px"><span style="color:${COR_PLANTA.viva}">●</span> viva &nbsp; <span style="color:${COR_PLANTA.seca}">●</span> seca &nbsp; <span style="color:${COR_PLANTA.morta}">●</span> morta &nbsp; ◎ anel castanho = cava-roda e mulching (tracejado = só um) &nbsp; <span style="color:#1565c0">●</span> eu</p>
+    <button class="btn" id="pl-marcar">📍 Marcar planta aqui</button>
+    <button class="btn sec" id="pl-perto">Planta mais perto de mim</button>
+    <div id="pl-sel"></div>
+    <button class="btn sec" onclick="pararPlantas();abrirFicha('${esc(id)}')">Voltar à ficha</button>`);
+  $('#pl-marcar').onclick = marcarPlanta;
+  $('#pl-perto').onclick = () => {
+    const p = S.pl.pos; if (!p) return aviso('Ainda sem posição do GPS.', 'erro');
+    const l = plantasLocais(id); if (!l.length) return aviso('Ainda não há plantas marcadas neste campo.', 'info');
+    let m = null, dm = Infinity; for (const x of l) { const d = metros([p.lat, p.lon], [x.lat, x.lon]); if (d < dm) { dm = d; m = x; } }
+    selPlanta(m.id);
+  };
+  desenharPlantas();
+  carregarPlantas(id).then(() => { if (S.pl?.id === id && $('#pl-des')) desenharPlantas(); });
+  (async () => { try { if (navigator.wakeLock) travaPlantas = await navigator.wakeLock.request('screen'); } catch {} })();
+  if (!navigator.geolocation) return aviso('Este telefone não tem GPS disponível no navegador.', 'erro');
+  vigiaPlantas = navigator.geolocation.watchPosition((p) => {
+    if (!$('#pl-prec')) return pararPlantas();
+    S.pl.pos = { lat: p.coords.latitude, lon: p.coords.longitude, prec: Math.round(p.coords.accuracy) };
+    if (S.pl.lendo) S.pl.leituras.push(S.pl.pos);
+    const el = $('#pl-prec'); el.textContent = `±${S.pl.pos.prec} m`; el.style.color = S.pl.pos.prec <= CFG.precisaoIdeal ? '#1b5e20' : S.pl.pos.prec <= PL_PREC ? '#ef8f00' : '#c62828';
+    desenharPlantas();
+  }, (e) => { const el = $('#pl-prec'); if (el) el.textContent = e.code === 1 ? 'sem autorização de localização' : 'sem sinal de GPS'; },
+  { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 });
+}
+function desenharPlantas() {
+  const P = S.pl; if (!P || !$('#pl-des')) return;
+  const a = S.areas.find((x) => x.id === P.id) || {}, l = plantasLocais(P.id);
+  const pol = temPoligono(a) ? a.poligono : [], todos = [...pol, ...l.map((x) => [x.lon, x.lat]), ...(P.pos ? [[P.pos.lon, P.pos.lat]] : [])];
+  const v = { viva: 0, seca: 0, morta: 0 }; let cr = 0, mu = 0; for (const x of l) { v[x.estado] = (v[x.estado] || 0) + 1; if (x.cavaroda) cr++; if (x.mulching) mu++; }
+  $('#pl-resumo').innerHTML = `<div class="lin"><span>Plantas marcadas</span><b>${num(l.length)}${a.instaladas ? ` <span class="pequeno">(base: ${num(a.instaladas)} plantadas)</span>` : ''}</b></div>
+    <div class="lin"><span>Vivas · secas · mortas</span><b>${num(v.viva)} · ${num(v.seca)} · ${num(v.morta)}</b></div>
+    <div class="lin"><span>Com cava-roda · com mulching</span><b>${num(cr)} · ${num(mu)}</b></div>`;
+  if (!todos.length) { $('#pl-des').innerHTML = '<p class="pequeno">À espera do GPS…</p>'; return; }
+  const m = emMetros(todos), xs = m.map((q) => q[0]), ys = m.map((q) => q[1]);
+  const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(20, Math.max(...xs) - x0), h = Math.max(20, Math.max(...ys) - y0), k = 280 / Math.max(w, h);
+  const W = Math.round(20 + w * k), H = Math.round(20 + h * k);
+  const pt = (q) => [10 + (q[0] - x0) * k, H - 10 - (q[1] - y0) * k];
+  const mp = m.slice(pol.length, pol.length + l.length), r = Math.max(3, Math.min(7, k * 1.2));
+  const poly = pol.length ? `<polygon points="${m.slice(0, pol.length).map((q) => pt(q).map((z) => z.toFixed(1)).join(',')).join(' ')}" fill="rgba(46,125,50,.12)" stroke="#1f5130" stroke-width="1.5"/>` : '';
+  const pts = l.map((x, i) => { const [cx, cy] = pt(mp[i]), sel = P.sel === x.id, cuid = x.cavaroda && x.mulching ? 'stroke="#5d4037" stroke-width="2.5"' : x.cavaroda || x.mulching ? 'stroke="#5d4037" stroke-width="2" stroke-dasharray="2 2"' : '';
+    return `<g onclick="selPlanta('${x.id}')" style="cursor:pointer"><circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${(r + 7).toFixed(1)}" fill="transparent"/>
+      ${cuid ? `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${(r + 2.5).toFixed(1)}" fill="none" ${cuid}/>` : ''}
+      <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${COR_PLANTA[x.estado] || '#777'}" ${sel ? 'stroke="#000" stroke-width="2"' : ''}/>
+      ${sel ? `<text x="${(cx + r + 3).toFixed(1)}" y="${(cy - r - 2).toFixed(1)}" font-size="11" font-weight="700">${x.n}</text>` : ''}</g>`; }).join('');
+  const eu = P.pos ? (() => { const [cx, cy] = pt(m[m.length - 1]); return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="#1565c0" stroke="#fff" stroke-width="1.5"/>`; })() : '';
+  $('#pl-des').innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:340px;background:#eef4ea;border-radius:10px">${poly}${pts}${eu}</svg>`;
+}
+async function marcarPlanta() {
+  const P = S.pl; if (!P || P.lendo) return;
+  if (!P.pos) return aviso('Ainda sem posição do GPS. Espere uns segundos.', 'erro');
+  P.lendo = true; P.leituras = [P.pos]; const b = $('#pl-marcar'); b.disabled = true; b.textContent = 'A ler o GPS… fique parado';
+  await new Promise((ok) => setTimeout(ok, PL_MEDIA_MS));
+  P.lendo = false; if (b) { b.disabled = false; b.textContent = '📍 Marcar planta aqui'; }
+  const boas = P.leituras.filter((x) => x.prec <= PL_PREC);
+  if (!boas.length) return aviso(`Precisão fraca (±${P.pos.prec} m). Espere uns segundos e tente de novo.`, 'erro');
+  let sw = 0, la = 0, lo = 0; for (const x of boas) { const wgt = 1 / Math.max(1, x.prec) ** 2; sw += wgt; la += x.lat * wgt; lo += x.lon * wgt; }
+  const pos = { lat: la / sw, lon: lo / sw, prec: Math.min(...boas.map((x) => x.prec)) };
+  const l = plantasLocais(P.id);
+  let perto = null, dp = Infinity; for (const x of l) { const d = metros([pos.lat, pos.lon], [x.lat, x.lon]); if (d < dp) { dp = d; perto = x; } }
+  if (perto && dp < PL_PERTO && !confirm(`Já há a planta nº ${perto.n} a ${Math.round(dp)} m. Marcar outra planta aqui?`)) { selPlanta(perto.id); return; }
+  const pl = { id: crypto.randomUUID(), n: l.reduce((mx, x) => Math.max(mx, x.n || 0), 0) + 1, lat: pos.lat, lon: pos.lon, precisao_m: pos.prec,
+    estado: 'viva', cavaroda: false, mulching: false, marcada_em: new Date().toISOString() };
+  l.push(pl); guardarPlantasLocais(P.id, l);
+  porNaFilaAlt({ tipo: 'planta', area_id: P.id, planta: pl });
+  P.sel = pl.id; desenharPlantas(); mostrarPlanta();
+  aviso(`Planta nº ${pl.n} marcada (±${pl.precisao_m} m).`, 'ok');
+}
+function selPlanta(pid) { if (!S.pl) return; S.pl.sel = pid; desenharPlantas(); mostrarPlanta(); }
+function mostrarPlanta() {
+  const P = S.pl, x = plantasLocais(P.id).find((y) => y.id === P.sel), el = $('#pl-sel'); if (!el) return;
+  if (!x) { el.innerHTML = ''; return; }
+  const d = P.pos ? metros([P.pos.lat, P.pos.lon], [x.lat, x.lon]) : null;
+  el.innerHTML = `<div class="cartao" style="margin:8px 0"><h2 style="margin:0">Planta nº ${x.n}</h2>
+    <p class="pequeno">Marcada ${fmtData(x.marcada_em.slice(0, 10))} ${fmtHora(x.marcada_em)} · ±${x.precisao_m ?? '?'} m${d != null ? ` · a ${Math.round(d)} m de si` : ''}</p>
+    <label>Estado</label><div class="chips" id="ps-est">${['viva', 'seca', 'morta'].map((e) => `<button class="chip${x.estado === e ? ' on' : ''}" data-v="${e}">${{ viva: 'Viva', seca: 'Seca', morta: 'Morta' }[e]}</button>`).join('')}</div>
+    <label>Cuidados</label><div class="chips" id="ps-cuid"><button class="chip${x.cavaroda ? ' on' : ''}" data-k="cavaroda">Cava-roda</button><button class="chip${x.mulching ? ' on' : ''}" data-k="mulching">Mulching</button></div>
+    <button class="btn" onclick="gravarPlanta()">Gravar o estado desta planta</button>
+    <button class="chip" onclick="removerPlanta()">Remover este ponto (marcado por engano)</button></div>`;
+  document.querySelectorAll('#ps-est .chip').forEach((b) => b.onclick = () => document.querySelectorAll('#ps-est .chip').forEach((c) => c.classList.toggle('on', c === b)));
+  document.querySelectorAll('#ps-cuid .chip').forEach((b) => b.onclick = () => b.classList.toggle('on'));
+}
+// muda a planta no telefone e na fila: se a planta ainda não foi enviada, muda o próprio pedido de criação
+function mudarPlantaFila(pid, fn, tipoNovo) {
+  const f = LS.get('filaAlt', []), cria = f.find((x) => x.tipo === 'planta' && x.planta.id === pid);
+  if (cria) { const r = fn(cria); LS.set('filaAlt', r === null ? f.filter((x) => x !== cria && x.planta_id !== pid) : f); actSync(); return; }
+  porNaFilaAlt(tipoNovo);
+}
+function gravarPlanta() {
+  const P = S.pl, l = plantasLocais(P.id), x = l.find((y) => y.id === P.sel); if (!x) return;
+  x.estado = document.querySelector('#ps-est .chip.on')?.dataset.v || 'viva';
+  x.cavaroda = !!document.querySelector('#ps-cuid .chip.on[data-k=cavaroda]'); x.mulching = !!document.querySelector('#ps-cuid .chip.on[data-k=mulching]');
+  const em = new Date().toISOString(); x.actualizada_em = em; guardarPlantasLocais(P.id, l);
+  mudarPlantaFila(x.id, (c) => { Object.assign(c.planta, { estado: x.estado, cavaroda: x.cavaroda, mulching: x.mulching }); },
+    { tipo: 'planta_est', area_id: P.id, planta_id: x.id, estado: x.estado, cavaroda: x.cavaroda, mulching: x.mulching, em });
+  desenharPlantas(); mostrarPlanta(); aviso(`Planta nº ${x.n} gravada.`, 'ok');
+}
+function removerPlanta() {
+  const P = S.pl, l = plantasLocais(P.id), x = l.find((y) => y.id === P.sel); if (!x) return;
+  if (!confirm(`Remover o ponto da planta nº ${x.n}?`)) return;
+  guardarPlantasLocais(P.id, l.filter((y) => y.id !== x.id));
+  mudarPlantaFila(x.id, () => null, { tipo: 'planta_rem', area_id: P.id, planta_id: x.id, em: new Date().toISOString() });
+  P.sel = null; desenharPlantas(); mostrarPlanta();
 }
 
 // ---------- medir a área andando à volta do campo (15/10/2026, Valdo) ----------
@@ -635,6 +776,8 @@ function botoesCampo(a) {
       : `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 Medir a área (andar à volta do campo)</button>`;
   if (PODE_COORD.includes(S.perfil.papel) && (a.latitude == null || aberto))
     h += `<button class="btn sec" onclick="ecraCoordenada('${esc(a.id)}')">📍 ${a.latitude == null ? 'Gravar a coordenada deste campo' : 'Corrigir a coordenada (estou no campo)'}</button>`;
+  if (PODE_COORD.includes(S.perfil.papel)) { const np = plantasLocais(a.id).length;
+    h += `<button class="btn sec" onclick="ecraPlantas('${esc(a.id)}')">🌴 Mapa das plantas${np ? ` (${np})` : ''} · teste</button>`; }
   if (PODE_COORD.includes(S.perfil.papel) && (!temPoligono(a) || aberto))
     h += `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 ${temPoligono(a) ? 'Medir a área de novo (andar à volta)' : 'Medir a área (andar à volta do campo)'}</button>`;
   if (podeAtribuir(a)) h += `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">👤 ${a.activista_id ? 'Mudar o activista deste campo' : 'Atribuir a um activista'}</button>`;
@@ -717,7 +860,7 @@ function gravarZona(id) {
 function porNaFilaAlt(x) { const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), ...x }); LS.set('filaAlt', f); actSync(); sincronizar(true); }
 // leitura contínua do GPS: mostra a precisão a melhorar e só deixa gravar abaixo do limite
 let vigiaCoord = null;
-function pararVigia() { if (vigiaCoord != null) { navigator.geolocation.clearWatch(vigiaCoord); vigiaCoord = null; } pararMedicao(); }
+function pararVigia() { if (vigiaCoord != null) { navigator.geolocation.clearWatch(vigiaCoord); vigiaCoord = null; } pararMedicao(); pararPlantas(); }
 function ecraCoordenada(id) {
   const a = S.areas.find((x) => x.id === id);
   pararVigia(); S.coordPendente = null;
@@ -797,7 +940,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
     else if (x.tipo === 'aprovar') aplicarAprovacao(a, x.aprovar);
     else if (x.tipo === 'poligono' && x.proposta) { a.poligono_proposto = x.pontos; a.area_m2_proposta = x.area_m2; a.proposta_em = x.medido_em; }
     else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
-    else a.activista_id = x.activista_id; }
+    else if (!String(x.tipo).startsWith('planta')) a.activista_id = x.activista_id; }
   return lista;
 }
 
