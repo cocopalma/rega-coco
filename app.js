@@ -829,8 +829,8 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}<div id="f-mon"></div>`);
-  if (navigator.onLine && S.perfil.papel !== 'cliente') monitoriasDoCampo(a.id);   // a pedido, não atrasa a ficha
+   </div>${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+  if (navigator.onLine && S.perfil.papel !== 'cliente') { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
 }
 
 // ---------- entrada ----------
@@ -1232,6 +1232,16 @@ async function verFoto(balde, caminho, legenda = '') {
   const r = await sb.storage.from(balde).createSignedUrl(caminho, 600);
   if (r.error) { m.innerHTML = `<p>${esc(/not found|Object/i.test(r.error.message) ? 'A fotografia ainda não chegou ao servidor.' : 'Sem acesso a esta fotografia ou sem rede.')}</p><p class="pequeno">Toque para fechar.</p>`; return; }
   m.innerHTML = `<img src="${esc(r.data.signedUrl)}" alt="" style="max-width:100%;max-height:80vh;border-radius:8px"><p style="margin-top:10px">${esc(legenda)}</p><p class="pequeno" style="color:#ddd">Toque para fechar.</p>`;
+}
+// últimas regas do campo com as fotografias (15/10/2026, Valdo): a imagem só se descarrega ao tocar
+async function regasDoCampo(id) {
+  const r = await sb.rpc('regas_campo', { p_area: id }); const el = $('#f-regas');
+  if (r.error || !el || !Array.isArray(r.data) || !r.data.length) return;
+  const bt = (v, t, rot) => v['foto_' + t] ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(v['foto_' + t])}', '${esc(rot)} · ${esc(fmtData(v.data))} ${esc(fmtHora(v['foto_' + t + '_em'] || v.entrada_em))} · ${esc(v.quem || '')}')">📷 ${rot}</button>` : '';
+  el.innerHTML = `<div class="cartao" style="margin-top:10px"><h2>Regas deste campo</h2>` + r.data.map((v) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
+      <div class="lin" style="border:0;padding:0"><span>${fmtData(v.data)} · ${fmtHora(v.entrada_em)}–${v.saida_em ? fmtHora(v.saida_em) : '…'}${v.teste ? ' <span class="tag t-teste">teste</span>' : ''}</span><b>${num(v.plantas_regadas)} plantas</b></div>
+      <div class="pequeno">${esc(v.quem || '')}</div>
+      ${v.foto_entrada || v.foto_rega || v.foto_saida ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${bt(v, 'entrada', 'Entrada')}${bt(v, 'rega', 'Rega')}${bt(v, 'saida', 'Saída')}</div>` : '<div class="pequeno">Sem fotografias.</div>'}</div>`).join('') + '</div>';
 }
 async function monitoriasDoCampo(id) {
   const r = await sb.rpc('monitorias_campo', { p_area: id }); const el = $('#f-mon');

@@ -127,6 +127,6 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Cada fotografia é reduzida no telefone (1024 px, JPEG 60%) e guardada logo em IndexedDB com a chave `<registo>-<tipo>`; `emCurso.reg_id` e `emCurso.fotos` (hora de cada uma). Funciona sem rede.
 - Envio: antes da linha do registo, para o bucket privado `rega-fotos/<perfil>/<registo>-<tipo>.jpg`; colunas `registos_rega.foto_entrada/_rega/_saida` (caminho) e `foto_*_em` (hora). Leitura do bucket: todos os papéis (como chuva e monitoria).
 - Se o Android fechar o Chrome ao abrir a câmara: rascunho `rascFotoRega` volta ao ecrã da fotografia com aviso.
-- Ver as fotografias na app/painel: ainda não feito.
+- Ver as fotografias (15/10/2026, v45): ficha do campo › "Regas deste campo" (RPC `regas_campo`, últimas 10 regas, carregada depois de abrir a ficha; todos os papéis menos o cliente) com botões 📷 Entrada / Rega / Saída; a imagem abre por URL assinado (10 min) só ao tocar. Teste: `rega-test/teste_regas_campo.py`.
 - Armazenamento: estimativa 0,5–1 GB/mês com todas as equipas. Organização no plano Pro desde 15/10/2026 (confirmado; 25 USD/mês, 100 GB de ficheiros, sem pausa por inactividade).
 - Teste: `rega-test/teste_fotos_rega.py`; os testes de fluxo (teste.py, teste_en.py, teste_arranque.py) guardam as três fotografias com `fotos(pg)`.
