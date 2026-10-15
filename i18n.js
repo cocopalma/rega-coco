@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'Sair': 'Log out', 'Sair desta conta': 'Log out of this account', 'Sincronizar': 'Sync', '◎ Eu': '◎ Me',
     'As minhas': 'Mine', 'Todas': 'All', 'Rega Coco': 'Rega Coco', 'Rega Coco — Palma': 'Rega Coco — Palma',
     // funções
-    'Criar acessos e mudar senhas ou PIN é só com o gestor principal.': 'Creating access and changing passwords or PINs is only for the main manager.', 'Gestor': 'Manager', 'Técnico': 'Technician', 'Supervisor': 'Supervisor', 'Director (só leitura)': 'Director (read-only)',
+    'Criar acessos e mudar senhas ou PIN é só com o gestor principal.': 'Creating access and changing passwords or PINs is only for the main manager.', 'Fotografias': 'Photos', 'obrigatórias': 'required', 'Tirar': 'Take', 'Tirar outra': 'Take another', 'Tirar depois': 'Take later', '📷 Fotografia da entrada': '📷 Entry photo', '📷 Fotografia da rega (evidência)': '📷 Watering photo (evidence)', 'Fotografia da entrada': 'Entry photo', 'Fotografia da rega (evidência)': 'Watering photo (evidence)', 'Fotografia da saída': 'Exit photo', 'Fotografia da saída (obrigatória)': 'Exit photo (required)', 'A fotografia da saída tira-se ao marcar a saída.': 'The exit photo is taken when recording the exit.', 'Fotografia da equipa a chegar ao campo. Obrigatória.': 'Photo of the team arriving at the field. Required.', 'Fotografia da equipa a regar as plantas. Obrigatória.': 'Photo of the team watering the plants. Required.', 'Fotografia do campo regado, ao sair. Obrigatória.': 'Photo of the watered field, when leaving. Required.', 'Fotografia da entrada guardada.': 'Entry photo saved.', 'Fotografia da rega (evidência) guardada.': 'Watering photo (evidence) saved.', 'Fotografia da saída guardada.': 'Exit photo saved.', 'Tire a fotografia da entrada.': 'Take the entry photo.', 'Tire a fotografia da rega (evidência).': 'Take the watering photo (evidence).', 'Tire a fotografia da saída.': 'Take the exit photo.', 'Gestor': 'Manager', 'Técnico': 'Technician', 'Supervisor': 'Supervisor', 'Director (só leitura)': 'Director (read-only)',
     'M&E (só leitura)': 'M&E (read-only)', 'Só painel (cliente / administração)': 'Dashboard only (client / management)',
     'Activista': 'Activist', 'Projecto': 'Project', 'Cliente': 'Client', 'Administração': 'Management board',
     // login
@@ -260,6 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'No período escolhido. Espera = minutos entre a entrada no campo e a chegada da água.': 'In the chosen period. Wait = minutes between field entry and water arrival.',
   });
   const R = [
+    [/^✓ Fotografia da saída às (\S+)$/, '✓ Exit photo at $1'],
     [/^Está a (.+) m do campo \(precisão ±(.+) m\)\. Só pode marcar a entrada até (.+) m da borda do campo\.$/, 'You are $1 m from the field (accuracy ±$2 m). You can only record entry within $3 m of the field boundary.'],
     [/^Está a (.+) m do campo\. Marque a saída ainda no campo \(até (.+) m da borda\)\.$/, 'You are $1 m from the field. Record the exit while still at the field (within $2 m of the boundary).'],
     [/^Está a (.+) m do campo\. A verificação faz-se no campo \(até (.+) m da borda\)\.$/, 'You are $1 m from the field. The check is done at the field (within $2 m of the boundary).'],

@@ -160,8 +160,14 @@ async function sincronizarAgora(silencioso) {
   if (!navigator.onLine) { actSync(); if (!silencioso) aviso('Sem rede. Os registos ficam guardados no telefone.', 'info'); return; }
   if (S.credPend && !(await autenticarPendente())) { actSync(); return; }
   let enviados = 0, erro = null;
-  for (const reg of f) {
-    const { constr, ...linha } = reg;
+  envio: for (const reg of f) {
+    const { constr, fotos, ...linha } = reg;
+    for (const [tipo, em] of Object.entries(fotos || {})) {   // fotografias da rega (entrada, rega, saída) primeiro
+      const k = `${reg.id}-${tipo}`, caminho = `${S.perfil.id}/${k}.jpg`;
+      let b = null; try { b = await FOTOS.ler(k); } catch {} b = b || S.fotosMem?.[k] || null;
+      if (b) { const up = await sb.storage.from('rega-fotos').upload(caminho, b, { contentType: 'image/jpeg', upsert: true }); if (up.error) { erro = up.error.message; break envio; } }
+      linha['foto_' + tipo] = b ? caminho : null; linha['foto_' + tipo + '_em'] = em;
+    }
     const r1 = await sb.from('registos_rega').upsert(linha, { onConflict: 'id', ignoreDuplicates: true });
     if (r1.error) { erro = r1.error.message; break; }
     if (constr?.length) {
@@ -172,6 +178,7 @@ async function sincronizarAgora(silencioso) {
     const m = LS.get('meusRegs', []); if (!m.some((x) => x.id === reg.id)) m.push({ id: reg.id, area_id: reg.area_id, activista_id: reg.activista_id, data: reg.data, ronda: reg.ronda, plantas_regadas: reg.plantas_regadas, teste: reg.teste });
     LS.set('meusRegs', m);
     LS.set('fila', filaRegistos().filter((x) => x.id !== reg.id));
+    for (const tipo of Object.keys(fotos || {})) { try { await FOTOS.apagar(`${reg.id}-${tipo}`); } catch {} }
     enviados++;
   }
   if (!erro) {                                           // início do dia (pessoas presentes)
@@ -343,7 +350,7 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- mapa ----------
@@ -801,7 +808,7 @@ function abrirFicha(id, nota = '') {
   const d = S.pos ? distCampo(a, S.pos) : null;
   const podeRegar = PODE_REGAR.includes(S.perfil.papel) && (S.perfil.papel === 'activista' || a.activista_id);
   let acc = '';
-  if (emCurso && emCurso.area_id === a.id) acc = (emCurso.agua_em
+  if (emCurso && emCurso.area_id === a.id) acc = cartaoFotosRega(emCurso) + (emCurso.agua_em
       ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>`
       : `<button class="btn sec" onclick="marcarAgua(false)">💧 Chegou a água (tuk-tuk) agora</button>
          <button class="btn sec" onclick="marcarAgua(true)">A água já estava no campo quando chegámos</button>`) +
@@ -878,19 +885,55 @@ async function marcarEntrada(id) {
       <button class="btn aviso" onclick="confirmarAlerta()">Regar mesmo assim</button>
       <button class="btn sec" onclick="LS.del('pendenteAlerta');abrirFicha('${esc(id)}')">Não regar este campo</button>`);
   }
-  LS.set('emCurso', ent); abrirFicha(id, `<div class="msg ok">Entrada marcada às ${fmtHora(ent.entrada_em)}${g.dist === 0 ? ' · dentro do campo' : g.dist != null ? ` · a ${g.dist} m do campo` : ''}.</div>`);
+  ent.reg_id = crypto.randomUUID();
+  LS.set('emCurso', ent); ecraFotoRega('entrada', `<div class="msg ok">Entrada marcada às ${fmtHora(ent.entrada_em)}${g.dist === 0 ? ' · dentro do campo' : g.dist != null ? ` · a ${g.dist} m do campo` : ''}.</div>`);
 }
 function confirmarAlerta() {
   const m = $('#a-motivo').value.trim();
   if (m.length < 3) { alert('Escreva o motivo.'); return; }
   const ent = LS.get('pendenteAlerta'); ent.alerta = 'fora_da_lista'; ent.motivo_alerta = m;
+  ent.reg_id ||= crypto.randomUUID();
   LS.del('pendenteAlerta'); LS.set('emCurso', ent);
-  abrirFicha(ent.area_id, `<div class="msg ok">Entrada marcada às ${fmtHora(ent.entrada_em)} (campo fora da lista).</div>`);
+  ecraFotoRega('entrada', `<div class="msg ok">Entrada marcada às ${fmtHora(ent.entrada_em)} (campo fora da lista).</div>`);
 }
 function marcarAgua(jaEstava) {
   const ent = LS.get('emCurso'); if (!ent) return;
   ent.agua_em = jaEstava ? ent.entrada_em : new Date().toISOString(); LS.set('emCurso', ent);
   abrirFicha(ent.area_id);
+}
+
+// ---------- fotografias da rega (15/10/2026, Valdo): entrada, evidência da rega e saída, todas obrigatórias ----------
+// Cada fotografia fica logo no telefone (IndexedDB) com o id do registo; vai para o bucket rega-fotos com o registo.
+const FOTOS_REGA = { entrada: 'Fotografia da entrada', rega: 'Fotografia da rega (evidência)', saida: 'Fotografia da saída' };
+const FALTA_FOTO = { entrada: 'Tire a fotografia da entrada.', rega: 'Tire a fotografia da rega (evidência).', saida: 'Tire a fotografia da saída.' };
+async function guardarFotoRega(tipo, foto) {
+  const ent = LS.get('emCurso'); if (!ent || !foto) return false;
+  ent.reg_id ||= crypto.randomUUID();
+  const k = `${ent.reg_id}-${tipo}`;
+  try { await FOTOS.guardar(k, foto); } catch { S.fotosMem = { ...(S.fotosMem || {}), [k]: foto }; }
+  ent.fotos = { ...(ent.fotos || {}), [tipo]: new Date().toISOString() }; LS.set('emCurso', ent); LS.del('rascFotoRega');
+  return true;
+}
+function cartaoFotosRega(ent) {
+  const f = ent.fotos || {};
+  return `<div class="cartao" style="margin:8px 0"><div class="lin"><span><b>Fotografias</b></span><span class="pequeno">obrigatórias</span></div>` +
+    ['entrada', 'rega'].map((t) => `<div class="lin"><span>📷 ${FOTOS_REGA[t]}</span><b>${f[t]
+      ? `<span style="color:var(--ok,#2e7d32)">✓ ${fmtHora(f[t])}</span> <button class="chip" onclick="ecraFotoRega('${t}')">Tirar outra</button>`
+      : `<button class="chip" onclick="ecraFotoRega('${t}')">Tirar</button>`}</b></div>`).join('') +
+    `<p class="pequeno" style="margin:4px 0 0">A fotografia da saída tira-se ao marcar a saída.</p></div>`;
+}
+function ecraFotoRega(tipo, nota = '', r = null) {
+  const ent = LS.get('emCurso'); if (!ent) return;
+  const ajuda = { entrada: 'Fotografia da equipa a chegar ao campo.', rega: 'Fotografia da equipa a regar as plantas.', saida: 'Fotografia do campo regado, ao sair.' }[tipo];
+  folha(`${nota}${r?.camara ? AVISO_CAMARA : ''}<h2>${FOTOS_REGA[tipo]}</h2><p class="pequeno">${ajuda} Obrigatória.</p>
+    ${campoFoto('fr-foto', FOTOS_REGA[tipo])}
+    <button class="btn sec" onclick="LS.del('rascFotoRega');abrirFicha('${esc(ent.area_id)}')">${tipo === 'entrada' ? 'Tirar depois' : 'Voltar'}</button>`);
+  rascGuardar('rascFotoRega', { perfil: S.perfil?.id, tipo, camara: false });
+  ligarFoto('fr-foto', 'rascFotoRega', async (foto) => {
+    if (!foto) return;
+    await guardarFotoRega(tipo, foto);
+    abrirFicha(ent.area_id, `<div class="msg ok">${FOTOS_REGA[tipo]} guardada.</div>`);
+  });
 }
 
 // ---------- saída ----------
@@ -905,12 +948,21 @@ function ecraSaida() {
      : `<label>Hora a que chegou a água (tuk-tuk)<input id="s-agua" type="time"></label><p class="pequeno">Deixe vazio se não chegou água.</p>`}
    <label>Constrangimentos</label><div class="chips" id="s-chips">${TIPOS.map(([k, t]) => `<button class="chip" data-k="${k}">${t}</button>`).join('')}</div>
    <textarea id="s-obs" rows="2" placeholder="Explique (opcional)"></textarea>
+   ${campoFoto('s-foto', 'Fotografia da saída (obrigatória)')}
+   <p class="pequeno" id="s-foto-ok">${ent.fotos?.saida ? `<span style="color:var(--ok,#2e7d32)">✓ Fotografia da saída às ${fmtHora(ent.fotos.saida)}</span>` : ''}</p>
    <button class="btn" onclick="marcarSaida()">Marcar saída e guardar</button>
    <button class="btn sec" onclick="abrirFicha('${esc(a.id)}')">Voltar</button>`);
   document.querySelectorAll('#s-chips .chip').forEach((b) => b.onclick = () => b.classList.toggle('on'));
+  rascGuardar('rascFotoRega', { perfil: S.perfil?.id, tipo: 'saida', camara: false });
+  ligarFoto('s-foto', 'rascFotoRega', async (foto) => {
+    if (!foto || !(await guardarFotoRega('saida', foto))) return;
+    $('#s-foto-ok').innerHTML = `<span style="color:var(--ok,#2e7d32)">✓ Fotografia da saída às ${fmtHora(LS.get('emCurso').fotos.saida)}</span>`;
+  });
 }
 async function marcarSaida() {
   const ent = LS.get('emCurso'), a = S.areas.find((x) => x.id === ent.area_id);
+  const semFoto = ['entrada', 'rega', 'saida'].find((t) => !ent.fotos?.[t]);
+  if (semFoto) { alert(FALTA_FOTO[semFoto]); if (semFoto !== 'saida') ecraFotoRega(semFoto); return; }
   const plantas = parseInt($('#s-plantas').value, 10);
   if (!(plantas >= 0)) { alert('Escreva o número de plantas regadas.'); return; }
   if (plantas > plantasN(a) * 1.2 && !confirm(`Escreveu ${plantas}, mas a base diz ${plantasTxt(a)}. Confirma?`)) return;
@@ -927,7 +979,7 @@ async function marcarSaida() {
   const antes = actId ? rondaInfo(actId) : null;
   const reg = {
     ronda: antes ? antes.n : null, pessoas, agua_em: ent.agua_em || null,
-    id: crypto.randomUUID(), area_id: a.id, activista_id: S.perfil.activista_id || a.activista_id, data: hojeISO(),
+    id: ent.reg_id || crypto.randomUUID(), fotos: ent.fotos, area_id: a.id, activista_id: S.perfil.activista_id || a.activista_id, data: hojeISO(),
     entrada_em: ent.entrada_em, saida_em: new Date().toISOString(), entrada_lat: ent.entrada_lat, entrada_lon: ent.entrada_lon,
     saida_lat: g.lat, saida_lon: g.lon, gps_precisao_m: Math.max(ent.gps_precisao_m || 0, g.precisao),
     distancia_area_m: ent.distancia_area_m, gps_valido: ent.gps_valido, plantas_regadas: plantas,
@@ -936,7 +988,7 @@ async function marcarSaida() {
     criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista', observacao: obs || null,
     constr: tipos.map((t) => ({ id: crypto.randomUUID(), tipo: t, descricao: obs || null })),
   };
-  porNaFila(reg); LS.del('emCurso'); actSync(); desenharMapa(); desenharLista();
+  porNaFila(reg); LS.del('emCurso'); LS.del('rascFotoRega'); actSync(); desenharMapa(); desenharLista();
   sincronizar(true);
   let nota = '';
   if (souActivista() && antes && plantas > 0) {
@@ -1569,6 +1621,11 @@ function retomarRascunhos() {
     if (rd && rd.a_andar && rd.perfil === S.perfil?.id && rd.pts?.length && S.areas.some((x) => x.id === rd.area_id)) return ecraMedir(rd.area_id, rd);
     const rm = rascLer('rascMon');
     if (rm && rm.perfil === S.perfil?.id && (S.mon || []).some((x) => x.amostra_id === rm.amostraId)) return ecraMonitoria(rm.amostraId, rm);
+    const rf = rascLer('rascFotoRega'), ec = LS.get('emCurso');
+    if (rf && rf.camara && rf.perfil === S.perfil?.id && ec && S.areas.some((x) => x.id === ec.area_id)) {
+      if (rf.tipo === 'saida') { ecraSaida(); $('#folha-c').insertAdjacentHTML('afterbegin', AVISO_CAMARA); return; }
+      return ecraFotoRega(rf.tipo, '', rf);
+    }
     const rc = rascLer('rascChuva');
     if (rc && rc.perfil === S.perfil?.id && (rc.camara || rc.mm !== '')) { mudar('hoje'); return ecraChuva(rc); }
   } catch {}

@@ -108,7 +108,6 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Primeiras medições reais (Nuro, Mondlane, 15/10): PR394688-1 8156 m² (28 pontos) e PR395335-1 9564 m² (45 pontos), GPS ±2 m.
 - Depois de gravadas, a coordenada e a área ficam fechadas para técnico e supervisor (botões escondidos; servidor recusa). Só o gestor corrige, ou carrega em "🔓 Deixar o supervisor/técnico corrigir…" (`areas.limites_abertos`, RPC `abrir_limites`); fecha sozinho depois de gravarem. Vale também para os limites vindos do KMZ.
 - O activista também mede (15/10/2026, Valdo): só campos da sua lista sem limite; fica em `areas.poligono_proposto` / `area_m2_proposta` / `proposta_em` / `proposta_por` (não muda o limite nem a regra dos 50 m). Técnico, supervisor ou gestor aprovam/recusam na ficha (cartão "Área medida pelo activista — por aprovar", RPC `aprovar_poligono`; fila `filaAlt` tipo 'aprovar'); aviso "N medições de área por aprovar" na lista. Eles próprios podem medir directamente.
-- Pedido do Nuro ainda por decidir: fotografias de evidência na entrada, chegada da água e saída (plano gratuito do Supabase; ver espaço de armazenamento antes).
 
 ## Pendentes pedidos pelo Valdo
 - Documento do RH com o tamanho das 12 equipas "por definir" (o Valdo vai pedir).
@@ -122,3 +121,12 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Decisões de 13/10/2026 (Valdo)
 - Secção de monitoria do painel continua escondida ao cliente ("não agora").
 - Testes só com os supervisores, por agora. Logins de activistas e técnicos ficam para mais tarde; o Valdo cria-os na app (não precisa de passo-a-passo).
+
+## Fotografias da rega (15/10/2026, pedido do Nuro, decisões do Valdo)
+- Três fotografias obrigatórias em cada rega (activista e regas de teste): entrada (pedida logo depois de marcar a entrada), evidência da rega (botão na ficha durante a rega) e saída (no formulário da saída). Sem as três a saída não se guarda.
+- Cada fotografia é reduzida no telefone (1024 px, JPEG 60%) e guardada logo em IndexedDB com a chave `<registo>-<tipo>`; `emCurso.reg_id` e `emCurso.fotos` (hora de cada uma). Funciona sem rede.
+- Envio: antes da linha do registo, para o bucket privado `rega-fotos/<perfil>/<registo>-<tipo>.jpg`; colunas `registos_rega.foto_entrada/_rega/_saida` (caminho) e `foto_*_em` (hora). Leitura do bucket: todos os papéis (como chuva e monitoria).
+- Se o Android fechar o Chrome ao abrir a câmara: rascunho `rascFotoRega` volta ao ecrã da fotografia com aviso.
+- Ver as fotografias na app/painel: ainda não feito.
+- Armazenamento: plano gratuito do Supabase tem 1 GB; estimativa 0,5–1 GB/mês com todas as equipas → o Valdo vai passar ao Pro (25 USD/mês, 100 GB).
+- Teste: `rega-test/teste_fotos_rega.py`; os testes de fluxo (teste.py, teste_en.py, teste_arranque.py) guardam as três fotografias com `fotos(pg)`.
