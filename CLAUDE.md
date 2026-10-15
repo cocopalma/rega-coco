@@ -18,7 +18,7 @@ Um só link para todos. Ecrã C (campo, fundo areia, letras grandes para o sol):
 - Activista: os seus campos (pode ver todos no mapa); regista regas da sua lista.
 - Técnico: campos dos activistas com `activistas.tecnico` = o seu nome (+ colegas que cobre) e campos sem activista dessas comunidades.
 - Supervisor: o mesmo por `activistas.supervisor`. Coberturas na tabela `coberturas` (o gestor gere na app).
-- Director e M&E (papel `me`): leem tudo, não registam. Cliente / administração: só o painel.
+- Director e M&E (papel `me`): leem tudo, não registam. Cliente / administração: desde 15/10/2026 (Valdo) vê Mapa, Campos (fichas só de leitura, com as fotografias da rega e da monitoria) e Painel; não vê Hoje nem Gestão; `ids_visiveis`, `ve_area`, `areas_ler` e `registos_ler` incluem `cliente`; todas as funções que escrevem verificam o papel e recusam o cliente. A secção de monitoria do painel continua escondida ao cliente.
 
 ## Atribuir campos sem activista
 Desde 11/10/2026 faz-se na app (decisão do Valdo): separador Campos › filtro "Por atribuir" › "✓ Confirmar proposta" (usa `areas.activista_proposto`) ou "Escolher outro". Supervisor e técnico só atribuem a activistas da sua equipa; o gestor a qualquer um. Cada alteração fica em `alteracoes_areas`.
@@ -127,6 +127,6 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Cada fotografia é reduzida no telefone (1024 px, JPEG 60%) e guardada logo em IndexedDB com a chave `<registo>-<tipo>`; `emCurso.reg_id` e `emCurso.fotos` (hora de cada uma). Funciona sem rede.
 - Envio: antes da linha do registo, para o bucket privado `rega-fotos/<perfil>/<registo>-<tipo>.jpg`; colunas `registos_rega.foto_entrada/_rega/_saida` (caminho) e `foto_*_em` (hora). Leitura do bucket: todos os papéis (como chuva e monitoria).
 - Se o Android fechar o Chrome ao abrir a câmara: rascunho `rascFotoRega` volta ao ecrã da fotografia com aviso.
-- Ver as fotografias (15/10/2026, v45): ficha do campo › "Regas deste campo" (RPC `regas_campo`, últimas 10 regas, carregada depois de abrir a ficha; todos os papéis menos o cliente) com botões 📷 Entrada / Rega / Saída; a imagem abre por URL assinado (10 min) só ao tocar. Teste: `rega-test/teste_regas_campo.py`.
+- Ver as fotografias (15/10/2026, v45): ficha do campo › "Regas deste campo" (RPC `regas_campo`, últimas 10 regas, carregada depois de abrir a ficha; todos os papéis, incluindo o cliente desde 15/10) com botões 📷 Entrada / Rega / Saída; a imagem abre por URL assinado (10 min) só ao tocar. Teste: `rega-test/teste_regas_campo.py`.
 - Armazenamento: estimativa 0,5–1 GB/mês com todas as equipas. Organização no plano Pro desde 15/10/2026 (confirmado; 25 USD/mês, 100 GB de ficheiros, sem pausa por inactividade).
 - Teste: `rega-test/teste_fotos_rega.py`; os testes de fluxo (teste.py, teste_en.py, teste_arranque.py) guardam as três fotografias com `fotos(pg)`.

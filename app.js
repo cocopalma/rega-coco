@@ -121,7 +121,7 @@ const FUNCOES = {
   supervisor: { nome: 'Supervisor', desc: 'o mesmo que o técnico, para as equipas dos seus técnicos; também muda a zona dos campos.' },
   director: { nome: 'Director (só leitura)', desc: 'vê todos os campos, a rega do dia e o painel; não regista regas.' },
   me: { nome: 'M&E (só leitura)', desc: 'o mesmo que o director.' },
-  cliente: { nome: 'Só painel (cliente / administração)', desc: 'vê apenas o painel geral.' },
+  cliente: { nome: 'Só painel (cliente / administração)', desc: 'vê o painel geral, o mapa e as fichas dos campos com as fotografias; não regista nada.' },
 };
 const PODE_REGAR = ['activista', 'tecnico', 'supervisor', 'gestor'];
 const VER_PAINEL = ['tecnico', 'supervisor', 'gestor', 'director', 'me', 'cliente'];
@@ -240,7 +240,6 @@ async function carregarTudo() {
   ]);
   if (p.error) throw new Error(p.error.message);
   if (!p.data) throw new Error('Este utilizador não tem perfil na app. Fale com o gestor.');
-  if (p.data.papel === 'cliente') { S.perfil = p.data; LS.set('perfil', S.perfil); return; }   // o cliente só vê o painel
   if (ac.error || ar.error) throw new Error((ac.error || ar.error).message);
   S.perfil = p.data; S.activistas = ac.data; S.areas = aplicarPendentes(ar.data);
   if (!zs.error) { S.zonas = zs.data; LS.set('zonas', S.zonas); }
@@ -271,7 +270,7 @@ async function carregarEstado(pronto) {
 }
 function carregarDoTelefone() {
   S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
-  return !!(S.perfil && (S.areas.length || S.perfil.papel === 'cliente'));
+  return !!(S.perfil && S.areas.length);
 }
 
 // ---------- login ----------
@@ -830,7 +829,7 @@ function abrirFicha(id, nota = '') {
     ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
    </div>${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
-  if (navigator.onLine && S.perfil.papel !== 'cliente') { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
+  if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
 }
 
 // ---------- entrada ----------
@@ -1600,11 +1599,9 @@ function mostrarApp() {
   $('#h-nome').textContent = `${S.perfil.nome}${['activista', 'cliente'].includes(papel) ? '' : ' · ' + (S.perfil.titulo || (papel === 'gestor' ? 'Gestor' : FUNCOES[papel]?.nome || papel))}`;
   $('#nav-gestao').style.display = papel === 'gestor' ? '' : 'none';
   $('#nav-painel').style.display = VER_PAINEL.includes(papel) ? '' : 'none';
-  if (papel === 'cliente') {                               // o cliente só vê o painel
-    document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.e !== 'painel') b.style.display = 'none'; });
-    $('#h-sync').style.display = 'none';
-    mudar('painel'); return;
-  }
+  const cliente = papel === 'cliente';                     // cliente: Mapa, Campos e Painel, só para ver (15/10/2026, Valdo)
+  document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.e === 'hoje') b.style.display = cliente ? 'none' : ''; });
+  $('#h-sync').style.display = cliente ? 'none' : '';
   if (papel !== 'activista') { S.filtro = 'todas'; $('#f-ambito').value = 'todas'; }
   $('#leg-teste').style.display = PODE_REGAR.includes(papel) && papel !== 'activista' ? '' : 'none';
   const tOpt = document.querySelector('#f-sit option[value="teste"]'); if (tOpt) tOpt.hidden = papel === 'activista';
@@ -1621,6 +1618,7 @@ function mostrarApp() {
   if (!mapa) iniciarMapa();
   desenharMapa(true); desenharLista(); actSync();
   const emCurso = LS.get('emCurso');
+  if (cliente) { mudar('painel'); return; }
   if (emCurso) abrirFicha(emCurso.area_id, '<div class="msg info">Tem uma rega em curso.</div>');
   else if (souActivista() && S.perfil.activista_id && !jornadaHoje()) ecraJornada();
 }
