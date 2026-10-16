@@ -146,7 +146,12 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 
 ## Teste do Nuro de 16/10/2026 (WhatsApp)
 - Fotografias da rega e câmara na chuva: a funcionar no telefone dele (16/10, "muito rápido", já não fecha).
-- Chuva de teste: técnico, supervisor e gestor vêem todas as comunidades (`lista_comunidades` + as das áreas), não só as das suas equipas (Nuro registou em Quitunda, que é da equipa do Raul).
+- Chuva pela localização (16/10/2026, Valdo, corrige a v49 que mostrava todas as comunidades: "estando em Quitunda a app não pode permitir preencher dados de outra comunidade"): para todos os papéis, a app lê o GPS e a comunidade é a do campo activo mais perto (RPC `pontos_comunidades`: comunidade, zona, lat, lon de todas as áreas activas; guardado no telefone `rega.pontosCom`, funciona sem rede; sem esses pontos usa `S.areas`). Mais de 3 km (`CHUVA_MAX_M`) de qualquer campo: não deixa registar. Em Palma escolhe-se o bairro dessa comunidade (começa no bairro do campo mais perto). `chuva.lat/lon/precisao_m` guardam onde foi registada. Teste: `rega-test/teste_chuva_gps.py`.
 - Hoje sem rede (técnico/supervisor/gestor): mostra o último resumo das equipas guardado nesse dia (`rega.hojeEquipas`), com a hora; sem resumo do dia, mensagem.
 - Mapa de plantas lento ("30 a 40 s a calibrar o GPS"): média de 3 s (`PL_MEDIA_MS`), aceita até ±10 m (`PL_PREC`), começa com a última posição da app (`S.fix`, < 20 s) e o botão diz "A preparar o GPS… (±x m)" até a precisão chegar (`mostrarGpsPlantas`). O tempo da primeira leitura boa depende do telefone.
 - Os 2 áudios do WhatsApp de 14/10 (21:13 e 21:28) são do Valdo; não há transcrição automática aqui (huggingface.co bloqueado).
+
+## Extracção do WhatsApp do Dalmar de 16/10/2026
+- Zip de 100 MB no Drive (pasta Extracao whatsapp): o conector do Drive só descarrega até 10 MB; lido no Mac do Valdo (Desktop Commander) e extraído só o `_chat.txt` e as fotografias de 13–16/10 para `_extracao_dalmar_20261016/` na pasta ligada. O envio de ficheiros dessa pasta para cá recusou ("hardlinked"); leitura feita no próprio Mac. 3 áudios de 16/10 (08:09, 08:27, 08:34): sem transcrição.
+- Feito (v50): ficha do campo mostra plantas instaladas, vivas e mortas (mortas = instaladas − vivas, da base).
+- Pedidos em aberto (decisão do Valdo): Idelson passar a supervisor ("precisa entrar e consultar a machamba"; o cliente já abre as fichas desde 15/10); identificar locais de queimada; quantidade de rega executada no campo (ideia do Idelson); mapa a rodar com a direcção como no Google Maps (M3); 2 polígonos sobrepostos / erros de polígono no NAVUNA.

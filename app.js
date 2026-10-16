@@ -233,13 +233,14 @@ function actSync() {
 // ---------- dados ----------
 // todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
-  const [p, ac, ar, zs, est, lc] = await Promise.all([
+  const [p, ac, ar, zs, est, lc, pc] = await Promise.all([
     sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
     sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em').eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
     sb.rpc('estado_ronda'),
     sb.rpc('lista_comunidades'),
+    sb.rpc('pontos_comunidades'),
   ]);
   if (p.error) throw new Error(p.error.message);
   if (!p.data) throw new Error('Este utilizador não tem perfil na app. Fale com o gestor.');
@@ -247,6 +248,7 @@ async function carregarTudo() {
   S.perfil = p.data; S.activistas = ac.data; S.areas = aplicarPendentes(ar.data);
   if (!zs.error) { S.zonas = zs.data; LS.set('zonas', S.zonas); }
   if (!lc.error && Array.isArray(lc.data)) { S.comunidades = lc.data; LS.set('comunidades', S.comunidades); }
+  if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
   S.visiveis = null;
   if (['tecnico', 'supervisor'].includes(S.perfil.papel)) {
     const [v] = await Promise.all([sb.rpc('meus_activistas'), carregarMonitoria()]);
@@ -272,7 +274,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
   return !!(S.perfil && S.areas.length);
 }
 
@@ -971,7 +973,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Comunidade</span><b>${esc(a.comunidade)}</b></div>
     ${zonasDe(a.comunidade).length ? `<div class="lin"><span>Zona</span><b>${a.zona ? esc(a.zona) : '<span class="pequeno">por definir</span>'}</b></div>` : ''}
     <div class="lin"><span>Activista</span><b>${esc(nomeAct(a.activista_id))}</b></div>
-    <div class="lin"><span>Plantas</span><b>${plantasTxt(a)}</b></div>
+    ${a.instaladas != null ? `<div class="lin"><span>Plantas instaladas</span><b>${num(a.instaladas)}</b></div>` : ''}<div class="lin"><span>Plantas vivas</span><b>${a.vivas != null ? num(a.vivas) : '—'}</b></div>${a.instaladas != null && a.vivas != null && a.instaladas >= a.vivas ? `<div class="lin"><span>Plantas mortas</span><b>${num(a.instaladas - a.vivas)}</b></div>` : ''}
     <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div>
     <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
     ${d != null ? `<div class="lin"><span>Distância${temPoligono(a) ? ' (à borda)' : ''}</span><b>${d === 0 ? 'dentro do campo' : (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') + (a.latitude != null ? ' · ' + rumo(S.pos, [a.latitude, a.longitude]) : '')}</b></div>` : ''}
@@ -1172,17 +1174,21 @@ function sugerirProximo(feito, nota = '') {
 // O activista lê o pluviómetro da comunidade e regista os milímetros. Funciona sem rede (fila "filaChuva").
 // Técnico, supervisor e gestor registam chuva só em teste (13/10/2026, Valdo): não conta no painel.
 const chuvaTeste = () => S.perfil?.papel !== 'activista';
-const minhasComunidades = () => {
-  // teste (técnico, supervisor, gestor): todas as comunidades, não só as das suas equipas (16/10/2026, Nuro: Quitunda não aparecia)
-  if (chuvaTeste()) return [...new Set([...(S.comunidades || []), ...S.areas.map((a) => a.comunidade)].filter(Boolean))].sort();
-  const t = S.activistas.find((x) => x.id === S.perfil?.activista_id);
-  return [...new Set([t?.comunidade_principal, ...minhas().map((a) => a.comunidade)].filter(Boolean))].sort(); };
-// locais de leitura: comunidade, ou comunidade › bairro quando a comunidade tem zonas (Palma; 14/10/2026, Nuro)
-function locaisChuva() {
-  const out = [];
-  for (const c of minhasComunidades()) { const zs = zonasDe(c); if (zs.length) zs.forEach((z) => out.push({ com: c, zona: z })); else out.push({ com: c, zona: null }); }
-  return out;
+// A comunidade da chuva é a do sítio onde a pessoa está (16/10/2026, Valdo: em Quitunda não pode registar outra comunidade).
+// A app lê o GPS e escolhe a comunidade do campo activo mais perto (todos os campos, guardados no telefone: funciona sem rede).
+// Nas comunidades com bairros (Palma) a pessoa escolhe o bairro dessa comunidade; começa no bairro do campo mais perto.
+const CHUVA_MAX_M = 3000;          // mais longe do que isto de qualquer campo: não deixa registar
+const pontosChuva = () => (S.pontosCom?.length ? S.pontosCom : S.areas.filter((a) => a.latitude != null && a.longitude != null).map((a) => [a.comunidade, a.zona, a.latitude, a.longitude]));
+function localDaChuva(pos) {
+  const pts = pontosChuva(); let p0 = null, d0 = Infinity;
+  for (const p of pts) { const m = metros(pos, [p[2], p[3]]); if (m < d0) { d0 = m; p0 = p; } }
+  if (!p0) return null;
+  const com = p0[0], zs = zonasDe(com); let zona = null, dz = Infinity;
+  if (zs.length) for (const p of pts) if (p[0] === com && p[1] && zs.includes(p[1])) { const m = metros(pos, [p[2], p[3]]); if (m < dz) { dz = m; zona = p[1]; } }
+  return { com, dist: d0, zona };
 }
+// locais de leitura: a comunidade onde a pessoa está, ou os bairros dessa comunidade (Palma; 14/10/2026, Nuro)
+function locaisChuva(com) { const zs = zonasDe(com); return zs.length ? zs.map((z) => ({ com, zona: z })) : [{ com, zona: null }]; }
 const nomeLocal = (com, zona) => zona ? `${com} › ${zona}` : com;
 function textoChuvaHoje() {
   const h = hojeISO(), g = LS.get('chuvaFeita', {}) || {}, v = Object.entries(g).filter(([k]) => k.startsWith(h + '|'));
@@ -1193,7 +1199,7 @@ function linhaChuva(rotulo) {
   const h = hojeISO(), feita = Object.keys(LS.get('chuvaFeita', {}) || {}).some((k) => k.startsWith(h + '|'));
   return feita
     ? `<div class="lin"><span>${rotulo}</span><b><span style="color:var(--ok,#2e7d32)">✓ Registado</span> ${textoChuvaHoje()}</b></div>
-       <p class="pequeno" style="margin:2px 0 6px;text-align:right"><button class="chip" onclick="ecraChuva()">Corrigir ou outra comunidade</button></p>`
+       <p class="pequeno" style="margin:2px 0 6px;text-align:right"><button class="chip" onclick="ecraChuva()">Corrigir</button></p>`
     : `<div class="lin"><span>${rotulo}</span><b>— <button class="chip" onclick="ecraChuva()">Registar</button></b></div>`;
 }
 // ---------- fotografia e rascunhos (14/10/2026, Nuro) ----------
@@ -1250,14 +1256,26 @@ function ligarFoto(id, rasc, aoLer) {
   };
 }
 const AVISO_CAMARA = '<div class="msg info">O telefone fechou a app ao abrir a câmara. Os dados foram recuperados. Se voltar a acontecer, tire a fotografia com a câmara do telefone e use «Escolher da galeria».</div>';
-function ecraChuva(r) {
-  const locais = locaisChuva(), h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
+// primeiro o GPS: só depois se sabe a comunidade
+async function ecraChuva(r) {
+  folha(`<h2>Chuva</h2><p id="c-gps">A ler o GPS para saber em que comunidade está…</p><button class="btn sec" onclick="LS.del('rascChuva');fecharFolha()">Cancelar</button>`);
+  let c;
+  try { c = await lerGPS(); }
+  catch (e) { if (!$('#c-gps')) return; return folha(`<h2>Chuva</h2><div class="msg erro">${esc(e.message)}</div><p class="pequeno">A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.</p>
+    <button class="btn" onclick="ecraChuva()">Tentar de novo</button><button class="btn sec" onclick="LS.del('rascChuva');fecharFolha()">Cancelar</button>`); }
+  if (!$('#c-gps')) return;                             // cancelou enquanto lia o GPS
+  const pos = [c.latitude, c.longitude], loc = localDaChuva(pos);
+  if (!loc || loc.dist > CHUVA_MAX_M) return folha(`<h2>Chuva</h2><div class="msg erro">${loc ? `Está a ${num(Math.round(loc.dist / 100) / 10)} km do campo mais perto (${esc(loc.com)}).` : 'Não há campos com coordenada no telefone.'} Registe a chuva junto ao pluviómetro, na comunidade.</div>
+    <button class="btn" onclick="ecraChuva()">Tentar de novo</button><button class="btn sec" onclick="LS.del('rascChuva');fecharFolha()">Cancelar</button>`);
+  S.chuvaPos = { lat: c.latitude, lon: c.longitude, precisao: c.accuracy != null ? Math.round(c.accuracy) : null };
+  const locais = locaisChuva(loc.com), h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
   const agora = new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
   S.chuvaFoto = null; if (!r) LS.del('rascChuva');
   folha(`<h2>Chuva</h2>${r?.camara ? AVISO_CAMARA : ''}${chuvaTeste() ? '<div class="msg info">Registo de teste: não conta no painel.</div>' : ''}<p class="pequeno">Leia o pluviómetro da comunidade, escreva os milímetros e tire uma fotografia da leitura. Se não choveu, carregue em "Não choveu".</p>
     <label>Dia da chuva<select id="c-data"><option value="${h}">Hoje · ${fmtData(h)}</option><option value="${ontem}">Ontem · ${fmtData(ontem)}</option></select></label>
     <label>Hora da leitura<input id="c-hora" type="time" value="${agora}"></label>
-    <label>Comunidade<select id="c-com">${locais.map((l, i) => { const feito = (LS.get('chuvaFeita', {}) || {})[h + '|' + nomeLocal(l.com, l.zona)];
+    <p class="pequeno">Pelo GPS está em <b>${esc(loc.com)}</b>. Só pode registar a chuva da comunidade onde está.</p>
+    <label>${locais.length > 1 ? 'Bairro' : 'Comunidade'}<select id="c-com">${locais.map((l, i) => { const feito = (LS.get('chuvaFeita', {}) || {})[h + '|' + nomeLocal(l.com, l.zona)];
       return `<option value="${i}">${esc(nomeLocal(l.com, l.zona))}${feito != null ? ` · registado hoje (${num(feito)} mm)` : ''}</option>`; }).join('')}</select></label>
     <label>Chuva no pluviómetro (mm)<input id="c-mm" type="number" inputmode="decimal" min="0" max="500" step="0.1"></label>
     <button class="chip" onclick="$('#c-mm').value='0';$('#c-mm').dispatchEvent(new Event('input'))">Não choveu (0 mm)</button>
@@ -1271,9 +1289,7 @@ function ecraChuva(r) {
     if (r.hora) $('#c-hora').value = r.hora; if (r.mm != null) $('#c-mm').value = r.mm; if (r.obs) $('#c-obs').value = r.obs;
     const i = locais.findIndex((l) => nomeLocal(l.com, l.zona) === r.local); if (i >= 0) $('#c-com').value = String(i);
   }
-  else {                                                // começa no primeiro local ainda sem registo hoje
-    const fe = LS.get('chuvaFeita', {}) || {}, i = locais.findIndex((l) => fe[h + '|' + nomeLocal(l.com, l.zona)] == null); if (i > 0) $('#c-com').value = String(i);
-  }
+  else if (loc.zona) { const i = locais.findIndex((l) => l.zona === loc.zona); if (i >= 0) $('#c-com').value = String(i); }   // bairro do campo mais perto
   const guardar = () => rascGuardar('rascChuva', { perfil: S.perfil?.id, camara: false, data: $('#c-data').value, hora: $('#c-hora').value, mm: $('#c-mm').value, obs: $('#c-obs').value,
     local: (() => { const l = S.chuvaLocais?.[+$('#c-com').value]; return l ? nomeLocal(l.com, l.zona) : ''; })() });
   ['#c-data', '#c-hora', '#c-com', '#c-mm', '#c-obs'].forEach((q) => $(q).addEventListener('input', guardar));
@@ -1291,7 +1307,8 @@ async function gravarChuva() {
   // no teste não há activista: o mesmo dia+local reutiliza o id para corrigir em vez de duplicar
   const ids = LS.get('chuvaTesteIds', {}) || {}, id = (teste && ids[chave]) || crypto.randomUUID();
   if (teste) { ids[chave] = id; LS.set('chuvaTesteIds', ids); }
-  const c = { id, data, comunidade: com, zona, mm, lida_em: t.toISOString(), activista_id: teste ? null : S.perfil.activista_id, user_id: S.perfil.id, observacao: $('#c-obs').value.trim() || null, teste };
+  const c = { id, data, comunidade: com, zona, mm, lida_em: t.toISOString(), activista_id: teste ? null : S.perfil.activista_id, user_id: S.perfil.id, observacao: $('#c-obs').value.trim() || null, teste,
+    lat: S.chuvaPos?.lat ?? null, lon: S.chuvaPos?.lon ?? null, precisao_m: S.chuvaPos?.precisao ?? null };
   try { await FOTOS.guardar(c.id, S.chuvaFoto); } catch { S.fotosMem = { ...(S.fotosMem || {}), [c.id]: S.chuvaFoto }; }
   const f = LS.get('filaChuva', []).filter((x) => !(x.data === c.data && x.comunidade === c.comunidade && (x.zona || null) === zona)); f.push(c); LS.set('filaChuva', f);
   const g = LS.get('chuvaFeita', {}) || {}; g[chave] = mm; LS.set('chuvaFeita', g);

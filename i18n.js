@@ -154,6 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'Medição aprovada: o limite do campo já vale.': 'Measurement approved: the field boundary now applies.', 'Medição recusada.': 'Measurement rejected.',
     'Medições de área por aprovar': 'Area measurements awaiting approval', 'Nada por aprovar.': 'Nothing to approve.',
     '✓ Registado': '✓ Recorded', 'Corrigir ou outra comunidade': 'Correct or another community',
+    "Corrigir": "Correct", "Tentar de novo": "Try again", "Bairro": "Neighbourhood", "Plantas instaladas": "Plants installed", "Plantas vivas": "Plants alive", "Plantas mortas": "Plants dead", "A ler o GPS para saber em que comunidade está…": "Reading the GPS to find which community you are in…", "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Rain is only recorded at the rain gauge: the app uses the GPS to know the community.", "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "There are no fields with coordinates on the phone. Record the rain next to the rain gauge, in the community.", "Pelo GPS está em": "By GPS you are in", ". Só pode registar a chuva da comunidade onde está.": ". You can only record the rain of the community where you are.",
     '📷 Tirar fotografia': '📷 Take photo', '📷 Tirar': '📷 Take', 'A app não tem autorização para usar a câmara. Autorize a câmara no Chrome (cadeado ao lado do endereço) ou use «Escolher da galeria».': 'The app is not allowed to use the camera. Allow the camera in Chrome (padlock next to the address) or use «Choose from gallery».', '🖼️ Escolher da galeria': '🖼️ Choose from gallery',
     'O telefone fechou a app ao abrir a câmara. Os dados foram recuperados. Se voltar a acontecer, tire a fotografia com a câmara do telefone e use «Escolher da galeria».': 'The phone closed the app when the camera opened. Your data was recovered. If it happens again, take the photo with the phone camera and use «Choose from gallery».',
     'Sem rede. O resumo das equipas aparece quando houver rede.': 'No network. The team summary appears when there is network.',
@@ -343,6 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
     [/^(.+) \(já tem acesso\)$/, (m, a) => `${tr(a)} (already has access)`], [/^(.+) \(fora da sua equipa\)$/, (m, a) => `${tr(a)} (outside your team)`],
     [/^Memória do telefone cheia: (.+)$/, 'Phone memory full: $1'], [/^Escolha o nome da lista de técnicos$/, 'Choose the name from the technicians list'],
     [/^Escolha o nome da lista de supervisores$/, 'Choose the name from the supervisors list'],
+    [/^Está a (.+) km do campo mais perto \((.+)\)\. Registe a chuva junto ao pluviómetro, na comunidade\.$/, 'You are $1 km from the nearest field ($2). Record the rain next to the rain gauge, in the community.'],
   ];
   if (LINGUA === 'sw' && window.I18N_SW_D) {             // suaíli: as mesmas chaves e expressões, com o texto em suaíli
     for (const k of Object.keys(D)) delete D[k];
