@@ -352,7 +352,7 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- mapa ----------
@@ -439,7 +439,7 @@ function desenharLista() {
 // ---------- mapa de plantas (15/10/2026, pedido do Dalmar; teste com gestor/director, supervisores e técnicos) ----------
 // Cada muda fica com a sua coordenada (média das leituras do GPS durante uns segundos) e o estado: viva / seca / morta,
 // cava-roda, mulching. Funciona sem rede: as plantas ficam no telefone (rega.plantas) e vão pela fila de alterações.
-const PL_MEDIA_MS = 6000, PL_PREC = 8, PL_PERTO = 3;   // 6 s de leituras; aceita leituras até ±8 m; aviso se já há planta a < 3 m
+const PL_MEDIA_MS = 3000, PL_PREC = 10, PL_PERTO = 3;  // 3 s de leituras; aceita leituras até ±10 m; aviso se já há planta a < 3 m (16/10/2026, Nuro: estava lento)
 const COR_PLANTA = { viva: '#2e7d32', seca: '#ef8f00', morta: '#c62828' };
 let vigiaPlantas = null, travaPlantas = null;
 const plantasLocais = (id) => ((LS.get('plantas', {}) || {})[id] || []);
@@ -465,6 +465,8 @@ function ecraPlantas(id) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   pararVigia();
   S.pl = { id, pos: null, sel: null, lendo: false, leituras: [] };
+  // começa com a última posição do GPS da app (se for recente), para não esperar por uma leitura nova
+  if (S.fix && Date.now() - S.fix.t < 20000) S.pl.pos = { lat: S.fix.coords.latitude, lon: S.fix.coords.longitude, prec: Math.round(S.fix.coords.accuracy) };
   folha(`<h2>Mapa das plantas · ${esc(a.produtor)}</h2>
     <div class="msg info"><b>Teste.</b> Pare junto a cada muda e carregue em «Marcar planta aqui»: o telefone faz a média do GPS durante uns segundos. Para mudar o estado de uma muda, toque no ponto do desenho ou em «Planta mais perto de mim».</div>
     <div class="cartao"><div class="lin"><span>Precisão do GPS</span><b id="pl-prec">—</b></div><div id="pl-resumo"></div></div>
@@ -481,7 +483,7 @@ function ecraPlantas(id) {
     let m = null, dm = Infinity; for (const x of l) { const d = metros([p.lat, p.lon], [x.lat, x.lon]); if (d < dm) { dm = d; m = x; } }
     selPlanta(m.id);
   };
-  desenharPlantas();
+  desenharPlantas(); mostrarGpsPlantas();
   carregarPlantas(id).then(() => { if (S.pl?.id === id && $('#pl-des')) desenharPlantas(); });
   (async () => { try { if (navigator.wakeLock) travaPlantas = await navigator.wakeLock.request('screen'); } catch {} })();
   if (!navigator.geolocation) return aviso('Este telefone não tem GPS disponível no navegador.', 'erro');
@@ -489,10 +491,16 @@ function ecraPlantas(id) {
     if (!$('#pl-prec')) return pararPlantas();
     S.pl.pos = { lat: p.coords.latitude, lon: p.coords.longitude, prec: Math.round(p.coords.accuracy) };
     if (S.pl.lendo) S.pl.leituras.push(S.pl.pos);
-    const el = $('#pl-prec'); el.textContent = `±${S.pl.pos.prec} m`; el.style.color = S.pl.pos.prec <= CFG.precisaoIdeal ? '#1b5e20' : S.pl.pos.prec <= PL_PREC ? '#ef8f00' : '#c62828';
+    mostrarGpsPlantas();
     desenharPlantas();
   }, (e) => { const el = $('#pl-prec'); if (el) el.textContent = e.code === 1 ? 'sem autorização de localização' : 'sem sinal de GPS'; },
   { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 });
+}
+// precisão do GPS e estado do botão: enquanto a precisão não chega a ±10 m, o botão diz que está a preparar o GPS
+function mostrarGpsPlantas() {
+  const p = S.pl?.pos, el = $('#pl-prec'), b = $('#pl-marcar'); if (!el || !p) return;
+  el.textContent = `±${p.prec} m`; el.style.color = p.prec <= CFG.precisaoIdeal ? '#1b5e20' : p.prec <= PL_PREC ? '#ef8f00' : '#c62828';
+  if (b && !S.pl.lendo) { const pronto = p.prec <= PL_PREC; b.disabled = !pronto; b.textContent = pronto ? '📍 Marcar planta aqui' : `A preparar o GPS… (±${p.prec} m)`; }
 }
 function desenharPlantas() {
   const P = S.pl; if (!P || !$('#pl-des')) return;
@@ -522,7 +530,7 @@ async function marcarPlanta() {
   if (!P.pos) return aviso('Ainda sem posição do GPS. Espere uns segundos.', 'erro');
   P.lendo = true; P.leituras = [P.pos]; const b = $('#pl-marcar'); b.disabled = true; b.textContent = 'A ler o GPS… fique parado';
   await new Promise((ok) => setTimeout(ok, PL_MEDIA_MS));
-  P.lendo = false; if (b) { b.disabled = false; b.textContent = '📍 Marcar planta aqui'; }
+  P.lendo = false; mostrarGpsPlantas(); if (b && !b.disabled) b.textContent = '📍 Marcar planta aqui';
   const boas = P.leituras.filter((x) => x.prec <= PL_PREC);
   if (!boas.length) return aviso(`Precisão fraca (±${P.pos.prec} m). Espere uns segundos e tente de novo.`, 'erro');
   let sw = 0, la = 0, lo = 0; for (const x of boas) { const wgt = 1 / Math.max(1, x.prec) ** 2; sw += wgt; la += x.lat * wgt; lo += x.lon * wgt; }
@@ -1165,7 +1173,8 @@ function sugerirProximo(feito, nota = '') {
 // Técnico, supervisor e gestor registam chuva só em teste (13/10/2026, Valdo): não conta no painel.
 const chuvaTeste = () => S.perfil?.papel !== 'activista';
 const minhasComunidades = () => {
-  if (chuvaTeste()) return [...new Set(S.areas.map((a) => a.comunidade).filter(Boolean))].sort();
+  // teste (técnico, supervisor, gestor): todas as comunidades, não só as das suas equipas (16/10/2026, Nuro: Quitunda não aparecia)
+  if (chuvaTeste()) return [...new Set([...(S.comunidades || []), ...S.areas.map((a) => a.comunidade)].filter(Boolean))].sort();
   const t = S.activistas.find((x) => x.id === S.perfil?.activista_id);
   return [...new Set([t?.comunidade_principal, ...minhas().map((a) => a.comunidade)].filter(Boolean))].sort(); };
 // locais de leitura: comunidade, ou comunidade › bairro quando a comunidade tem zonas (Palma; 14/10/2026, Nuro)
@@ -1341,7 +1350,12 @@ async function desenharHoje() {
     if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste');
     // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
     const r = navigator.onLine ? await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h) : { error: { semRede: true } };
-    if (r.error && (r.error.semRede || /fetch|network|rede/i.test(r.error.message || ''))) html += `<div class="msg info">Sem rede. O resumo das equipas aparece quando houver rede.</div></div>`;
+    if (r.error && (r.error.semRede || /fetch|network|rede/i.test(r.error.message || ''))) {
+      // sem rede: mostra o último resumo das equipas guardado no telefone (16/10/2026, Nuro)
+      const ult = LS.get('hojeEquipas');
+      if (ult && ult.d === h) html += `<div class="msg info">Sem rede. Resumo das equipas guardado às ${fmtHora(ult.em)}; pode não ter as últimas regas.</div>${ult.html}`;
+      else html += `<div class="msg info">Sem rede. O resumo das equipas de hoje aparece quando houver rede.</div></div>`;
+    }
     else if (r.error) html += `<div class="msg erro">${esc(r.error.message)}</div></div>`;
     else {
       // uma linha por equipa: produtores com rega, pessoas (faltas), campos, plantas, tuk-tuk, início, fim e deslocação entre campos
@@ -1350,7 +1364,7 @@ async function desenharHoje() {
         o.prod.add((S.areas.find((a) => a.id === x.area_id) || {}).produtor || x.area_id); if (x.agua_em && (!o.agua || x.agua_em < o.agua)) o.agua = x.agua_em;
         if (x.pessoas > o.pessoas) o.pessoas = x.pessoas;
         if (!o.ini || x.entrada_em < o.ini) o.ini = x.entrada_em; if (!o.fim || x.saida_em > o.fim) o.fim = x.saida_em; }
-      html += `<div class="lin"><span>Registos recebidos</span><b>${r.data.length}</b></div><button class="btn sec" onclick="mudar('painel')">Abrir painel geral</button></div>
+      let eqHtml = `<div class="lin"><span>Registos recebidos</span><b>${r.data.length}</b></div><button class="btn sec" onclick="mudar('painel')">Abrir painel geral</button></div>
         <div style="overflow-x:auto"><table><tr><th>Activista</th><th>Equipa</th><th class="n">Produtores</th><th class="n">Campos</th><th class="n">Plantas</th><th class="n">% meta</th><th>Tuk-tuk</th><th>Início</th><th>Fim</th><th class="n">Desloc.</th><th class="n">Alertas</th></tr>` +
         Object.entries(g).map(([k, o]) => { const tam = tamanhoEquipa(k), d = deslocacao(o.regs);
           const eq = o.pessoas ? textoEquipa(o.pessoas, tam) : '—';
@@ -1359,6 +1373,7 @@ async function desenharHoje() {
           <td class="n">${o.prod.size}</td><td class="n">${o.campos}</td><td class="n">${num(o.plantas)}</td><td class="n">${o.pessoas ? Math.round(100 * o.plantas / (CFG.metaPlantas * o.pessoas)) + '%' : '—'}</td>
           <td>${fmtHora(o.agua)}</td><td>${fmtHora(o.ini)}</td><td>${fmtHora(o.fim)}</td><td class="n">${d != null ? d + ' min' : '—'}</td><td class="n">${o.alertas}</td></tr>`; }).join('') + '</table></div>' +
         `<p class="pequeno">Equipa = pessoas presentes / pessoas da equipa (faltas a vermelho)${podeMudar ? '; toque para mudar o número de pessoas da equipa' : ''}. Produtores = produtores com campos regados hoje. % meta = plantas regadas ÷ (${CFG.metaPlantas} × pessoas presentes). Tuk-tuk = hora da 1.ª chegada da água. Início = entrada no 1.º campo; Fim = saída do último. Desloc. = tempo médio entre a saída de um campo e a entrada no seguinte. Alertas = regas fora da lista da equipa.</p>`;
+      LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
   html = cartaoAvisos() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)

@@ -143,3 +143,10 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Revisão do suaíli (16/10/2026)
 - Tabela enviada ao Valdo: `Rega_Coco_revisao_suaili_20261016.xlsx` (cópia em `rega-test/suaili/`). Folhas: 1 Activista (198 frases vistas nos testes do activista), 2 Técnico e supervisor (333), 3 Painel (117), 4 Frases com números (116). Coluna amarela "Kiswahili corrigido"; coluna ID = `D|<frase em português>` (dicionário `I18N_SW_D`) ou `R|<índice>` (expressão `I18N_SW_R`, mesma ordem que `R`). Nas frases variáveis [1], [2] = partes da expressão e { } = parte opcional.
 - Quando voltar: para cada linha com correcção, D → substituir o valor em `I18N_SW_D`; R → reescrever a substituição da expressão nesse índice (pôr $1/$2 no lugar de [1]/[2]). Gerado por `rega-test/suaili/tabela.js`.
+
+## Teste do Nuro de 16/10/2026 (WhatsApp)
+- Fotografias da rega e câmara na chuva: a funcionar no telefone dele (16/10, "muito rápido", já não fecha).
+- Chuva de teste: técnico, supervisor e gestor vêem todas as comunidades (`lista_comunidades` + as das áreas), não só as das suas equipas (Nuro registou em Quitunda, que é da equipa do Raul).
+- Hoje sem rede (técnico/supervisor/gestor): mostra o último resumo das equipas guardado nesse dia (`rega.hojeEquipas`), com a hora; sem resumo do dia, mensagem.
+- Mapa de plantas lento ("30 a 40 s a calibrar o GPS"): média de 3 s (`PL_MEDIA_MS`), aceita até ±10 m (`PL_PREC`), começa com a última posição da app (`S.fix`, < 20 s) e o botão diz "A preparar o GPS… (±x m)" até a precisão chegar (`mostrarGpsPlantas`). O tempo da primeira leitura boa depende do telefone.
+- Os 2 áudios do WhatsApp de 14/10 (21:13 e 21:28) são do Valdo; não há transcrição automática aqui (huggingface.co bloqueado).

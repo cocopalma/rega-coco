@@ -3,6 +3,7 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+"Sem rede. O resumo das equipas de hoje aparece quando houver rede.": "Hakuna mtandao. Muhtasari wa timu wa leo utaonekana kukiwa na mtandao.",
 "Mapa": "Ramani",
 "Campos": "Mashamba",
 "Hoje": "Leo",
@@ -616,6 +617,8 @@ window.I18N_SW_D = {
 "No período escolhido. Espera = minutos entre a entrada no campo e a chegada da água.": "Katika kipindi kilichochaguliwa. Kusubiri = dakika kati ya kuingia shambani na kuwasili kwa maji."
 };
 window.I18N_SW_R = (tr) => [
+    [/^Sem rede\. Resumo das equipas guardado às (\S+); pode não ter as últimas regas\.$/, 'Hakuna mtandao. Muhtasari wa timu umehifadhiwa saa $1; huenda haujumuishi umwagiliaji wa mwisho.'],
+    [/^A preparar o GPS… \(±(\d+) m\)$/, 'Inaandaa GPS… (±$1 m)'],
     [/^🌴 Mapa das plantas(?: \((\d+)\))? · teste$/, (m, n) => `🌴 Ramani ya mimea${n ? ` (${n})` : ''} · majaribio`],
     [/^Mapa das plantas · (.+)$/, 'Ramani ya mimea · $1'], [/^\(base: (.+) plantadas\)$/, '(kumbukumbu: miche $1 iliyopandwa)'], [/^Planta nº (\d+)$/, 'Mmea Na. $1'],
     [/^Marcada (\S+) (\S+) · ±(\S+) m(?: · a (\d+) m de si)?$/, (m, d, h, p, a) => `Imewekwa alama ${d} ${h} · ±${p} m${a ? ` · ${a} m kutoka kwako` : ''}`],
