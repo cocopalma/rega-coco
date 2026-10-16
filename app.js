@@ -142,7 +142,7 @@ function testeEm(id) {
   return d;
 }
 const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a' };
-// borda do campo no mapa (16/10/2026, Dalmar via Valdo): azul = já recebeu rega (antes da app ou na app), vermelho = nunca regado
+// borda do campo no mapa (16/10/2026, Dalmar via Valdo): azul = já recebeu rega nesta ronda, vermelho = ainda não (ver bordaAzul)
 const BORDA = { regado: '#1e5bd8', nunca: '#c62828' };
 const COLS_AREAS = 'id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em,n_regas_origem,ultima_rega_origem,datas_rega_origem,plantas_regadas_origem';
 // regas do campo: antes da app (ficheiro do Dalmar, dados até 09/10/2026) + na app (servidor e as que ainda estão no telefone)
@@ -153,6 +153,9 @@ function regasDoCampoInfo(a) {
   return { orig, app, total: orig + app, plOrig, plApp, litros: (plOrig + plApp) * CFG.litrosPlanta };
 }
 const jaRegado = (a) => regasDoCampoInfo(a).total > 0;
+// borda azul = já recebeu rega NESTA ronda (16/10/2026, Valdo: "zera em cada ronda"). Na 1.ª ronda contam também as regas
+// de antes da app (ficheiro do Dalmar); a partir da 2.ª ronda só conta a rega da ronda (interior verde).
+const bordaAzul = (a, s = situacao(a)) => s.cod === 'feita' || ((s.n || 1) === 1 && jaRegado(a));
 const plantasTxt = (a) => (a.vivas > 0 ? `${num(a.vivas)} plantas vivas` : `${num(a.instaladas)} mudas plantadas`);
 const plantasN = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
 const nomeAct = (id) => (S.activistas.find((x) => x.id === id) || {}).nome || '(por atribuir)';
@@ -460,7 +463,7 @@ function desenharMapa(enquadrar = false) {
     if (a.latitude == null) continue;
     if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
     const s = situacao(a);
-    const borda = jaRegado(a) ? BORDA.regado : BORDA.nunca;
+    const borda = bordaAzul(a, s) ? BORDA.regado : BORDA.nunca;
     if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { color: borda, weight: 3, fillColor: COR[s.cod], fillOpacity: .25 })
       .on('click', () => abrirFicha(a.id)).addTo(camada);
     L.circleMarker([a.latitude, a.longitude], { radius: temPoligono(a) ? 5 : 8, color: temPoligono(a) ? '#fff' : borda, weight: temPoligono(a) ? 2 : 3, fillColor: COR[s.cod], fillOpacity: .95 })
