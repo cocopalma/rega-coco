@@ -8,6 +8,7 @@ const CFG = {
   dominio: 'rega-coco.example.com', // utilizadores dos activistas: <utilizador>@este-dominio
   margemGPS: 200,      // metros: distância máxima ao centro do campo para validar (campos sem polígono; a afinar no terreno)
   margemPoligono: 50,  // metros: distância máxima à borda do polígono (13/10/2026, Valdo)
+  litrosPlanta: 5,     // litros por planta em cada rega (16/10/2026, Valdo)
   precisaoCoord: 10,   // metros: pior precisão aceite para gravar a coordenada de um campo (a afinar no terreno)
   precisaoIdeal: 5,    // metros: precisão recomendada
   metaPlantas: 140,    // plantas por pessoa por dia (meta do Valdo, 11/10/2026)
@@ -141,6 +142,17 @@ function testeEm(id) {
   return d;
 }
 const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a' };
+// borda do campo no mapa (16/10/2026, Dalmar via Valdo): azul = já recebeu rega (antes da app ou na app), vermelho = nunca regado
+const BORDA = { regado: '#1e5bd8', nunca: '#c62828' };
+const COLS_AREAS = 'id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em,n_regas_origem,ultima_rega_origem,datas_rega_origem,plantas_regadas_origem';
+// regas do campo: antes da app (ficheiro do Dalmar, dados até 09/10/2026) + na app (servidor e as que ainda estão no telefone)
+function regasDoCampoInfo(a) {
+  const e = S.estado[a.id] || {}, fila = filaRegistos().filter((r) => r.area_id === a.id && !r.teste && r.plantas_regadas > 0);
+  const app = (e.n || 0) + fila.length, plApp = (e.pl || 0) + fila.reduce((t, r) => t + (r.plantas_regadas || 0), 0);
+  const orig = a.n_regas_origem || 0, plOrig = a.plantas_regadas_origem || 0;
+  return { orig, app, total: orig + app, plOrig, plApp, litros: (plOrig + plApp) * CFG.litrosPlanta };
+}
+const jaRegado = (a) => regasDoCampoInfo(a).total > 0;
 const plantasTxt = (a) => (a.vivas > 0 ? `${num(a.vivas)} plantas vivas` : `${num(a.instaladas)} mudas plantadas`);
 const plantasN = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
 const nomeAct = (id) => (S.activistas.find((x) => x.id === id) || {}).nome || '(por atribuir)';
@@ -220,12 +232,13 @@ async function sincronizarAgora(silencioso) {
       try { await FOTOS.apagar(c.id); } catch {}
     }
   }
+  if (!erro) erro = await enviarQueimadas();
   if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
   actSync();
   if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   b.textContent = n ? `${n} por enviar` : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0);
 }
@@ -233,14 +246,15 @@ function actSync() {
 // ---------- dados ----------
 // todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
-  const [p, ac, ar, zs, est, lc, pc] = await Promise.all([
+  const [p, ac, ar, zs, est, lc, pc, qm] = await Promise.all([
     sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
-    sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em').eq('activa', true).order('comunidade').range(0, 4999),
+    sb.from('areas').select(COLS_AREAS).eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
-    sb.rpc('estado_ronda'),
+    sb.rpc('estado_ronda2'),
     sb.rpc('lista_comunidades'),
     sb.rpc('pontos_comunidades'),
+    sb.from('queimadas').select('id,area_id,data,observacao,foto_path,registada_por,registada_em').eq('removida', false).range(0, 9999),
   ]);
   if (p.error) throw new Error(p.error.message);
   if (!p.data) throw new Error('Este utilizador não tem perfil na app. Fale com o gestor.');
@@ -248,6 +262,7 @@ async function carregarTudo() {
   S.perfil = p.data; S.activistas = ac.data; S.areas = aplicarPendentes(ar.data);
   if (!zs.error) { S.zonas = zs.data; LS.set('zonas', S.zonas); }
   if (!lc.error && Array.isArray(lc.data)) { S.comunidades = lc.data; LS.set('comunidades', S.comunidades); }
+  if (!qm.error && Array.isArray(qm.data)) { S.queimadas = qm.data; LS.set('queimadas', S.queimadas); }
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
   S.visiveis = null;
   if (['tecnico', 'supervisor'].includes(S.perfil.papel)) {
@@ -258,9 +273,9 @@ async function carregarTudo() {
   await carregarEstado(est);
 }
 async function carregarEstado(pronto) {
-  const { data, error } = pronto || await sb.rpc('estado_ronda');
+  const { data, error } = pronto || await sb.rpc('estado_ronda2');
   if (error) return;
-  S.estado = {}; for (const e of data) S.estado[e.area_id] = { u: e.ultima_rega, ronda: e.ronda_actual, feita: e.regada_na_ronda };
+  S.estado = {}; for (const e of data) S.estado[e.area_id] = { u: e.ultima_rega, ronda: e.ronda_actual, feita: e.regada_na_ronda, n: e.regas_app || 0, pl: e.plantas_app || 0 };
   LS.set('estado', S.estado); LS.set('estadoEm', new Date().toISOString());
   if (souActivista() && S.perfil.activista_id) {        // registos da minha equipa (para a ronda funcionar sem rede)
     const r = await sb.from('registos_rega').select('id,area_id,activista_id,data,ronda,plantas_regadas,teste')
@@ -274,7 +289,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
   return !!(S.perfil && S.areas.length);
 }
 
@@ -354,21 +369,63 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- mapa ----------
 let mapa, camada, eu;
 function iniciarMapa() {
-  mapa = L.map('mapa', { zoomControl: true, preferCanvas: true }).setView([-10.75, 40.45], 11);
+  // rotate: o mapa pode rodar com a direcção (leaflet-rotate; sem o complemento fica como antes, norte em cima)
+  mapa = L.map('mapa', { zoomControl: true, preferCanvas: true, rotate: true, rotateControl: false, touchRotate: false, compassBearing: false }).setView([-10.75, 40.45], 11);
+  mapa.on('dragstart', () => { S.seguirCentro = false; });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
   camada = L.layerGroup().addTo(mapa);
   if (navigator.geolocation) navigator.geolocation.watchPosition((p) => {
     S.pos = [p.coords.latitude, p.coords.longitude]; S.fix = { coords: p.coords, t: Date.now() };
     if (!eu) eu = L.circleMarker(S.pos, { radius: 9, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 }).addTo(mapa);
     else eu.setLatLng(S.pos);
+    if (S.seguir) {
+      if (S.seguirCentro) mapa.panTo(S.pos, { animate: true });
+      // sem bússola (ou parada há 3 s): roda com a direcção do GPS quando a pessoa anda
+      const h = p.coords.heading;
+      if (Date.now() - (S.bussolaEm || 0) > 3000 && h != null && !isNaN(h) && (p.coords.speed || 0) > 0.5) rodarPara(h);
+    }
   }, () => {}, { enableHighAccuracy: true, maximumAge: 10000 });
 }
+// ---------- mapa a rodar com a direcção, como no Google Maps (16/10/2026, Dalmar "M3" via Valdo) ----------
+// Liga no botão 🧭: o mapa segue a pessoa e roda com a bússola do telefone (a direcção para onde aponta fica para cima).
+// No iPhone a bússola precisa de autorização (pedida no toque). Sem bússola usa a direcção do GPS quando a pessoa anda.
+const EV_ORI = 'ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
+const podeRodar = () => !!(mapa && typeof mapa.setBearing === 'function');
+function rodarPara(h) {
+  if (!podeRodar() || h == null || isNaN(h)) return;
+  const b = (360 - h) % 360, d = Math.abs(((b - (S.rumoMapa ?? 0)) + 540) % 360 - 180);
+  if (d < 2) return;                                   // evita tremer com variações pequenas
+  S.rumoMapa = b; mapa.setBearing(b);
+}
+function aoOrientar(e) {
+  let h = null;
+  if (e.webkitCompassHeading != null && !isNaN(e.webkitCompassHeading)) h = e.webkitCompassHeading;   // iPhone: graus a partir do norte, sentido horário
+  else if (e.absolute && e.alpha != null) h = 360 - e.alpha;                                          // Android: alpha é anti-horário
+  if (h == null) return;
+  const ang = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  const t = Date.now(); if (t - (S.oriEm || 0) < 100) return; S.oriEm = t;
+  S.bussolaEm = t; rodarPara((h + ang + 360) % 360);
+}
+async function alternarRodar() {
+  if (!podeRodar()) { aviso('Este telefone não deixa rodar o mapa.', 'erro'); return; }
+  if (S.seguir) {
+    S.seguir = false; window.removeEventListener(EV_ORI, aoOrientar); S.rumoMapa = 0; mapa.setBearing(0); botaoRodar(); return;
+  }
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { if ((await DeviceOrientationEvent.requestPermission()) !== 'granted') aviso('Sem autorização para a bússola: o mapa roda com a direcção do GPS quando andar.', 'info'); }
+    catch { aviso('Sem autorização para a bússola: o mapa roda com a direcção do GPS quando andar.', 'info'); }
+  }
+  S.seguir = true; S.seguirCentro = true; window.addEventListener(EV_ORI, aoOrientar);
+  if (S.pos) mapa.setView(S.pos, Math.max(mapa.getZoom(), 16)); else lerGPS().then(() => mapa.setView(S.pos, 16)).catch((e) => aviso(e.message, 'erro'));
+  botaoRodar();
+}
+function botaoRodar() { const b = $('#b-rodar'); if (!b) return; b.textContent = S.seguir ? '🧭 Norte' : '🧭 Rodar'; b.classList.toggle('on', !!S.seguir); }
 function desenharMapa(enquadrar = false) {
   if (!camada) return;
   camada.clearLayers();
@@ -378,9 +435,12 @@ function desenharMapa(enquadrar = false) {
     if (a.latitude == null) continue;
     if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
     const s = situacao(a);
-    if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { color: COR[s.cod], weight: 2, fillColor: COR[s.cod], fillOpacity: .25 })
+    const borda = jaRegado(a) ? BORDA.regado : BORDA.nunca;
+    if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { color: borda, weight: 3, fillColor: COR[s.cod], fillOpacity: .25 })
       .on('click', () => abrirFicha(a.id)).addTo(camada);
-    L.circleMarker([a.latitude, a.longitude], { radius: temPoligono(a) ? 5 : 8, color: '#fff', weight: 2, fillColor: COR[s.cod], fillOpacity: .95 })
+    L.circleMarker([a.latitude, a.longitude], { radius: temPoligono(a) ? 5 : 8, color: temPoligono(a) ? '#fff' : borda, weight: temPoligono(a) ? 2 : 3, fillColor: COR[s.cod], fillOpacity: .95 })
+      .on('click', () => abrirFicha(a.id)).addTo(camada);
+    if (queimadaDe(a.id)) L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-fogo', html: '🔥', iconSize: [22, 22], iconAnchor: [11, 26] }) })
       .on('click', () => abrirFicha(a.id)).addTo(camada);
     pts.push([a.latitude, a.longitude]);
   }
@@ -425,7 +485,9 @@ function desenharLista() {
   if (com) { const [c, z] = com.split('|'); L2 = L2.filter((a) => a.comunidade === c && (z === undefined || (a.zona || '') === z)); }
   if (txt) L2 = L2.filter((a) => (a.produtor || '').toLowerCase().includes(txt) || a.pr.toLowerCase().includes(txt));
   let linhas = L2.map((a) => ({ a, s: situacao(a), d: S.pos ? distCampo(a, S.pos) : null }));
-  if (sit) linhas = linhas.filter((x) => x.s.cod === sit);
+  if (sit === 'nunca') linhas = linhas.filter((x) => !jaRegado(x.a));
+  else if (sit === 'queimada') linhas = linhas.filter((x) => queimadaDe(x.a.id));
+  else if (sit) linhas = linhas.filter((x) => x.s.cod === sit);
   linhas.sort((x, y) => (x.s.cod === 'feita') - (y.s.cod === 'feita') || (x.d ?? 1e12) - (y.d ?? 1e12));   // por regar primeiro
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
     (porAprovar().length ? `<div class="msg info">${porAprovar().length} medições de área por aprovar. <button class="chip" onclick="ecraPorAprovar()">Ver</button></div>` : '') +
@@ -435,7 +497,7 @@ function desenharLista() {
     `<p class="pequeno">${linhas.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` +
     linhas.slice(0, 300).map(({ a, s, d }) => `<div class="item" data-id="${esc(a.id)}"><div>
       <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
-      </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}<span class="tag t-${s.cod}">${s.txt}</span>${s.cod === 'sem' && podeAtribuir(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
+      </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}<span class="tag t-${s.cod}">${s.txt}</span>${s.cod === 'sem' && podeAtribuir(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
 }
 
 // ---------- mapa de plantas (15/10/2026, pedido do Dalmar; teste com gestor/director, supervisores e técnicos) ----------
@@ -790,6 +852,7 @@ function botoesCampo(a) {
     h += `<button class="btn sec" onclick="ecraPlantas('${esc(a.id)}')">🌴 Mapa das plantas${np ? ` (${np})` : ''} · teste</button>`; }
   if (PODE_COORD.includes(S.perfil.papel) && (!temPoligono(a) || aberto))
     h += `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 ${temPoligono(a) ? 'Medir a área de novo (andar à volta)' : 'Medir a área (andar à volta do campo)'}</button>`;
+  if (PODE_REGAR.includes(S.perfil.papel)) h += `<button class="btn sec" onclick="ecraQueimada('${esc(a.id)}')">🔥 ${queimadaDe(a.id) ? 'Registar outra queimada' : 'Marcar queimada nesta machamba'}</button>`;
   if (podeAtribuir(a)) h += `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">👤 ${a.activista_id ? 'Mudar o activista deste campo' : 'Atribuir a um activista'}</button>`;
   if (['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel)) h += `<button class="btn sec" onclick="ecraComunidade('${esc(a.id)}')">🏘 Mudar a comunidade</button>`;
   if (['gestor', 'supervisor'].includes(S.perfil.papel) && zonasDe(a.comunidade).length) h += `<button class="btn sec" onclick="ecraZona('${esc(a.id)}')">🗂 ${a.zona ? 'Mudar a zona' : 'Definir a zona'}</button>`;
@@ -939,7 +1002,7 @@ function gravarAtribuicao(id) {
   abrirFicha(id, `<div class="msg ok">Campo atribuído a ${esc(nomeAct(novo))}.${navigator.onLine ? '' : ' Será enviado quando houver rede.'}</div>`);
 }
 async function recarregarAreas() {
-  const ar = await sb.from('areas').select('id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em').eq('activa', true).order('comunidade').range(0, 4999);
+  const ar = await sb.from('areas').select(COLS_AREAS).eq('activa', true).order('comunidade').range(0, 4999);
   if (ar.error) return;
   S.areas = aplicarPendentes(ar.data); LS.set('areas', S.areas);
 }
@@ -975,13 +1038,14 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Activista</span><b>${esc(nomeAct(a.activista_id))}</b></div>
     ${a.instaladas != null ? `<div class="lin"><span>Plantas instaladas</span><b>${num(a.instaladas)}</b></div>` : ''}<div class="lin"><span>Plantas vivas</span><b>${a.vivas != null ? num(a.vivas) : '—'}</b></div>${a.instaladas != null && a.vivas != null && a.instaladas >= a.vivas ? `<div class="lin"><span>Plantas mortas</span><b>${num(a.instaladas - a.vivas)}</b></div>` : ''}
     <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div>
+    ${linhasRegasCampo(a)}
     <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
     ${d != null ? `<div class="lin"><span>Distância${temPoligono(a) ? ' (à borda)' : ''}</span><b>${d === 0 ? 'dentro do campo' : (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') + (a.latitude != null ? ' · ' + rumo(S.pos, [a.latitude, a.longitude]) : '')}</b></div>` : ''}
     ${eNovo(a) ? `<div class="lin"><span>Na rega desde</span><b>${fmtData(a.reactivada_em.slice(0, 10))} <span class="tag t-novo">Novo na rega</span></b></div>` : ''}
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+   </div>${cartaoQueimada(a)}${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
   if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
 }
 
@@ -1170,6 +1234,76 @@ function sugerirProximo(feito, nota = '') {
     <button class="btn sec" onclick="fecharFolha()">Escolher outro campo</button>`);
 }
 
+// ---------- regas do campo e queimadas (16/10/2026, Dalmar via Valdo) ----------
+function linhasRegasCampo(a) {
+  const r = regasDoCampoInfo(a);
+  const datas = (a.datas_rega_origem || []).map(fmtData).join(', ');
+  return `<div class="lin"><span>Regas recebidas</span><b>${num(r.total)}${r.total ? ` <span class="pequeno">(${num(r.orig)} antes da app · ${num(r.app)} na app)</span>` : ''}</b></div>
+    ${r.total ? `<div class="lin"><span>Água (${CFG.litrosPlanta} L por planta)</span><b>${num(r.litros)} L</b></div>` : ''}
+    ${datas ? `<p class="pequeno" style="margin:2px 0 6px">Regas antes da app (até 09/10/2026): ${datas}</p>` : ''}`;
+}
+const queimadasLocais = () => LS.get('filaQueim', []);
+// a queimada mais recente do campo (as que estão no telefone por enviar contam)
+function queimadaDe(id) {
+  const l = [...(S.queimadas || []), ...queimadasLocais()].filter((q) => q.area_id === id && !q.removida);
+  return l.sort((x, y) => (y.data || '').localeCompare(x.data || ''))[0] || null;
+}
+function cartaoQueimada(a) {
+  const q = queimadaDe(a.id); if (!q) return '';
+  const meu = q.registada_por === S.perfil?.id || q.local, pode = meu || ['supervisor', 'gestor'].includes(S.perfil?.papel);
+  return `<div class="msg erro" style="background:#fff3e0;color:#7a3300;border-color:#ffb74d">🔥 <b>Queimada</b> a ${fmtData(q.data)}${q.observacao ? ` — ${esc(q.observacao)}` : ''}${q.local ? ' <span class="pequeno">(no telefone; é enviada quando houver rede)</span>' : ''}
+    <div class="chips" style="margin-top:6px">${q.foto_path ? `<button class="chip" onclick="verFoto('rega-fotos','${esc(q.foto_path)}','Queimada ${fmtData(q.data)}')">📷 Ver fotografia</button>` : ''}${pode ? `<button class="chip" onclick="removerQueimada('${esc(q.id)}','${esc(a.id)}')">Remover (engano)</button>` : ''}</div></div>`;
+}
+function ecraQueimada(id, r) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  const h = hojeISO();
+  S.queimFoto = null; if (!r) LS.del('rascQueim');
+  folha(`<h2>🔥 Queimada</h2>${r?.camara ? AVISO_CAMARA : ''}<p class="pequeno">${esc(a.produtor)} · ${esc(a.pr)} · ${esc(a.comunidade)}</p>
+    <label>Data da queimada<input id="q-data" type="date" max="${h}" value="${h}"></label>
+    <textarea id="q-obs" rows="2" placeholder="Observação (opcional): parte do campo, plantas afectadas…"></textarea>
+    ${campoFoto('q-foto', 'Fotografia da queimada (obrigatória)')}
+    <img id="q-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
+    <button class="btn" onclick="gravarQueimada('${esc(id)}')">Guardar</button><button class="btn sec" onclick="LS.del('rascQueim');abrirFicha('${esc(id)}')">Cancelar</button>`);
+  if (r) { if (r.data) $('#q-data').value = r.data; if (r.obs) $('#q-obs').value = r.obs; }
+  const guardar = () => rascGuardar('rascQueim', { perfil: S.perfil?.id, area: id, camara: false, data: $('#q-data').value, obs: $('#q-obs').value });
+  ['#q-data', '#q-obs'].forEach((q) => $(q).addEventListener('input', guardar)); guardar();
+  ligarFoto('q-foto', 'rascQueim', (foto) => { S.queimFoto = foto; const img = $('#q-prev'); if (foto) { img.src = URL.createObjectURL(foto); img.style.display = ''; } else img.style.display = 'none'; });
+}
+async function gravarQueimada(id) {
+  const data = $('#q-data').value;
+  if (!data || data > hojeISO()) { alert('Escolha a data da queimada (hoje ou antes).'); return; }
+  if (!S.queimFoto) { alert('Tire a fotografia da queimada.'); return; }
+  const q = { id: crypto.randomUUID(), area_id: id, data, observacao: $('#q-obs').value.trim() || null, registada_por: S.perfil.id, local: true, lat: null, lon: null, precisao_m: null };
+  if (S.fix && Date.now() - S.fix.t < 60000) { q.lat = S.fix.coords.latitude; q.lon = S.fix.coords.longitude; q.precisao_m = Math.round(S.fix.coords.accuracy); }
+  try { await FOTOS.guardar(q.id, S.queimFoto); } catch { S.fotosMem = { ...(S.fotosMem || {}), [q.id]: S.queimFoto }; }
+  const f = queimadasLocais(); f.push(q); LS.set('filaQueim', f); LS.del('rascQueim');
+  actSync(); aviso('Queimada registada.', 'ok'); abrirFicha(id); desenharMapa(); sincronizar(true);
+}
+async function removerQueimada(qid, areaId) {
+  if (!confirm('Remover esta queimada (registo feito por engano)?')) return;
+  const loc = queimadasLocais();
+  if (loc.some((x) => x.id === qid)) { LS.set('filaQueim', loc.filter((x) => x.id !== qid)); try { await FOTOS.apagar(qid); } catch {} }
+  else {
+    if (!navigator.onLine) { aviso('Precisa de rede para remover uma queimada já enviada.', 'erro'); return; }
+    const r = await sb.rpc('remover_queimada', { p_id: qid }); if (r.error) { aviso(r.error.message, 'erro'); return; }
+    S.queimadas = (S.queimadas || []).filter((x) => x.id !== qid); LS.set('queimadas', S.queimadas);
+  }
+  actSync(); abrirFicha(areaId); desenharMapa();
+}
+async function enviarQueimadas() {
+  for (const q of queimadasLocais()) {
+    let foto = null; try { foto = await FOTOS.ler(q.id); } catch {} foto = foto || S.fotosMem?.[q.id] || null;
+    const caminho = `${S.perfil.id}/queimada-${q.id}.jpg`;
+    if (foto) { const up = await sb.storage.from('rega-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
+    const r = await sb.rpc('gravar_queimada', { p_id: q.id, p_area: q.area_id, p_data: q.data, p_obs: q.observacao, p_foto: foto ? caminho : null, p_lat: q.lat, p_lon: q.lon, p_precisao: q.precisao_m });
+    if (r.error && !r.error.code) return r.error.message;
+    if (r.error) aviso(`Queimada não gravada: ${r.error.message}`, 'erro');
+    else { S.queimadas = [...(S.queimadas || []), { id: q.id, area_id: q.area_id, data: q.data, observacao: q.observacao, foto_path: foto ? caminho : null, registada_por: S.perfil.id }]; LS.set('queimadas', S.queimadas); }
+    LS.set('filaQueim', queimadasLocais().filter((y) => y.id !== q.id));
+    try { await FOTOS.apagar(q.id); } catch {}
+  }
+  return null;
+}
 // ---------- chuva (12/10/2026, Valdo; sugestão do Albino) ----------
 // O activista lê o pluviómetro da comunidade e regista os milímetros. Funciona sem rede (fila "filaChuva").
 // Técnico, supervisor e gestor registam chuva só em teste (13/10/2026, Valdo): não conta no painel.
@@ -1809,6 +1943,8 @@ function retomarRascunhos() {
       if (rf.tipo === 'saida') { ecraSaida(); $('#folha-c').insertAdjacentHTML('afterbegin', AVISO_CAMARA); return; }
       return ecraFotoRega(rf.tipo, '', rf);
     }
+    const rq = rascLer('rascQueim');
+    if (rq && rq.camara && rq.perfil === S.perfil?.id && S.areas.some((x) => x.id === rq.area)) return ecraQueimada(rq.area, rq);
     const rc = rascLer('rascChuva');
     if (rc && rc.perfil === S.perfil?.id && (rc.camara || rc.mm !== '')) { mudar('hoje'); return ecraChuva(rc); }
   } catch {}
@@ -1827,7 +1963,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#h-sync').onclick = () => sincronizar();
   $('#h-sair').onclick = () => sair();
   $('#folha-x').onclick = fecharFolha;
-  $('#b-centrar').onclick = () => { if (S.pos) mapa.setView(S.pos, 16); else lerGPS().then(() => mapa.setView(S.pos, 16)).catch((e) => aviso(e.message, 'erro')); };
+  $('#b-rodar').onclick = alternarRodar; botaoRodar();
+  $('#b-centrar').onclick = () => { S.seguirCentro = true; if (S.pos) mapa.setView(S.pos, 16); else lerGPS().then(() => mapa.setView(S.pos, 16)).catch((e) => aviso(e.message, 'erro')); };
   $('#b-filtro').onclick = () => { S.filtro = S.filtro === 'meus' ? 'todas' : 'meus'; desenharMapa(true); };
   ['#f-ambito', '#f-com', '#f-sit'].forEach((s) => $(s).onchange = desenharLista);
   $('#f-act').onchange = () => { desenharLista(); desenharMapa(true); };

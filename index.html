@@ -53,8 +53,12 @@ label{display:block;margin-top:12px;font-weight:600}
 .filtros select{width:auto;margin:0;padding:8px}
 .legenda{position:absolute;z-index:500;left:8px;bottom:8px;background:rgba(255,255,255,.95);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.7}
 .legenda i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.legenda i.b{background:transparent;border:3px solid;border-radius:3px;width:9px;height:9px}
+.ic-fogo{font-size:18px;line-height:22px;text-align:center;filter:drop-shadow(0 0 2px #fff)}
+.tag.t-fogo{background:#fff3e0;color:#7a3300}
 .flutua{position:absolute;z-index:500;right:10px;top:10px;display:flex;flex-direction:column;gap:8px}
 .flutua button{background:#fff;border:1px solid var(--borda);border-radius:10px;padding:10px 12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.flutua button.on{background:#1e5bd8;color:#fff;border-color:#1e5bd8}
 .folha{position:fixed;left:0;right:0;bottom:0;z-index:1000;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.25);max-height:88%;overflow:auto;padding:16px;display:none}
 .folha.on{display:block}
 .folha .fechar{float:right;border:0;background:#eef0ec;border-radius:50%;width:34px;height:34px;font-size:18px}
@@ -164,6 +168,7 @@ td.n,th.n{text-align:right}
       <div class="flutua">
         <button id="b-centrar">◎ Eu</button>
         <button id="b-filtro">As minhas</button>
+        <button id="b-rodar" title="Rodar o mapa com a direcção (bússola)">🧭 Rodar</button>
       </div>
       <div class="ronda" id="ronda-info" style="display:none"></div>
       <div class="legenda">
@@ -171,6 +176,9 @@ td.n,th.n{text-align:right}
         <div><i style="background:var(--feita)"></i>Regada nesta ronda</div>
         <div><i style="background:var(--sem)"></i>Sem activista</div>
         <div id="leg-teste" style="display:none"><i style="background:#6a1b9a"></i>Regado em teste (por si)</div>
+        <div><i class="b" style="border-color:#1e5bd8"></i>Borda azul: já regado</div>
+        <div><i class="b" style="border-color:#c62828"></i>Borda vermelha: nunca regado</div>
+        <div>🔥 Queimada</div>
       </div>
     </section>
     <section class="ecra" id="e-lista">
@@ -178,7 +186,7 @@ td.n,th.n{text-align:right}
         <select id="f-ambito"><option value="meus">As minhas áreas</option><option value="todas">Todas as áreas</option></select>
         <select id="f-com"><option value="">Todas as comunidades</option></select>
         <select id="f-act" style="display:none"><option value="">Todos os activistas</option></select>
-        <select id="f-sit"><option value="">Todas as situações</option><option value="por">Por regar nesta ronda</option><option value="feita">Regada nesta ronda</option><option value="sem">Por atribuir (sem activista)</option><option value="teste">Regado em teste (por si)</option></select>
+        <select id="f-sit"><option value="">Todas as situações</option><option value="por">Por regar nesta ronda</option><option value="feita">Regada nesta ronda</option><option value="sem">Por atribuir (sem activista)</option><option value="teste">Regado em teste (por si)</option><option value="nunca">Nunca regado</option><option value="queimada">Com queimada</option></select>
         <input id="f-txt" placeholder="Procurar produtor ou PR" style="flex:1;min-width:160px;margin:0;padding:8px">
       </div>
       <div class="pad" id="lista"></div>
@@ -191,10 +199,11 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=50"></script>
-<script src="i18n.js?v=50"></script>
+<script src="i18n-sw.js?v=51"></script>
+<script src="i18n.js?v=51"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=50"></script>
+<script src="app.js?v=51"></script>
 </body>
 </html>
