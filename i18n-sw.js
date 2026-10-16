@@ -739,4 +739,6 @@ window.I18N_SW_R = (tr) => [
     [/^\((.+) antes da app · (.+) na app\)$/, '($1 kabla ya programu · $2 kwenye programu)'],
     [/^Regas antes da app \(até 09\/10\/2026\): (.+)$/, 'Umwagiliaji kabla ya programu (hadi 09/10/2026): $1'],
     [/^Queimada não gravada: (.+)$/, 'Moto haukuhifadhiwa: $1'],
+    [/^([\d.,  ]+) vivas$/, '$1 hai'],
+    [/^([\d.,  ]+) mudas$/, '$1 miche'],
   ];

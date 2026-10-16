@@ -166,3 +166,10 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Dados de rega depois de 09/10: o Valdo vai descarregar os ficheiros mais recentes do Dalmar (as equipas regam fora da app até começarem a usá-la).
 - Pluviómetros: o Valdo pode enviar a coordenada de cada pluviómetro; aí a chuva passa a escolher o pluviómetro mais perto em vez do campo mais perto.
 - Teste: `rega-test/teste_regas_queimada.py`.
+
+## Áudios do Dalmar de 16/10/2026 (transcritos pelo Valdo) — v53
+- Mapa acompanha a posição: quando o ponto azul sai do ecrã (a andar ou de carro), o mapa desloca-se (`S.euVisivel`); se a pessoa arrastou o mapa para outro lado, não puxa de volta; "◎ Eu" volta a acompanhar.
+- Etiquetas nos campos sem tocar: com zoom ≥ 15 (`ZOOM_ROTULOS`), cada campo à vista mostra "primeiro nome do produtor · N vivas" (ou "N mudas"), máx. 80 (`MAX_ROTULOS`), camada `rotulos`.
+- Bordas azul/vermelha: o que o Dalmar descreve é o que a v51 já faz; por confirmar se a borda azul deve "zerar" no início de cada ronda.
+- Poços de água (ideia do Idelson): o Dalmar fala de um directório "água" no Drive com KMZ dos poços, informações e fotos; não encontrado no Drive do Valdo (há `05_POCOS/Relatorio_Pocos_JFS.html` de 10/10 e `_OLD/_ENTREGA_20260910/Pocos_Areas_Candidatas_Rega.kmz`). Falta o link da pasta.
+- Regas por PR (Valdo: "esta forma de registar está errada"): 38 áreas activas em 18 PR têm as mesmas datas e plantas copiadas em todas as áreas do PR (PR693305 está inactivo). Decisão do Valdo pendente sobre como tratar.

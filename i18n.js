@@ -351,6 +351,8 @@ document.addEventListener('DOMContentLoaded', () => {
     [/^\((.+) antes da app · (.+) na app\)$/, '($1 before the app · $2 in the app)'],
     [/^Regas antes da app \(até 09\/10\/2026\): (.+)$/, 'Waterings before the app (until 09/10/2026): $1'],
     [/^Queimada não gravada: (.+)$/, 'Burning not saved: $1'],
+    [/^([\d.,  ]+) vivas$/, '$1 alive'],
+    [/^([\d.,  ]+) mudas$/, '$1 seedlings'],
   ];
   if (LINGUA === 'sw' && window.I18N_SW_D) {             // suaíli: as mesmas chaves e expressões, com o texto em suaíli
     for (const k of Object.keys(D)) delete D[k];

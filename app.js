@@ -373,17 +373,26 @@ async function sair() {
 }
 
 // ---------- mapa ----------
-let mapa, camada, eu;
+let mapa, camada, rotulos, eu;
 function iniciarMapa() {
   // rotate: o mapa pode rodar com a direcção (leaflet-rotate; sem o complemento fica como antes, norte em cima)
   mapa = L.map('mapa', { zoomControl: true, preferCanvas: true, rotate: true, rotateControl: false, touchRotate: false, compassBearing: false }).setView([-10.75, 40.45], 11);
-  mapa.on('dragstart', () => { S.seguirCentro = false; });
+  mapa.on('dragstart', () => { S.seguirCentro = false; S.euVisivel = false; });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
   camada = L.layerGroup().addTo(mapa);
+  rotulos = L.layerGroup().addTo(mapa);
+  mapa.on('zoomend moveend', desenharRotulos);
   if (navigator.geolocation) navigator.geolocation.watchPosition((p) => {
     S.pos = [p.coords.latitude, p.coords.longitude]; S.fix = { coords: p.coords, t: Date.now() };
     if (!eu) eu = L.circleMarker(S.pos, { radius: 9, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 }).addTo(mapa);
     else eu.setLatLng(S.pos);
+    // o ponto saiu do ecrã (a andar ou de carro): o mapa acompanha (16/10/2026, Dalmar). Se a pessoa arrastou o mapa
+    // para outro lado (o ponto já estava fora), não puxa de volta.
+    if (!S.seguir && $('#e-mapa').classList.contains('on')) {
+      const dentro = mapa.getBounds().pad(-0.08).contains(S.pos);
+      if (!dentro && S.euVisivel) mapa.panTo(S.pos, { animate: true });
+      else S.euVisivel = dentro;
+    }
     if (S.seguir) {
       if (S.seguirCentro) mapa.panTo(S.pos, { animate: true });
       // sem bússola (ou parada há 3 s): roda com a direcção do GPS quando a pessoa anda
@@ -426,6 +435,22 @@ async function alternarRodar() {
   botaoRodar();
 }
 function botaoRodar() { const b = $('#b-rodar'); if (!b) return; b.textContent = S.seguir ? '🧭 Norte' : '🧭 Rodar'; b.classList.toggle('on', !!S.seguir); }
+// etiqueta em cada campo à vista (zoom ≥ 15): primeiro nome do produtor e plantas vivas, sem tocar (16/10/2026, Dalmar)
+const ZOOM_ROTULOS = 15, MAX_ROTULOS = 80;
+function desenharRotulos() {
+  if (!rotulos) return; rotulos.clearLayers();
+  if (mapa.getZoom() < ZOOM_ROTULOS) return;
+  const b = mapa.getBounds(), fa = $('#f-act')?.value; let n = 0;
+  for (const a of visiveis()) {
+    if (a.latitude == null || !b.contains([a.latitude, a.longitude])) continue;
+    if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
+    if (++n > MAX_ROTULOS) break;
+    const nome = String(a.produtor || '').trim().split(/\s+/)[0] || '—';
+    const pl = a.vivas > 0 ? `${num(a.vivas)} vivas` : `${num(a.instaladas || 0)} mudas`;
+    L.tooltip({ permanent: true, direction: 'top', offset: [0, -6], className: 'rot-campo', interactive: false })
+      .setLatLng([a.latitude, a.longitude]).setContent(`${esc(nome)} · ${pl}`).addTo(rotulos);
+  }
+}
 function desenharMapa(enquadrar = false) {
   if (!camada) return;
   camada.clearLayers();
@@ -445,6 +470,7 @@ function desenharMapa(enquadrar = false) {
     pts.push([a.latitude, a.longitude]);
   }
   if (enquadrar && pts.length) mapa.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
+  desenharRotulos();
   $('#b-filtro').textContent = S.filtro === 'meus' ? 'As minhas' : 'Todas';
   $('#b-filtro').style.display = S.perfil?.papel === 'activista' ? '' : 'none';
   const ri = $('#ronda-info');
