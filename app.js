@@ -843,9 +843,9 @@ function botoesCampo(a) {
   const gestor = S.perfil.papel === 'gestor', aberto = gestor || a.limites_abertos;
   // área medida pelo activista à espera de aprovação (técnico, supervisor ou gestor aprovam; 15/10/2026, Valdo)
   if (a.poligono_proposto && PODE_COORD.includes(S.perfil.papel)) h += cartaoProposta(a);
-  if (S.perfil.papel === 'activista' && a.activista_id === S.perfil.activista_id && !temPoligono(a))
+  if (S.perfil.papel === 'activista' && a.activista_id === S.perfil.activista_id && (!temPoligono(a) || a.limites_abertos || a.poligono_proposto))
     h += a.poligono_proposto ? `<div class="msg info">Área medida: ${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}. À espera de aprovação do técnico ou do supervisor.</div>`
-      : `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 Medir a área (andar à volta do campo)</button>`;
+      : `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 ${temPoligono(a) ? 'Medir a área de novo (andar à volta)' : 'Medir a área (andar à volta do campo)'}</button>`;
   if (PODE_COORD.includes(S.perfil.papel) && (a.latitude == null || aberto))
     h += `<button class="btn sec" onclick="ecraCoordenada('${esc(a.id)}')">📍 ${a.latitude == null ? 'Gravar a coordenada deste campo' : 'Corrigir a coordenada (estou no campo)'}</button>`;
   if (PODE_COORD.includes(S.perfil.papel)) { const np = plantasLocais(a.id).length;
@@ -868,7 +868,7 @@ function cartaoProposta(a) {
     ${a.vivas ? `<div class="lin"><span>Plantas vivas na base</span><b>${num(a.vivas)} (${(a.vivas / ((a.area_m2_proposta || areaPontos(a.poligono_proposto)) / 10000)).toLocaleString(LOC, { maximumFractionDigits: 0 })} por ha)</b></div>` : ''}
     ${desenhoPontos(a.poligono_proposto)}
     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="margin:0" onclick="aprovarMedicao('${esc(a.id)}', true)">✓ Aprovar</button><button class="btn sec" style="margin:0" onclick="aprovarMedicao('${esc(a.id)}', false)">✗ Recusar</button></div>
-    ${temPoligono(a) ? '<p class="pequeno">Este campo já tem limite: só o gestor pode substituí-lo.</p>' : ''}</div>`;
+    ${temPoligono(a) && !a.limites_abertos ? '<p class="pequeno">Este campo já tem limite: só o gestor pode substituí-lo.</p>' : ''}</div>`;
 }
 function aplicarAprovacao(a, sim) {
   if (sim && a.poligono_proposto) {
@@ -879,7 +879,7 @@ function aplicarAprovacao(a, sim) {
 }
 function aprovarMedicao(id, sim) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
-  if (sim && temPoligono(a) && S.perfil.papel !== 'gestor') return aviso('Este campo já tem limite. Só o gestor pode substituí-lo.', 'erro');
+  if (sim && temPoligono(a) && !a.limites_abertos && S.perfil.papel !== 'gestor') return aviso('Este campo já tem limite. Só o gestor pode substituí-lo.', 'erro');
   if (!sim && !confirm('Recusar esta medição? O activista terá de medir de novo.')) return;
   aplicarAprovacao(a, sim); LS.set('areas', S.areas);
   porNaFilaAlt({ tipo: 'aprovar', area_id: id, aprovar: sim });
