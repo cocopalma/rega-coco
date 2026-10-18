@@ -123,7 +123,7 @@ td.n,th.n{text-align:right}
 <div id="login" style="display:none">
   <section class="l-c" id="l-campo">
     <div class="caixa">
-      <div class="l-topo"><div class="l-marca"><span class="bola"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c-3.2 4.2-5.5 7.4-5.5 10.5a5.5 5.5 0 0 0 11 0C17.5 10.4 15.2 7.2 12 3z"/></svg></span>Rega Coco</div><button class="lingua" id="lc-lingua" onclick="mudarLingua()" title="English / Português">EN</button></div>
+      <div class="l-topo"><div class="l-marca"><span class="bola"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c-3.2 4.2-5.5 7.4-5.5 10.5a5.5 5.5 0 0 0 11 0C17.5 10.4 15.2 7.2 12 3z"/></svg></span>Rega Coco</div><button class="lingua" id="lc-lingua" onclick="mudarLingua(this)" title="English / Português">EN</button></div>
       <div><h1><span id="l-saud">Bom dia.</span><br>Entre para registar a rega.</h1><p class="sub">Projecto Coco · Palma</p></div>
       <div class="l-seg" role="group"><button type="button" data-m="activista">Activista</button><button type="button" data-m="tecnico">Técnico / Supervisor</button></div>
       <form onsubmit="event.preventDefault();entrar()">
@@ -140,7 +140,7 @@ td.n,th.n{text-align:right}
   <section class="l-e" id="l-escr" style="display:none">
     <div class="caixa">
       <div class="l-faixa">
-        <div class="linha"><span class="marca">Projecto Coco · Palma</span><button class="lingua" id="le-lingua" onclick="mudarLingua()" title="English / Português">EN</button></div>
+        <div class="linha"><span class="marca">Projecto Coco · Palma</span><button class="lingua" id="le-lingua" onclick="mudarLingua(this)" title="English / Português">EN</button></div>
         <div><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c-3.2 4.2-5.5 7.4-5.5 10.5a5.5 5.5 0 0 0 11 0C17.5 10.4 15.2 7.2 12 3z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5"/></svg><h1>Rega Coco</h1><p>Rega de emergência</p></div>
       </div>
       <form onsubmit="event.preventDefault();entrar()">
@@ -159,7 +159,7 @@ td.n,th.n{text-align:right}
   <header>
     <h1 id="h-nome">Rega Coco</h1>
     <button class="sync" id="h-sync" title="Sincronizar">…</button>
-    <button class="sync" id="h-lingua" onclick="mudarLingua()" title="English / Português">EN</button>
+    <button class="sync" id="h-lingua" onclick="mudarLingua(this)" title="English / Português">EN</button>
     <button class="sync" id="h-sair">Sair</button>
   </header>
   <nav id="nav">
@@ -214,11 +214,11 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=61"></script>
-<script src="i18n.js?v=61"></script>
+<script src="i18n-sw.js?v=62"></script>
+<script src="i18n.js?v=62"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=61"></script>
+<script src="app.js?v=62"></script>
 </body>
 </html>

@@ -2,18 +2,38 @@
    A app é escrita em português; com outra língua escolhida, este ficheiro traduz os textos à medida que aparecem no ecrã.
    Os dados (nomes, comunidades, PR) não são traduzidos. A escolha fica guardada no telefone. */
 'use strict';
-const LINGUAS = ['pt', 'en', 'sw'];                     // ordem do botão: PT → EN → SW → PT
+const LINGUAS = ['pt', 'en', 'sw'];
 const LINGUA = (() => { try { const l = localStorage.getItem('rega.lingua'); return LINGUAS.includes(l) ? l : 'pt'; } catch { return 'pt'; } })();
-const PROXIMA = LINGUAS[(LINGUAS.indexOf(LINGUA) + 1) % LINGUAS.length];
-function mudarLingua() {
-  try { localStorage.setItem('rega.lingua', PROXIMA); } catch {}
+const NOMES_LINGUA = { pt: 'Português', en: 'English', sw: 'Kiswahili' };
+// o botão abre uma lista com as três línguas: escolhe-se qualquer uma sem passar pelas outras (18/10/2026, Valdo)
+function escolherLingua(l) {
+  if (!LINGUAS.includes(l)) return;
+  try { localStorage.setItem('rega.lingua', l); } catch {}
+  if (l === LINGUA) { fecharMenuLingua(); return; }
   location.reload();
 }
-// botões de língua: mostram a língua para onde se muda
+function fecharMenuLingua() { document.getElementById('menu-lingua')?.remove(); }
+function mudarLingua(btn) {
+  if (document.getElementById('menu-lingua')) return fecharMenuLingua();
+  btn = btn || document.activeElement;
+  const r = btn && btn.getBoundingClientRect ? btn.getBoundingClientRect() : { left: 10, right: 150, bottom: 50 };
+  const m = document.createElement('div');
+  m.id = 'menu-lingua'; m.className = 'sem-trad'; m.setAttribute('role', 'menu');
+  m.style.cssText = 'position:fixed;z-index:5000;background:#fff;color:#12261a;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.25);padding:6px;min-width:170px;font:16px system-ui,sans-serif';
+  m.innerHTML = LINGUAS.map((l) => `<button type="button" role="menuitem" data-l="${l}" style="display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;min-height:46px;padding:0 14px;border:0;border-radius:8px;background:${l === LINGUA ? '#e8f0e8' : 'transparent'};color:inherit;font:inherit;font-weight:${l === LINGUA ? 700 : 500};text-align:left;cursor:pointer"><span>${NOMES_LINGUA[l]}</span><span>${l === LINGUA ? '✓' : ''}</span></button>`).join('');
+  document.body.appendChild(m);
+  const w = m.offsetWidth, h = m.offsetHeight;
+  let left = Math.min(Math.max(8, r.right - w), window.innerWidth - w - 8), top = r.bottom + 6;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  m.style.left = left + 'px'; m.style.top = top + 'px';
+  m.querySelectorAll('button').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); escolherLingua(b.dataset.l); }));
+  setTimeout(() => document.addEventListener('click', function fora(e) { if (!m.contains(e.target)) { fecharMenuLingua(); document.removeEventListener('click', fora, true); } }, true), 0);
+}
+// botões de língua: mostram a língua actual; ao tocar abre a lista
 document.addEventListener('DOMContentLoaded', () => {
-  const curto = { pt: 'PT', en: 'EN', sw: 'SW' }[PROXIMA], longo = { pt: 'Português', en: 'English', sw: 'Kiswahili' }[PROXIMA];
-  for (const [id, txt] of [['h-lingua', curto], ['b-lingua', curto], ['lc-lingua', curto], ['le-lingua', curto], ['l-lingua', longo]]) {
-    const b = document.getElementById(id); if (b) { b.textContent = txt; b.title = 'Português / English / Kiswahili'; }
+  const curto = { pt: 'PT', en: 'EN', sw: 'SW' }[LINGUA];
+  for (const [id, txt] of [['h-lingua', curto], ['b-lingua', curto], ['lc-lingua', curto], ['le-lingua', curto], ['l-lingua', NOMES_LINGUA[LINGUA]]]) {
+    const b = document.getElementById(id); if (b) { b.textContent = '🌐 ' + txt; b.title = 'Português / English / Kiswahili'; b.classList.add('sem-trad'); }
   }
 });
 (() => {
@@ -378,9 +398,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function traduzNo(n) {
     if (n.nodeType === 3) {
       if (['SCRIPT', 'STYLE'].includes(n.parentNode?.nodeName)) return;
+      if (n.parentElement?.closest?.('.sem-trad')) return;
       const v = tr(n.nodeValue); if (v !== n.nodeValue) n.nodeValue = v; return;
     }
     if (n.nodeType !== 1) return;
+    if (n.classList && n.classList.contains('sem-trad')) return;   // nomes das línguas ficam na própria língua
     for (const a of ['placeholder', 'title', 'aria-label']) { const v = n.getAttribute(a); if (v) { const t = tr(v); if (t !== v) n.setAttribute(a, t); } }
     n.childNodes.forEach(traduzNo);
   }
