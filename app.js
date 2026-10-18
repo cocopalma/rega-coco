@@ -286,7 +286,7 @@ async function carregarTudo() {
   if (['me', 'oficial_me'].includes(S.perfil.papel) && !S.avisouRecontagem) {
     S.avisouRecontagem = true;
     const l = recontagens(), n = souOficial() ? recPorFazer().length : l.filter((r) => ['por_encaminhar', 'enviada'].includes(r.estado)).length;
-    if (n) setTimeout(() => aviso(souOficial() ? `📋 ${n} ${n === 1 ? 'recontagem para fazer' : 'recontagens para fazer'}: veja no Hoje.` : `📋 ${n} ${n === 1 ? 'recontagem por encaminhar ou validar' : 'recontagens por encaminhar ou validar'}: veja no Hoje.`, 'info'), 1500);
+    if (n) setTimeout(() => aviso(souOficial() ? `📋 ${n} ${n === 1 ? 'recontagem para fazer' : 'recontagens para fazer'}: veja no Hoje.` : `📋 ${n} ${n === 1 ? 'recontagem por encaminhar ou validar' : 'recontagens por encaminhar ou validar'}: veja no Hoje › Recontagens das plantas.`, 'info'), 1500);
   }
   S.visiveis = null;
   if (['tecnico', 'supervisor'].includes(S.perfil.papel)) {
@@ -1416,7 +1416,10 @@ function cartaoQueimada(a) {
 // O M&E valida (só então mudam as plantas vivas do campo e todos vêem os números) ou recusa com o motivo (volta ao oficial).
 // Antes de validar, os outros só vêem o estado. O M&E e o gestor não fazem a contagem (não vão ao campo).
 const souOficial = () => S.perfil?.papel === 'oficial_me';
-const gereRecont = () => ['me', 'gestor'].includes(S.perfil?.papel);
+const gereRecont = () => ['me', 'gestor'].includes(S.perfil?.papel);   // encaminham, cancelam, escolhem o oficial
+// técnicos e supervisores também pedem (18/10/2026, Valdo): o pedido vai para o M&E, que encaminha aos oficiais
+const podePedirRec = () => ['me', 'gestor', 'tecnico', 'supervisor'].includes(S.perfil?.papel);
+const veRecontagens = () => ['me', 'gestor', 'director', 'tecnico', 'supervisor'].includes(S.perfil?.papel);
 const filaRec = () => LS.get('filaRec', []);
 async function carregarRecontagens() {
   const r = await sb.rpc('recontagens_lista');
@@ -1454,7 +1457,7 @@ function localContagem(r, a) {
 }
 function cartaoRecontagem(a) {
   const r = recontagemDe(a.id), papel = S.perfil?.papel;
-  const pedir = gereRecont() ? `<button class="btn sec" onclick="ecraPedirRecontagem('${esc(a.id)}')">📋 Pedir recontagem das plantas</button>` : '';
+  const pedir = podePedirRec() ? `<button class="btn sec" onclick="ecraPedirRecontagem('${esc(a.id)}')">📋 Pedir recontagem das plantas</button>` : '';
   if (!r) return pedir;
   const foto = r.foto_path && papel !== 'activista' ? `<button class="chip" onclick="verFoto('recontagem-fotos','${esc(r.foto_path)}','Declaração · ${esc(a.pr)} · ${esc(dataCurta(r.contada_em))}')">📷 Declaração</button>` : '';
   const nums = `<div class="lin"><span>Plantas vivas · mortas</span><b>${num(r.vivas)} · ${num(r.mortas)}</b></div>`;
@@ -1502,12 +1505,12 @@ async function ecraPedirRecontagem(id) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   folha(`<h2>📋 Pedir recontagem</h2><p class="pequeno">${esc(a.produtor)} · ${esc(a.pr)} · ${esc(a.comunidade)}</p>
     <label>Motivo da recontagem<textarea id="pr-motivo" rows="2" placeholder="Ex.: muitas plantas mortas na monitoria"></textarea></label>
-    <label>Oficial de M&E<select id="pr-of">${await opcoesOficiais(null, true)}</select></label>
+    ${gereRecont() ? `<label>Oficial de M&E<select id="pr-of">${await opcoesOficiais(null, true)}</select></label>` : '<p class="pequeno">O pedido vai para o M&E, que o encaminha a um oficial.</p>'}
     <div id="pr-msg"></div><button class="btn" id="pr-ok">Pedir</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
   $('#pr-ok').onclick = () => {
     const m = $('#pr-motivo').value.trim(); if (m.length < 3) { $('#pr-msg').innerHTML = '<div class="msg erro">Escreva o motivo da recontagem.</div>'; return; }
     if (recontagemDe(id) && recontagemDe(id).estado !== 'validada') { $('#pr-msg').innerHTML = '<div class="msg erro">Já há uma recontagem em curso neste campo</div>'; return; }
-    const of = $('#pr-of').value || null;
+    const of = $('#pr-of')?.value || null;
     porNaFilaRecG({ op: 'pedir', id: crypto.randomUUID(), area_id: id, motivo: m, oficial: of, oficial_nome: of ? nomeOficial(of) : null });
     abrirFicha(id, `<div class="msg ok">${of ? 'Recontagem pedida e encaminhada.' : 'Recontagem pedida.'}${notaFila()}</div>`); actHoje();
   };
@@ -1523,7 +1526,7 @@ async function ecraPedirVarias() {
     <div id="pv-lista" style="max-height:45vh;overflow:auto;margin:8px 0;border:1px solid var(--linha,#e5e5e5);border-radius:10px"></div>
     <p id="pv-n" class="pequeno"></p>
     <label>Motivo da recontagem<textarea id="pv-motivo" rows="2" placeholder="Ex.: muitas plantas mortas na monitoria"></textarea></label>
-    <label>Oficial de M&E<select id="pv-of">${await opcoesOficiais(null, true)}</select></label>
+    ${gereRecont() ? `<label>Oficial de M&E<select id="pv-of">${await opcoesOficiais(null, true)}</select></label>` : '<p class="pequeno">O pedido vai para o M&E, que o encaminha a um oficial.</p>'}
     <div id="pv-msg"></div><button class="btn" id="pv-ok">Pedir</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
   const emCurso = (id) => { const r = recontagemDe(id); return r && r.estado !== 'validada'; };
   const desenhar = () => {
@@ -1546,7 +1549,7 @@ async function ecraPedirVarias() {
     const m = $('#pv-motivo').value.trim(), erro = (x) => { $('#pv-msg').innerHTML = `<div class="msg erro">${esc(x)}</div>`; };
     if (!S.recSel.size) return erro('Escolha pelo menos um campo.');
     if (m.length < 3) return erro('Escreva o motivo da recontagem.');
-    const of = $('#pv-of').value || null, ids = [...S.recSel].filter((id) => !emCurso(id));
+    const of = $('#pv-of')?.value || null, ids = [...S.recSel].filter((id) => !emCurso(id));
     const f = filaRecG(), em = new Date().toISOString();
     for (const id of ids) f.push({ op: 'pedir', id: crypto.randomUUID(), area_id: id, motivo: m, oficial: of, oficial_nome: of ? nomeOficial(of) : null, em });
     LS.set('filaRecG', f); actSync(); sincronizar(true); fecharFolha(); actHoje();
@@ -1651,7 +1654,7 @@ async function enviarRecontagens() {
     LS.set('filaRec', filaRec().filter((y) => y.id !== x.id));
     try { await FOTOS.apagar(k); } catch {}
   }
-  if (souOficial() || gereRecont()) await carregarRecontagens();
+  if (souOficial() || veRecontagens()) await carregarRecontagens();
   return null;
 }
 const actHoje = () => { if ($('#e-hoje').classList.contains('on')) desenharHoje(); };
@@ -1667,14 +1670,26 @@ function cartaoRecontagensHoje() {
     return `<div class="cartao" style="border-left:4px solid #6d4c41"><h2>📋 Recontagens</h2>${sec('Para fazer', fazer)}
       ${sec('Enviadas, à espera da validação do M&E', env, (r) => r.local ? ' · no telefone, por enviar' : '')}</div>`;
   }
-  if (!gereRecont()) return '';
+  if (!veRecontagens()) return '';
   const por = l.filter((r) => r.estado === 'por_encaminhar'), val = l.filter((r) => r.estado === 'enviada'), curso = l.filter((r) => ['encaminhada', 'recusada'].includes(r.estado));
-  if (!por.length && !val.length && !curso.length)   // o cartão aparece sempre ao M&E e ao gestor, mesmo sem pedidos (18/10/2026, Valdo não o via)
-    return '<div class="cartao" style="border-left:4px solid #6d4c41"><h2>📋 Recontagens das plantas</h2><p>Sem recontagens em curso.</p><p class="pequeno">Escolha um ou mais campos no botão abaixo (ou abra o campo no Mapa ou em Campos). Cada queimada registada também pede uma, de forma automática.</p><button class="btn sec" onclick="ecraPedirVarias()">📋 Pedir recontagens das plantas</button></div>';
+  const desde = new Date(Date.now() - 30 * 864e5).toISOString(), feitas = l.filter((r) => r.estado === 'validada' && (r.validada_em || '') >= desde);
+  const botao = podePedirRec() ? '<button class="btn sec" onclick="ecraPedirVarias()">📋 Pedir recontagens das plantas</button>' : '';
+  const ajuda = podePedirRec() ? `<p class="pequeno">${gereRecont() ? 'Escolha um ou mais campos no botão abaixo (ou abra o campo no Mapa ou em Campos). Cada queimada registada também pede uma, de forma automática.' : 'Peça a recontagem no botão abaixo (ou na ficha do campo). O M&E encaminha o pedido a um oficial. Cada queimada registada também pede uma, de forma automática.'}</p>` : '';
+  const pedido = (r) => (r.pedido_por_nome ? ' · pedida por ' + esc(r.pedido_por_nome) : '');
   return `<div class="cartao" style="border-left:4px solid #6d4c41"><h2>📋 Recontagens das plantas</h2>
-    ${sec('Por encaminhar a um oficial', por)}
+    ${!por.length && !val.length && !curso.length ? '<p>Sem recontagens em curso.</p>' : ''}
+    ${sec(gereRecont() ? 'Por encaminhar a um oficial' : 'À espera do M&E (por encaminhar)', por, pedido)}
+    ${sec('Com o oficial', curso, (r) => ' · ' + esc(r.oficial || ''))}
     ${S.perfil.papel === 'me' ? sec('Por validar', val, (r) => ' · ' + esc(r.oficial || '')) : sec('Feitas, em validação pelo M&E', val)}
-    ${sec('Com o oficial', curso, (r) => ' · ' + esc(r.oficial || ''))}<button class="btn sec" onclick="ecraPedirVarias()">📋 Pedir recontagens das plantas</button></div>`;
+    ${sec('Validadas nos últimos 30 dias', feitas, (r) => ` · ${num(r.vivas)} vivas`)}
+    ${ajuda}${botao}</div>`;
+}
+// contador no botão "Recontagens das plantas" do Hoje: o que espera por quem está a ver
+function contaRecHoje() {
+  const l = recontagens();
+  if (S.perfil?.papel === 'me') return l.filter((r) => ['por_encaminhar', 'enviada'].includes(r.estado)).length;
+  if (S.perfil?.papel === 'gestor') return l.filter((r) => r.estado === 'por_encaminhar').length;
+  return l.filter((r) => ['por_encaminhar', 'encaminhada', 'recusada', 'enviada'].includes(r.estado)).length;
 }
 function ecraQueimada(id, r) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
@@ -1918,6 +1933,14 @@ async function desenharHoje() {
     if (navigator.onLine) await carregarRecontagens();
     $('#hoje').innerHTML = cartaoRecontagensHoje(); return;
   }
+  // dois botões no topo do Hoje: "Rega hoje" e "Recontagens das plantas" (18/10/2026, Valdo); a escolha fica no telefone
+  let abas = '';
+  if (veRecontagens()) {
+    if (navigator.onLine) await carregarRecontagens();
+    const vista = LS.get('vistaHoje', 'rega') === 'rec' ? 'rec' : 'rega', n = contaRecHoje();
+    abas = `<div class="chips" id="hoje-abas" style="margin:0 0 10px"><button class="chip${vista === 'rega' ? ' on' : ''}" data-v="rega" onclick="LS.set('vistaHoje','rega');desenharHoje()">Rega hoje</button><button class="chip${vista === 'rec' ? ' on' : ''}" data-v="rec" onclick="LS.set('vistaHoje','rec');desenharHoje()">${n ? `Recontagens das plantas (${n})` : 'Recontagens das plantas'}</button></div>`;
+    if (vista === 'rec') { $('#hoje').innerHTML = abas + cartaoRecontagensHoje(); return; }
+  }
   if (S.perfil.papel === 'activista') {
     let serv = [];
     if (navigator.onLine) { const r = await sb.from('registos_rega').select('id,area_id,entrada_em,saida_em,plantas_regadas,alerta,agua_em').eq('data', h).order('entrada_em'); serv = r.data || []; }
@@ -1931,7 +1954,6 @@ async function desenharHoje() {
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
     if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarMonitoria(); html = cartaoMonitoria() + html; }
-    if (gereRecont()) { if (navigator.onLine) await carregarRecontagens(); html = cartaoRecontagensHoje() + html; }   // recontagens das plantas (18/10/2026, Valdo)
     const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
     if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste');
     // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
@@ -1962,7 +1984,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoAvisos() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = abas + cartaoAvisos() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   $('#hoje').innerHTML = html;
   if (navigator.onLine) LS.set('hojeHtml', { d: h, p: S.perfil.papel, html });
 }
