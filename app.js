@@ -253,7 +253,7 @@ function actSync() {
 // todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
   const [p, ac, ar, zs, est, lc, pc, qm, po] = await Promise.all([
-    sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos').eq('id', S.user.id).maybeSingle(),
+    sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos,trocar_senha').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
     sb.from('areas').select(COLS_AREAS).eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
@@ -272,6 +272,8 @@ async function carregarTudo() {
   if (!po.error && Array.isArray(po.data)) { S.pocos = po.data; LS.set('pocos', S.pocos); }
   if (!qm.error && Array.isArray(qm.data)) { S.queimadas = qm.data; LS.set('queimadas', S.queimadas); }
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
+  // senha/PIN provisório dado pelo gestor: a pessoa escolhe outro (18/10/2026, Valdo)
+  if (S.perfil.trocar_senha && !S.trocaAberta) setTimeout(() => ecraTrocarSenha(true), 400);
   S.visiveis = null;
   if (['tecnico', 'supervisor'].includes(S.perfil.papel)) {
     const [v] = await Promise.all([sb.rpc('meus_activistas'), carregarMonitoria()]);
@@ -378,6 +380,53 @@ async function entrar() {
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+}
+
+// ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
+// O gestor dá uma senha ou PIN provisório; ao entrar, a pessoa escolhe outro e o gestor deixa de o saber.
+// No servidor fica só uma impressão cifrada (ninguém a consegue ler); no telefone também só uma impressão.
+const PIN_FRACO = (v) => /^(\d)\1{5}$/.test(v) || ['123456', '654321', '012345', '123123'].includes(v);
+function ecraTrocarSenha(obrig = false) {
+  const pin = S.perfil?.papel === 'activista', o = pin ? 'PIN' : 'senha';
+  const campo = (id, rot) => `<label>${rot}<input id="${id}" type="password" autocomplete="new-password" ${pin ? 'inputmode="numeric" maxlength="6"' : ''}></label>`;
+  folha(`<h2>${pin ? (obrig ? 'Escolha o seu PIN' : 'Mudar o meu PIN') : (obrig ? 'Escolha a sua senha' : 'Mudar a minha senha')}</h2>
+    ${obrig ? `<p>${pin ? 'O PIN que recebeu do gestor é provisório. Escolha agora um PIN só seu: o gestor deixa de o saber.' : 'A senha que recebeu do gestor é provisória. Escolha agora uma senha só sua: o gestor deixa de a saber.'}</p>` : `<p class="pequeno">${pin ? 'Só você vai saber o novo PIN. Se o esquecer, o gestor dá-lhe um provisório.' : 'Só você vai saber a nova senha. Se a esquecer, o gestor dá-lhe uma provisória.'}</p>`}
+    <div class="msg info"><b>${pin ? 'Não use o PIN do banco, do telemóvel ou de outras contas.' : 'Não use a senha do banco, do e-mail ou de outras contas.'}</b></div>
+    ${obrig ? '' : campo('ts-actual', pin ? 'PIN actual' : 'Senha actual')}
+    ${campo('ts-nova', pin ? 'Novo PIN (6 números)' : 'Nova senha (8 ou mais caracteres)')}
+    ${campo('ts-rep', pin ? 'Repetir o novo PIN' : 'Repetir a nova senha')}
+    <button class="chip" id="ts-ver" type="button">Mostrar</button>
+    <div id="ts-msg"></div>
+    <button class="btn" id="ts-gravar">Gravar</button>${obrig ? '' : '<button class="btn sec" id="ts-cancelar">Cancelar</button>'}`);
+  S.trocaAberta = true; S.trocaObrig = obrig; $('#folha-x').style.display = obrig ? 'none' : '';
+  const sai = () => { S.trocaAberta = false; S.trocaObrig = false; $('#folha-x').style.display = ''; fecharFolha(); };
+  if (!obrig) $('#ts-cancelar').onclick = sai;
+  $('#ts-ver').onclick = () => { const t = $('#ts-nova').type === 'password' ? 'text' : 'password'; document.querySelectorAll('#folha-c input[type="password"], #folha-c input[data-v]').forEach((i) => { i.type = t; i.dataset.v = 1; }); $('#ts-ver').textContent = t === 'password' ? 'Mostrar' : 'Esconder'; };
+  const erro = (t) => { $('#ts-msg').innerHTML = `<div class="msg erro">${esc(t)}</div>`; $('#ts-gravar').disabled = false; };
+  $('#ts-gravar').onclick = async () => {
+    const actual = obrig ? null : $('#ts-actual').value, nova = $('#ts-nova').value, rep = $('#ts-rep').value;
+    if (pin ? !/^\d{6}$/.test(nova) : nova.length < 8) return erro(pin ? 'O PIN tem de ter 6 números.' : 'A senha tem de ter pelo menos 8 caracteres.');
+    if (pin && PIN_FRACO(nova)) return erro('Esse PIN é fácil de adivinhar. Escolha outro.');
+    if (nova !== rep) return erro(pin ? 'Os dois PIN não são iguais.' : 'As duas senhas não são iguais.');
+    if (!obrig && !actual) return erro(pin ? 'Escreva o PIN actual.' : 'Escreva a senha actual.');
+    if (!obrig && actual === nova) return erro(pin ? 'O novo PIN é igual ao actual.' : 'A nova senha é igual à actual.');
+    if (!navigator.onLine) return erro(`Precisa de rede para mudar ${pin ? 'o PIN' : 'a senha'}.`);
+    $('#ts-gravar').disabled = true; $('#ts-msg').innerHTML = '<div class="msg info">A gravar…</div>';
+    try {
+      const { data: u } = await sb.auth.getUser(); const email = u?.user?.email;
+      if (!email) return erro('Sem sessão. Saia e entre de novo.');
+      if (!obrig) {                                        // confirma o actual (e renova a sessão)
+        const r = await sb.auth.signInWithPassword({ email, password: actual });
+        if (r.error) return erro(semRede(r.error) ? 'Sem rede. Tente de novo.' : (pin ? 'O PIN actual está errado.' : 'A senha actual está errada.'));
+      }
+      const { error } = await sb.auth.updateUser({ password: nova });
+      if (error) return erro(/different|same/i.test(error.message) ? (pin ? 'O novo PIN tem de ser diferente do anterior.' : 'A nova senha tem de ser diferente da anterior.') : semRede(error) ? 'Sem rede. Tente de novo.' : error.message);
+      await sb.rpc('senha_trocada');
+      S.perfil.trocar_senha = false; LS.set('perfil', S.perfil);
+      if (S.perfil.papel !== 'cliente') await guardarAcessoOff(email, nova);   // a entrada sem rede passa a usar o novo
+      sai(); aviso(pin ? 'PIN mudado. Só você o sabe.' : 'Senha mudada. Só você a sabe.', 'ok');
+    } catch (e) { erro(semRede(e) ? 'Sem rede. Tente de novo.' : e.message); }
+  };
 }
 
 // ---------- mapa ----------
@@ -913,7 +962,10 @@ async function voltarRega(i) {
   desenharLista(); desenharMapa(true);
 }
 // ---------- ficha do campo ----------
-function folha(html) { $('#folha-c').innerHTML = html; $('#folha').classList.add('on'); }
+function folha(html) {
+  if (S.trocaObrig && !html.includes('id="ts-nova"')) return;   // escolher a senha/PIN vem primeiro (18/10/2026)
+  S.trocaAberta = false; $('#folha-x').style.display = ''; $('#folha-c').innerHTML = html; $('#folha').classList.add('on');
+}
 function fecharFolha() { pararVigia(); $('#folha').classList.remove('on'); }
 // ---------- coordenada e atribuição de campos (técnico, supervisor, gestor) ----------
 const PODE_COORD = ['tecnico', 'supervisor', 'gestor'];
@@ -1843,7 +1895,7 @@ async function montarGestao(d, msg = '') {
   $('#gestao').innerHTML = `${msg}${gere ? `<div class="cartao"><h2>Criar login de activista</h2>
     <label>Activista<select id="g-act">${sem.map((a) => `<option value="${a.id}" data-u="${sugerirUtilizador(a.nome)}">${esc(a.nome)} — ${esc(a.comunidade_principal || '')}</option>`).join('')}</select></label>
     <label>Utilizador<input id="g-user" autocapitalize="none"></label>
-    <label>PIN (6 dígitos)<input id="g-pin" inputmode="numeric" maxlength="6"></label>
+    <label>PIN provisório (6 dígitos)<input id="g-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"></label><p class="pequeno">Ao entrar pela primeira vez, o activista escolhe um PIN só dele.</p>
     <p class="pequeno">Anote o PIN e entregue-o ao activista. A app não volta a mostrá-lo.</p>
     <button class="btn" id="g-criar" ${sem.length ? '' : 'disabled'}>Criar login</button></div>` : '<div class="msg info">Criar acessos e mudar senhas ou PIN é só com o gestor principal.</div>'}
     <div class="cartao"><h2>Activistas com login (${com.length} de ${d.activistas.length})</h2>
@@ -1853,7 +1905,7 @@ async function montarGestao(d, msg = '') {
     <label>Função<select id="c-papel">${Object.entries(FUNCOES).map(([k, f]) => `<option value="${k}">${f.nome}</option>`).join('')}</select></label>
     <label>Nome<span id="c-nome-caixa"></span></label>
     <label>Utilizador<input id="c-user" autocapitalize="none"></label>
-    <label>Senha (8 ou mais caracteres)<input id="c-senha"></label>
+    <label>Senha provisória (8 ou mais caracteres)<input id="c-senha" type="password" autocomplete="new-password"></label><p class="pequeno">Ao entrar pela primeira vez, a pessoa escolhe uma senha só dela.</p>
     <button class="btn" id="c-criar">Criar acesso</button></div>` : ''}
     <div class="cartao"><h2>Coberturas (ausências)</h2>
     <p class="pequeno">Quando um técnico ou supervisor está ausente, um colega passa a ver e gerir as equipas dele durante o período indicado.</p>
@@ -1959,7 +2011,9 @@ function reporPin(id, nome) { ecraNovaCredencial('pin', id, nome); }
 function ecraNovaCredencial(tipo, id, nome) {
   const pin = tipo === 'pin';
   folha(`<h2>${pin ? 'Novo PIN' : 'Nova senha'}</h2><p>${esc(nome)}</p>
-    <label>${pin ? 'PIN (6 dígitos)' : 'Senha (8 ou mais caracteres)'}<input id="n-cred" ${pin ? 'inputmode="numeric" maxlength="6"' : ''} autocomplete="off"></label>
+    <label>${pin ? 'PIN provisório (6 dígitos)' : 'Senha provisória (8 ou mais caracteres)'}<input id="n-cred" type="password" ${pin ? 'inputmode="numeric" maxlength="6"' : ''} autocomplete="new-password"></label>
+    <button class="chip" type="button" onclick="const i=$('#n-cred');i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'Mostrar':'Esconder'">Mostrar</button>
+    <p class="pequeno">${pin ? 'É provisório: ao entrar, a pessoa escolhe um PIN só dela e o senhor deixa de o saber.' : 'É provisória: ao entrar, a pessoa escolhe uma senha só dela e o senhor deixa de a saber.'}</p>
     <button class="btn" id="n-gravar">Gravar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
   $('#n-cred').focus();
   $('#n-gravar').onclick = async () => {
@@ -1992,6 +2046,8 @@ function mostrarApp() {
   const papel = S.perfil.papel;
   $('#login').style.display = 'none'; $('#app').style.display = 'flex';
   $('#h-nome').textContent = `${S.perfil.nome}${['activista', 'cliente'].includes(papel) ? '' : ' · ' + (S.perfil.titulo || (papel === 'gestor' ? 'Gestor' : FUNCOES[papel]?.nome || papel))}`;
+  $('#h-nome').title = S.perfil.papel === 'activista' ? 'Mudar o meu PIN' : 'Mudar a minha senha';
+  $('#h-nome').onclick = () => ecraTrocarSenha(false);
   $('#nav-gestao').style.display = papel === 'gestor' ? '' : 'none';
   $('#nav-painel').style.display = VER_PAINEL.includes(papel) ? '' : 'none';
   const cliente = papel === 'cliente';                     // cliente: Mapa, Campos e Painel, só para ver (15/10/2026, Valdo)

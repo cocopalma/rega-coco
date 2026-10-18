@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 // Criação e gestão dos logins: activistas (utilizador + PIN) e outros acessos (técnico, supervisor, director, M&E, cliente: utilizador + senha).
 // Só um utilizador com papel 'gestor' em public.perfis pode usar esta função.
+// A senha/PIN que o gestor dá é provisória (18/10/2026, Valdo): perfis.trocar_senha = true e a pessoa escolhe outra ao entrar.
 const DOMINIO = "rega-coco.example.com"; // endereço interno, nunca recebe emails
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -80,7 +81,7 @@ Deno.serve(async (req) => {
       email: `${utilizador}@${DOMINIO}`, password: senha, email_confirm: true, user_metadata: { utilizador, nome, papel },
     });
     if (error) return resp(400, { erro: /already|registered|exists/i.test(error.message) ? "Esse utilizador já existe" : error.message });
-    const { error: eP } = await admin.from("perfis").insert({ id: novo.user.id, nome, papel });
+    const { error: eP } = await admin.from("perfis").insert({ id: novo.user.id, nome, papel, trocar_senha: true });
     if (eP) { await admin.auth.admin.deleteUser(novo.user.id); return resp(500, { erro: eP.message }); }
     return resp(200, { ok: true, utilizador, nome, papel });
   }
@@ -92,6 +93,7 @@ Deno.serve(async (req) => {
     if (!p || !PAPEIS_OUTROS.includes(p.papel)) return resp(404, { erro: "Utilizador não encontrado" });
     const { error } = await admin.auth.admin.updateUserById(p.id, { password: senha });
     if (error) return resp(400, { erro: error.message });
+    await admin.from("perfis").update({ trocar_senha: true }).eq("id", p.id);
     return resp(200, { ok: true });
   }
 
@@ -110,7 +112,7 @@ Deno.serve(async (req) => {
       user_metadata: { utilizador, activista: act.nome },
     });
     if (error) return resp(400, { erro: /already|registered|exists/i.test(error.message) ? "Esse utilizador já existe" : error.message });
-    const { error: eP } = await admin.from("perfis").insert({ id: novo.user.id, nome: act.nome, papel: "activista", activista_id });
+    const { error: eP } = await admin.from("perfis").insert({ id: novo.user.id, nome: act.nome, papel: "activista", activista_id, trocar_senha: true });
     if (eP) { await admin.auth.admin.deleteUser(novo.user.id); return resp(500, { erro: eP.message }); }
     return resp(200, { ok: true, utilizador, activista: act.nome });
   }
@@ -121,6 +123,7 @@ Deno.serve(async (req) => {
     if (!p) return resp(404, { erro: "Este activista ainda não tem login" });
     const { error } = await admin.auth.admin.updateUserById(p.id, { password: pin });
     if (error) return resp(400, { erro: error.message });
+    await admin.from("perfis").update({ trocar_senha: true }).eq("id", p.id);
     return resp(200, { ok: true });
   }
 
