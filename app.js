@@ -390,6 +390,7 @@ function iniciarMapa() {
   camada = L.layerGroup().addTo(mapa);
   rotulos = L.layerGroup().addTo(mapa);
   mapa.on('zoomend moveend', desenharRotulos);
+  mapa.on('click', (e) => { if (S.regua) pontoRegua([e.latlng.lat, e.latlng.lng]); });
   if (navigator.geolocation) navigator.geolocation.watchPosition((p) => {
     S.pos = [p.coords.latitude, p.coords.longitude]; S.fix = { coords: p.coords, t: Date.now() };
     if (!eu) eu = L.circleMarker(S.pos, { radius: 9, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 }).addTo(mapa);
@@ -467,6 +468,38 @@ function desenharRotulos() {
     postas.push(r); n++;
   }
 }
+// medir a distância entre campos, como no Google Maps (18/10/2026, Valdo): linha recta, funciona sem rede
+let regua;
+const fmtDist = (m) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`);
+function alternarRegua() {
+  if (S.regua) return fecharRegua();
+  S.regua = []; if (!regua) regua = L.layerGroup().addTo(mapa);
+  $('#b-regua').classList.add('on'); $('#regua').style.display = ''; $('.legenda').style.display = 'none';
+  desenharRegua();
+}
+function fecharRegua() {
+  S.regua = null; if (regua) regua.clearLayers();
+  $('#b-regua').classList.remove('on'); $('#regua').style.display = 'none'; $('.legenda').style.display = '';
+}
+function pontoRegua(ll, nome = '') { if (!S.regua) return false; S.regua.push({ ll, nome }); desenharRegua(); return true; }
+function clicarCampo(e, a) {
+  if (S.regua) { L.DomEvent.stopPropagation(e); pontoRegua([a.latitude, a.longitude], a.id); return; }
+  abrirFicha(a.id);
+}
+function desenharRegua() {
+  if (!regua || !S.regua) return;
+  regua.clearLayers(); const P = S.regua; let tot = 0;
+  if (P.length > 1) L.polyline(P.map((p) => p.ll), { color: '#111', weight: 3, dashArray: '6 6', interactive: false }).addTo(regua);
+  P.forEach((p, i) => {
+    if (i) tot += metros(P[i - 1].ll, p.ll);
+    L.circleMarker(p.ll, { radius: 6, color: '#111', weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false }).addTo(regua);
+    if (i) L.tooltip({ permanent: true, direction: 'right', offset: [8, 0], className: 'rot-regua', interactive: false }).setLatLng(p.ll).setContent(fmtDist(tot)).addTo(regua);
+  });
+  $('#rg-total').innerHTML = P.length < 2 ? `<b>${P.length ? 'Marque o segundo ponto' : 'Marque o primeiro ponto'}</b>`
+    : `<b>Distância total</b> <b style="font-size:20px">${fmtDist(tot)}</b>`;
+  $('#rg-pontos').textContent = P.some((p) => p.nome) ? P.map((p) => p.nome || '•').join(' → ') : '';
+  $('#rg-desf').disabled = !P.length; $('#rg-limpar').disabled = !P.length;
+}
 function desenharMapa(enquadrar = false) {
   if (!camada) return;
   camada.clearLayers();
@@ -478,17 +511,18 @@ function desenharMapa(enquadrar = false) {
     const s = situacao(a);
     const borda = bordaAzul(a, s) ? BORDA.regado : BORDA.nunca;
     if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { color: borda, weight: 3, fillColor: COR[s.cod], fillOpacity: .25 })
-      .on('click', () => abrirFicha(a.id)).addTo(camada);
+      .on('click', (e) => clicarCampo(e, a)).addTo(camada);
     L.circleMarker([a.latitude, a.longitude], { radius: temPoligono(a) ? 5 : 8, color: temPoligono(a) ? '#fff' : borda, weight: temPoligono(a) ? 2 : 3, fillColor: COR[s.cod], fillOpacity: .95 })
-      .on('click', () => abrirFicha(a.id)).addTo(camada);
+      .on('click', (e) => clicarCampo(e, a)).addTo(camada);
     if (queimadaDe(a.id)) L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-fogo', html: '🔥', iconSize: [22, 22], iconAnchor: [11, 26] }) })
-      .on('click', () => abrirFicha(a.id)).addTo(camada);
+      .on('click', (e) => clicarCampo(e, a)).addTo(camada);
     pts.push([a.latitude, a.longitude]);
   }
   // poços de água (18/10/2026, Valdo): em princípio estão em campos de produtores que regam sozinhos (fora do plano)
   for (const q of S.pocos || []) {
     L.marker([q.lat, q.lon], { icon: L.divIcon({ className: 'ic-poco', html: '💧', iconSize: [20, 20], iconAnchor: [10, 10] }) })
-      .bindPopup(`<b>Poço ${esc(q.codigo)}</b><br>${esc(q.comunidade || '')}${q.fonte ? ' · ' + esc(q.fonte) : ''}${q.observacao ? '<br>' + esc(q.observacao) : ''}`).addTo(camada);
+      .bindPopup(`<b>Poço ${esc(q.codigo)}</b><br>${esc(q.comunidade || '')}${q.fonte ? ' · ' + esc(q.fonte) : ''}${q.observacao ? '<br>' + esc(q.observacao) : ''}`)
+      .on('click', () => { if (pontoRegua([q.lat, q.lon], q.codigo)) setTimeout(() => mapa.closePopup(), 0); }).addTo(camada);
   }
   if (enquadrar && pts.length) mapa.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
   desenharRotulos();
@@ -2017,6 +2051,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#h-sair').onclick = () => sair();
   $('#folha-x').onclick = fecharFolha;
   $('#b-rodar').onclick = alternarRodar; botaoRodar();
+  $('#b-regua').onclick = alternarRegua;
+  $('#rg-fechar').onclick = fecharRegua;
+  $('#rg-desf').onclick = () => { if (S.regua?.length) { S.regua.pop(); desenharRegua(); } };
+  $('#rg-limpar').onclick = () => { if (S.regua) { S.regua = []; desenharRegua(); } };
+  $('#rg-eu').onclick = () => { if (!S.pos) return aviso('Ainda sem posição do GPS. Espere uns segundos.'); pontoRegua([...S.pos], 'Eu'); };
   $('#b-centrar').onclick = () => { S.seguirCentro = true; if (S.pos) mapa.setView(S.pos, 16); else lerGPS().then(() => mapa.setView(S.pos, 16)).catch((e) => aviso(e.message, 'erro')); };
   $('#b-filtro').onclick = () => { S.filtro = S.filtro === 'meus' ? 'todas' : 'meus'; desenharMapa(true); };
   ['#f-ambito', '#f-com', '#f-sit'].forEach((s) => $(s).onchange = desenharLista);

@@ -62,6 +62,10 @@ label{display:block;margin-top:12px;font-weight:600}
 .flutua{position:absolute;z-index:500;right:10px;top:10px;display:flex;flex-direction:column;gap:8px}
 .flutua button{background:#fff;border:1px solid var(--borda);border-radius:10px;padding:10px 12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.15)}
 .flutua button.on{background:#1e5bd8;color:#fff;border-color:#1e5bd8}
+.regua{position:absolute;z-index:600;left:8px;right:8px;bottom:8px;max-width:480px;margin:0 auto;background:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 1px 6px rgba(0,0,0,.25);font-size:15px}
+.regua .chips button{font-size:13px}
+.leaflet-tooltip.rot-regua{padding:0 5px;font-size:12px;font-weight:700;background:#111;color:#fff;border:0;box-shadow:none}
+.leaflet-tooltip.rot-regua:before{display:none}
 .folha{position:fixed;left:0;right:0;bottom:0;z-index:1000;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.25);max-height:88%;overflow:auto;padding:16px;display:none}
 .folha.on{display:block}
 .folha .fechar{float:right;border:0;background:#eef0ec;border-radius:50%;width:34px;height:34px;font-size:18px}
@@ -172,15 +176,22 @@ td.n,th.n{text-align:right}
         <button id="b-centrar">◎ Eu</button>
         <button id="b-filtro">As minhas</button>
         <button id="b-rodar" title="Rodar o mapa com a direcção (bússola)">🧭 Rodar</button>
+        <button id="b-regua" title="Medir a distância entre campos (linha recta)">📏 Medir</button>
       </div>
       <div class="ronda" id="ronda-info" style="display:none"></div>
+      <div class="regua" id="regua" style="display:none">
+        <div id="rg-total"></div>
+        <div class="pequeno" id="rg-pontos"></div>
+        <div class="pequeno">Toque no mapa ou num campo para marcar pontos. É a distância em linha recta, não o caminho.</div>
+        <div class="chips"><button class="chip" id="rg-eu">📍 A partir de mim</button><button class="chip" id="rg-desf">↶ Desfazer último ponto</button><button class="chip" id="rg-limpar">Recomeçar</button><button class="chip" id="rg-fechar">Fechar</button></div>
+      </div>
       <div class="legenda">
-        <div><i style="background:var(--por)"></i>Por regar nesta ronda</div>
-        <div><i style="background:var(--feita)"></i>Regada nesta ronda</div>
+        <div><i style="background:var(--por)"></i>Por regar nesta ronda (na app)</div>
+        <div><i style="background:var(--feita)"></i>Regado nesta ronda (na app)</div>
         <div><i style="background:var(--sem)"></i>Sem activista</div>
         <div id="leg-teste" style="display:none"><i style="background:#6a1b9a"></i>Regado em teste (por si)</div>
-        <div><i class="b" style="border-color:#1e5bd8"></i>Borda azul: já regado nesta ronda</div>
-        <div><i class="b" style="border-color:#c62828"></i>Borda vermelha: por regar nesta ronda</div>
+        <div><i class="b" style="border-color:#1e5bd8"></i>Borda azul: já recebeu água nesta ronda, contando as regas de antes da app</div>
+        <div><i class="b" style="border-color:#c62828"></i>Borda vermelha: não recebeu água nesta ronda, nem na app nem antes</div>
         <div>🔥 Queimada</div>
         <div>💧 Poço de água</div>
       </div>
@@ -203,11 +214,11 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=60"></script>
-<script src="i18n.js?v=60"></script>
+<script src="i18n-sw.js?v=61"></script>
+<script src="i18n.js?v=61"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=60"></script>
+<script src="app.js?v=61"></script>
 </body>
 </html>
