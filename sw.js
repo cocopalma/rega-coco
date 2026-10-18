@@ -1,6 +1,6 @@
 // Service worker: guarda a app e as bibliotecas para funcionar sem rede.
 // Os pedidos ao Supabase nunca são guardados aqui (a fila offline está na app).
-const VERSAO = 'rega-v74';
+const VERSAO = 'rega-v75';
 const BASE = ['./', 'index.html', 'app.js', 'i18n.js', 'i18n-sw.js', 'painel.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js'];

@@ -124,7 +124,7 @@ const FUNCOES = {
   director: { nome: 'Director (só leitura)', desc: 'vê todos os campos, a rega do dia e o painel; não regista regas.' },
   me: { nome: 'M&E (só leitura)', desc: 'o mesmo que o director.' },
   cliente: { nome: 'Só painel (cliente / administração)', desc: 'vê o painel geral, o mapa e as fichas dos campos com as fotografias; não regista nada.' },
-  oficial_me: { nome: 'Oficial de M&E (recontagens)', desc: 'vê só os campos que o M&E lhe encaminha para recontagem e regista as plantas vivas e mortas, com a fotografia do campo e da declaração. Sem recontagens, a app fica vazia.' },
+  oficial_me: { nome: 'Oficial de M&E (recontagens)', desc: 'vê só os campos que o M&E lhe encaminha para recontagem e regista as plantas vivas e mortas, com a fotografia no campo (com o produtor e o oficial) e a da declaração. Sem recontagens, a app fica vazia.' },
 };
 const PODE_REGAR = ['activista', 'tecnico', 'supervisor', 'gestor'];
 const VER_PAINEL = ['tecnico', 'supervisor', 'gestor', 'director', 'me', 'cliente'];
@@ -1609,9 +1609,9 @@ function ecraRecusarRecontagem(rid) {
   $('#rr-ok').onclick = () => { const m = $('#rr-m').value.trim(); if (m.length < 3) { $('#rr-msg').innerHTML = '<div class="msg erro">Escreva o motivo da recusa.</div>'; return; } validarRecontagem(rid, false, m); };
 }
 // formulário do oficial (sem rede: fica na fila filaRec com as fotografias no telefone)
-// Duas fotografias obrigatórias (v74, 18/10/2026, Valdo): o campo e a declaração de contagem assinada. Cada uma fica logo
+// Duas fotografias obrigatórias (v74, 18/10/2026, Valdo): no campo, com o produtor e o oficial (v75, 19/10/2026, Valdo), e a declaração de contagem assinada. Cada uma fica logo
 // no telefone (IndexedDB, rascunho recr-…) para não se perder se o Android fechar o Chrome ao abrir a câmara.
-const REC_FOTOS = { campo: 'Fotografia do campo (obrigatória)', decl: 'Fotografia ou digitalização da declaração de contagem assinada (obrigatória)' };
+const REC_FOTOS = { campo: 'Fotografia no campo, com o produtor e o oficial de M&E (obrigatória)', decl: 'Fotografia ou digitalização da declaração de contagem assinada (obrigatória)' };
 const recKey = (rid, t, rasc) => (rasc ? 'recr-' : 'rec-') + rid + (t === 'campo' ? '-campo' : '');
 async function lerFotoRec(k) { let f = null; try { f = await FOTOS.ler(k); } catch {} return f || S.fotosMem?.[k] || null; }
 async function guardarFotoRec(k, f) { try { await FOTOS.guardar(k, f); } catch { S.fotosMem = { ...(S.fotosMem || {}), [k]: f }; } }
@@ -1621,7 +1621,7 @@ function ecraRecontar(rid, rasc) {
   if (!rasc) { LS.del('rascRec'); ['campo', 'decl'].forEach((t) => { FOTOS.apagar(recKey(rid, t, true)).catch(() => {}); if (S.fotosMem) delete S.fotosMem[recKey(rid, t, true)]; }); }
   S.recFotos = { campo: !!rasc?.fotos?.campo, decl: !!rasc?.fotos?.decl };      // tiradas agora (rascunho no telefone)
   S.recFotosAnt = { campo: !!ant?.fotoCampo, decl: !!ant?.foto };               // já guardadas numa contagem por enviar
-  const bloco = (t) => `${campoFoto('ro-' + t, REC_FOTOS[t])}
+  const bloco = (t) => `${campoFoto('ro-' + t, REC_FOTOS[t])}${t === 'campo' ? `<p class="pequeno">Na fotografia têm de aparecer o produtor e o oficial de M&E, no campo do produtor.</p>` : ''}
     <p class="pequeno" id="ro-${t}-ok">${S.recFotosAnt[t] && !S.recFotos[t] ? '✓ Fotografia guardada no telefone.' : ''}</p>
     <img id="ro-${t}-prev" alt="" style="display:none;width:100%;max-height:200px;object-fit:contain;border-radius:10px;margin-top:8px">`;
   folha(`<h2>📋 Recontagem das plantas</h2>${rasc?.camara ? AVISO_CAMARA : ''}<p class="pequeno">${esc(a.produtor || r.produtor || '')} · ${esc(a.pr || r.pr || '')} · ${esc(a.comunidade || r.comunidade || '')}</p>
@@ -1646,13 +1646,13 @@ async function gravarRecontagem(rid) {
   const v = $('#ro-vivas').value, m = $('#ro-mortas').value, erro = (t) => { $('#ro-msg').innerHTML = `<div class="msg erro">${esc(t)}</div>`; };
   if (v === '' || !(+v >= 0) || !Number.isInteger(+v)) return erro('Escreva quantas plantas vivas contou.');
   if (m === '' || !(+m >= 0) || !Number.isInteger(+m)) return erro('Escreva quantas plantas mortas contou (0 se nenhuma).');
-  if (!S.recFotos.campo && !S.recFotosAnt.campo) return erro('Tire a fotografia do campo.');
+  if (!S.recFotos.campo && !S.recFotosAnt.campo) return erro('Tire a fotografia no campo, com o produtor e o oficial de M&E.');
   if (!S.recFotos.decl && !S.recFotosAnt.decl) return erro('Tire a fotografia da declaração de contagem.');
   $('#ro-ok').disabled = true; $('#ro-msg').innerHTML = '<div class="msg info">A ler o GPS…</div>';
   let g = null; try { g = await lerGPS(); } catch {}
   for (const t of ['campo', 'decl']) if (S.recFotos[t]) {                       // do rascunho para a fotografia da contagem
     const f = await lerFotoRec(recKey(rid, t, true));
-    if (!f) { $('#ro-ok').disabled = false; return erro(t === 'campo' ? 'A fotografia do campo perdeu-se no telefone. Tire-a de novo.' : 'A fotografia da declaração perdeu-se no telefone. Tire-a de novo.'); }
+    if (!f) { $('#ro-ok').disabled = false; return erro(t === 'campo' ? 'A fotografia no campo perdeu-se no telefone. Tire-a de novo.' : 'A fotografia da declaração perdeu-se no telefone. Tire-a de novo.'); }
     await guardarFotoRec(recKey(rid, t, false), f); FOTOS.apagar(recKey(rid, t, true)).catch(() => {});
   }
   const x = { id: rid, area_id: r.area_id, vivas: +v, mortas: +m, em: new Date().toISOString(), foto: true, fotoCampo: true,
@@ -1667,7 +1667,7 @@ async function enviarRecontagens() {
     const fd = await lerFotoRec(kd), fc = await lerFotoRec(kc);
     if (!fd || !fc) {          // sem as duas fotografias no telefone o servidor não aceita: tem de registar de novo
       const a = S.areas.find((y) => y.id === x.area_id) || {};
-      aviso(`Recontagem de ${a.produtor || x.area_id}: falta a fotografia ${!fc ? 'do campo' : 'da declaração'} no telefone. Registe a recontagem de novo.`, 'erro');
+      aviso(`Recontagem de ${a.produtor || x.area_id}: falta a fotografia ${!fc ? 'no campo' : 'da declaração'} no telefone. Registe a recontagem de novo.`, 'erro');
       LS.set('filaRec', filaRec().filter((y) => y.id !== x.id)); continue;
     }
     const cd = `${S.perfil.id}/${x.id}.jpg`, cc = `${S.perfil.id}/${x.id}-campo.jpg`;

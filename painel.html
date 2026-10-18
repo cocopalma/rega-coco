@@ -189,8 +189,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=74"></script>
-<script src="i18n.js?v=74"></script>
+<script src="i18n-sw.js?v=75"></script>
+<script src="i18n.js?v=75"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -534,7 +534,7 @@ async function verFotoRec(caminho) {
 // tabela para o Excel: separador ";" e BOM, para o Excel em português abrir com as colunas e os acentos certos
 function descarregarRec() {
   const L = linhasRec(), cel = (v) => { const t = String(v ?? ''); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
-  const cab = ['Campo', 'PR', 'Produtor', 'Comunidade', 'Motivo', 'Pedida em', 'Oficial', 'Estado', 'Plantas instaladas', 'Vivas antes', 'Vivas contadas', 'Mortas contadas', 'Contada em', 'Validada em', 'Motivo da recusa', 'Latitude', 'Longitude', 'Fotografia do campo', 'Fotografia da declaração'];
+  const cab = ['Campo', 'PR', 'Produtor', 'Comunidade', 'Motivo', 'Pedida em', 'Oficial', 'Estado', 'Plantas instaladas', 'Vivas antes', 'Vivas contadas', 'Mortas contadas', 'Contada em', 'Validada em', 'Motivo da recusa', 'Latitude', 'Longitude', 'Fotografia no campo (produtor e oficial)', 'Fotografia da declaração'];
   const dt = (t) => (t ? new Date(t).toLocaleString('pt-PT', { timeZone: 'Africa/Maputo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '') : '');
   const T = (x) => (window.trEN ? window.trEN(x) : x);   // cabeçalhos e estados na língua escolhida
   const linhas = L.map((r) => [r.area_id, r.pr, r.produtor, r.comunidade, r.motivo, dt(r.pedido_em), r.oficial, ESTADO_REC[r.estado] || r.estado, r.instaladas,
