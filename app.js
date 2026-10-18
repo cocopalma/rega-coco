@@ -260,7 +260,7 @@ async function carregarTudo() {
     sb.rpc('estado_ronda2'),
     sb.rpc('lista_comunidades'),
     sb.rpc('pontos_comunidades'),
-    sb.from('queimadas').select('id,area_id,data,observacao,foto_path,registada_por,registada_em').eq('removida', false).range(0, 9999),
+    sb.from('queimadas').select('id,area_id,data,observacao,foto_path,registada_por,registada_em,plantas_afectadas,plantas_mortas,recontagem_em,vivas_recontadas,recontagem_obs').eq('removida', false).range(0, 9999),
     sb.from('pocos').select('id,codigo,comunidade,fonte,lat,lon,foto_path,observacao').range(0, 4999),
   ]);
   if (p.error) throw new Error(p.error.message);
@@ -274,6 +274,7 @@ async function carregarTudo() {
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
   // senha/PIN provisório dado pelo gestor: a pessoa escolhe outro (18/10/2026, Valdo)
   if (S.perfil.trocar_senha && !S.trocaAberta) setTimeout(() => ecraTrocarSenha(true), 400);
+  if (S.perfil.papel === 'me' && !S.avisouRecontagem) { const n = queimadasPorRecontar().length; S.avisouRecontagem = true; if (n) setTimeout(() => aviso(`🔥 ${n} ${n === 1 ? 'queimada à espera' : 'queimadas à espera'} de recontagem: veja no Hoje.`, 'info'), 1500); }
   S.visiveis = null;
   if (['tecnico', 'supervisor'].includes(S.perfil.papel)) {
     const [v] = await Promise.all([sb.rpc('meus_activistas'), carregarMonitoria()]);
@@ -1385,8 +1386,43 @@ function queimadaDe(id) {
 function cartaoQueimada(a) {
   const q = queimadaDe(a.id); if (!q) return '';
   const meu = q.registada_por === S.perfil?.id || q.local, pode = meu || ['supervisor', 'gestor'].includes(S.perfil?.papel);
+  const pl = q.plantas_afectadas != null ? `<div>${num(q.plantas_afectadas)} plantas afectadas${q.plantas_mortas != null ? ` · ${num(q.plantas_mortas)} mortas` : ''}</div>` : '';
+  const rec = q.local ? '' : q.recontagem_em
+    ? `<div>✓ Recontagem do M&E a ${fmtData(q.recontagem_em)}: <b>${num(q.vivas_recontadas)} plantas vivas</b>${q.recontagem_obs ? ` — ${esc(q.recontagem_obs)}` : ''}</div>`
+    : '<div>⏳ À espera da recontagem do M&E</div>';
+  const podeRecontar = !q.local && ['me', 'gestor'].includes(S.perfil?.papel);
   return `<div class="msg erro" style="background:#fff3e0;color:#7a3300;border-color:#ffb74d">🔥 <b>Queimada</b> a ${fmtData(q.data)}${q.observacao ? ` — ${esc(q.observacao)}` : ''}${q.local ? ' <span class="pequeno">(no telefone; é enviada quando houver rede)</span>' : ''}
-    <div class="chips" style="margin-top:6px">${q.foto_path && fotoVisivel(q.foto_path) ? `<button class="chip" onclick="verFoto('rega-fotos','${esc(q.foto_path)}','Queimada ${fmtData(q.data)}')">📷 Ver fotografia</button>` : ''}${pode ? `<button class="chip" onclick="removerQueimada('${esc(q.id)}','${esc(a.id)}')">Remover (engano)</button>` : ''}</div></div>`;
+    ${pl}${rec}
+    <div class="chips" style="margin-top:6px">${q.foto_path && fotoVisivel(q.foto_path) ? `<button class="chip" onclick="verFoto('rega-fotos','${esc(q.foto_path)}','Queimada ${fmtData(q.data)}')">📷 Ver fotografia</button>` : ''}${podeRecontar ? `<button class="chip" onclick="ecraRecontagem('${esc(q.id)}','${esc(a.id)}')">${q.recontagem_em ? 'Corrigir a recontagem' : '✓ Registar a recontagem'}</button>` : ''}${pode ? `<button class="chip" onclick="removerQueimada('${esc(q.id)}','${esc(a.id)}')">Remover (engano)</button>` : ''}</div></div>`;
+}
+// recontagem pelo M&E depois de uma queimada (18/10/2026, Valdo); o gestor também pode
+const queimadasPorRecontar = () => (S.queimadas || []).filter((q) => !q.removida && !q.recontagem_em && S.areas.some((a) => a.id === q.area_id));
+function ecraRecontagem(qid, areaId) {
+  const q = (S.queimadas || []).find((x) => x.id === qid), a = S.areas.find((x) => x.id === areaId); if (!q || !a) return;
+  folha(`<h2>Recontagem depois da queimada</h2><p class="pequeno">${esc(a.produtor)} · ${esc(a.id)} · ${esc(a.comunidade)}</p>
+    <div class="cartao"><div class="lin"><span>Queimada</span><b>${fmtData(q.data)}</b></div>
+      <div class="lin"><span>Plantas vivas na base</span><b>${a.vivas != null ? num(a.vivas) : '—'}</b></div>
+      <div class="lin"><span>Afectadas · mortas (registo do campo)</span><b>${q.plantas_afectadas != null ? num(q.plantas_afectadas) : '—'} · ${q.plantas_mortas != null ? num(q.plantas_mortas) : '—'}</b></div></div>
+    <label>Plantas vivas contadas agora<input id="rc-vivas" type="number" inputmode="numeric" min="0" value="${q.vivas_recontadas ?? ''}"></label>
+    <textarea id="rc-obs" rows="2" placeholder="Observação (opcional)">${esc(q.recontagem_obs || '')}</textarea>
+    <div id="rc-msg"></div>
+    <button class="btn" id="rc-gravar">Gravar a recontagem</button><button class="btn sec" onclick="abrirFicha('${esc(areaId)}')">Cancelar</button>`);
+  $('#rc-gravar').onclick = async () => {
+    const v = $('#rc-vivas').value;
+    if (v === '' || +v < 0) { $('#rc-msg').innerHTML = '<div class="msg erro">Escreva quantas plantas vivas contou.</div>'; return; }
+    if (!navigator.onLine) { $('#rc-msg').innerHTML = '<div class="msg erro">Precisa de rede para gravar a recontagem.</div>'; return; }
+    $('#rc-gravar').disabled = true;
+    const r = await sb.rpc('recontagem_queimada', { p_id: qid, p_vivas: Math.round(+v), p_obs: $('#rc-obs').value.trim() || null });
+    if (r.error) { $('#rc-gravar').disabled = false; $('#rc-msg').innerHTML = `<div class="msg erro">${esc(r.error.message)}</div>`; return; }
+    Object.assign(q, { vivas_recontadas: Math.round(+v), recontagem_obs: $('#rc-obs').value.trim() || null, recontagem_em: new Date().toISOString() }); LS.set('queimadas', S.queimadas);
+    aviso('Recontagem gravada.', 'ok'); abrirFicha(areaId); if ($('#e-hoje').classList.contains('on')) desenharHoje();
+  };
+}
+function cartaoRecontagens() {
+  const l = queimadasPorRecontar(); if (!l.length) return '';
+  return `<div class="cartao" style="border-left:4px solid #ef8f00"><h2>🔥 Queimadas à espera de recontagem (${l.length})</h2>
+    ${l.sort((x, y) => (x.data || '').localeCompare(y.data || '')).map((q) => { const a = S.areas.find((x) => x.id === q.area_id) || {};
+      return `<div class="item"><div><div class="nome">${esc(a.produtor || '')}</div><div class="sub">${esc(a.id || '')} · ${esc(a.comunidade || '')} · queimada a ${fmtData(q.data)}${q.plantas_afectadas != null ? ` · ${num(q.plantas_afectadas)} afectadas` : ''}</div></div><button class="chip" onclick="abrirFicha('${esc(q.area_id)}')">Ver</button></div>`; }).join('')}</div>`;
 }
 function ecraQueimada(id, r) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
@@ -1394,20 +1430,28 @@ function ecraQueimada(id, r) {
   S.queimFoto = null; if (!r) LS.del('rascQueim');
   folha(`<h2>🔥 Queimada</h2>${r?.camara ? AVISO_CAMARA : ''}<p class="pequeno">${esc(a.produtor)} · ${esc(a.pr)} · ${esc(a.comunidade)}</p>
     <label>Data da queimada<input id="q-data" type="date" max="${h}" value="${h}"></label>
-    <textarea id="q-obs" rows="2" placeholder="Observação (opcional): parte do campo, plantas afectadas…"></textarea>
+    <label>Plantas afectadas pelo fogo<input id="q-afect" type="number" inputmode="numeric" min="0" placeholder="${a.vivas > 0 ? 'de ' + num(a.vivas) + ' vivas' : ''}"></label>
+    <label>Destas, plantas mortas<input id="q-mortas" type="number" inputmode="numeric" min="0"></label>
+    <textarea id="q-obs" rows="2" placeholder="Observação (opcional): parte do campo atingida…"></textarea>
     ${campoFoto('q-foto', 'Fotografia da queimada (obrigatória)')}
     <img id="q-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
     <button class="btn" onclick="gravarQueimada('${esc(id)}')">Guardar</button><button class="btn sec" onclick="LS.del('rascQueim');abrirFicha('${esc(id)}')">Cancelar</button>`);
-  if (r) { if (r.data) $('#q-data').value = r.data; if (r.obs) $('#q-obs').value = r.obs; }
-  const guardar = () => rascGuardar('rascQueim', { perfil: S.perfil?.id, area: id, camara: false, data: $('#q-data').value, obs: $('#q-obs').value });
-  ['#q-data', '#q-obs'].forEach((q) => $(q).addEventListener('input', guardar)); guardar();
+  if (r) { if (r.data) $('#q-data').value = r.data; if (r.obs) $('#q-obs').value = r.obs; if (r.afect != null) $('#q-afect').value = r.afect; if (r.mortas != null) $('#q-mortas').value = r.mortas; }
+  const guardar = () => rascGuardar('rascQueim', { perfil: S.perfil?.id, area: id, camara: false, data: $('#q-data').value, obs: $('#q-obs').value, afect: $('#q-afect').value, mortas: $('#q-mortas').value });
+  ['#q-data', '#q-obs', '#q-afect', '#q-mortas'].forEach((q) => $(q).addEventListener('input', guardar)); guardar();
   ligarFoto('q-foto', 'rascQueim', (foto) => { S.queimFoto = foto; const img = $('#q-prev'); if (foto) { img.src = URL.createObjectURL(foto); img.style.display = ''; } else img.style.display = 'none'; });
 }
 async function gravarQueimada(id) {
   const data = $('#q-data').value;
   if (!data || data > hojeISO()) { alert('Escolha a data da queimada (hoje ou antes).'); return; }
+  const nAf = $('#q-afect').value === '' ? null : Math.round(+$('#q-afect').value), nMo = $('#q-mortas').value === '' ? null : Math.round(+$('#q-mortas').value);
+  if (nAf == null) { alert('Escreva quantas plantas foram afectadas pelo fogo (0 se nenhuma).'); return; }
+  if (nAf < 0 || (nMo != null && nMo < 0)) { alert('O número de plantas não pode ser negativo.'); return; }
+  if (nMo != null && nMo > nAf) { alert('As plantas mortas não podem ser mais do que as afectadas.'); return; }
+  const a0 = S.areas.find((x) => x.id === id), lim = a0 ? (a0.instaladas || a0.vivas || 0) : 0;
+  if (lim && nAf > lim && !confirm(`O campo tem ${num(lim)} plantas na base e escreveu ${num(nAf)} afectadas. Gravar mesmo assim?`)) return;
   if (!S.queimFoto) { alert('Tire a fotografia da queimada.'); return; }
-  const q = { id: crypto.randomUUID(), area_id: id, data, observacao: $('#q-obs').value.trim() || null, registada_por: S.perfil.id, local: true, lat: null, lon: null, precisao_m: null };
+  const q = { id: crypto.randomUUID(), area_id: id, data, observacao: $('#q-obs').value.trim() || null, registada_por: S.perfil.id, local: true, lat: null, lon: null, precisao_m: null, plantas_afectadas: nAf, plantas_mortas: nMo };
   if (S.fix && Date.now() - S.fix.t < 60000) { q.lat = S.fix.coords.latitude; q.lon = S.fix.coords.longitude; q.precisao_m = Math.round(S.fix.coords.accuracy); }
   try { await FOTOS.guardar(q.id, S.queimFoto); } catch { S.fotosMem = { ...(S.fotosMem || {}), [q.id]: S.queimFoto }; }
   const f = queimadasLocais(); f.push(q); LS.set('filaQueim', f); LS.del('rascQueim');
@@ -1429,10 +1473,10 @@ async function enviarQueimadas() {
     let foto = null; try { foto = await FOTOS.ler(q.id); } catch {} foto = foto || S.fotosMem?.[q.id] || null;
     const caminho = `${S.perfil.id}/queimada-${q.id}.jpg`;
     if (foto) { const up = await sb.storage.from('rega-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
-    const r = await sb.rpc('gravar_queimada', { p_id: q.id, p_area: q.area_id, p_data: q.data, p_obs: q.observacao, p_foto: foto ? caminho : null, p_lat: q.lat, p_lon: q.lon, p_precisao: q.precisao_m });
+    const r = await sb.rpc('gravar_queimada2', { p_id: q.id, p_area: q.area_id, p_data: q.data, p_obs: q.observacao, p_foto: foto ? caminho : null, p_lat: q.lat, p_lon: q.lon, p_precisao: q.precisao_m, p_afectadas: q.plantas_afectadas ?? null, p_mortas: q.plantas_mortas ?? null });
     if (r.error && !r.error.code) return r.error.message;
     if (r.error) aviso(`Queimada não gravada: ${r.error.message}`, 'erro');
-    else { S.queimadas = [...(S.queimadas || []), { id: q.id, area_id: q.area_id, data: q.data, observacao: q.observacao, foto_path: foto ? caminho : null, registada_por: S.perfil.id }]; LS.set('queimadas', S.queimadas); }
+    else { S.queimadas = [...(S.queimadas || []), { id: q.id, area_id: q.area_id, data: q.data, observacao: q.observacao, foto_path: foto ? caminho : null, registada_por: S.perfil.id, plantas_afectadas: q.plantas_afectadas ?? null, plantas_mortas: q.plantas_mortas ?? null }]; LS.set('queimadas', S.queimadas); }
     LS.set('filaQueim', queimadasLocais().filter((y) => y.id !== q.id));
     try { await FOTOS.apagar(q.id); } catch {}
   }
@@ -1631,6 +1675,7 @@ async function desenharHoje() {
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
     if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarMonitoria(); html = cartaoMonitoria() + html; }
+    if (['me', 'gestor'].includes(S.perfil.papel)) html = cartaoRecontagens() + html;   // queimadas por recontar (18/10/2026, Valdo)
     const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
     if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste');
     // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
