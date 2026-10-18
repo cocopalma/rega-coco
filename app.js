@@ -242,13 +242,14 @@ async function sincronizarAgora(silencioso) {
     }
   }
   if (!erro) erro = await enviarQueimadas();
+  if (!erro) erro = await enviarGestaoRecontagens();
   if (!erro) erro = await enviarRecontagens();
   if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
   actSync();
   if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaRec', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   b.textContent = n ? `${n} por enviar` : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0);
 }
@@ -277,6 +278,7 @@ async function carregarTudo() {
   if (!po.error && Array.isArray(po.data)) { S.pocos = po.data; LS.set('pocos', S.pocos); }
   if (!qm.error && Array.isArray(qm.data)) { S.queimadas = qm.data; LS.set('queimadas', S.queimadas); }
   if (!rc.error && Array.isArray(rc.data)) { S.recont = rc.data; LS.set('recont', S.recont); }
+  if (['me', 'gestor'].includes(p.data.papel)) oficiais().catch(() => {});   // lista dos oficiais no telefone (encaminhar sem rede)
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
   // senha/PIN provisório dado pelo gestor: a pessoa escolhe outro (18/10/2026, Valdo)
   if (S.perfil.trocar_senha && !S.trocaAberta) setTimeout(() => ecraTrocarSenha(true), 400);
@@ -391,7 +393,7 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -1160,6 +1162,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
     else if (x.tipo === 'poligono' && x.proposta) { a.poligono_proposto = x.pontos; a.area_m2_proposta = x.area_m2; a.proposta_em = x.medido_em; }
     else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
     else if (!String(x.tipo).startsWith('planta')) a.activista_id = x.activista_id; }
+  for (const x of LS.get('filaRecG', [])) if (x.op === 'validar' && x.sim) { const a = lista.find((y) => y.id === x.area_id); if (a) a.vivas = x.vivas; }   // validação por enviar
   return lista;
 }
 
@@ -1419,10 +1422,26 @@ async function carregarRecontagens() {
   const r = await sb.rpc('recontagens_lista');
   if (!r.error && Array.isArray(r.data)) { S.recont = r.data; LS.set('recont', S.recont); }
 }
-// o que o oficial gravou e ainda não foi enviado conta, neste telefone, como enviado
+// Pedir, encaminhar, validar, recusar e cancelar também sem rede (18/10/2026, Valdo): ficam na fila filaRecG, pela ordem,
+// e são enviadas quando houver rede (com a hora do telefone). Até lá a app mostra-as como feitas, com a nota "no telefone".
+const filaRecG = () => LS.get('filaRecG', []);
+function porNaFilaRecG(x) { LS.set('filaRecG', [...filaRecG(), { ...x, em: new Date().toISOString() }]); actSync(); sincronizar(true); }
+// o que ainda está no telefone (do M&E/gestor e do oficial) conta, neste telefone, como já feito
 function recontagens() {
+  const l = (S.recont || []).map((r) => ({ ...r }));
+  for (const x of filaRecG()) {
+    let r = l.find((y) => y.id === x.id);
+    if (x.op === 'pedir' && !r) { const a = S.areas.find((y) => y.id === x.area_id) || {};
+      l.push({ id: x.id, area_id: x.area_id, pr: a.pr, produtor: a.produtor, comunidade: a.comunidade, motivo: x.motivo, estado: x.oficial ? 'encaminhada' : 'por_encaminhar',
+        oficial_id: x.oficial, oficial: x.oficial_nome, pedido_em: x.em, encaminhada_em: x.oficial ? x.em : null, localG: true }); continue; }
+    if (!r) continue;
+    if (x.op === 'encaminhar') Object.assign(r, { estado: 'encaminhada', oficial_id: x.oficial, oficial: x.oficial_nome, encaminhada_em: x.em, localG: true });
+    else if (x.op === 'validar' && x.sim) Object.assign(r, { estado: 'validada', validada_em: x.em, vivas_antes: r.vivas_antes ?? x.vivas_antes, localG: true });
+    else if (x.op === 'validar') Object.assign(r, { estado: 'recusada', recusa_motivo: x.motivo, recusada_em: x.em, localG: true });
+    else if (x.op === 'cancelar') r.estado = 'cancelada';
+  }
   const f = filaRec();
-  return (S.recont || []).map((r) => { const x = f.find((y) => y.id === r.id);
+  return l.filter((r) => r.estado !== 'cancelada').map((r) => { const x = f.find((y) => y.id === r.id);
     return x ? { ...r, estado: 'enviada', vivas: x.vivas, mortas: x.mortas, contada_em: x.em, lat: x.lat, lon: x.lon, precisao_m: x.precisao, foto_local: x.foto, local: true } : r; });
 }
 const recontagemDe = (id) => recontagens().filter((r) => r.area_id === id).sort((x, y) => (y.pedido_em || '').localeCompare(x.pedido_em || ''))[0] || null;
@@ -1440,7 +1459,8 @@ function cartaoRecontagem(a) {
   const foto = r.foto_path && papel !== 'activista' ? `<button class="chip" onclick="verFoto('recontagem-fotos','${esc(r.foto_path)}','Declaração · ${esc(a.pr)} · ${esc(dataCurta(r.contada_em))}')">📷 Declaração</button>` : '';
   const nums = `<div class="lin"><span>Plantas vivas · mortas</span><b>${num(r.vivas)} · ${num(r.mortas)}</b></div>`;
   let h = `<div class="cartao" style="border-left:4px solid #6d4c41;margin:8px 0"><h3 style="margin:0 0 6px;font-size:15px">📋 Recontagem das plantas</h3>
-    <div class="lin"><span>Motivo</span><b>${esc(r.motivo)}</b></div><div class="lin"><span>Pedida a</span><b>${dataCurta(r.pedido_em)}</b></div>`;
+    <div class="lin"><span>Motivo</span><b>${esc(r.motivo)}</b></div><div class="lin"><span>Pedida a</span><b>${dataCurta(r.pedido_em)}</b></div>
+    ${r.localG && !souOficial() ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : ''}`;
   if (r.estado === 'validada') {
     h += `<div class="msg ok">✓ Validada pelo M&E a ${dataCurta(r.validada_em)}.</div>${nums}${r.vivas_antes != null ? `<div class="lin"><span>Plantas vivas antes</span><b>${num(r.vivas_antes)}</b></div>` : ''}<div class="chips">${foto}</div></div>${pedir}`;
     return h;
@@ -1466,56 +1486,74 @@ function cartaoRecontagem(a) {
   if (gereRecont() && r.estado !== 'enviada') h += `<div class="chips" style="margin-top:6px"><button class="chip" onclick="ecraEncaminhar('${esc(r.id)}')">${r.oficial_id ? 'Mudar o oficial' : 'Encaminhar a um oficial'}</button><button class="chip" onclick="cancelarRecontagem('${esc(r.id)}')">Cancelar o pedido</button></div>`;
   return h + '</div>';
 }
-// lista dos oficiais de M&E (para encaminhar)
+// lista dos oficiais de M&E (para encaminhar); fica no telefone para funcionar sem rede
 async function oficiais() {
-  if (S.oficiais) return S.oficiais;
-  const r = await sb.rpc('oficiais_me'); if (r.error) throw new Error(r.error.message);
-  return (S.oficiais = r.data || []);
+  if (navigator.onLine) { const r = await sb.rpc('oficiais_me'); if (!r.error && Array.isArray(r.data)) { S.oficiais = r.data; LS.set('oficiais', r.data); } }
+  return S.oficiais || LS.get('oficiais', []) || [];
 }
-const precisaRede = () => { if (navigator.onLine) return false; aviso('Precisa de rede para isto.', 'erro'); return true; };
+const nomeOficial = (id) => ((S.oficiais || LS.get('oficiais', []) || []).find((o) => o.id === id) || {}).nome || null;
 async function opcoesOficiais(sel, comVazio) {
-  let l; try { l = await oficiais(); } catch (e) { return `<option value="">${esc(e.message)}</option>`; }
-  return (comVazio ? '<option value="">(encaminhar depois)</option>' : '') + (l.length ? l.map((o) => `<option value="${o.id}" ${o.id === sel ? 'selected' : ''}>${esc(o.nome)}</option>`).join('') : (comVazio ? '' : '<option value="">Ainda não há oficiais de M&E com acesso</option>'));
+  const l = await oficiais();
+  return (comVazio ? '<option value="">(encaminhar depois)</option>' : '') + (l.length ? l.map((o) => `<option value="${o.id}" ${o.id === sel ? 'selected' : ''}>${esc(o.nome)}</option>`).join('')
+    : (comVazio ? '' : `<option value="">${navigator.onLine ? 'Ainda não há oficiais de M&E com acesso' : 'Sem a lista dos oficiais no telefone: abra com rede uma vez'}</option>`));
 }
+const notaFila = () => (navigator.onLine ? '' : '<br><span class="pequeno">Guardado no telefone: é enviado quando houver rede.</span>');
 async function ecraPedirRecontagem(id) {
-  const a = S.areas.find((x) => x.id === id); if (!a || precisaRede()) return;
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
   folha(`<h2>📋 Pedir recontagem</h2><p class="pequeno">${esc(a.produtor)} · ${esc(a.pr)} · ${esc(a.comunidade)}</p>
     <label>Motivo da recontagem<textarea id="pr-motivo" rows="2" placeholder="Ex.: muitas plantas mortas na monitoria"></textarea></label>
     <label>Oficial de M&E<select id="pr-of">${await opcoesOficiais(null, true)}</select></label>
     <div id="pr-msg"></div><button class="btn" id="pr-ok">Pedir</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
-  $('#pr-ok').onclick = async () => {
+  $('#pr-ok').onclick = () => {
     const m = $('#pr-motivo').value.trim(); if (m.length < 3) { $('#pr-msg').innerHTML = '<div class="msg erro">Escreva o motivo da recontagem.</div>'; return; }
-    $('#pr-ok').disabled = true;
-    const r = await sb.rpc('pedir_recontagem', { p_id: crypto.randomUUID(), p_area: id, p_motivo: m, p_oficial: $('#pr-of').value || null });
-    if (r.error) { $('#pr-ok').disabled = false; $('#pr-msg').innerHTML = `<div class="msg erro">${esc(r.error.message)}</div>`; return; }
-    await carregarRecontagens(); abrirFicha(id, `<div class="msg ok">Recontagem pedida${$('#pr-of')?.value ? ' e encaminhada' : ''}.</div>`); actHoje();
+    if (recontagemDe(id) && recontagemDe(id).estado !== 'validada') { $('#pr-msg').innerHTML = '<div class="msg erro">Já há uma recontagem em curso neste campo</div>'; return; }
+    const of = $('#pr-of').value || null;
+    porNaFilaRecG({ op: 'pedir', id: crypto.randomUUID(), area_id: id, motivo: m, oficial: of, oficial_nome: of ? nomeOficial(of) : null });
+    abrirFicha(id, `<div class="msg ok">${of ? 'Recontagem pedida e encaminhada.' : 'Recontagem pedida.'}${notaFila()}</div>`); actHoje();
   };
 }
 async function ecraEncaminhar(rid) {
-  const r = recontagens().find((x) => x.id === rid); if (!r || precisaRede()) return;
+  const r = recontagens().find((x) => x.id === rid); if (!r) return;
   const a = S.areas.find((x) => x.id === r.area_id) || {};
   folha(`<h2>Encaminhar a recontagem</h2><p class="pequeno">${esc(a.produtor || r.produtor || '')} · ${esc(r.pr || a.pr || '')} · ${esc(r.motivo)}</p>
     <label>Oficial de M&E<select id="en-of">${await opcoesOficiais(r.oficial_id, false)}</select></label>
     <div id="en-msg"></div><button class="btn" id="en-ok">Encaminhar</button><button class="btn sec" onclick="abrirFicha('${esc(r.area_id)}')">Cancelar</button>`);
-  $('#en-ok').onclick = async () => {
-    if (!$('#en-of').value) return; $('#en-ok').disabled = true;
-    const x = await sb.rpc('encaminhar_recontagem', { p_id: rid, p_oficial: $('#en-of').value });
-    if (x.error) { $('#en-ok').disabled = false; $('#en-msg').innerHTML = `<div class="msg erro">${esc(x.error.message)}</div>`; return; }
-    await carregarRecontagens(); abrirFicha(r.area_id, '<div class="msg ok">Recontagem encaminhada.</div>'); actHoje();
+  $('#en-ok').onclick = () => {
+    const of = $('#en-of').value; if (!of) return;
+    porNaFilaRecG({ op: 'encaminhar', id: rid, oficial: of, oficial_nome: nomeOficial(of) });
+    abrirFicha(r.area_id, `<div class="msg ok">Recontagem encaminhada.${notaFila()}</div>`); actHoje();
   };
 }
-async function cancelarRecontagem(rid) {
-  const r = recontagens().find((x) => x.id === rid); if (!r || precisaRede()) return;
+function cancelarRecontagem(rid) {
+  const r = recontagens().find((x) => x.id === rid); if (!r) return;
   if (!confirm('Cancelar este pedido de recontagem?')) return;
-  const x = await sb.rpc('cancelar_recontagem', { p_id: rid }); if (x.error) return aviso(x.error.message, 'erro');
-  await carregarRecontagens(); abrirFicha(r.area_id, '<div class="msg ok">Pedido cancelado.</div>'); actHoje();
+  porNaFilaRecG({ op: 'cancelar', id: rid });
+  abrirFicha(r.area_id, `<div class="msg ok">Pedido cancelado.${notaFila()}</div>`); actHoje();
 }
-async function validarRecontagem(rid, sim, motivo = null) {
-  const r = recontagens().find((x) => x.id === rid); if (!r || precisaRede()) return;
+// validar ou recusar: vai com os números que o M&E viu (se a recontagem mudar entretanto, o servidor não aceita)
+function validarRecontagem(rid, sim, motivo = null) {
+  const r = recontagens().find((x) => x.id === rid); if (!r) return;
   if (sim && !confirm(`Validar: as plantas vivas do campo passam a ${num(r.vivas)}.`)) return;
-  const x = await sb.rpc('validar_recontagem', { p_id: rid, p_validar: sim, p_motivo: motivo }); if (x.error) return aviso(x.error.message, 'erro');
-  await carregarRecontagens(); if (sim) await recarregarAreas();
-  desenharMapa(); desenharLista(); abrirFicha(r.area_id, `<div class="msg ok">${sim ? 'Recontagem validada: as plantas vivas do campo já mudaram.' : 'Recontagem recusada: volta ao oficial.'}</div>`); actHoje();
+  const a = S.areas.find((x) => x.id === r.area_id);
+  porNaFilaRecG({ op: 'validar', id: rid, area_id: r.area_id, sim, motivo, vivas: r.vivas, mortas: r.mortas, vivas_antes: a ? a.vivas : null });
+  if (sim && a) { a.vivas = r.vivas; LS.set('areas', S.areas); }        // as plantas vivas mudam logo neste telefone
+  desenharMapa(); desenharLista(); abrirFicha(r.area_id, `<div class="msg ok">${sim ? 'Recontagem validada: as plantas vivas do campo já mudaram.' : 'Recontagem recusada: volta ao oficial.'}${notaFila()}</div>`); actHoje();
+}
+// envia as acções do M&E/gestor pela ordem em que foram feitas
+async function enviarGestaoRecontagens() {
+  let mudouVivas = false, fez = false;
+  for (const x of filaRecG()) {
+    const r = x.op === 'pedir' ? await sb.rpc('pedir_recontagem2', { p_id: x.id, p_area: x.area_id, p_motivo: x.motivo, p_oficial: x.oficial, p_em: x.em })
+      : x.op === 'encaminhar' ? await sb.rpc('encaminhar_recontagem2', { p_id: x.id, p_oficial: x.oficial, p_em: x.em })
+      : x.op === 'validar' ? await sb.rpc('validar_recontagem2', { p_id: x.id, p_validar: x.sim, p_motivo: x.motivo, p_vivas: x.vivas, p_mortas: x.mortas, p_em: x.em })
+      : await sb.rpc('cancelar_recontagem', { p_id: x.id });
+    if (r.error && !r.error.code) return r.error.message;                 // sem rede: fica na fila
+    if (r.error) aviso(`Recontagem: ${r.error.message}`, 'erro');           // recusado pelo servidor: sai da fila
+    else if (x.op === 'validar' && x.sim) mudouVivas = true;
+    LS.set('filaRecG', filaRecG().filter((y) => !(y.id === x.id && y.op === x.op && y.em === x.em))); fez = true;
+  }
+  if (fez) { await carregarRecontagens(); if (mudouVivas) await recarregarAreas(); }
+  return null;
 }
 function ecraRecusarRecontagem(rid) {
   const r = recontagens().find((x) => x.id === rid); if (!r) return;

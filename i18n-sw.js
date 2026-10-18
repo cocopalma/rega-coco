@@ -368,6 +368,10 @@ window.I18N_SW_D = {
 "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Mvua inasajiliwa tu mahali pa kipimo cha mvua: programu inatumia GPS kujua jamii.",
 "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "Hakuna mashamba yenye kuratibu kwenye simu. Sajili mvua karibu na kipimo cha mvua, katika jamii.",
 "Pelo GPS está em": "Kwa GPS uko",
+"Guardado no telefone: é enviado quando houver rede.": "Imehifadhiwa kwenye simu: itatumwa mtandao ukipatikana.",
+"No telefone: é enviado quando houver rede.": "Kwenye simu: itatumwa mtandao ukipatikana.",
+"Sem a lista dos oficiais no telefone: abra com rede uma vez": "Orodha ya maafisa haiko kwenye simu: fungua mara moja ukiwa na mtandao",
+"A recontagem mudou depois de a ter visto. Abra-a de novo.": "Hesabu mpya imebadilika baada ya kuiona. Ifungue tena.",
 "Oficial de M&E (recontagens)": "Afisa wa M&E (kuhesabu upya)",
 "vê só os campos que o M&E lhe encaminha para recontagem e regista as plantas vivas e mortas, com a fotografia da declaração. Sem recontagens, a app fica vazia.": "anaona mashamba tu ambayo M&E inamtumia kuhesabu upya na anaandika mimea hai na iliyokufa, pamoja na picha ya tamko. Bila kazi za kuhesabu upya, programu inakuwa tupu.",
 "📋 Recontagem das plantas": "📋 Kuhesabu mimea upya",
@@ -919,4 +923,5 @@ window.I18N_SW_R = (tr) => [
     [/^📋 (\d+) recontage(?:m|ns) por encaminhar ou validar: veja no Hoje\.$/, '📋 Kazi $1 za kuhesabu upya za kutuma au kuthibitisha: angalia Leo.'],
     [/^Recontagem não gravada: ([\s\S]*)$/, 'Hesabu mpya haikuhifadhiwa: $1'],
     [/^(.+) a (\d\d\/\d\d\/\d{4})$/, '$1 tarehe $2'],
+    [/^Recontagem: ([\s\S]+)$/, 'Kuhesabu upya: $1'],
   ];
