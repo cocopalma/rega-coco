@@ -219,6 +219,7 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'planta' ? await sb.rpc('gravar_planta', { p_id: x.planta.id, p_area: x.area_id, p_n: x.planta.n, p_lat: x.planta.lat, p_lon: x.planta.lon, p_precisao: x.planta.precisao_m, p_em: x.planta.marcada_em, p_estado: x.planta.estado, p_cavaroda: x.planta.cavaroda, p_mulching: x.planta.mulching })
         : x.tipo === 'planta_est' ? await sb.rpc('estado_planta', { p_id: x.planta_id, p_estado: x.estado, p_cavaroda: x.cavaroda, p_mulching: x.mulching, p_em: x.em })
         : x.tipo === 'planta_rem' ? await sb.rpc('remover_planta', { p_id: x.planta_id, p_em: x.em })
+        : x.tipo === 'recontagem' ? await sb.rpc('recontagem_queimada2', { p_id: x.queimada_id, p_vivas: x.vivas, p_obs: x.obs, p_em: x.em })
         : await sb.rpc('atribuir_area', { p_area: x.area_id, p_activista: x.activista_id });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
       if (r4.error) aviso(`Não foi gravado (${x.area_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
@@ -270,7 +271,7 @@ async function carregarTudo() {
   if (!zs.error) { S.zonas = zs.data; LS.set('zonas', S.zonas); }
   if (!lc.error && Array.isArray(lc.data)) { S.comunidades = lc.data; LS.set('comunidades', S.comunidades); }
   if (!po.error && Array.isArray(po.data)) { S.pocos = po.data; LS.set('pocos', S.pocos); }
-  if (!qm.error && Array.isArray(qm.data)) { S.queimadas = qm.data; LS.set('queimadas', S.queimadas); }
+  if (!qm.error && Array.isArray(qm.data)) { S.queimadas = qm.data; aplicarRecontagensPendentes(); LS.set('queimadas', S.queimadas); }
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
   // senha/PIN provisório dado pelo gestor: a pessoa escolhe outro (18/10/2026, Valdo)
   if (S.perfil.trocar_senha && !S.trocaAberta) setTimeout(() => ecraTrocarSenha(true), 400);
@@ -1388,14 +1389,21 @@ function cartaoQueimada(a) {
   const meu = q.registada_por === S.perfil?.id || q.local, pode = meu || ['supervisor', 'gestor'].includes(S.perfil?.papel);
   const pl = q.plantas_afectadas != null ? `<div>${num(q.plantas_afectadas)} plantas afectadas${q.plantas_mortas != null ? ` · ${num(q.plantas_mortas)} mortas` : ''}</div>` : '';
   const rec = q.local ? '' : q.recontagem_em
-    ? `<div>✓ Recontagem do M&E a ${fmtData(q.recontagem_em)}: <b>${num(q.vivas_recontadas)} plantas vivas</b>${q.recontagem_obs ? ` — ${esc(q.recontagem_obs)}` : ''}</div>`
+    ? `<div>✓ Recontagem do M&E a ${fmtData(q.recontagem_em)}: <b>${num(q.vivas_recontadas)} plantas vivas</b>${q.recontagem_obs ? ` — ${esc(q.recontagem_obs)}` : ''}${q.recontagem_local ? ' <span class="pequeno">(no telefone; é enviada quando houver rede)</span>' : ''}</div>`
     : '<div>⏳ À espera da recontagem do M&E</div>';
   const podeRecontar = !q.local && ['me', 'gestor'].includes(S.perfil?.papel);
   return `<div class="msg erro" style="background:#fff3e0;color:#7a3300;border-color:#ffb74d">🔥 <b>Queimada</b> a ${fmtData(q.data)}${q.observacao ? ` — ${esc(q.observacao)}` : ''}${q.local ? ' <span class="pequeno">(no telefone; é enviada quando houver rede)</span>' : ''}
     ${pl}${rec}
     <div class="chips" style="margin-top:6px">${q.foto_path && fotoVisivel(q.foto_path) ? `<button class="chip" onclick="verFoto('rega-fotos','${esc(q.foto_path)}','Queimada ${fmtData(q.data)}')">📷 Ver fotografia</button>` : ''}${podeRecontar ? `<button class="chip" onclick="ecraRecontagem('${esc(q.id)}','${esc(a.id)}')">${q.recontagem_em ? 'Corrigir a recontagem' : '✓ Registar a recontagem'}</button>` : ''}${pode ? `<button class="chip" onclick="removerQueimada('${esc(q.id)}','${esc(a.id)}')">Remover (engano)</button>` : ''}</div></div>`;
 }
-// recontagem pelo M&E depois de uma queimada (18/10/2026, Valdo); o gestor também pode
+// recontagem pelo M&E depois de uma queimada (18/10/2026, Valdo); o gestor também pode.
+// Funciona sem rede: fica na fila filaAlt (tipo 'recontagem') e é enviada quando houver rede.
+function aplicarRecontagensPendentes() {
+  for (const x of LS.get('filaAlt', [])) if (x.tipo === 'recontagem') {
+    const q = (S.queimadas || []).find((y) => y.id === x.queimada_id);
+    if (q) Object.assign(q, { vivas_recontadas: x.vivas, recontagem_obs: x.obs, recontagem_em: x.em, recontagem_local: true });
+  }
+}
 const queimadasPorRecontar = () => (S.queimadas || []).filter((q) => !q.removida && !q.recontagem_em && S.areas.some((a) => a.id === q.area_id));
 function ecraRecontagem(qid, areaId) {
   const q = (S.queimadas || []).find((x) => x.id === qid), a = S.areas.find((x) => x.id === areaId); if (!q || !a) return;
@@ -1410,12 +1418,11 @@ function ecraRecontagem(qid, areaId) {
   $('#rc-gravar').onclick = async () => {
     const v = $('#rc-vivas').value;
     if (v === '' || +v < 0) { $('#rc-msg').innerHTML = '<div class="msg erro">Escreva quantas plantas vivas contou.</div>'; return; }
-    if (!navigator.onLine) { $('#rc-msg').innerHTML = '<div class="msg erro">Precisa de rede para gravar a recontagem.</div>'; return; }
-    $('#rc-gravar').disabled = true;
-    const r = await sb.rpc('recontagem_queimada', { p_id: qid, p_vivas: Math.round(+v), p_obs: $('#rc-obs').value.trim() || null });
-    if (r.error) { $('#rc-gravar').disabled = false; $('#rc-msg').innerHTML = `<div class="msg erro">${esc(r.error.message)}</div>`; return; }
-    Object.assign(q, { vivas_recontadas: Math.round(+v), recontagem_obs: $('#rc-obs').value.trim() || null, recontagem_em: new Date().toISOString() }); LS.set('queimadas', S.queimadas);
-    aviso('Recontagem gravada.', 'ok'); abrirFicha(areaId); if ($('#e-hoje').classList.contains('on')) desenharHoje();
+    const x = { tipo: 'recontagem', area_id: areaId, queimada_id: qid, vivas: Math.round(+v), obs: $('#rc-obs').value.trim() || null, em: new Date().toISOString() };
+    LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => !(y.tipo === 'recontagem' && y.queimada_id === qid)));   // só a última conta
+    porNaFilaAlt(x); aplicarRecontagensPendentes(); LS.set('queimadas', S.queimadas);
+    aviso(navigator.onLine ? 'Recontagem gravada.' : 'Recontagem guardada no telefone. É enviada quando houver rede.', 'ok');
+    abrirFicha(areaId); if ($('#e-hoje').classList.contains('on')) desenharHoje();
   };
 }
 function cartaoRecontagens() {
