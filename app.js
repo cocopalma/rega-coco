@@ -145,12 +145,14 @@ function testeEm(id) {
 const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a' };
 // borda do campo no mapa (16/10/2026, Dalmar via Valdo): azul = já recebeu rega nesta ronda, vermelho = ainda não (ver bordaAzul)
 const BORDA = { regado: '#1e5bd8', nunca: '#c62828' };
-const COLS_AREAS = 'id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em,n_regas_origem,ultima_rega_origem,datas_rega_origem,plantas_regadas_origem';
+const COLS_AREAS = 'id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em,n_regas_origem,ultima_rega_origem,datas_rega_origem,plantas_regadas_origem,regas_origem_por_pr';
 // regas do campo: antes da app (ficheiro do Dalmar, dados até CFG.dataOrigem) + na app (servidor e as que ainda estão no telefone)
 function regasDoCampoInfo(a) {
   const e = S.estado[a.id] || {}, fila = filaRegistos().filter((r) => r.area_id === a.id && !r.teste && r.plantas_regadas > 0);
   const app = (e.n || 0) + fila.length, plApp = (e.pl || 0) + fila.reduce((t, r) => t + (r.plantas_regadas || 0), 0);
-  const orig = a.n_regas_origem || 0, plOrig = a.plantas_regadas_origem || 0;
+  // regas antes da app registadas para o produtor (iguais em várias áreas do PR): não se sabe que campo foi regado,
+  // por isso não contam neste campo (18/10/2026, Valdo: "as regas devem ser por campo e não por produtor")
+  const orig = a.regas_origem_por_pr ? 0 : (a.n_regas_origem || 0), plOrig = a.regas_origem_por_pr ? 0 : (a.plantas_regadas_origem || 0);
   return { orig, app, total: orig + app, plOrig, plApp, litros: (plOrig + plApp) * CFG.litrosPlanta };
 }
 const jaRegado = (a) => regasDoCampoInfo(a).total > 0;
@@ -250,7 +252,7 @@ function actSync() {
 // ---------- dados ----------
 // todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
-  const [p, ac, ar, zs, est, lc, pc, qm] = await Promise.all([
+  const [p, ac, ar, zs, est, lc, pc, qm, po] = await Promise.all([
     sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
     sb.from('areas').select(COLS_AREAS).eq('activa', true).order('comunidade').range(0, 4999),
@@ -259,6 +261,7 @@ async function carregarTudo() {
     sb.rpc('lista_comunidades'),
     sb.rpc('pontos_comunidades'),
     sb.from('queimadas').select('id,area_id,data,observacao,foto_path,registada_por,registada_em').eq('removida', false).range(0, 9999),
+    sb.from('pocos').select('id,codigo,comunidade,fonte,lat,lon,foto_path,observacao').range(0, 4999),
   ]);
   if (p.error) throw new Error(p.error.message);
   if (!p.data) throw new Error('Este utilizador não tem perfil na app. Fale com o gestor.');
@@ -266,6 +269,7 @@ async function carregarTudo() {
   S.perfil = p.data; S.activistas = ac.data; S.areas = aplicarPendentes(ar.data);
   if (!zs.error) { S.zonas = zs.data; LS.set('zonas', S.zonas); }
   if (!lc.error && Array.isArray(lc.data)) { S.comunidades = lc.data; LS.set('comunidades', S.comunidades); }
+  if (!po.error && Array.isArray(po.data)) { S.pocos = po.data; LS.set('pocos', S.pocos); }
   if (!qm.error && Array.isArray(qm.data)) { S.queimadas = qm.data; LS.set('queimadas', S.queimadas); }
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
   S.visiveis = null;
@@ -293,7 +297,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
   return !!(S.perfil && S.areas.length);
 }
 
@@ -472,6 +476,11 @@ function desenharMapa(enquadrar = false) {
     if (queimadaDe(a.id)) L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-fogo', html: '🔥', iconSize: [22, 22], iconAnchor: [11, 26] }) })
       .on('click', () => abrirFicha(a.id)).addTo(camada);
     pts.push([a.latitude, a.longitude]);
+  }
+  // poços de água (18/10/2026, Valdo): em princípio estão em campos de produtores que regam sozinhos (fora do plano)
+  for (const q of S.pocos || []) {
+    L.marker([q.lat, q.lon], { icon: L.divIcon({ className: 'ic-poco', html: '💧', iconSize: [20, 20], iconAnchor: [10, 10] }) })
+      .bindPopup(`<b>Poço ${esc(q.codigo)}</b><br>${esc(q.comunidade || '')}${q.fonte ? ' · ' + esc(q.fonte) : ''}${q.observacao ? '<br>' + esc(q.observacao) : ''}`).addTo(camada);
   }
   if (enquadrar && pts.length) mapa.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
   desenharRotulos();
@@ -1270,7 +1279,8 @@ function linhasRegasCampo(a) {
   const datas = (a.datas_rega_origem || []).map(fmtData).join(', ');
   return `<div class="lin"><span>Regas recebidas</span><b>${num(r.total)}${r.total ? ` <span class="pequeno">(${num(r.orig)} antes da app · ${num(r.app)} na app)</span>` : ''}</b></div>
     ${r.total ? `<div class="lin"><span>Água (${CFG.litrosPlanta} L por planta)</span><b>${num(r.litros)} L</b></div>` : ''}
-    ${datas ? `<p class="pequeno" style="margin:2px 0 6px">Regas antes da app (até ${CFG.dataOrigem}): ${datas}</p>` : ''}`;
+    ${datas && !a.regas_origem_por_pr ? `<p class="pequeno" style="margin:2px 0 6px">Regas antes da app (até ${CFG.dataOrigem}): ${datas}</p>` : ''}
+    ${datas && a.regas_origem_por_pr ? `<p class="pequeno" style="margin:2px 0 6px">Antes da app o produtor tem ${num(a.n_regas_origem || 0)} regas registadas (${datas}), mas o registo não diz em que campo: não contam neste campo.</p>` : ''}`;
 }
 const queimadasLocais = () => LS.get('filaQueim', []);
 // a queimada mais recente do campo (as que estão no telefone por enviar contam)

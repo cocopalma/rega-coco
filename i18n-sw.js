@@ -368,6 +368,9 @@ window.I18N_SW_D = {
 "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Mvua inasajiliwa tu mahali pa kipimo cha mvua: programu inatumia GPS kujua jamii.",
 "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "Hakuna mashamba yenye kuratibu kwenye simu. Sajili mvua karibu na kipimo cha mvua, katika jamii.",
 "Pelo GPS está em": "Kwa GPS uko",
+"💧 Poço de água": "💧 Kisima cha maji",
+"base de perfuração": "kituo cha kuchimba",
+"identificado no campo (P/)": "kimetambuliwa shambani (P/)",
 "Regas recebidas": "Umwagiliaji uliopokelewa",
 "Borda azul: já regado nesta ronda": "Mpaka wa bluu: limemwagiliwa mzunguko huu",
 "Borda vermelha: por regar nesta ronda": "Mpaka mwekundu: bado halijamwagiliwa mzunguko huu",
@@ -741,4 +744,6 @@ window.I18N_SW_R = (tr) => [
     [/^Queimada não gravada: (.+)$/, 'Moto haukuhifadhiwa: $1'],
     [/^([\d.,  ]+) vivas$/, '$1 hai'],
     [/^([\d.,  ]+) mudas$/, '$1 miche'],
+    [/^Antes da app o produtor tem (.+) regas registadas \((.+)\), mas o registo não diz em que campo: não contam neste campo\.$/, 'Kabla ya programu mkulima ana umwagiliaji $1 uliosajiliwa ($2), lakini rekodi haisemi shamba lipi: haihesabiwi kwa shamba hili.'],
+    [/^Poço (.+)$/, 'Kisima $1'],
   ];
