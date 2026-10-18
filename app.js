@@ -9,7 +9,7 @@ const CFG = {
   margemGPS: 200,      // metros: distância máxima ao centro do campo para validar (campos sem polígono; a afinar no terreno)
   margemPoligono: 50,  // metros: distância máxima à borda do polígono (13/10/2026, Valdo)
   litrosPlanta: 5,     // litros por planta em cada rega (16/10/2026, Valdo)
-  dataOrigem: '14/10/2026', // último dia dos dados de rega do Dalmar importados (Controlo_Rega_Areas.xlsx)
+  dataOrigem: '16/10/2026', // último dia dos dados de rega do Dalmar importados (Controlo_Rega_Areas.xlsx)
   precisaoCoord: 10,   // metros: pior precisão aceite para gravar a coordenada de um campo (a afinar no terreno)
   precisaoIdeal: 5,    // metros: precisão recomendada
   metaPlantas: 140,    // plantas por pessoa por dia (meta do Valdo, 11/10/2026)
