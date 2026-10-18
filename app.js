@@ -443,7 +443,7 @@ async function alternarRodar() {
   botaoRodar();
 }
 function botaoRodar() { const b = $('#b-rodar'); if (!b) return; b.textContent = S.seguir ? '🧭 Norte' : '🧭 Rodar'; b.classList.toggle('on', !!S.seguir); }
-// etiqueta em cada campo à vista (zoom ≥ 15): primeiro nome do produtor e plantas vivas, sem tocar (16/10/2026, Dalmar)
+// etiqueta em cada campo à vista (zoom ≥ 15): nome do produtor, código do campo e plantas vivas, sem tocar (16/10/2026, Dalmar; 18/10 Valdo: nome completo e PR)
 const ZOOM_ROTULOS = 15, MAX_ROTULOS = 80;
 function desenharRotulos() {
   if (!rotulos) return; rotulos.clearLayers();
@@ -453,10 +453,10 @@ function desenharRotulos() {
     if (a.latitude == null || !b.contains([a.latitude, a.longitude])) continue;
     if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
     if (++n > MAX_ROTULOS) break;
-    const nome = String(a.produtor || '').trim().split(/\s+/)[0] || '—';
+    const nome = String(a.produtor || '').trim() || '—';   // nome completo e código do campo (18/10/2026, Valdo)
     const pl = a.vivas > 0 ? `${num(a.vivas)} vivas` : `${num(a.instaladas || 0)} mudas`;
     L.tooltip({ permanent: true, direction: 'top', offset: [0, -6], className: 'rot-campo', interactive: false })
-      .setLatLng([a.latitude, a.longitude]).setContent(`${esc(nome)} · ${pl}`).addTo(rotulos);
+      .setLatLng([a.latitude, a.longitude]).setContent(`${esc(nome)}<br><span class="rot-id">${esc(a.id)}</span> · <span>${pl}</span>`).addTo(rotulos);
   }
 }
 function desenharMapa(enquadrar = false) {
