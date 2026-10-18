@@ -485,7 +485,7 @@ function desenharMapa(enquadrar = false) {
   if (enquadrar && pts.length) mapa.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
   desenharRotulos();
   $('#b-filtro').textContent = S.filtro === 'meus' ? 'As minhas' : 'Todas';
-  $('#b-filtro').style.display = S.perfil?.papel === 'activista' ? '' : 'none';
+  $('#b-filtro').style.display = 'none';
   const ri = $('#ronda-info');
   if (souActivista() && S.perfil.activista_id) { ri.style.display = ''; ri.innerHTML = textoRonda(); } else ri.style.display = 'none';
 }
@@ -1292,7 +1292,7 @@ function cartaoQueimada(a) {
   const q = queimadaDe(a.id); if (!q) return '';
   const meu = q.registada_por === S.perfil?.id || q.local, pode = meu || ['supervisor', 'gestor'].includes(S.perfil?.papel);
   return `<div class="msg erro" style="background:#fff3e0;color:#7a3300;border-color:#ffb74d">🔥 <b>Queimada</b> a ${fmtData(q.data)}${q.observacao ? ` — ${esc(q.observacao)}` : ''}${q.local ? ' <span class="pequeno">(no telefone; é enviada quando houver rede)</span>' : ''}
-    <div class="chips" style="margin-top:6px">${q.foto_path ? `<button class="chip" onclick="verFoto('rega-fotos','${esc(q.foto_path)}','Queimada ${fmtData(q.data)}')">📷 Ver fotografia</button>` : ''}${pode ? `<button class="chip" onclick="removerQueimada('${esc(q.id)}','${esc(a.id)}')">Remover (engano)</button>` : ''}</div></div>`;
+    <div class="chips" style="margin-top:6px">${q.foto_path && fotoVisivel(q.foto_path) ? `<button class="chip" onclick="verFoto('rega-fotos','${esc(q.foto_path)}','Queimada ${fmtData(q.data)}')">📷 Ver fotografia</button>` : ''}${pode ? `<button class="chip" onclick="removerQueimada('${esc(q.id)}','${esc(a.id)}')">Remover (engano)</button>` : ''}</div></div>`;
 }
 function ecraQueimada(id, r) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
@@ -1573,6 +1573,10 @@ async function desenharHoje() {
 }
 
 // ---------- fotografias (12/10/2026, Valdo): só se descarregam quando se toca em "Ver fotografia" ----------
+// o activista só vê as fotografias que ele próprio tirou (18/10/2026, Valdo); o servidor também recusa as outras
+function fotoVisivel(caminho) {
+  return !!caminho && (S.perfil?.papel !== 'activista' || String(caminho).startsWith((S.perfil?.id || '-') + '/'));
+}
 async function verFoto(balde, caminho, legenda = '') {
   const m = document.createElement('div');
   m.id = 'foto-modal'; m.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;color:#fff;text-align:center';
@@ -1585,17 +1589,17 @@ async function verFoto(balde, caminho, legenda = '') {
 async function regasDoCampo(id) {
   const r = await sb.rpc('regas_campo', { p_area: id }); const el = $('#f-regas');
   if (r.error || !el || !Array.isArray(r.data) || !r.data.length) return;
-  const bt = (v, t, rot) => v['foto_' + t] ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(v['foto_' + t])}', '${esc(rot)} · ${esc(fmtData(v.data))} ${esc(fmtHora(v['foto_' + t + '_em'] || v.entrada_em))} · ${esc(v.quem || '')}')">📷 ${rot}</button>` : '';
+  const bt = (v, t, rot) => fotoVisivel(v['foto_' + t]) ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(v['foto_' + t])}', '${esc(rot)} · ${esc(fmtData(v.data))} ${esc(fmtHora(v['foto_' + t + '_em'] || v.entrada_em))} · ${esc(v.quem || '')}')">📷 ${rot}</button>` : '';
   el.innerHTML = `<div class="cartao" style="margin-top:10px"><h2>Regas deste campo</h2>` + r.data.map((v) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
       <div class="lin" style="border:0;padding:0"><span>${fmtData(v.data)} · ${fmtHora(v.entrada_em)}–${v.saida_em ? fmtHora(v.saida_em) : '…'}${v.teste ? ' <span class="tag t-teste">teste</span>' : ''}</span><b>${num(v.plantas_regadas)} plantas</b></div>
       <div class="pequeno">${esc(v.quem || '')}</div>
-      ${v.foto_entrada || v.foto_rega || v.foto_saida ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${bt(v, 'entrada', 'Entrada')}${bt(v, 'rega', 'Rega')}${bt(v, 'saida', 'Saída')}</div>` : '<div class="pequeno">Sem fotografias.</div>'}</div>`).join('') + '</div>';
+      ${['entrada', 'rega', 'saida'].some((t) => fotoVisivel(v['foto_' + t])) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${bt(v, 'entrada', 'Entrada')}${bt(v, 'rega', 'Rega')}${bt(v, 'saida', 'Saída')}</div>` : `<div class="pequeno">${v.foto_entrada || v.foto_rega || v.foto_saida || v.fotos_outro ? 'Fotografias tiradas por outra pessoa.' : 'Sem fotografias.'}</div>`}</div>`).join('') + '</div>';
 }
 async function monitoriasDoCampo(id) {
   const r = await sb.rpc('monitorias_campo', { p_area: id }); const el = $('#f-mon');
   if (r.error || !el || !Array.isArray(r.data) || !r.data.length) return;
   el.innerHTML = `<div class="cartao" style="margin-top:10px"><h2>Monitoria deste campo</h2>` + r.data.map((v) => `<div class="lin"><span>${fmtData(v.data_rega)} · ${esc(v.verificador || '')}</span><b>nota ${Number(v.nota).toLocaleString(LOC)}${v.solo_regado === false ? ' · <span style="color:#b42318">não regado</span>' : ''}
-      ${v.foto_path ? ` <button class="chip" onclick="verFoto('monitoria-fotos', '${esc(v.foto_path)}', 'Monitoria · rega de ${esc(fmtData(v.data_rega))} · nota ${esc(String(v.nota))}')">Ver fotografia</button>` : ''}</b></div>`).join('') + '</div>';
+      ${fotoVisivel(v.foto_path) ? ` <button class="chip" onclick="verFoto('monitoria-fotos', '${esc(v.foto_path)}', 'Monitoria · rega de ${esc(fmtData(v.data_rega))} · nota ${esc(String(v.nota))}')">Ver fotografia</button>` : ''}</b></div>`).join('') + '</div>';
 }
 
 // ---------- avisos da monitoria à equipa (11/10/2026, Valdo) ----------
@@ -1951,7 +1955,8 @@ function mostrarApp() {
   const cliente = papel === 'cliente';                     // cliente: Mapa, Campos e Painel, só para ver (15/10/2026, Valdo)
   document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.e === 'hoje') b.style.display = cliente ? 'none' : ''; });
   $('#h-sync').style.display = cliente ? 'none' : '';
-  if (papel !== 'activista') { S.filtro = 'todas'; $('#f-ambito').value = 'todas'; }
+  // desde 18/10/2026 (Valdo) o servidor só manda ao activista os seus campos: o filtro "As minhas / Todas" deixa de ter sentido
+  S.filtro = 'todas'; $('#f-ambito').value = 'todas'; $('#f-ambito').style.display = 'none';
   $('#leg-teste').style.display = PODE_REGAR.includes(papel) && papel !== 'activista' ? '' : 'none';
   const tOpt = document.querySelector('#f-sit option[value="teste"]'); if (tOpt) tOpt.hidden = papel === 'activista';
   const coms = [...new Set(S.areas.map((a) => a.comunidade))].sort();
