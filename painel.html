@@ -164,6 +164,12 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <h3 style="font-size:14px;margin:4px 0">Chuva total no período (mm)</h3><div id="g-chuva" style="margin-bottom:12px"></div>
     <details><summary>Ver tabela por dia</summary><div class="tabela" id="t-chuva" style="max-height:none"></div></details></section>
 
+  <section class="card sec" id="s-rec"><h2>Recontagens das plantas</h2>
+    <p class="desc">Pedidas pelo M&E ou pelo gestor (cada queimada pede uma), contadas pelos oficiais de M&E e validadas pelo M&E. Entram as recontagens pedidas ou validadas no período. Antes da validação só o M&E vê os números.</p>
+    <div class="grelha kpis" id="k-rec"></div>
+    <p style="margin:8px 0"><button class="foto-btn" id="b-rec-csv" type="button">⬇ Descarregar a tabela (Excel, .csv)</button></p>
+    <div class="tabela" id="t-rec" style="max-height:none"></div></section>
+
   <section class="grelha dois sec">
     <div class="card"><h2>Constrangimentos registados</h2><p class="desc">Número de registos com cada constrangimento.</p><div id="g-constr"></div></div>
     <div class="card"><h2>Qualidade dos registos</h2><p class="desc">Controlo dos dados recebidos.</p><div id="qualidade"></div></div>
@@ -183,8 +189,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=68"></script>
-<script src="i18n.js?v=68"></script>
+<script src="i18n-sw.js?v=69"></script>
+<script src="i18n.js?v=69"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -201,7 +207,7 @@ const fmtPct = (v) => v.toLocaleString(LOC, { maximumFractionDigits: v < 10 ? 1 
 const fmtData = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString(LOC) : '—';
 const ddmm = (d) => d.slice(8, 10) + '/' + d.slice(5, 7);
 const TIPOS = { falta_agua: 'Falta de água', mudas_secas: 'Mudas secas', acesso_dificil: 'Acesso difícil', avaria: 'Avaria', outro: 'Outro' };
-let D = null, DM = null, DP = null, DT = null, DZ = null, DC = null;   // DM = monitoria; DP = plantas por dia e equipa; DT = tempos
+let D = null, DM = null, DP = null, DT = null, DZ = null, DC = null, DR = null;   // DR = recontagens; DM = monitoria; DP = plantas por dia e equipa; DT = tempos
 const META = 140;   // plantas por pessoa por dia (Valdo, 11/10/2026)
 let VM = 'dia'; try { VM = localStorage.getItem('rega.painel.meta') || 'dia'; } catch {}
 
@@ -495,6 +501,49 @@ function desenharChuva() {
     (Object.keys(fotos).length ? '<p class="desc" style="margin-top:8px">📷 = toque para ver a fotografia da leitura do pluviómetro.</p>' : '');
 }
 
+// ---------- recontagens das plantas (oficiais de M&E, 18/10/2026, Valdo) ----------
+const diaDe = (t) => (t ? new Date(t).toLocaleDateString('en-CA', { timeZone: 'Africa/Maputo' }) : null);
+const ESTADO_REC = { por_encaminhar: 'Por encaminhar', encaminhada: 'Com o oficial', recusada: 'Recusada (com o oficial)', enviada: 'Feita, por validar', validada: 'Validada' };
+function linhasRec() {
+  const [de, ate] = datasDe(P), dentro = (d) => !!d && (!de || d >= de) && (!ate || d <= ate);
+  return (Array.isArray(DR) ? DR : []).filter((r) => dentro(diaDe(r.pedido_em)) || dentro(diaDe(r.validada_em)))
+    .sort((a, b) => String(b.validada_em || b.pedido_em).localeCompare(String(a.validada_em || a.pedido_em)));
+}
+function desenharRecontagens() {
+  if (!$('#t-rec')) return;
+  const L = linhasRec(), n = (e) => L.filter((r) => e.includes(r.estado)).length, val = L.filter((r) => r.estado === 'validada');
+  const kpi = (rot, v, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${v}</div><div class="sub">${sub}</div></div>`;
+  const antes = val.reduce((t, r) => t + (r.vivas_antes || 0), 0), depois = val.reduce((t, r) => t + (r.vivas || 0), 0), mortas = val.reduce((t, r) => t + (r.mortas || 0), 0);
+  $('#k-rec').innerHTML = kpi('Recontagens', num(L.length), `${num(n(['por_encaminhar']))} por encaminhar · ${num(n(['encaminhada', 'recusada']))} com o oficial · ${num(n(['enviada']))} por validar`) +
+    kpi('Validadas', num(val.length), 'os números do campo já mudaram') +
+    kpi('Plantas vivas nos campos validados', val.length ? num(depois) : '—', val.length ? `antes: ${num(antes)} · diferença: ${depois - antes > 0 ? '+' : ''}${num(depois - antes)} · mortas contadas: ${num(mortas)}` : 'sem recontagens validadas');
+  const foto = (r) => (r.foto_path ? `<button class="foto-btn" onclick="verFotoRec('${esc(r.foto_path).replace(/'/g, '&#39;')}')" title="Ver fotografia">📷</button>` : '');
+  tabela('#t-rec', [['Campo'], ['Produtor'], ['Comunidade'], ['Motivo'], ['Pedida'], ['Oficial'], ['Estado'], ['Vivas antes', 1], ['Vivas contadas', 1], ['Mortas contadas', 1], ['Validada'], ['Declaração']],
+    L.map((r) => [esc(r.area_id), esc(r.produtor || ''), esc(r.comunidade || ''), esc(r.motivo || ''), fmtData(diaDe(r.pedido_em)), esc(r.oficial || '—'), ESTADO_REC[r.estado] || esc(r.estado),
+      r.vivas_antes != null ? num(r.vivas_antes) : (r.estado === 'validada' ? '—' : num(r.vivas_campo)), r.vivas != null ? num(r.vivas) : '—', r.mortas != null ? num(r.mortas) : '—',
+      r.validada_em ? fmtData(diaDe(r.validada_em)) : '—', foto(r)]));
+}
+async function verFotoRec(caminho) {
+  const m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px;color:#fff;text-align:center';
+  m.innerHTML = '<p>A abrir a fotografia…</p>'; m.onclick = () => m.remove(); document.body.appendChild(m);
+  const r = await sb.storage.from('recontagem-fotos').createSignedUrl(caminho, 600);
+  m.innerHTML = (r.error ? `<p>${esc('Sem acesso a esta fotografia ou sem rede.')}</p>` : `<img src="${esc(r.data.signedUrl)}" alt="" style="max-width:100%;max-height:80vh;border-radius:8px">`) + '<p style="color:#ddd;font-size:12px">Toque para fechar.</p>';
+}
+// tabela para o Excel: separador ";" e BOM, para o Excel em português abrir com as colunas e os acentos certos
+function descarregarRec() {
+  const L = linhasRec(), cel = (v) => { const t = String(v ?? ''); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const cab = ['Campo', 'PR', 'Produtor', 'Comunidade', 'Motivo', 'Pedida em', 'Oficial', 'Estado', 'Plantas instaladas', 'Vivas antes', 'Vivas contadas', 'Mortas contadas', 'Contada em', 'Validada em', 'Motivo da recusa', 'Latitude', 'Longitude', 'Fotografia da declaração'];
+  const dt = (t) => (t ? new Date(t).toLocaleString('pt-PT', { timeZone: 'Africa/Maputo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '') : '');
+  const T = (x) => (window.trEN ? window.trEN(x) : x);   // cabeçalhos e estados na língua escolhida
+  const linhas = L.map((r) => [r.area_id, r.pr, r.produtor, r.comunidade, r.motivo, dt(r.pedido_em), r.oficial, ESTADO_REC[r.estado] || r.estado, r.instaladas,
+    r.vivas_antes ?? (r.estado === 'validada' ? '' : r.vivas_campo), r.vivas, r.mortas, dt(r.contada_em), dt(r.validada_em), r.recusa_motivo, r.lat, r.lon, r.foto_path ? 'sim' : 'não']);
+  const csv = '\ufeff' + [cab.map(T), ...linhas.map((l) => { l[7] = T(l[7]); l[17] = T(l[17]); return l; })].map((l) => l.map(cel).join(';')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `Rega_Coco_recontagens_${diaMaputo().replace(/-/g, '')}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+$('#b-rec-csv').onclick = descarregarRec;
+
 // ---------- monitoria ----------
 function desenharMonitoria() {
   const M = DM; if (!$('#s-mon')) return;
@@ -552,19 +601,21 @@ function semRedeSemPainel() {
 }
 async function carregar() {
   const c = !D && lerCache();
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharMonitoria(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharMonitoria(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
+  const pRec = sb.rpc('recontagens_lista');   // ao mesmo tempo que os outros pedidos
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
+  const rec = await pRec; DR = rec.error ? null : rec.data;
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) { if (erroDeRede(error)) avisoRede(c || { antigo: null }); return; }   // sem rede: fica o último painel guardado
   if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharMonitoria();
-  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, em: Date.now() })); } catch {}
+  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharMonitoria();
+  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, em: Date.now() })); } catch {}
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
 function mostrarLogin(msg = '') { $('#painel').style.display = 'none'; $('#login').style.display = ''; $('#l-msg').innerHTML = msg ? `<div class="erro">${esc(msg)}</div>` : ''; }
@@ -579,7 +630,7 @@ $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar()
 $('#b-act').onclick = carregar;
 $('#b-sair').onclick = async () => { try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {} await sb.auth.signOut(); location.reload(); };
 document.querySelectorAll('#v-meta button').forEach((b) => b.onclick = () => { VM = b.dataset.v; try { localStorage.setItem('rega.painel.meta', VM); } catch {} desenharMeta(); });
-let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharMonitoria(); }, 150); });
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharMonitoria(); }, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
 if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }
