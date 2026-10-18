@@ -1819,10 +1819,13 @@ function campoFoto(id, rotulo) {
 }
 // Câmara dentro da app (14/10/2026, Nuro): com a câmara do sistema o Android fechava o Chrome ao guardar a foto.
 // Aqui a imagem vem do vídeo da câmara, sem sair da página. Se o telefone não deixar, usa a câmara do sistema.
+// Botão "🔄 Virar a câmara" (v76, 19/10/2026, Valdo): para selfies, p. ex. a fotografia no campo da recontagem, onde têm de
+// aparecer o produtor e o oficial. Com a câmara da frente o ecrã mostra a imagem como num espelho; a fotografia fica direita.
 async function camaraNaApp(aoFoto) {
   if (!navigator.mediaDevices?.getUserMedia) return false;
-  let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1600 }, height: { ideal: 1200 } }, audio: false }); }
+  let lado = 'environment', stream;
+  const abrirCam = (l) => navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: l }, width: { ideal: 1600 }, height: { ideal: 1200 } }, audio: false });
+  try { stream = await abrirCam(lado); }
   catch (e) {
     if (e && e.name === 'NotAllowedError') { aviso('A app não tem autorização para usar a câmara. Autorize a câmara no Chrome (cadeado ao lado do endereço) ou use «Escolher da galeria».', 'erro'); return true; }
     return false;
@@ -1830,12 +1833,22 @@ async function camaraNaApp(aoFoto) {
   const ov = document.createElement('div'); ov.id = 'cam-ov';
   ov.style.cssText = 'position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column';
   ov.innerHTML = `<video autoplay playsinline muted style="flex:1;min-height:0;width:100%;object-fit:contain;background:#000"></video>
-    <div style="display:flex;gap:12px;justify-content:center;padding:16px 16px calc(16px + env(safe-area-inset-bottom));background:#000">
-      <button type="button" class="btn sec" id="cam-x" style="width:auto;margin:0">Cancelar</button><button type="button" class="btn" id="cam-ok" style="width:auto;margin:0;min-width:140px">📷 Tirar</button></div>`;
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;padding:16px 16px calc(16px + env(safe-area-inset-bottom));background:#000">
+      <button type="button" class="btn sec" id="cam-x" style="width:auto;margin:0">Cancelar</button><button type="button" class="btn sec" id="cam-virar" style="width:auto;margin:0">🔄 Virar a câmara</button><button type="button" class="btn" id="cam-ok" style="width:auto;margin:0;min-width:120px">📷 Tirar</button></div>`;
   document.body.appendChild(ov);
   const v = ov.querySelector('video'); v.srcObject = stream;
+  const espelho = () => { v.style.transform = lado === 'user' ? 'scaleX(-1)' : ''; };
   const fechar = () => { stream.getTracks().forEach((t) => t.stop()); ov.remove(); };
   ov.querySelector('#cam-x').onclick = fechar;
+  ov.querySelector('#cam-virar').onclick = async () => {
+    const novo = lado === 'user' ? 'environment' : 'user';
+    stream.getTracks().forEach((t) => t.stop());
+    try { stream = await abrirCam(novo); lado = novo; }
+    catch { try { stream = await abrirCam(lado); } catch { fechar(); return aviso('Não foi possível abrir a câmara. Use «Escolher da galeria».', 'erro'); }
+      aviso('Este telefone não deixou mudar de câmara.', 'erro'); }
+    v.srcObject = stream; espelho();
+  };
+  try { const n = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput').length; if (n === 1) ov.querySelector('#cam-virar').style.display = 'none'; } catch {}
   ov.querySelector('#cam-ok').onclick = () => {
     if (!v.videoWidth) return;
     const k = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight)), c = document.createElement('canvas');
