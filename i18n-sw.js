@@ -368,6 +368,8 @@ window.I18N_SW_D = {
 "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Mvua inasajiliwa tu mahali pa kipimo cha mvua: programu inatumia GPS kujua jamii.",
 "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "Hakuna mashamba yenye kuratibu kwenye simu. Sajili mvua karibu na kipimo cha mvua, katika jamii.",
 "Pelo GPS está em": "Kwa GPS uko",
+"Sem recontagens em curso.": "Hakuna kuhesabu upya kunakoendelea.",
+"Para pedir uma recontagem: abra o campo no Mapa ou em Campos › 📋 Pedir recontagem das plantas. Cada queimada registada também pede uma.": "Kuomba kuhesabu upya: fungua shamba kwenye Ramani au Mashamba › 📋 Omba kuhesabu mimea upya. Kila moto ulioandikwa pia huomba mmoja.",
 "Recontagens das plantas": "Kuhesabu mimea upya",
 "Pedidas pelo M&E ou pelo gestor (cada queimada pede uma), contadas pelos oficiais de M&E e validadas pelo M&E. Entram as recontagens pedidas ou validadas no período. Antes da validação só o M&E vê os números.": "Huombwa na M&E au meneja (kila moto huomba mmoja), huhesabiwa na maafisa wa M&E na kuthibitishwa na M&E. Inajumuisha zilizoombwa au kuthibitishwa katika kipindi. Kabla ya kuthibitishwa ni M&E tu wanaoona idadi.",
 "⬇ Descarregar a tabela (Excel, .csv)": "⬇ Pakua jedwali (Excel, .csv)",

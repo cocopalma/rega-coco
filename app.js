@@ -1627,7 +1627,8 @@ function cartaoRecontagensHoje() {
   }
   if (!gereRecont()) return '';
   const por = l.filter((r) => r.estado === 'por_encaminhar'), val = l.filter((r) => r.estado === 'enviada'), curso = l.filter((r) => ['encaminhada', 'recusada'].includes(r.estado));
-  if (!por.length && !val.length && !curso.length) return '';
+  if (!por.length && !val.length && !curso.length)   // o cartão aparece sempre ao M&E e ao gestor, mesmo sem pedidos (18/10/2026, Valdo não o via)
+    return '<div class="cartao" style="border-left:4px solid #6d4c41"><h2>📋 Recontagens das plantas</h2><p>Sem recontagens em curso.</p><p class="pequeno">Para pedir uma recontagem: abra o campo no Mapa ou em Campos › 📋 Pedir recontagem das plantas. Cada queimada registada também pede uma.</p></div>';
   return `<div class="cartao" style="border-left:4px solid #6d4c41"><h2>📋 Recontagens das plantas</h2>
     ${sec('Por encaminhar a um oficial', por)}
     ${S.perfil.papel === 'me' ? sec('Por validar', val, (r) => ' · ' + esc(r.oficial || '')) : sec('Feitas, em validação pelo M&E', val)}
