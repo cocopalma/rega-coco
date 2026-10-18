@@ -1923,24 +1923,44 @@ async function gravarTamanho(id) {
   const t = S.activistas.find((x) => x.id === id); if (t) t.equipa_tamanho = n; LS.set('activistas', S.activistas);
   fecharFolha(); desenharHoje();
 }
+// Os botões "Rega hoje" / "Recontagens das plantas" mudam logo (18/10/2026, Valdo: demorava ~3 s): mostram o que está
+// no telefone e actualizam com o servidor por trás.
+const abasHoje = (vista) => { const n = contaRecHoje();
+  return `<div class="chips" id="hoje-abas" style="margin:0 0 10px"><button class="chip${vista === 'rega' ? ' on' : ''}" data-v="rega" onclick="vistaHoje('rega')">Rega hoje</button><button class="chip${vista === 'rec' ? ' on' : ''}" data-v="rec" onclick="vistaHoje('rec')">${n ? `Recontagens das plantas (${n})` : 'Recontagens das plantas'}</button></div>`; };
+const vistaActual = () => (LS.get('vistaHoje', 'rega') === 'rec' ? 'rec' : 'rega');
+function vistaHoje(v) {
+  LS.set('vistaHoje', v);
+  if (v === 'rec') $('#hoje').innerHTML = abasHoje('rec') + cartaoRecontagensHoje();
+  else $('#hoje').innerHTML = abasHoje('rega') + (S.hojeRega && S.hojeRega.d === hojeISO() ? S.hojeRega.html : '<p class="pequeno">A carregar…</p>');
+  desenharHoje();
+}
 async function desenharHoje() {
   const h = hojeISO(), local = filaRegistos().filter((r) => r.data === h);
   const guardado = LS.get('hojeHtml');
   if (guardado && guardado.d === h && guardado.p === S.perfil.papel && !$('#hoje').innerHTML.trim()) $('#hoje').innerHTML = guardado.html;
   let html = `<div class="cartao"><h2>Hoje · ${fmtData(h)}</h2>`;
-  if (['activista', 'tecnico', 'supervisor', 'gestor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarAvisos(); }
   if (souOficial()) {                                    // oficial de M&E: só as recontagens (18/10/2026, Valdo)
-    if (navigator.onLine) await carregarRecontagens();
-    $('#hoje').innerHTML = cartaoRecontagensHoje(); return;
+    $('#hoje').innerHTML = cartaoRecontagensHoje();
+    if (navigator.onLine) { await carregarRecontagens(); $('#hoje').innerHTML = cartaoRecontagensHoje(); }
+    return;
   }
   // dois botões no topo do Hoje: "Rega hoje" e "Recontagens das plantas" (18/10/2026, Valdo); a escolha fica no telefone
   let abas = '';
   if (veRecontagens()) {
-    if (navigator.onLine) await carregarRecontagens();
-    const vista = LS.get('vistaHoje', 'rega') === 'rec' ? 'rec' : 'rega', n = contaRecHoje();
-    abas = `<div class="chips" id="hoje-abas" style="margin:0 0 10px"><button class="chip${vista === 'rega' ? ' on' : ''}" data-v="rega" onclick="LS.set('vistaHoje','rega');desenharHoje()">Rega hoje</button><button class="chip${vista === 'rec' ? ' on' : ''}" data-v="rec" onclick="LS.set('vistaHoje','rec');desenharHoje()">${n ? `Recontagens das plantas (${n})` : 'Recontagens das plantas'}</button></div>`;
-    if (vista === 'rec') { $('#hoje').innerHTML = abas + cartaoRecontagensHoje(); return; }
+    const vista = vistaActual();
+    if (vista === 'rec') {
+      $('#hoje').innerHTML = abasHoje('rec') + cartaoRecontagensHoje();
+      if (navigator.onLine) { await carregarRecontagens(); if (vistaActual() === 'rec') $('#hoje').innerHTML = abasHoje('rec') + cartaoRecontagensHoje(); }
+      return;
+    }
+    abas = abasHoje('rega');
+    if (navigator.onLine) carregarRecontagens().then(() => {   // por trás: só actualiza o número no botão
+      const b = document.querySelector('#hoje-abas [data-v=rec]'), n = contaRecHoje();
+      if (b) b.textContent = n ? `Recontagens das plantas (${n})` : 'Recontagens das plantas';
+    }).catch(() => {});
   }
+  if (['activista', 'tecnico', 'supervisor', 'gestor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarAvisos(); }
+  if (veRecontagens() && vistaActual() !== 'rega') return;     // mudou de vista enquanto esperava
   if (S.perfil.papel === 'activista') {
     let serv = [];
     if (navigator.onLine) { const r = await sb.from('registos_rega').select('id,area_id,entrada_em,saida_em,plantas_regadas,alerta,agua_em').eq('data', h).order('entrada_em'); serv = r.data || []; }
@@ -1984,7 +2004,10 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = abas + cartaoAvisos() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoAvisos() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
+  if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
+  html = (veRecontagens() ? abasHoje('rega') : '') + html;
   $('#hoje').innerHTML = html;
   if (navigator.onLine) LS.set('hojeHtml', { d: h, p: S.perfil.papel, html });
 }
