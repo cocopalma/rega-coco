@@ -1145,6 +1145,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
   for (const x of LS.get('filaAlt', [])) { const a = lista.find((y) => y.id === x.area_id); if (!a) continue; if (x.tipo === 'coord') { a.latitude = x.lat; a.longitude = x.lon; } else if (x.tipo === 'zona') a.zona = x.zona;
     else if (x.tipo === 'comunidade') { a.comunidade = x.comunidade; a.zona = null; }
     else if (x.tipo === 'limites') a.limites_abertos = x.abrir;
+    else if (x.tipo === 'recontagem') a.vivas = x.vivas;            // a recontagem muda as plantas vivas do campo (18/10/2026, Valdo)
     else if (x.tipo === 'aprovar') aplicarAprovacao(a, x.aprovar);
     else if (x.tipo === 'poligono' && x.proposta) { a.poligono_proposto = x.pontos; a.area_m2_proposta = x.area_m2; a.proposta_em = x.medido_em; }
     else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
@@ -1412,6 +1413,7 @@ function ecraRecontagem(qid, areaId) {
       <div class="lin"><span>Plantas vivas na base</span><b>${a.vivas != null ? num(a.vivas) : '—'}</b></div>
       <div class="lin"><span>Afectadas · mortas (registo do campo)</span><b>${q.plantas_afectadas != null ? num(q.plantas_afectadas) : '—'} · ${q.plantas_mortas != null ? num(q.plantas_mortas) : '—'}</b></div></div>
     <label>Plantas vivas contadas agora<input id="rc-vivas" type="number" inputmode="numeric" min="0" value="${q.vivas_recontadas ?? ''}"></label>
+    <p class="pequeno">Este número passa a ser o das plantas vivas do campo.</p>
     <textarea id="rc-obs" rows="2" placeholder="Observação (opcional)">${esc(q.recontagem_obs || '')}</textarea>
     <div id="rc-msg"></div>
     <button class="btn" id="rc-gravar">Gravar a recontagem</button><button class="btn sec" onclick="abrirFicha('${esc(areaId)}')">Cancelar</button>`);
@@ -1421,6 +1423,7 @@ function ecraRecontagem(qid, areaId) {
     const x = { tipo: 'recontagem', area_id: areaId, queimada_id: qid, vivas: Math.round(+v), obs: $('#rc-obs').value.trim() || null, em: new Date().toISOString() };
     LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => !(y.tipo === 'recontagem' && y.queimada_id === qid)));   // só a última conta
     porNaFilaAlt(x); aplicarRecontagensPendentes(); LS.set('queimadas', S.queimadas);
+    a.vivas = x.vivas; LS.set('areas', S.areas);
     aviso(navigator.onLine ? 'Recontagem gravada.' : 'Recontagem guardada no telefone. É enviada quando houver rede.', 'ok');
     abrirFicha(areaId); if ($('#e-hoje').classList.contains('on')) desenharHoje();
   };
