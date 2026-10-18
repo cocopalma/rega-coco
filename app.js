@@ -9,6 +9,7 @@ const CFG = {
   margemGPS: 200,      // metros: distância máxima ao centro do campo para validar (campos sem polígono; a afinar no terreno)
   margemPoligono: 50,  // metros: distância máxima à borda do polígono (13/10/2026, Valdo)
   litrosPlanta: 5,     // litros por planta em cada rega (16/10/2026, Valdo)
+  dataOrigem: '14/10/2026', // último dia dos dados de rega do Dalmar importados (Controlo_Rega_Areas.xlsx)
   precisaoCoord: 10,   // metros: pior precisão aceite para gravar a coordenada de um campo (a afinar no terreno)
   precisaoIdeal: 5,    // metros: precisão recomendada
   metaPlantas: 140,    // plantas por pessoa por dia (meta do Valdo, 11/10/2026)
@@ -145,7 +146,7 @@ const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a'
 // borda do campo no mapa (16/10/2026, Dalmar via Valdo): azul = já recebeu rega nesta ronda, vermelho = ainda não (ver bordaAzul)
 const BORDA = { regado: '#1e5bd8', nunca: '#c62828' };
 const COLS_AREAS = 'id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em,n_regas_origem,ultima_rega_origem,datas_rega_origem,plantas_regadas_origem';
-// regas do campo: antes da app (ficheiro do Dalmar, dados até 09/10/2026) + na app (servidor e as que ainda estão no telefone)
+// regas do campo: antes da app (ficheiro do Dalmar, dados até CFG.dataOrigem) + na app (servidor e as que ainda estão no telefone)
 function regasDoCampoInfo(a) {
   const e = S.estado[a.id] || {}, fila = filaRegistos().filter((r) => r.area_id === a.id && !r.teste && r.plantas_regadas > 0);
   const app = (e.n || 0) + fila.length, plApp = (e.pl || 0) + fila.reduce((t, r) => t + (r.plantas_regadas || 0), 0);
@@ -1269,7 +1270,7 @@ function linhasRegasCampo(a) {
   const datas = (a.datas_rega_origem || []).map(fmtData).join(', ');
   return `<div class="lin"><span>Regas recebidas</span><b>${num(r.total)}${r.total ? ` <span class="pequeno">(${num(r.orig)} antes da app · ${num(r.app)} na app)</span>` : ''}</b></div>
     ${r.total ? `<div class="lin"><span>Água (${CFG.litrosPlanta} L por planta)</span><b>${num(r.litros)} L</b></div>` : ''}
-    ${datas ? `<p class="pequeno" style="margin:2px 0 6px">Regas antes da app (até 09/10/2026): ${datas}</p>` : ''}`;
+    ${datas ? `<p class="pequeno" style="margin:2px 0 6px">Regas antes da app (até ${CFG.dataOrigem}): ${datas}</p>` : ''}`;
 }
 const queimadasLocais = () => LS.get('filaQueim', []);
 // a queimada mais recente do campo (as que estão no telefone por enviar contam)

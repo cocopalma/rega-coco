@@ -349,7 +349,7 @@ document.addEventListener('DOMContentLoaded', () => {
     [/^a (\d{2}\/\d{2}\/\d{4})$/, 'on $1'],
     [/^Água \((\d+) L por planta\)$/, 'Water ($1 L per plant)'],
     [/^\((.+) antes da app · (.+) na app\)$/, '($1 before the app · $2 in the app)'],
-    [/^Regas antes da app \(até 09\/10\/2026\): (.+)$/, 'Waterings before the app (until 09/10/2026): $1'],
+    [/^Regas antes da app \(até (\d\d\/\d\d\/\d{4})\): (.+)$/, 'Waterings before the app (until $1): $2'],
     [/^Queimada não gravada: (.+)$/, 'Burning not saved: $1'],
     [/^([\d.,  ]+) vivas$/, '$1 alive'],
     [/^([\d.,  ]+) mudas$/, '$1 seedlings'],

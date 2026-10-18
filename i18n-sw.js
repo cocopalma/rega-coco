@@ -737,7 +737,7 @@ window.I18N_SW_R = (tr) => [
     [/^a (\d{2}\/\d{2}\/\d{4})$/, 'tarehe $1'],
     [/^Água \((\d+) L por planta\)$/, 'Maji (L $1 kwa kila mmea)'],
     [/^\((.+) antes da app · (.+) na app\)$/, '($1 kabla ya programu · $2 kwenye programu)'],
-    [/^Regas antes da app \(até 09\/10\/2026\): (.+)$/, 'Umwagiliaji kabla ya programu (hadi 09/10/2026): $1'],
+    [/^Regas antes da app \(até (\d\d\/\d\d\/\d{4})\): (.+)$/, 'Umwagiliaji kabla ya programu (hadi $1): $2'],
     [/^Queimada não gravada: (.+)$/, 'Moto haukuhifadhiwa: $1'],
     [/^([\d.,  ]+) vivas$/, '$1 hai'],
     [/^([\d.,  ]+) mudas$/, '$1 miche'],
