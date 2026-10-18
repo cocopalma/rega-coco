@@ -448,15 +448,23 @@ const ZOOM_ROTULOS = 15, MAX_ROTULOS = 80;
 function desenharRotulos() {
   if (!rotulos) return; rotulos.clearLayers();
   if (mapa.getZoom() < ZOOM_ROTULOS) return;
-  const b = mapa.getBounds(), fa = $('#f-act')?.value; let n = 0;
-  for (const a of visiveis()) {
-    if (a.latitude == null || !b.contains([a.latitude, a.longitude])) continue;
-    if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
-    if (++n > MAX_ROTULOS) break;
+  const b = mapa.getBounds(), fa = $('#f-act')?.value, c = mapa.getCenter();
+  // os campos mais perto do centro do ecrã primeiro; uma etiqueta que tapasse outra já posta não aparece
+  // (aparece ao aproximar o mapa) — 18/10/2026, Valdo
+  const L2 = visiveis().filter((a) => a.latitude != null && b.contains([a.latitude, a.longitude]) && !(fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)))
+    .sort((x, y) => mapa.distance(c, [x.latitude, x.longitude]) - mapa.distance(c, [y.latitude, y.longitude]));
+  const postas = []; let n = 0;
+  const tapa = (r) => postas.some((p) => r.left < p.right + 2 && r.right > p.left - 2 && r.top < p.bottom + 2 && r.bottom > p.top - 2);
+  for (const a of L2) {
+    if (n >= MAX_ROTULOS) break;
     const nome = String(a.produtor || '').trim() || '—';   // nome completo e código do campo (18/10/2026, Valdo)
     const pl = a.vivas > 0 ? `${num(a.vivas)} vivas` : `${num(a.instaladas || 0)} mudas`;
-    L.tooltip({ permanent: true, direction: 'top', offset: [0, -6], className: 'rot-campo', interactive: false })
+    const t = L.tooltip({ permanent: true, direction: 'top', offset: [0, -6], className: 'rot-campo', interactive: false })
       .setLatLng([a.latitude, a.longitude]).setContent(`${esc(nome)}<br><span class="rot-id">${esc(a.id)}</span> · <span>${pl}</span>`).addTo(rotulos);
+    const el = t.getElement(), r = el && el.getBoundingClientRect();
+    if (!r || !r.width) { n++; continue; }
+    if (tapa(r)) { rotulos.removeLayer(t); continue; }
+    postas.push(r); n++;
   }
 }
 function desenharMapa(enquadrar = false) {
