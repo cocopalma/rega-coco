@@ -1512,6 +1512,48 @@ async function ecraPedirRecontagem(id) {
     abrirFicha(id, `<div class="msg ok">${of ? 'Recontagem pedida e encaminhada.' : 'Recontagem pedida.'}${notaFila()}</div>`); actHoje();
   };
 }
+// pedir várias recontagens de uma vez, sem abrir a ficha de cada campo (18/10/2026, Valdo)
+async function ecraPedirVarias() {
+  S.recSel = new Set();
+  const coms = [...new Set(S.areas.map((a) => a.comunidade).filter(Boolean))].sort();
+  folha(`<h2>📋 Pedir recontagens das plantas</h2>
+    <p class="pequeno">Escolha os campos (pode escolher vários), escreva o motivo e, se quiser, o oficial. Funciona sem rede.</p>
+    <input id="pv-txt" placeholder="Procurar produtor ou PR">
+    <select id="pv-com"><option value="">Todas as comunidades</option>${coms.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select>
+    <div id="pv-lista" style="max-height:45vh;overflow:auto;margin:8px 0;border:1px solid var(--linha,#e5e5e5);border-radius:10px"></div>
+    <p id="pv-n" class="pequeno"></p>
+    <label>Motivo da recontagem<textarea id="pv-motivo" rows="2" placeholder="Ex.: muitas plantas mortas na monitoria"></textarea></label>
+    <label>Oficial de M&E<select id="pv-of">${await opcoesOficiais(null, true)}</select></label>
+    <div id="pv-msg"></div><button class="btn" id="pv-ok">Pedir</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  const emCurso = (id) => { const r = recontagemDe(id); return r && r.estado !== 'validada'; };
+  const desenhar = () => {
+    const q = $('#pv-txt').value.trim().toLowerCase(), c = $('#pv-com').value;
+    const l = S.areas.filter((a) => (!c || a.comunidade === c) && (!q || `${a.produtor} ${a.pr} ${a.id}`.toLowerCase().includes(q)))
+      .sort((x, y) => (x.comunidade || '').localeCompare(y.comunidade || '') || (x.produtor || '').localeCompare(y.produtor || ''));
+    const mostra = l.slice(0, 80);
+    $('#pv-lista').innerHTML = mostra.map((a) => { const ocup = emCurso(a.id);
+      return `<label style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--linha,#eee);margin:0;${ocup ? 'opacity:.55' : ''}">
+        <input type="checkbox" data-id="${esc(a.id)}" ${S.recSel.has(a.id) ? 'checked' : ''} ${ocup ? 'disabled' : ''} style="width:22px;height:22px;flex:none">
+        <span><b>${esc(a.produtor)}</b><br><span class="pequeno">${esc(a.id)} · ${esc(a.comunidade)} · ${plantasTxt(a)}</span>${ocup ? '<br><span class="pequeno">Já tem recontagem em curso</span>' : ''}</span></label>`; }).join('')
+      + (l.length > mostra.length ? `<p class="pequeno" style="padding:8px 10px">Mostra 80 de ${num(l.length)} campos. Procure pelo nome ou escolha a comunidade.</p>` : '')
+      + (!l.length ? '<p class="pequeno" style="padding:8px 10px">Nenhum campo encontrado.</p>' : '');
+    $('#pv-lista').querySelectorAll('input[type=checkbox]').forEach((i) => i.onchange = () => { if (i.checked) S.recSel.add(i.dataset.id); else S.recSel.delete(i.dataset.id); contar(); });
+    contar();
+  };
+  const contar = () => { $('#pv-n').textContent = S.recSel.size === 1 ? '1 campo escolhido' : `${S.recSel.size} campos escolhidos`; };
+  $('#pv-txt').oninput = desenhar; $('#pv-com').onchange = desenhar; desenhar();
+  $('#pv-ok').onclick = () => {
+    const m = $('#pv-motivo').value.trim(), erro = (x) => { $('#pv-msg').innerHTML = `<div class="msg erro">${esc(x)}</div>`; };
+    if (!S.recSel.size) return erro('Escolha pelo menos um campo.');
+    if (m.length < 3) return erro('Escreva o motivo da recontagem.');
+    const of = $('#pv-of').value || null, ids = [...S.recSel].filter((id) => !emCurso(id));
+    const f = filaRecG(), em = new Date().toISOString();
+    for (const id of ids) f.push({ op: 'pedir', id: crypto.randomUUID(), area_id: id, motivo: m, oficial: of, oficial_nome: of ? nomeOficial(of) : null, em });
+    LS.set('filaRecG', f); actSync(); sincronizar(true); fecharFolha(); actHoje();
+    const n = ids.length;   // sem rede, o cartão do Hoje mostra "No telefone" em cada pedido
+    aviso(n === 1 ? (of ? '1 recontagem pedida e encaminhada.' : '1 recontagem pedida.') : (of ? `${n} recontagens pedidas e encaminhadas.` : `${n} recontagens pedidas.`), 'ok');
+  };
+}
 async function ecraEncaminhar(rid) {
   const r = recontagens().find((x) => x.id === rid); if (!r) return;
   const a = S.areas.find((x) => x.id === r.area_id) || {};
@@ -1628,11 +1670,11 @@ function cartaoRecontagensHoje() {
   if (!gereRecont()) return '';
   const por = l.filter((r) => r.estado === 'por_encaminhar'), val = l.filter((r) => r.estado === 'enviada'), curso = l.filter((r) => ['encaminhada', 'recusada'].includes(r.estado));
   if (!por.length && !val.length && !curso.length)   // o cartão aparece sempre ao M&E e ao gestor, mesmo sem pedidos (18/10/2026, Valdo não o via)
-    return '<div class="cartao" style="border-left:4px solid #6d4c41"><h2>📋 Recontagens das plantas</h2><p>Sem recontagens em curso.</p><p class="pequeno">Para pedir uma recontagem: abra o campo no Mapa ou em Campos › 📋 Pedir recontagem das plantas. Cada queimada registada também pede uma.</p></div>';
+    return '<div class="cartao" style="border-left:4px solid #6d4c41"><h2>📋 Recontagens das plantas</h2><p>Sem recontagens em curso.</p><p class="pequeno">Escolha um ou mais campos no botão abaixo (ou abra o campo no Mapa ou em Campos). Cada queimada registada também pede uma, de forma automática.</p><button class="btn sec" onclick="ecraPedirVarias()">📋 Pedir recontagens das plantas</button></div>';
   return `<div class="cartao" style="border-left:4px solid #6d4c41"><h2>📋 Recontagens das plantas</h2>
     ${sec('Por encaminhar a um oficial', por)}
     ${S.perfil.papel === 'me' ? sec('Por validar', val, (r) => ' · ' + esc(r.oficial || '')) : sec('Feitas, em validação pelo M&E', val)}
-    ${sec('Com o oficial', curso, (r) => ' · ' + esc(r.oficial || ''))}</div>`;
+    ${sec('Com o oficial', curso, (r) => ' · ' + esc(r.oficial || ''))}<button class="btn sec" onclick="ecraPedirVarias()">📋 Pedir recontagens das plantas</button></div>`;
 }
 function ecraQueimada(id, r) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
