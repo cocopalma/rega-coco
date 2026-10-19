@@ -391,7 +391,7 @@ window.I18N_SW_D = {
 "👣 Percursos do dia": "👣 Njia za siku",
 "👣 Percursos": "👣 Njia",
 "Dia": "Siku",
-"O percurso é o do telefone do activista (os sazonais andam com ele), gravado só no trabalho e só com a app aberta. As partes a cinzento tracejado não têm registo (app fechada ou ecrã desligado).": "Njia ni ya simu ya mwanaharakati (wafanyakazi wa msimu huenda naye), inarekodiwa kazini tu na programu ikiwa wazi. Sehemu za kijivu zenye mistari hazina rekodi (programu imefungwa au skrini imezimwa).",
+"O percurso é o do telefone do activista, gravado só no trabalho e só com a app aberta. As partes a cinzento tracejado não têm registo (app fechada ou ecrã desligado).": "Njia ni ya simu ya mwanaharakati, inarekodiwa kazini tu na programu ikiwa wazi. Sehemu za kijivu zenye mistari hazina rekodi (programu imefungwa au skrini imezimwa).",
 "Precisa de rede para ver os percursos.": "Unahitaji mtandao kuona njia.",
 "Sem percursos neste dia.": "Hakuna njia siku hii.",
 "Roxo: percurso gravado · cinzento tracejado: sem registo (app fechada ou ecrã desligado) · números: regas pela ordem.": "Zambarau: njia iliyorekodiwa · kijivu chenye mistari: bila rekodi (programu imefungwa au skrini imezimwa) · namba: umwagiliaji kwa mpangilio.",

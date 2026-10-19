@@ -536,7 +536,7 @@ function desenharRotulos() {
   }
 }
 // ---------- percurso do dia (19/10/2026, pedido do Dalmar; decisões do Valdo) ----------
-// Grava por onde anda o telefone do activista (os sazonais andam com ele) só no trabalho: desde que regista as pessoas
+// Grava por onde anda o telefone do activista só no trabalho: desde que regista as pessoas
 // de hoje ou a 1.ª entrada até tocar em "Terminar o dia" ou às 18:00. Sem gasto extra de bateria (Valdo): usa as leituras
 // do GPS que a app já faz para o ponto azul do mapa; não liga outro GPS nem mantém o ecrã ligado. O activista não vê
 // a linha do percurso no Hoje (Valdo, 19/10/2026: "não precisam saber"); pára às 18:00. Por isso só grava com a
@@ -630,7 +630,7 @@ async function ecraPercursos(data) {
   folha(`<h2>👣 Percursos do dia</h2>
     <label>Dia<input id="pc-dia" type="date" value="${d}" max="${hojeISO()}"></label>
     <div id="pc-lista"><p class="pequeno">A carregar…</p></div>
-    <p class="pequeno">O percurso é o do telefone do activista (os sazonais andam com ele), gravado só no trabalho e só com a app aberta. As partes a cinzento tracejado não têm registo (app fechada ou ecrã desligado).</p>`);
+    <p class="pequeno">O percurso é o do telefone do activista, gravado só no trabalho e só com a app aberta. As partes a cinzento tracejado não têm registo (app fechada ou ecrã desligado).</p>`);
   $('#pc-dia').onchange = () => ecraPercursos($('#pc-dia').value);
   const g = (LS.get('percDias', {}) || {})[d];
   const notaG = g ? `<div class="msg info">Guardado no telefone às ${fmtHora(g.em)} de ${fmtData(diaLocal(g.em))}.</div>` : '';
