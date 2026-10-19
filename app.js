@@ -228,6 +228,7 @@ async function sincronizarAgora(silencioso) {
       LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); alteradas++;
     }
   }
+  if (!erro) erro = await enviarPercurso();
   if (!erro) erro = await enviarMonitorias();
   if (!erro) {                                           // chuva medida no pluviómetro
     for (const c of LS.get('filaChuva', [])) {
@@ -393,7 +394,7 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -456,6 +457,7 @@ function iniciarMapa() {
   mapa.on('click', (e) => { if (S.regua) pontoRegua([e.latlng.lat, e.latlng.lng]); });
   if (navigator.geolocation) navigator.geolocation.watchPosition((p) => {
     S.pos = [p.coords.latitude, p.coords.longitude]; S.fix = { coords: p.coords, t: Date.now() };
+    pontoPercurso(p.coords);
     if (!eu) eu = L.circleMarker(S.pos, { radius: 9, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 }).addTo(mapa);
     else eu.setLatLng(S.pos);
     // o ponto saiu do ecrã (a andar ou de carro): o mapa acompanha (16/10/2026, Dalmar). Se a pessoa arrastou o mapa
@@ -531,6 +533,124 @@ function desenharRotulos() {
     postas.push(r); n++;
   }
 }
+// ---------- percurso do dia (19/10/2026, pedido do Dalmar; decisões do Valdo) ----------
+// Grava por onde anda o telefone do activista (os sazonais andam com ele) só no trabalho: desde que regista as pessoas
+// de hoje ou a 1.ª entrada até tocar em "Terminar o dia" ou às 18:00. Sem gasto extra de bateria (Valdo): usa as leituras
+// do GPS que a app já faz para o ponto azul do mapa; não liga outro GPS nem mantém o ecrã ligado. Por isso só grava com a
+// app aberta e o ecrã ligado; o resto aparece como "sem registo". Técnico, supervisor e gestor gravam em teste quando
+// fazem regas de teste. Vêem: técnico e supervisor (dos seus activistas), gestor, director e cliente/administração.
+const PERC = { precisao: 50, passo: 20, intervalo: 300, max: 300, fimHora: 18, buraco: 600 };
+const horaMaputo = () => +new Date().toLocaleString('en-GB', { timeZone: 'Africa/Maputo', hour: '2-digit', hour12: false });
+const diaLocal = (t) => (t ? new Date(t).toLocaleDateString('sv-SE') : null);
+function trabalhoHoje() {
+  const h = hojeISO(), ec = LS.get('emCurso');
+  if (ec && diaLocal(ec.entrada_em) === h) return true;
+  if (filaRegistos().some((r) => r.data === h) || (LS.get('meusRegs', []) || []).some((r) => r.data === h)) return true;
+  return souActivista() && !!jornadaHoje();
+}
+function percursoActivo() {
+  if (!PODE_REGAR.includes(S.perfil?.papel)) return false;
+  if (LS.get('percursoFim') === hojeISO() || horaMaputo() >= PERC.fimHora) return false;
+  return trabalhoHoje();
+}
+const pontosPercursoHoje = () => (LS.get('percurso', []) || []).filter((b) => b.data === hojeISO()).reduce((t, b) => t + b.pontos.length, 0);
+const percursoPorEnviar = () => (LS.get('percurso', []) || []).some((b) => (b.env || 0) < b.pontos.length);
+function pontoPercurso(c) {
+  if (!c || c.accuracy > PERC.precisao || !percursoActivo()) return;
+  const h = hojeISO(), t = Math.round(Date.now() / 1000), pt = [+c.longitude.toFixed(6), +c.latitude.toFixed(6), t, Math.round(c.accuracy)];
+  const B = LS.get('percurso', []) || [];
+  let b = B.filter((x) => x.data === h).pop();
+  const u = b && b.pontos[b.pontos.length - 1];
+  if (u && metros([u[1], u[0]], [pt[1], pt[0]]) < PERC.passo && t - u[2] < PERC.intervalo) return;   // parado: 1 ponto a cada 5 min
+  if (!b || b.pontos.length >= PERC.max) { b = { id: crypto.randomUUID(), data: h, teste: !souActivista(), pontos: [], env: 0 }; B.push(b); }
+  b.pontos.push(pt); LS.set('percurso', B);
+  const el = $('#perc-n'); if (el) el.textContent = num(pontosPercursoHoje());
+}
+async function enviarPercurso() {
+  for (const b of LS.get('percurso', []) || []) {
+    if ((b.env || 0) >= b.pontos.length) continue;
+    const n = b.pontos.length;
+    const r = await sb.rpc('gravar_percurso', { p_id: b.id, p_data: b.data, p_pontos: b.pontos, p_teste: !!b.teste });
+    if (r.error && !r.error.code) return r.error.message;                       // sem rede: fica no telefone
+    const B = LS.get('percurso', []) || [], x = B.find((y) => y.id === b.id); if (x) x.env = n;
+    // blocos cheios ou de outros dias, já enviados, saem do telefone
+    LS.set('percurso', B.filter((y) => !((y.env || 0) >= y.pontos.length && (y.pontos.length >= PERC.max || y.data !== hojeISO()))));
+  }
+  return null;
+}
+function linhaPercurso() {
+  const n = pontosPercursoHoje(), h = hojeISO();
+  let est, bot = '';
+  if (LS.get('percursoFim') === h) { est = 'Terminado'; bot = `<button class="chip" onclick="terminarDia(false)">Continuar a gravar</button>`; }
+  else if (horaMaputo() >= PERC.fimHora) est = 'Parou às 18:00';
+  else if (percursoActivo()) { est = '📍 A gravar'; bot = `<button class="chip" onclick="terminarDia(true)">Terminar o dia</button>`; }
+  else est = souActivista() ? 'Começa ao registar as pessoas de hoje ou a 1.ª entrada' : 'Começa na 1.ª rega de teste';
+  return `<div class="lin"><span>Percurso do dia${souActivista() ? '' : ' · teste'}</span><b><span>${est}</span> · <span id="perc-n">${num(n)}</span> <span>pontos</span> ${bot}</b></div>
+    ${percursoActivo() ? '<p class="pequeno" style="margin:0 0 6px">Só grava com a app aberta e o ecrã ligado.</p>' : ''}`;
+}
+function terminarDia(sim) {
+  if (sim && !confirm('Terminar o dia? A app deixa de gravar o percurso de hoje.')) return;
+  if (sim) LS.set('percursoFim', hojeISO()); else LS.del('percursoFim');
+  sincronizar(true); desenharHoje();
+}
+// ver o percurso no mapa
+let percCamada = null;
+const podeVerPercursos = () => ['tecnico', 'supervisor', 'gestor', 'director', 'cliente'].includes(S.perfil?.papel);
+async function ecraPercursos(data) {
+  const d = typeof data === 'string' ? data : hojeISO();
+  folha(`<h2>👣 Percursos do dia</h2>
+    <label>Dia<input id="pc-dia" type="date" value="${d}" max="${hojeISO()}"></label>
+    <div id="pc-lista"><p class="pequeno">A carregar…</p></div>
+    <p class="pequeno">O percurso é o do telefone do activista (os sazonais andam com ele), gravado só no trabalho e só com a app aberta. As partes a cinzento tracejado não têm registo (app fechada ou ecrã desligado).</p>`);
+  $('#pc-dia').onchange = () => ecraPercursos($('#pc-dia').value);
+  if (!navigator.onLine) { $('#pc-lista').innerHTML = '<div class="msg info">Precisa de rede para ver os percursos.</div>'; return; }
+  const r = await sb.rpc('percursos_dia', { p_data: d });
+  if (r.error) { $('#pc-lista').innerHTML = `<div class="msg erro">${esc(r.error.message)}</div>`; return; }
+  const l = r.data || []; S.percLista = l;
+  $('#pc-lista').innerHTML = l.length ? l.map((x, i) => `<div class="item" onclick="verPercurso(${i}, '${d}')"><div><div class="nome">${esc(x.nome)}${x.teste ? ' <span class="pequeno">(teste)</span>' : ''}</div>
+      <div class="sub">${fmtHora(x.primeiro)}–${fmtHora(x.ultimo)} · <span>${num(x.n)}</span> <span>pontos</span></div></div></div>`).join('')
+    : '<p>Sem percursos neste dia.</p>';
+}
+async function verPercurso(i, d) {
+  const x = (S.percLista || [])[i]; if (!x) return;
+  const r = await sb.rpc('percurso_dia', { p_data: d, p_activista: x.activista_id, p_user: x.user_id });
+  if (r.error) return aviso(r.error.message, 'erro');
+  fecharFolha(); mudar('mapa'); if (S.regua) fecharRegua();
+  desenharPercurso(x, d, r.data || {});
+}
+function desenharPercurso(x, d, dados) {
+  if (!percCamada) percCamada = L.layerGroup().addTo(mapa);
+  percCamada.clearLayers();
+  const P = (dados.pontos || []).map((p) => ({ ll: [p[1], p[0]], t: p[2] })), regas = dados.regas || [];
+  // partes seguidas (sem buracos de mais de 10 min); entre elas, linha cinzenta tracejada = sem registo
+  const partes = []; let cur = [], dist = 0, semReg = 0;
+  P.forEach((p, k) => {
+    if (k && p.t - P[k - 1].t > PERC.buraco) { if (cur.length) partes.push(cur); semReg += p.t - P[k - 1].t;
+      L.polyline([P[k - 1].ll, p.ll], { color: '#777', weight: 3, dashArray: '4 8', interactive: false }).addTo(percCamada); cur = []; }
+    else if (k) dist += metros(P[k - 1].ll, p.ll);
+    cur.push(p);
+  });
+  if (cur.length) partes.push(cur);
+  for (const pt of partes) if (pt.length > 1) L.polyline(pt.map((p) => p.ll), { color: '#6a1b9a', weight: 4, opacity: .85, interactive: false }).addTo(percCamada);
+  const marca = (ll, txt, cor) => L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: cor, fillOpacity: 1 }).bindTooltip(txt, { permanent: true, direction: 'top', offset: [0, -8], className: 'rot-regua' }).addTo(percCamada);
+  if (P.length) { marca(P[0].ll, `Início ${fmtHora(new Date(P[0].t * 1000).toISOString())}`, '#2e7d32'); if (P.length > 1) marca(P[P.length - 1].ll, `Fim ${fmtHora(new Date(P[P.length - 1].t * 1000).toISOString())}`, '#c62828'); }
+  regas.forEach((g, k) => { const a = S.areas.find((y) => y.id === g.area_id); if (!a || a.latitude == null) return;
+    L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-rega-n', html: `<b style="display:block;width:22px;height:22px;line-height:22px;border-radius:11px;background:#1565c0;color:#fff;text-align:center;font-size:12px">${k + 1}</b>`, iconSize: [22, 22], iconAnchor: [11, 11] }) })
+      .bindPopup(`<b>${k + 1}. ${esc(a.produtor || '')}</b><br>${esc(a.id)}<br>${fmtHora(g.entrada_em)}–${fmtHora(g.saida_em)} · ${num(g.plantas)} plantas`).addTo(percCamada); });
+  const lim = [...P.map((p) => p.ll), ...regas.map((g) => { const a = S.areas.find((y) => y.id === g.area_id); return a && a.latitude != null ? [a.latitude, a.longitude] : null; }).filter(Boolean)];
+  if (lim.length) mapa.fitBounds(lim, { padding: [40, 40], maxZoom: 17 });
+  $('.legenda').style.display = 'none'; $('#b-perc').classList.add('on');
+  const h = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.round(s / 60)} min`);
+  $('#pc-total').innerHTML = `<b>${esc(x.nome)}</b>${x.teste ? ' <b>(teste)</b>' : ''} · <b>${fmtData(d)}</b>`;
+  $('#pc-info').innerHTML = P.length
+    ? `<span>${fmtHora(new Date(P[0].t * 1000).toISOString())}–${fmtHora(new Date(P[P.length - 1].t * 1000).toISOString())}</span> · <span>${fmtDist(dist)}</span> <span>percorridos</span> · <span>${regas.length}</span> <span>${regas.length === 1 ? 'rega' : 'regas'}</span>${semReg ? ` · <span>sem registo:</span> <span>${h(semReg)}</span>` : ''}`
+    : '<span>Sem pontos neste dia.</span>';
+  $('#percurso').style.display = '';
+}
+function fecharPercurso() {
+  if (percCamada) percCamada.clearLayers();
+  $('#percurso').style.display = 'none'; $('.legenda').style.display = ''; $('#b-perc').classList.remove('on');
+}
 // medir a distância entre campos, como no Google Maps (18/10/2026, Valdo): linha recta, funciona sem rede
 let regua;
 const fmtDist = (m) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`);
@@ -591,6 +711,7 @@ function desenharMapa(enquadrar = false) {
   desenharRotulos();
   $('#b-filtro').textContent = S.filtro === 'meus' ? 'As minhas' : 'Todas';
   $('#b-filtro').style.display = 'none';
+  $('#b-perc').style.display = podeVerPercursos() ? '' : 'none';
   const ri = $('#ronda-info');
   if (souActivista() && S.perfil.activista_id) { ri.style.display = ''; ri.innerHTML = textoRonda(); } else ri.style.display = 'none';
 }
@@ -2007,12 +2128,13 @@ async function desenharHoje() {
     html += `<div class="lin"><span>Ronda</span><b>${textoRonda()}</b></div>
       <div class="lin"><span>Pessoas hoje</span><b>${j ? textoEquipa(j.pessoas, tamanhoEquipa(S.perfil.activista_id)) : '—'} <button class="chip" onclick="ecraJornada()">${j ? 'Alterar' : 'Registar'}</button></b></div>
       ${linhaChuva('Chuva (pluviómetro)')}
+      ${linhaPercurso()}
       <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div></div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
     if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarMonitoria(); html = cartaoMonitoria() + html; }
     const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
-    if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste');
+    if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste') + (percursoActivo() || pontosPercursoHoje() ? linhaPercurso() : '');
     // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
     const r = navigator.onLine ? await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h) : { error: { semRede: true } };
     if (r.error && (r.error.semRede || /fetch|network|rede/i.test(r.error.message || ''))) {
@@ -2494,6 +2616,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#folha-x').onclick = fecharFolha;
   $('#b-rodar').onclick = alternarRodar; botaoRodar();
   $('#b-regua').onclick = alternarRegua;
+  $('#b-perc').onclick = ecraPercursos; $('#pc-fechar').onclick = fecharPercurso;
+  setInterval(() => { if (navigator.onLine && percursoPorEnviar()) sincronizar(true); }, 5 * 60 * 1000);
   $('#rg-fechar').onclick = fecharRegua;
   $('#rg-desf').onclick = () => { if (S.regua?.length) { S.regua.pop(); desenharRegua(); } };
   $('#rg-limpar').onclick = () => { if (S.regua) { S.regua = []; desenharRegua(); } };
