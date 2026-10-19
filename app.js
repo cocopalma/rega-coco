@@ -229,6 +229,7 @@ async function sincronizarAgora(silencioso) {
     }
   }
   if (!erro) erro = await enviarPercurso();
+  if (!erro && podeVerPercursos() && Date.now() - (S.percActEm || 0) > 15 * 60 * 1000) { S.percActEm = Date.now(); actualizarPercursos(hojeISO()).catch(() => {}); }
   if (!erro) erro = await enviarMonitorias();
   if (!erro) {                                           // chuva medida no pluviómetro
     for (const c of LS.get('filaChuva', [])) {
@@ -394,7 +395,8 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -536,7 +538,8 @@ function desenharRotulos() {
 // ---------- percurso do dia (19/10/2026, pedido do Dalmar; decisões do Valdo) ----------
 // Grava por onde anda o telefone do activista (os sazonais andam com ele) só no trabalho: desde que regista as pessoas
 // de hoje ou a 1.ª entrada até tocar em "Terminar o dia" ou às 18:00. Sem gasto extra de bateria (Valdo): usa as leituras
-// do GPS que a app já faz para o ponto azul do mapa; não liga outro GPS nem mantém o ecrã ligado. Por isso só grava com a
+// do GPS que a app já faz para o ponto azul do mapa; não liga outro GPS nem mantém o ecrã ligado. O activista não vê
+// a linha do percurso no Hoje (Valdo, 19/10/2026: "não precisam saber"); pára às 18:00. Por isso só grava com a
 // app aberta e o ecrã ligado; o resto aparece como "sem registo". Técnico, supervisor e gestor gravam em teste quando
 // fazem regas de teste. Vêem: técnico e supervisor (dos seus activistas), gestor, director e cliente/administração.
 const PERC = { precisao: 50, passo: 20, intervalo: 300, max: 300, fimHora: 18, buraco: 600 };
@@ -596,6 +599,32 @@ function terminarDia(sim) {
 // ver o percurso no mapa
 let percCamada = null;
 const podeVerPercursos = () => ['tecnico', 'supervisor', 'gestor', 'director', 'cliente'].includes(S.perfil?.papel);
+// Ver sem rede (19/10/2026, Valdo: "precisa de rede apenas para actualizar"): a lista de cada dia fica em rega.percDias e
+// cada percurso no IndexedDB (perc-<dia>-<pessoa>). Ao abrir a lista com rede, descarrega todos os percursos desse dia;
+// a sincronização actualiza os de hoje a cada 15 min. Guarda os últimos 14 dias.
+const chavePerc = (d, x) => `perc-${d}-${x.activista_id || x.user_id}`;
+async function actualizarPercursos(d) {
+  const r = await sb.rpc('percursos_dia', { p_data: d });
+  if (r.error) throw r.error;
+  const l = r.data || [], dias = LS.get('percDias', {}) || {};
+  dias[d] = { em: new Date().toISOString(), lista: l };
+  for (const k of Object.keys(dias).sort().slice(0, -14)) {        // só os últimos 14 dias
+    for (const x of dias[k].lista || []) { try { await FOTOS.apagar(chavePerc(k, x)); } catch {} }
+    delete dias[k];
+  }
+  LS.set('percDias', dias);
+  for (const x of l) {
+    const q = await sb.rpc('percurso_dia', { p_data: d, p_activista: x.activista_id, p_user: x.user_id });
+    if (!q.error) { try { await FOTOS.guardar(chavePerc(d, x), { em: new Date().toISOString(), dados: q.data || {} }); } catch {} }
+  }
+  return l;
+}
+function listaPercursos(d, l, nota) {
+  S.percLista = l; S.percDia = d;
+  $('#pc-lista').innerHTML = (nota || '') + (l.length ? l.map((x, i) => `<div class="item" onclick="verPercurso(${i}, '${d}')"><div><div class="nome">${esc(x.nome)}${x.teste ? ' <span class="pequeno">(teste)</span>' : ''}</div>
+      <div class="sub">${fmtHora(x.primeiro)}–${fmtHora(x.ultimo)} · <span>${num(x.n)}</span> <span>pontos</span></div></div></div>`).join('')
+    : '<p>Sem percursos neste dia.</p>');
+}
 async function ecraPercursos(data) {
   const d = typeof data === 'string' ? data : hojeISO();
   folha(`<h2>👣 Percursos do dia</h2>
@@ -603,22 +632,29 @@ async function ecraPercursos(data) {
     <div id="pc-lista"><p class="pequeno">A carregar…</p></div>
     <p class="pequeno">O percurso é o do telefone do activista (os sazonais andam com ele), gravado só no trabalho e só com a app aberta. As partes a cinzento tracejado não têm registo (app fechada ou ecrã desligado).</p>`);
   $('#pc-dia').onchange = () => ecraPercursos($('#pc-dia').value);
-  if (!navigator.onLine) { $('#pc-lista').innerHTML = '<div class="msg info">Precisa de rede para ver os percursos.</div>'; return; }
-  const r = await sb.rpc('percursos_dia', { p_data: d });
-  if (r.error) { $('#pc-lista').innerHTML = `<div class="msg erro">${esc(r.error.message)}</div>`; return; }
-  const l = r.data || []; S.percLista = l;
-  $('#pc-lista').innerHTML = l.length ? l.map((x, i) => `<div class="item" onclick="verPercurso(${i}, '${d}')"><div><div class="nome">${esc(x.nome)}${x.teste ? ' <span class="pequeno">(teste)</span>' : ''}</div>
-      <div class="sub">${fmtHora(x.primeiro)}–${fmtHora(x.ultimo)} · <span>${num(x.n)}</span> <span>pontos</span></div></div></div>`).join('')
-    : '<p>Sem percursos neste dia.</p>';
+  const g = (LS.get('percDias', {}) || {})[d];
+  const notaG = g ? `<div class="msg info">Guardado no telefone às ${fmtHora(g.em)} de ${fmtData(diaLocal(g.em))}.</div>` : '';
+  if (g) listaPercursos(d, g.lista || [], navigator.onLine ? '<p class="pequeno">A actualizar…</p>' : notaG);
+  if (!navigator.onLine) { if (!g) $('#pc-lista').innerHTML = '<div class="msg info">Sem rede e sem percursos deste dia no telefone. Abra-os uma vez com rede.</div>'; return; }
+  try { const l = await actualizarPercursos(d); if (S.percDia === d || !g) listaPercursos(d, l); }
+  catch (e) { if (g) listaPercursos(d, g.lista || [], notaG); else $('#pc-lista').innerHTML = `<div class="msg erro">${esc(e.message || 'Sem rede.')}</div>`; }
 }
 async function verPercurso(i, d) {
   const x = (S.percLista || [])[i]; if (!x) return;
-  const r = await sb.rpc('percurso_dia', { p_data: d, p_activista: x.activista_id, p_user: x.user_id });
-  if (r.error) return aviso(r.error.message, 'erro');
+  let dados = null, nota = '';
+  if (navigator.onLine) {
+    const r = await sb.rpc('percurso_dia', { p_data: d, p_activista: x.activista_id, p_user: x.user_id });
+    if (!r.error) { dados = r.data || {}; try { await FOTOS.guardar(chavePerc(d, x), { em: new Date().toISOString(), dados }); } catch {} }
+  }
+  if (!dados) {
+    let g = null; try { g = await FOTOS.ler(chavePerc(d, x)); } catch {}
+    if (!g) return aviso('Este percurso ainda não está no telefone. Abra-o uma vez com rede.', 'erro');
+    dados = g.dados || {}; nota = g.em;
+  }
   fecharFolha(); mudar('mapa'); if (S.regua) fecharRegua();
-  desenharPercurso(x, d, r.data || {});
+  desenharPercurso(x, d, dados, nota);
 }
-function desenharPercurso(x, d, dados) {
+function desenharPercurso(x, d, dados, guardadoEm) {
   if (!percCamada) percCamada = L.layerGroup().addTo(mapa);
   percCamada.clearLayers();
   const P = (dados.pontos || []).map((p) => ({ ll: [p[1], p[0]], t: p[2] })), regas = dados.regas || [];
@@ -645,6 +681,7 @@ function desenharPercurso(x, d, dados) {
   $('#pc-info').innerHTML = P.length
     ? `<span>${fmtHora(new Date(P[0].t * 1000).toISOString())}–${fmtHora(new Date(P[P.length - 1].t * 1000).toISOString())}</span> · <span>${fmtDist(dist)}</span> <span>percorridos</span> · <span>${regas.length}</span> <span>${regas.length === 1 ? 'rega' : 'regas'}</span>${semReg ? ` · <span>sem registo:</span> <span>${h(semReg)}</span>` : ''}`
     : '<span>Sem pontos neste dia.</span>';
+  if (guardadoEm) $('#pc-info').innerHTML += `<br><span>Sem rede: guardado no telefone às</span> <span>${fmtHora(guardadoEm)}</span>`;
   $('#percurso').style.display = '';
 }
 function fecharPercurso() {
@@ -2128,7 +2165,6 @@ async function desenharHoje() {
     html += `<div class="lin"><span>Ronda</span><b>${textoRonda()}</b></div>
       <div class="lin"><span>Pessoas hoje</span><b>${j ? textoEquipa(j.pessoas, tamanhoEquipa(S.perfil.activista_id)) : '—'} <button class="chip" onclick="ecraJornada()">${j ? 'Alterar' : 'Registar'}</button></b></div>
       ${linhaChuva('Chuva (pluviómetro)')}
-      ${linhaPercurso()}
       <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div></div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {

@@ -368,6 +368,10 @@ window.I18N_SW_D = {
 "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Mvua inasajiliwa tu mahali pa kipimo cha mvua: programu inatumia GPS kujua jamii.",
 "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "Hakuna mashamba yenye kuratibu kwenye simu. Sajili mvua karibu na kipimo cha mvua, katika jamii.",
 "Pelo GPS está em": "Kwa GPS uko",
+"Sem rede e sem percursos deste dia no telefone. Abra-os uma vez com rede.": "Hakuna mtandao na hakuna njia za siku hii kwenye simu. Zifungue mara moja ukiwa na mtandao.",
+"A actualizar…": "Inasasisha…",
+"Este percurso ainda não está no telefone. Abra-o uma vez com rede.": "Njia hii bado haipo kwenye simu. Ifungue mara moja ukiwa na mtandao.",
+"Sem rede: guardado no telefone às": "Hakuna mtandao: imehifadhiwa kwenye simu saa",
 "Percurso do dia": "Njia ya siku",
 "Percurso do dia · teste": "Njia ya siku · jaribio",
 "📍 A gravar": "📍 Inarekodi",
@@ -1022,4 +1026,5 @@ window.I18N_SW_R = (tr) => [
     [/^Recontagem de (.+): falta a fotografia da declaração no telefone\. Registe a recontagem de novo\.$/, 'Kuhesabu upya kwa $1: picha ya tamko haipo kwenye simu. Andika kuhesabu upya tena.'],
     [/^Início (\d{1,2}:\d{2})$/, 'Mwanzo $1'],
     [/^Fim (\d{1,2}:\d{2})$/, 'Mwisho $1'],
+    [/^Guardado no telefone às (\d{1,2}:\d{2}) de (.+)\.$/, 'Imehifadhiwa kwenye simu saa $1 tarehe $2.'],
   ];
