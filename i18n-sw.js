@@ -368,6 +368,9 @@ window.I18N_SW_D = {
 "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Mvua inasajiliwa tu mahali pa kipimo cha mvua: programu inatumia GPS kujua jamii.",
 "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "Hakuna mashamba yenye kuratibu kwenye simu. Sajili mvua karibu na kipimo cha mvua, katika jamii.",
 "Pelo GPS está em": "Kwa GPS uko",
+"Pare junto a cada muda e carregue em «Marcar planta aqui». Marcou por engano? Carregue em «↶ Apagar a última planta» ou toque no ponto do desenho e em «Remover este ponto». Para mudar o estado de uma muda, toque no ponto ou em «Planta mais perto de mim».": "Simama karibu na kila mche na ubonyeze «Weka alama ya mmea hapa». Umeweka alama kwa makosa? Bonyeza «↶ Futa mmea wa mwisho» au gusa nukta kwenye mchoro na «Ondoa nukta hii». Kubadilisha hali ya mche, gusa nukta au «Mmea ulio karibu nami».",
+"↶ Apagar a última planta": "↶ Futa mmea wa mwisho",
+"A melhorar o GPS… fique parado": "Inaboresha GPS… simama tuli",
 "Início do percurso": "Mwanzo wa njia",
 "Fim do percurso": "Mwisho wa njia",
 "O telefone quase não se deslocou: o percurso é muito curto.": "Simu haikusogea sana: njia ni fupi sana.",
@@ -1036,4 +1039,7 @@ window.I18N_SW_R = (tr) => [
     [/^Início (\d{1,2}:\d{2})$/, 'Mwanzo $1'],
     [/^Fim (\d{1,2}:\d{2})$/, 'Mwisho $1'],
     [/^Guardado no telefone às (\d{1,2}:\d{2}) de (.+)\.$/, 'Imehifadhiwa kwenye simu saa $1 tarehe $2.'],
+    [/^↶ Apagar a última planta \(nº (\d+)\)$/, '↶ Futa mmea wa mwisho (na. $1)'],
+    [/^±(\d+) m \(fraco\)$/, '±$1 m (dhaifu)'],
+    [/^Planta nº (\d+) marcada com GPS fraco \(±(\d+) m\)\.$/, 'Mmea na. $1 umewekwa alama kwa GPS dhaifu (±$2 m).'],
   ];

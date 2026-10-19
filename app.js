@@ -875,7 +875,11 @@ function desenharLista() {
 // ---------- mapa de plantas (15/10/2026, pedido do Dalmar; teste com gestor/director, supervisores e técnicos) ----------
 // Cada muda fica com a sua coordenada (média das leituras do GPS durante uns segundos) e o estado: viva / seca / morta,
 // cava-roda, mulching. Funciona sem rede: as plantas ficam no telefone (rega.plantas) e vão pela fila de alterações.
-const PL_MEDIA_MS = 3000, PL_PREC = 10, PL_PERTO = 3;  // 3 s de leituras; aceita leituras até ±10 m; aviso se já há planta a < 3 m (16/10/2026, Nuro: estava lento)
+// v82 (19/10/2026, Nuro: "30 a 40 segundos… marcação de cada muda em, no máximo, cerca de 5 segundos"): o GPS fica sempre
+// ligado neste ecrã e guarda as leituras dos últimos segundos; ao tocar em «Marcar», usa logo as leituras boas (±10 m) dos
+// últimos 3 s; se não houver, espera no máximo 4 s por uma; se mesmo assim não houver, marca com a melhor leitura e
+// avisa "GPS fraco" (a precisão fica gravada na planta). O botão nunca fica bloqueado à espera do GPS.
+const PL_JANELA_MS = 3000, PL_ESPERA_MS = 4000, PL_PREC = 10, PL_PERTO = 3;
 const COR_PLANTA = { viva: '#2e7d32', seca: '#ef8f00', morta: '#c62828' };
 let vigiaPlantas = null, travaPlantas = null;
 const plantasLocais = (id) => ((LS.get('plantas', {}) || {})[id] || []);
@@ -900,15 +904,16 @@ async function carregarPlantas(id) {
 function ecraPlantas(id) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   pararVigia();
-  S.pl = { id, pos: null, sel: null, lendo: false, leituras: [] };
+  S.pl = { id, pos: null, sel: null, lendo: false, hist: [] };
   // começa com a última posição do GPS da app (se for recente), para não esperar por uma leitura nova
-  if (S.fix && Date.now() - S.fix.t < 20000) S.pl.pos = { lat: S.fix.coords.latitude, lon: S.fix.coords.longitude, prec: Math.round(S.fix.coords.accuracy) };
+  if (S.fix && Date.now() - S.fix.t < 20000) { S.pl.pos = { lat: S.fix.coords.latitude, lon: S.fix.coords.longitude, prec: Math.round(S.fix.coords.accuracy), t: S.fix.t }; S.pl.hist.push(S.pl.pos); }
   folha(`<h2>Mapa das plantas · ${esc(a.produtor)}</h2>
-    <div class="msg info"><b>Teste.</b> Pare junto a cada muda e carregue em «Marcar planta aqui»: o telefone faz a média do GPS durante uns segundos. Para mudar o estado de uma muda, toque no ponto do desenho ou em «Planta mais perto de mim».</div>
+    <div class="msg info"><b>Teste.</b> Pare junto a cada muda e carregue em «Marcar planta aqui». Marcou por engano? Carregue em «↶ Apagar a última planta» ou toque no ponto do desenho e em «Remover este ponto». Para mudar o estado de uma muda, toque no ponto ou em «Planta mais perto de mim».</div>
     <div class="cartao"><div class="lin"><span>Precisão do GPS</span><b id="pl-prec">—</b></div><div id="pl-resumo"></div></div>
     <div id="pl-des" style="margin:8px 0"></div>
     <p class="pequeno" style="margin:0 0 6px"><span style="color:${COR_PLANTA.viva}">●</span> viva &nbsp; <span style="color:${COR_PLANTA.seca}">●</span> seca &nbsp; <span style="color:${COR_PLANTA.morta}">●</span> morta &nbsp; ◎ anel castanho = cava-roda e mulching (tracejado = só um) &nbsp; <span style="color:#1565c0">●</span> eu</p>
     <button class="btn" id="pl-marcar">📍 Marcar planta aqui</button>
+    <button class="btn sec" id="pl-desfazer" style="display:none" onclick="apagarUltimaPlanta()">↶ Apagar a última planta</button>
     <button class="btn sec" id="pl-perto">Planta mais perto de mim</button>
     <div id="pl-sel"></div>
     <button class="btn sec" onclick="pararPlantas();abrirFicha('${esc(id)}')">Voltar à ficha</button>`);
@@ -925,24 +930,25 @@ function ecraPlantas(id) {
   if (!navigator.geolocation) return aviso('Este telefone não tem GPS disponível no navegador.', 'erro');
   vigiaPlantas = navigator.geolocation.watchPosition((p) => {
     if (!$('#pl-prec')) return pararPlantas();
-    S.pl.pos = { lat: p.coords.latitude, lon: p.coords.longitude, prec: Math.round(p.coords.accuracy) };
-    if (S.pl.lendo) S.pl.leituras.push(S.pl.pos);
+    S.pl.pos = { lat: p.coords.latitude, lon: p.coords.longitude, prec: Math.round(p.coords.accuracy), t: Date.now() };
+    S.pl.hist = [...S.pl.hist.filter((x) => Date.now() - x.t < 10000), S.pl.pos];
     mostrarGpsPlantas();
     desenharPlantas();
   }, (e) => { const el = $('#pl-prec'); if (el) el.textContent = e.code === 1 ? 'sem autorização de localização' : 'sem sinal de GPS'; },
   { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 });
 }
-// precisão do GPS e estado do botão: enquanto a precisão não chega a ±10 m, o botão diz que está a preparar o GPS
+// precisão do GPS (verde ≤ 5 m, laranja ≤ 10 m, vermelho = fraco); o botão de marcar fica sempre activo
 function mostrarGpsPlantas() {
   const p = S.pl?.pos, el = $('#pl-prec'), b = $('#pl-marcar'); if (!el || !p) return;
-  el.textContent = `±${p.prec} m`; el.style.color = p.prec <= CFG.precisaoIdeal ? '#1b5e20' : p.prec <= PL_PREC ? '#ef8f00' : '#c62828';
-  if (b && !S.pl.lendo) { const pronto = p.prec <= PL_PREC; b.disabled = !pronto; b.textContent = pronto ? '📍 Marcar planta aqui' : `A preparar o GPS… (±${p.prec} m)`; }
+  el.textContent = p.prec <= PL_PREC ? `±${p.prec} m` : `±${p.prec} m (fraco)`; el.style.color = p.prec <= CFG.precisaoIdeal ? '#1b5e20' : p.prec <= PL_PREC ? '#ef8f00' : '#c62828';
+  if (b && !S.pl.lendo) { b.disabled = false; b.textContent = '📍 Marcar planta aqui'; }
 }
 function desenharPlantas() {
   const P = S.pl; if (!P || !$('#pl-des')) return;
   const a = S.areas.find((x) => x.id === P.id) || {}, l = plantasLocais(P.id);
   const pol = temPoligono(a) ? a.poligono : [], todos = [...pol, ...l.map((x) => [x.lon, x.lat]), ...(P.pos ? [[P.pos.lon, P.pos.lat]] : [])];
   const v = { viva: 0, seca: 0, morta: 0 }; let cr = 0, mu = 0; for (const x of l) { v[x.estado] = (v[x.estado] || 0) + 1; if (x.cavaroda) cr++; if (x.mulching) mu++; }
+  const bd = $('#pl-desfazer'); if (bd) { const u = l.reduce((m, x) => (!m || (x.n || 0) > (m.n || 0) ? x : m), null); bd.style.display = u ? '' : 'none'; if (u) bd.textContent = `↶ Apagar a última planta (nº ${u.n})`; }
   $('#pl-resumo').innerHTML = `<div class="lin"><span>Plantas marcadas</span><b>${num(l.length)}${a.instaladas ? ` <span class="pequeno">(base: ${num(a.instaladas)} plantadas)</span>` : ''}</b></div>
     <div class="lin"><span>Vivas · secas · mortas</span><b>${num(v.viva)} · ${num(v.seca)} · ${num(v.morta)}</b></div>
     <div class="lin"><span>Com cava-roda · com mulching</span><b>${num(cr)} · ${num(mu)}</b></div>`;
@@ -964,11 +970,20 @@ function desenharPlantas() {
 async function marcarPlanta() {
   const P = S.pl; if (!P || P.lendo) return;
   if (!P.pos) return aviso('Ainda sem posição do GPS. Espere uns segundos.', 'erro');
-  P.lendo = true; P.leituras = [P.pos]; const b = $('#pl-marcar'); b.disabled = true; b.textContent = 'A ler o GPS… fique parado';
-  await new Promise((ok) => setTimeout(ok, PL_MEDIA_MS));
-  P.lendo = false; mostrarGpsPlantas(); if (b && !b.disabled) b.textContent = '📍 Marcar planta aqui';
-  const boas = P.leituras.filter((x) => x.prec <= PL_PREC);
-  if (!boas.length) return aviso(`Precisão fraca (±${P.pos.prec} m). Espere uns segundos e tente de novo.`, 'erro');
+  const boasAgora = () => P.hist.filter((x) => Date.now() - x.t <= PL_JANELA_MS && x.prec <= PL_PREC);
+  let boas = boasAgora();
+  if (!boas.length) {                                       // espera no máximo 4 s por uma leitura boa
+    P.lendo = true; const b = $('#pl-marcar'); b.disabled = true; b.textContent = 'A melhorar o GPS… fique parado';
+    const fim = Date.now() + PL_ESPERA_MS;
+    while (Date.now() < fim && !(boas = boasAgora()).length) await new Promise((ok) => setTimeout(ok, 250));
+    P.lendo = false; mostrarGpsPlantas();
+  }
+  let fraco = false;
+  if (!boas.length) {                                       // sem leitura boa: usa a melhor dos últimos 5 s
+    const rec = P.hist.filter((x) => Date.now() - x.t <= 5000);
+    const m = (rec.length ? rec : [P.pos]).reduce((u, v) => (v.prec < u.prec ? v : u));
+    boas = [m]; fraco = true;
+  }
   let sw = 0, la = 0, lo = 0; for (const x of boas) { const wgt = 1 / Math.max(1, x.prec) ** 2; sw += wgt; la += x.lat * wgt; lo += x.lon * wgt; }
   const pos = { lat: la / sw, lon: lo / sw, prec: Math.min(...boas.map((x) => x.prec)) };
   const l = plantasLocais(P.id);
@@ -979,7 +994,14 @@ async function marcarPlanta() {
   l.push(pl); guardarPlantasLocais(P.id, l);
   porNaFilaAlt({ tipo: 'planta', area_id: P.id, planta: pl });
   P.sel = pl.id; desenharPlantas(); mostrarPlanta();
-  aviso(`Planta nº ${pl.n} marcada (±${pl.precisao_m} m).`, 'ok');
+  aviso(fraco ? `Planta nº ${pl.n} marcada com GPS fraco (±${pl.precisao_m} m).` : `Planta nº ${pl.n} marcada (±${pl.precisao_m} m).`, fraco ? 'info' : 'ok');
+}
+// apagar a última planta marcada (19/10/2026, Nuro: "quando se clica por engano, não existe opção para apagar")
+function apagarUltimaPlanta() {
+  const P = S.pl; if (!P) return;
+  const l = plantasLocais(P.id); if (!l.length) return;
+  const u = l.reduce((m, x) => ((x.n || 0) > (m.n || 0) ? x : m));
+  P.sel = u.id; removerPlanta();
 }
 function selPlanta(pid) { if (!S.pl) return; S.pl.sel = pid; desenharPlantas(); mostrarPlanta(); }
 function mostrarPlanta() {
