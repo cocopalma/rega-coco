@@ -654,28 +654,53 @@ async function verPercurso(i, d) {
   fecharFolha(); mudar('mapa'); if (S.regua) fecharRegua();
   desenharPercurso(x, d, dados, nota);
 }
+// Ver o percurso (v81, 19/10/2026, Valdo: "está confuso, não consigo ver qual foi o percurso"): enquanto se vê um percurso,
+// o mapa esconde os outros campos e as etiquetas; mostra só o caminho (com pontos e horas), o início, o fim e os campos
+// onde a equipa regou, numerados pela ordem; o painel de baixo dá a sequência do dia (tocar numa linha centra o mapa).
+const fmtH = (t) => fmtHora(new Date(t * 1000).toISOString());
+const durTxt = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.max(1, Math.round(s / 60))} min`);
+function modoPercurso(on) {
+  S.modoPerc = on;
+  for (const g of [camada, rotulos]) { if (!g) continue; if (on && mapa.hasLayer(g)) mapa.removeLayer(g); if (!on && !mapa.hasLayer(g)) g.addTo(mapa); }
+  if (eu) eu.setStyle({ opacity: on ? .5 : 1, fillOpacity: on ? .5 : 1 });
+  $('.legenda').style.display = on ? 'none' : ''; $('#b-perc').classList.toggle('on', on);
+}
+function enquadrarPercurso(lim) {
+  if (!lim.length) return;
+  const painel = $('#percurso').offsetHeight || 200;
+  mapa.fitBounds(lim, { paddingTopLeft: [30, 30], paddingBottomRight: [30, painel + 30], maxZoom: 18 });
+}
+function campoRega(a, k, cor) {   // campo onde a equipa regou: limite + número
+  if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { color: cor, weight: 2, fillColor: cor, fillOpacity: .12, interactive: false }).addTo(percCamada);
+  L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-rega-n', html: `<b style="display:block;width:26px;height:26px;line-height:22px;border-radius:13px;background:${cor};color:#fff;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);text-align:center;font-size:13px">${k}</b>`, iconSize: [26, 26], iconAnchor: [13, 13] }) })
+    .on('click', () => abrirFicha(a.id)).addTo(percCamada);
+}
 function desenharPercurso(x, d, dados, guardadoEm) {
   if (!percCamada) percCamada = L.layerGroup().addTo(mapa);
-  percCamada.clearLayers();
-  const P = pontosPerc(dados), regas = dados.regas || [];
-  const { dist, semReg } = tracarPercurso(P, '#6a1b9a', '#777');
-  const marca = (ll, txt, cor) => L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: cor, fillOpacity: 1 }).bindTooltip(txt, { permanent: true, direction: 'top', offset: [0, -8], className: 'rot-regua' }).addTo(percCamada);
-  if (P.length) { marca(P[0].ll, `Início ${fmtHora(new Date(P[0].t * 1000).toISOString())}`, '#2e7d32'); if (P.length > 1) marca(P[P.length - 1].ll, `Fim ${fmtHora(new Date(P[P.length - 1].t * 1000).toISOString())}`, '#c62828'); }
-  regas.forEach((g, k) => { const a = S.areas.find((y) => y.id === g.area_id); if (!a || a.latitude == null) return;
-    L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-rega-n', html: `<b style="display:block;width:22px;height:22px;line-height:22px;border-radius:11px;background:#1565c0;color:#fff;text-align:center;font-size:12px">${k + 1}</b>`, iconSize: [22, 22], iconAnchor: [11, 11] }) })
-      .bindPopup(`<b>${k + 1}. ${esc(a.produtor || '')}</b><br>${esc(a.id)}<br>${fmtHora(g.entrada_em)}–${fmtHora(g.saida_em)} · ${num(g.plantas)} plantas`).addTo(percCamada); });
-  const lim = [...P.map((p) => p.ll), ...regas.map((g) => { const a = S.areas.find((y) => y.id === g.area_id); return a && a.latitude != null ? [a.latitude, a.longitude] : null; }).filter(Boolean)];
-  if (lim.length) mapa.fitBounds(lim, { padding: [40, 40], maxZoom: 17 });
-  $('.legenda').style.display = 'none'; $('#b-perc').classList.add('on');
-  const h = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.round(s / 60)} min`);
+  percCamada.clearLayers(); modoPercurso(true);
+  const P = pontosPerc(dados), regas = dados.regas || [], COR = '#6a1b9a';
+  regas.forEach((g, k) => { const a = S.areas.find((y) => y.id === g.area_id); if (a && a.latitude != null) campoRega(a, k + 1, '#1565c0'); });
+  const { dist, semReg } = tracarPercurso(P, COR, '#777');
+  P.forEach((p, k) => { if (k && k < P.length - 1) L.circleMarker(p.ll, { radius: 4, color: COR, weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip(fmtH(p.t), { direction: 'top' }).addTo(percCamada); });
+  const marca = (ll, txt, cor) => L.circleMarker(ll, { radius: 9, color: '#fff', weight: 3, fillColor: cor, fillOpacity: 1 }).bindTooltip(txt, { permanent: true, direction: 'top', offset: [0, -9], className: 'rot-regua' }).addTo(percCamada);
+  if (P.length) { marca(P[0].ll, `Início ${fmtH(P[0].t)}`, '#2e7d32'); if (P.length > 1) marca(P[P.length - 1].ll, `Fim ${fmtH(P[P.length - 1].t)}`, '#c62828'); }
+  // sequência do dia pela hora: início, cada rega, fim
+  const linhas = [];
+  if (P.length) linhas.push([P[0].t, `<div class="pc-l"><i style="background:#2e7d32"></i><b>${fmtH(P[0].t)}</b> <span>Início do percurso</span></div>`]);
+  regas.forEach((g, k) => { const a = S.areas.find((y) => y.id === g.area_id) || {};
+    linhas.push([Date.parse(g.entrada_em) / 1000, `<div class="pc-l" style="cursor:pointer" onclick="${a.latitude != null ? `mapa.setView([${a.latitude},${a.longitude}],18)` : ''}"><i style="background:#1565c0;color:#fff">${k + 1}</i><b>${fmtHora(g.entrada_em)}–${fmtHora(g.saida_em)}</b> ${esc(a.produtor || g.area_id)} <span class="pequeno">${esc(g.area_id)} · ${num(g.plantas)} plantas</span></div>`]); });
+  if (P.length > 1) linhas.push([P[P.length - 1].t + 0.5, `<div class="pc-l"><i style="background:#c62828"></i><b>${fmtH(P[P.length - 1].t)}</b> <span>Fim do percurso</span></div>`]);
+  linhas.sort((u, v) => u[0] - v[0]);
   $('#pc-total').innerHTML = `<b>${esc(x.nome)}</b>${x.teste ? ' <b>(teste)</b>' : ''} · <b>${fmtData(d)}</b>`;
-  $('#pc-info').innerHTML = P.length
-    ? `<span>${fmtHora(new Date(P[0].t * 1000).toISOString())}–${fmtHora(new Date(P[P.length - 1].t * 1000).toISOString())}</span> · <span>${fmtDist(dist)}</span> <span>percorridos</span> · <span>${regas.length}</span> <span>${regas.length === 1 ? 'rega' : 'regas'}</span>${semReg ? ` · <span>sem registo:</span> <span>${h(semReg)}</span>` : ''}`
-    : '<span>Sem pontos neste dia.</span>';
-  if (guardadoEm) $('#pc-info').innerHTML += `<br><span>Sem rede: guardado no telefone às</span> <span>${fmtHora(guardadoEm)}</span>`;
-  $('#pc-info').style.cssText = '';
-  $('#pc-leg').innerHTML = '<span>Roxo: percurso gravado · cinzento tracejado: sem registo (app fechada ou ecrã desligado) · números: regas pela ordem.</span>';
+  $('#pc-info').innerHTML = (P.length
+    ? `<div><span>${fmtDist(dist)}</span> <span>percorridos</span> · <span>${regas.length}</span> <span>${regas.length === 1 ? 'rega' : 'regas'}</span>${semReg ? ` · <span>sem registo:</span> <span>${durTxt(semReg)}</span>` : ''}</div>`
+      + (dist < 50 && P.length ? '<div class="msg info" style="margin:6px 0">O telefone quase não se deslocou: o percurso é muito curto.</div>' : '')
+    : '<div><span>Sem pontos neste dia.</span></div>') + linhas.map((l) => l[1]).join('')
+    + (guardadoEm ? `<div class="pequeno"><span>Sem rede: guardado no telefone às</span> <span>${fmtHora(guardadoEm)}</span></div>` : '');
+  $('#pc-info').style.cssText = 'max-height:32vh;overflow:auto';
+  $('#pc-leg').innerHTML = '<span>Roxo: caminho · pontos: posições com hora (toque) · azul: campos regados, pela ordem · cinzento tracejado: sem registo.</span>';
   $('#percurso').style.display = '';
+  enquadrarPercurso([...P.map((p) => p.ll), ...regas.map((g) => { const a = S.areas.find((y) => y.id === g.area_id); return a && a.latitude != null ? [a.latitude, a.longitude] : null; }).filter(Boolean)]);
 }
 const pontosPerc = (dados) => (dados.pontos || []).map((p) => ({ ll: [p[1], p[0]], t: p[2] }));
 // desenha um percurso: partes seguidas a cheio; buracos de mais de 10 min a tracejado (sem registo)
@@ -688,7 +713,10 @@ function tracarPercurso(P, cor, corBuraco) {
     cur.push(p);
   });
   if (cur.length) partes.push(cur);
-  for (const pt of partes) if (pt.length > 1) L.polyline(pt.map((p) => p.ll), { color: cor, weight: 4, opacity: .85, interactive: false }).addTo(percCamada);
+  for (const pt of partes) if (pt.length > 1) {
+    L.polyline(pt.map((p) => p.ll), { color: '#fff', weight: 9, opacity: .9, interactive: false }).addTo(percCamada);
+    L.polyline(pt.map((p) => p.ll), { color: cor, weight: 5, opacity: 1, interactive: false }).addTo(percCamada);
+  }
   return { dist, semReg };
 }
 // todas as equipas do dia no mesmo mapa, uma cor por equipa (19/10/2026, Valdo); funciona sem rede com o que está no telefone
@@ -705,12 +733,13 @@ async function verTodasEquipas(d) {
   }
   fecharFolha(); mudar('mapa'); if (S.regua) fecharRegua();
   if (!percCamada) percCamada = L.layerGroup().addTo(mapa);
-  percCamada.clearLayers();
+  percCamada.clearLayers(); modoPercurso(true);
   const lim = [], linhas = [];
   res.forEach(({ x, dados }, i) => {
     const cor = CORES_EQ[i % CORES_EQ.length];
     if (!dados) { linhas.push(`<div class="pequeno"><i style="display:inline-block;width:12px;height:12px;border-radius:6px;background:${cor}"></i> <b>${esc(x.nome)}</b> · <span>não está no telefone</span></div>`); return; }
     const P = pontosPerc(dados), regas = dados.regas || [];
+    regas.forEach((g, k) => { const a = S.areas.find((y) => y.id === g.area_id); if (a && a.latitude != null) { campoRega(a, k + 1, cor); lim.push([a.latitude, a.longitude]); } });
     const { dist } = tracarPercurso(P, cor, cor);
     if (P.length) { const u = P[P.length - 1];
       L.circleMarker(u.ll, { radius: 7, color: '#fff', weight: 2, fillColor: cor, fillOpacity: 1 })
@@ -718,17 +747,16 @@ async function verTodasEquipas(d) {
       lim.push(...P.map((p) => p.ll)); }
     linhas.push(`<div class="pequeno" style="padding:5px 0;cursor:pointer;border-bottom:1px solid #eee" onclick="verPercurso(${i}, '${d}')"><i style="display:inline-block;width:12px;height:12px;border-radius:6px;background:${cor}"></i> <b>${esc(x.nome)}</b>${x.teste ? ' <span>(teste)</span>' : ''} · <span>${fmtDist(dist)}</span> · <span>${regas.length}</span> <span>${regas.length === 1 ? 'rega' : 'regas'}</span></div>`);
   });
-  if (lim.length) mapa.fitBounds(lim, { padding: [40, 40], maxZoom: 16 });
-  $('.legenda').style.display = 'none'; $('#b-perc').classList.add('on');
   $('#pc-total').innerHTML = `<b>Todas as equipas</b> · <b>${fmtData(d)}</b>`;
   $('#pc-info').innerHTML = linhas.join('');
   $('#pc-info').style.cssText = 'max-height:30vh;overflow:auto';
-  $('#pc-leg').innerHTML = '<span>Cada cor é uma equipa · tracejado: sem registo · toque numa equipa para ver só essa.</span>';
+  $('#pc-leg').innerHTML = '<span>Cada cor é uma equipa · números: campos regados, pela ordem · tracejado: sem registo · toque numa equipa para ver só essa.</span>';
   $('#percurso').style.display = '';
+  enquadrarPercurso(lim);
 }
 function fecharPercurso() {
   if (percCamada) percCamada.clearLayers();
-  $('#percurso').style.display = 'none'; $('.legenda').style.display = ''; $('#b-perc').classList.remove('on');
+  $('#percurso').style.display = 'none'; modoPercurso(false); desenharMapa();
 }
 // medir a distância entre campos, como no Google Maps (18/10/2026, Valdo): linha recta, funciona sem rede
 let regua;
