@@ -222,6 +222,7 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'planta' ? await sb.rpc('gravar_planta', { p_id: x.planta.id, p_area: x.area_id, p_n: x.planta.n, p_lat: x.planta.lat, p_lon: x.planta.lon, p_precisao: x.planta.precisao_m, p_em: x.planta.marcada_em, p_estado: x.planta.estado, p_cavaroda: x.planta.cavaroda, p_mulching: x.planta.mulching })
         : x.tipo === 'planta_est' ? await sb.rpc('estado_planta', { p_id: x.planta_id, p_estado: x.estado, p_cavaroda: x.cavaroda, p_mulching: x.mulching, p_em: x.em })
         : x.tipo === 'planta_rem' ? await sb.rpc('remover_planta', { p_id: x.planta_id, p_em: x.em })
+        : x.tipo === 'plantas_rega' ? await sb.rpc('corrigir_plantas_rega', { p_id: x.registo_id, p_plantas: x.plantas, p_motivo: x.motivo, p_em: x.em })
         : await sb.rpc('atribuir_area', { p_area: x.area_id, p_activista: x.activista_id });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
       if (r4.error) aviso(`Não foi gravado (${x.area_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
@@ -1411,6 +1412,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
     else if (x.tipo === 'aprovar') aplicarAprovacao(a, x.aprovar);
     else if (x.tipo === 'poligono' && x.proposta) { a.poligono_proposto = x.pontos; a.area_m2_proposta = x.area_m2; a.proposta_em = x.medido_em; }
     else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
+    else if (x.tipo === 'plantas_rega') {}                          // correcção das plantas de uma rega: não muda o campo
     else if (!String(x.tipo).startsWith('planta')) a.activista_id = x.activista_id; }
   for (const x of LS.get('filaRecG', [])) if (x.op === 'validar' && x.sim) { const a = lista.find((y) => y.id === x.area_id); if (a) a.vivas = x.vivas; }   // validação por enviar
   return lista;
@@ -2315,14 +2317,43 @@ async function verFoto(balde, caminho, legenda = '') {
   m.innerHTML = `<img src="${esc(r.data.signedUrl)}" alt="" style="max-width:100%;max-height:80vh;border-radius:8px"><p style="margin-top:10px">${esc(legenda)}</p><p class="pequeno" style="color:#ddd">Toque para fechar.</p>`;
 }
 // últimas regas do campo com as fotografias (15/10/2026, Valdo): a imagem só se descarrega ao tocar
+// Corrigir as plantas regadas (v84, 20/10/2026, Nuro/Valdo): técnico, supervisor e gestor; o activista não ("editar é onde começa a batota").
+const PODE_CORRIGIR_PLANTAS = ['tecnico', 'supervisor', 'gestor'];
 async function regasDoCampo(id) {
   const r = await sb.rpc('regas_campo', { p_area: id }); const el = $('#f-regas');
   if (r.error || !el || !Array.isArray(r.data) || !r.data.length) return;
+  for (const x of LS.get('filaAlt', [])) if (x.tipo === 'plantas_rega') { const v = r.data.find((y) => y.id === x.registo_id); if (v) { v.pendente = { era: v.plantas_regadas }; v.plantas_regadas = x.plantas; } }
+  (S.regasCampo ||= {})[id] = r.data;
+  const podeCorr = PODE_CORRIGIR_PLANTAS.includes(S.perfil?.papel);
   const bt = (v, t, rot) => fotoVisivel(v['foto_' + t]) ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(v['foto_' + t])}', '${esc(rot)} · ${esc(fmtData(v.data))} ${esc(fmtHora(v['foto_' + t + '_em'] || v.entrada_em))} · ${esc(v.quem || '')}')">📷 ${rot}</button>` : '';
   el.innerHTML = `<div class="cartao" style="margin-top:10px"><h2>Regas deste campo</h2>` + r.data.map((v) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
       <div class="lin" style="border:0;padding:0"><span>${fmtData(v.data)} · ${fmtHora(v.entrada_em)}–${v.saida_em ? fmtHora(v.saida_em) : '…'}${v.teste ? ' <span class="tag t-teste">teste</span>' : ''}</span><b>${num(v.plantas_regadas)} plantas</b></div>
       <div class="pequeno">${esc(v.quem || '')}</div>
+      ${v.pendente ? `<div class="pequeno">✏️ <span>Correcção no telefone: é enviada quando houver rede.</span> <span>Antes:</span> <span>${num(v.pendente.era)} plantas</span></div>`
+        : v.plantas_corrigidas_em ? `<div class="pequeno">✏️ <span>Corrigido por ${esc(v.corrigido_por || '?')} em ${fmtData(v.plantas_corrigidas_em)}</span> · <span>Antes:</span> <span>${num(v.plantas_originais)} plantas</span>${v.motivo_correccao ? ` · ${esc(v.motivo_correccao)}` : ''}</div>` : ''}
+      ${podeCorr && v.saida_em ? `<div style="margin-top:4px"><button class="chip" onclick="ecraCorrigirPlantas('${esc(v.id)}','${esc(id)}')">✏️ Corrigir as plantas regadas</button></div>` : ''}
       ${['entrada', 'rega', 'saida'].some((t) => fotoVisivel(v['foto_' + t])) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${bt(v, 'entrada', 'Entrada')}${bt(v, 'rega', 'Rega')}${bt(v, 'saida', 'Saída')}</div>` : `<div class="pequeno">${v.foto_entrada || v.foto_rega || v.foto_saida || v.fotos_outro ? 'Fotografias tiradas por outra pessoa.' : 'Sem fotografias.'}</div>`}</div>`).join('') + '</div>';
+}
+function ecraCorrigirPlantas(rid, areaId) {
+  const v = (S.regasCampo?.[areaId] || []).find((x) => x.id === rid), a = S.areas.find((x) => x.id === areaId);
+  if (!v || !a) return;
+  folha(`<h2>Corrigir as plantas regadas</h2><p class="pequeno">${esc(a.produtor)} · ${fmtData(v.data)} · ${fmtHora(v.entrada_em)}–${fmtHora(v.saida_em)} · ${esc(v.quem || '')}</p>
+    <div class="lin"><span>Plantas regadas gravadas</span><b>${num(v.plantas_regadas)}</b></div>
+    <div class="lin"><span>Na base</span><b>${plantasTxt(a)}</b></div>
+    <label>Número certo de plantas regadas<input id="cp-n" type="number" inputmode="numeric" min="0"></label>
+    <label>Motivo da correcção<textarea id="cp-mot" rows="2" placeholder="Ex.: esqueceu-se de mudar o número"></textarea></label>
+    <p class="pequeno">Fica registado quem corrigiu, quando, o número que estava e o motivo. Funciona sem rede.</p>
+    <button class="btn" onclick="gravarCorrecaoPlantas('${esc(rid)}','${esc(areaId)}')">Gravar a correcção</button>
+    <button class="btn sec" onclick="abrirFicha('${esc(areaId)}')">Voltar</button>`);
+}
+function gravarCorrecaoPlantas(rid, areaId) {
+  const a = S.areas.find((x) => x.id === areaId), n = Number($('#cp-n').value), mot = $('#cp-mot').value.trim();
+  if ($('#cp-n').value === '' || !Number.isInteger(n) || n < 0) return alert('Escreva o número de plantas regadas.');
+  if (mot.length < 3) return alert('Escreva o motivo da correcção.');
+  if (a && n > plantasN(a) * 1.2 && !confirm(`Escreveu ${n}, mas a base diz ${plantasTxt(a)}. Confirma?`)) return;
+  const f = LS.get('filaAlt', []).filter((x) => !(x.tipo === 'plantas_rega' && x.registo_id === rid)); LS.set('filaAlt', f);   // só a última correcção
+  porNaFilaAlt({ tipo: 'plantas_rega', area_id: areaId, registo_id: rid, plantas: n, motivo: mot, em: new Date().toISOString() });
+  abrirFicha(areaId, '<div class="msg ok">Correcção guardada.</div>');
 }
 async function monitoriasDoCampo(id) {
   const r = await sb.rpc('monitorias_campo', { p_area: id }); const el = $('#f-mon');
