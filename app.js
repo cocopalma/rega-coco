@@ -2050,7 +2050,6 @@ function ecraSugestao() {
   folha(`<h2>💡 Sugerir uma melhoria</h2><p class="pequeno">Escreva o que pode melhorar na app ou o problema que encontrou no campo. Pode juntar uma fotografia ou uma captura do ecrã.</p>
     <textarea id="sg-txt" rows="4" placeholder="Ex.: o que aconteceu, onde, e o que devia acontecer"></textarea>
     ${campoFoto('sg-foto', 'Fotografia ou captura do ecrã (opcional)')}<p class="pequeno" id="sg-foto-ok"></p>
-    <p class="pequeno">A app junta o ecrã onde estava, a versão da app e o modelo do telefone. Funciona sem rede.</p>
     <button class="btn" onclick="gravarSugestao()">Enviar a sugestão</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
   ligarFoto('sg-foto', null, async (foto) => { S.sugFoto = foto; $('#sg-foto-ok').innerHTML = foto ? '<span style="color:var(--ok,#2e7d32)">✓ Fotografia junta</span>' : ''; });
 }
