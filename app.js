@@ -1558,8 +1558,8 @@ const TIPOS = [['falta_agua', 'Falta de água'], ['mudas_secas', 'Mudas secas'],
 function ecraSaida() {
   const ent = LS.get('emCurso'), a = S.areas.find((x) => x.id === ent.area_id);
   folha(`<h2>${esc(a.produtor)}</h2><p class="pequeno">Entrada às ${fmtHora(ent.entrada_em)}</p>
-   <label>Plantas regadas neste campo<input id="s-plantas" type="number" inputmode="numeric" min="0" value="${plantasN(a)}"></label>
-   <p class="pequeno">Na base: ${plantasTxt(a)}. Se regou menos, escreva o número real.</p>
+   <label>Plantas regadas neste campo<input id="s-plantas" type="number" inputmode="numeric" min="0" value="${ent.plantas_escritas ?? ''}"></label>
+   <p class="pequeno">Na base: ${plantasTxt(a)}. Escreva o número de plantas que regou.</p>
    <label>Pessoas que regaram este campo<input id="s-pessoas" type="number" inputmode="numeric" min="1" max="30" value="${jornadaHoje()?.pessoas ?? ''}"></label>
    ${ent.agua_em ? `<p class="pequeno">Água no campo às ${fmtHora(ent.agua_em)}.</p>`
      : `<label>Hora a que chegou a água (tuk-tuk)<input id="s-agua" type="time"></label><p class="pequeno">Deixe vazio se não chegou água.</p>`}
@@ -1571,6 +1571,8 @@ function ecraSaida() {
    <button class="btn sec" onclick="abrirFicha('${esc(a.id)}')">Voltar</button>`);
   document.querySelectorAll('#s-chips .chip').forEach((b) => b.onclick = () => b.classList.toggle('on'));
   rascGuardar('rascFotoRega', { perfil: S.perfil?.id, tipo: 'saida', camara: false });
+  // o número vem vazio (v85, 20/10/2026, Valdo): o activista escreve-o; fica guardado se o Android fechar o Chrome na fotografia
+  $('#s-plantas').oninput = (e) => { const x = LS.get('emCurso'); if (x) { x.plantas_escritas = e.target.value; LS.set('emCurso', x); } };
   ligarFoto('s-foto', 'rascFotoRega', async (foto) => {
     if (!foto || !(await guardarFotoRega('saida', foto))) return;
     $('#s-foto-ok').innerHTML = `<span style="color:var(--ok,#2e7d32)">✓ Fotografia da saída às ${fmtHora(LS.get('emCurso').fotos.saida)}</span>`;

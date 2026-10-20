@@ -980,7 +980,7 @@ window.I18N_SW_R = (tr) => [
     [/^Este campo é de (.+)\. Não conta para a sua ronda\.$/, 'Shamba hili ni la $1. Halihesabiwi katika mzunguko wako.'],
     [/^Está a (.+) m do campo \(precisão ±(.+) m\)\. Só pode marcar a entrada até (.+) m do campo\.$/, 'Uko $1 m kutoka shambani (usahihi ±$2 m). Unaweza kuweka kuingia tu ukiwa ndani ya $3 m kutoka shambani.'],
     [/^Está a (.+) m do campo\. Marque a saída ainda no campo \(até (.+) m\)\.$/, 'Uko $1 m kutoka shambani. Weka kutoka ukiwa bado shambani (ndani ya $2 m).'],
-    [/^Hoje · (.+)$/, 'Leo · $1'], [/^Na base: (.+)\. Se regou menos, escreva o número real\.$/, (m, a) => `Kwenye kumbukumbu: ${tr(a)}. Ikiwa umemwagilia michache zaidi, andika namba halisi.`],
+    [/^Hoje · (.+)$/, 'Leo · $1'], [/^Na base: (.+)\. Escreva o número de plantas que regou\.$/, (m, a) => `Kwenye kumbukumbu: ${tr(a)}. Andika idadi ya mimea uliyomwagilia.`],
     [/^Os (\d+) campos da lista foram regados de (.+) a (.+)\. A ronda (\d+) começa agora\.$/, 'Mashamba $1 ya orodha yamemwagiliwa kuanzia $2 hadi $3. Mzunguko $4 unaanza sasa.'],
     [/^Por regar \(ronda (\d+)\)$/, 'Bado halijamwagiliwa (mzunguko $1)'], [/^Regada na ronda (\d+)$/, 'Limemwagiliwa katika mzunguko $1'], [/^Ronda (\d+)$/, 'Mzunguko $1'], [/^Ronda (\d+) concluída!$/, 'Mzunguko $1 umekamilika!'],
     [/^(\d+) de (\d+) campos$/, 'Mashamba $1 kati ya $2'], [/^faltam (\d+)$/, 'yamebaki $1'],

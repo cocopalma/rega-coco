@@ -350,7 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
     [/^Este campo é de (.+)\. Não conta para a sua ronda\.$/, 'This field belongs to $1. It does not count for your round.'],
     [/^Está a (.+) m do campo \(precisão ±(.+) m\)\. Só pode marcar a entrada até (.+) m do campo\.$/, 'You are $1 m from the field (accuracy ±$2 m). You can only record entry within $3 m of the field.'],
     [/^Está a (.+) m do campo\. Marque a saída ainda no campo \(até (.+) m\)\.$/, 'You are $1 m from the field. Record the exit while still at the field (within $2 m).'],
-    [/^Hoje · (.+)$/, 'Today · $1'], [/^Na base: (.+)\. Se regou menos, escreva o número real\.$/, (m, a) => `In the database: ${tr(a)}. If you watered fewer, write the real number.`],
+    [/^Hoje · (.+)$/, 'Today · $1'], [/^Na base: (.+)\. Escreva o número de plantas que regou\.$/, (m, a) => `In the database: ${tr(a)}. Write the number of plants you watered.`],
     [/^Os (\d+) campos da lista foram regados de (.+) a (.+)\. A ronda (\d+) começa agora\.$/, 'The $1 fields on the list were watered from $2 to $3. Round $4 starts now.'],
     [/^Por regar \(ronda (\d+)\)$/, 'Not yet watered (round $1)'], [/^Regada na ronda (\d+)$/, 'Watered in round $1'], [/^Ronda (\d+)$/, 'Round $1'], [/^Ronda (\d+) concluída!$/, 'Round $1 completed!'],
     [/^(\d+) de (\d+) campos$/, '$1 of $2 fields'], [/^faltam (\d+)$/, '$1 left'],
