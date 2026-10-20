@@ -59,7 +59,7 @@ label{display:block;margin-top:12px;font-weight:600}
 #leg-fechar{float:right;margin:-4px -4px 0 8px;background:none;border:0;font-size:18px;line-height:1;padding:4px 6px;color:var(--cinza)}
 .ic-poco{font-size:16px;line-height:20px;text-align:center;filter:drop-shadow(0 0 2px #fff)}
 .ic-fogo{font-size:18px;line-height:22px;text-align:center;filter:drop-shadow(0 0 2px #fff)}
-.tag.t-fogo{background:#fff3e0;color:#7a3300}
+.tag.t-fogo{background:#fff3e0;color:#7a3300}.tag.t-plantas{background:#e8f5e9;color:#1b5e20}
 .leaflet-tooltip.rot-campo{padding:1px 5px;font-size:11px;font-weight:700;line-height:1.3;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.25);opacity:.92}
 .leaflet-tooltip.rot-campo{text-align:center}.rot-campo .rot-id{font-weight:600;color:#555}
 .flutua{position:absolute;z-index:500;right:10px;top:10px;display:flex;flex-direction:column;gap:8px}
@@ -208,6 +208,7 @@ td.n,th.n{text-align:right}
         <div><i class="b" style="border-color:#1e5bd8"></i>Borda azul: já recebeu água nesta ronda, contando as regas de antes da app</div>
         <div><i class="b" style="border-color:#c62828"></i>Borda vermelha: não recebeu água nesta ronda, nem na app nem antes</div>
         <div>🔥 Queimada</div>
+        <div class="leg-plantas">🌴 Campo com plantas marcadas</div>
         <div>💧 Poço de água</div>
         </div>
       </div>
@@ -217,7 +218,7 @@ td.n,th.n{text-align:right}
         <select id="f-ambito"><option value="meus">As minhas áreas</option><option value="todas">Todas as áreas</option></select>
         <select id="f-com"><option value="">Todas as comunidades</option></select>
         <select id="f-act" style="display:none"><option value="">Todos os activistas</option></select>
-        <select id="f-sit"><option value="">Todas as situações</option><option value="por">Por regar nesta ronda</option><option value="feita">Regada nesta ronda</option><option value="sem">Por atribuir (sem activista)</option><option value="teste">Regado em teste (por si)</option><option value="nunca">Nunca regado</option><option value="queimada">Com queimada</option></select>
+        <select id="f-sit"><option value="">Todas as situações</option><option value="por">Por regar nesta ronda</option><option value="feita">Regada nesta ronda</option><option value="sem">Por atribuir (sem activista)</option><option value="teste">Regado em teste (por si)</option><option value="nunca">Nunca regado</option><option value="queimada">Com queimada</option><option value="plantas">🌴 Com plantas marcadas</option></select>
         <input id="f-txt" placeholder="Procurar produtor ou PR" style="flex:1;min-width:160px;margin:0;padding:8px">
       </div>
       <div class="pad" id="lista"></div>
@@ -230,11 +231,11 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=87"></script>
-<script src="i18n.js?v=87"></script>
+<script src="i18n-sw.js?v=88"></script>
+<script src="i18n.js?v=88"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=87"></script>
+<script src="app.js?v=88"></script>
 </body>
 </html>
