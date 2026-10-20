@@ -175,6 +175,11 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <div class="grelha kpis" id="k-pl"></div>
     <div class="tabela" id="t-pl" style="max-height:none"></div></section>
 
+  <section class="card sec" id="s-tp" hidden><h2>🧪 Testes por pessoa</h2>
+    <p class="desc">Regas de teste e chuva de teste feitas por técnicos, supervisores e gestores no período. Não contam para a ronda nem para o resto do painel.</p>
+    <div class="grelha kpis" id="k-tp"></div>
+    <div class="tabela" id="t-tp" style="max-height:none"></div></section>
+
   <section class="grelha dois sec">
     <div class="card"><h2>Constrangimentos registados</h2><p class="desc">Número de registos com cada constrangimento.</p><div id="g-constr"></div></div>
     <div class="card"><h2>Qualidade dos registos</h2><p class="desc">Controlo dos dados recebidos.</p><div id="qualidade"></div></div>
@@ -194,8 +199,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=90"></script>
-<script src="i18n.js?v=90"></script>
+<script src="i18n-sw.js?v=91"></script>
+<script src="i18n.js?v=91"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -568,6 +573,25 @@ function desenharPlantasMarcadas() {
     [...L].sort((a, b) => b.marcadas - a.marcadas).map((x) => [esc(x.area_id), esc(x.produtor || ''), esc(x.comunidade || '') + (x.zona ? ' › ' + esc(x.zona) : ''), num(x.marcadas), num(x.vivas), num(x.secas), num(x.mortas),
       x.vivas_base != null ? num(x.vivas_base) : '—', dif(x), num(x.cavaroda), num(x.mulching), fmtData(diaDe(x.ultima)), esc(x.quem || '')]));
 }
+// ---------- testes por pessoa (v91, 21/10/2026, Valdo: ver quem já testou e quem ainda não) ----------
+// Ao cliente o servidor devolve null e a secção fica escondida.
+let DTP = null;
+function desenharTestes() {
+  const el = $('#s-tp'); if (!el) return;
+  const L = Array.isArray(DTP) ? DTP : null; el.hidden = !L; if (!L) return;
+  const kpi = (rot, v, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${v}</div><div class="sub">${sub}</div></div>`;
+  const eq = L.filter((x) => x.papel === 'tecnico' || x.papel === 'supervisor'), ja = eq.filter((x) => x.regas || x.chuva).length;
+  const t = (k) => L.reduce((a, x) => a + (x[k] || 0), 0);
+  $('#k-tp').innerHTML = kpi('Técnicos e supervisores que já testaram', `${num(ja)} de ${num(eq.length)}`, eq.length - ja ? `${num(eq.length - ja)} ainda sem testes` : 'todos já testaram') +
+    kpi('Regas de teste', num(t('regas')), `${num(t('fotos3'))} com as 3 fotografias`) +
+    kpi('Chuva de teste', num(t('chuva')), 'registos do pluviómetro');
+  if (!L.length) { $('#t-tp').innerHTML = '<div class="vazio">Sem técnicos nem supervisores com acesso.</div>'; return; }
+  const fun = { tecnico: 'Técnico', supervisor: 'Supervisor', gestor: 'Gestor', director: 'Director', me: 'M&E' };
+  tabela('#t-tp', [['Pessoa'], ['Função'], ['Regas de teste', 1], ['Dias', 1], ['Campos', 1], ['Com as 3 fotografias', 1], ['Plantas regadas', 1], ['Chuva de teste', 1], ['Último teste']],
+    L.map((x) => [esc(x.nome || ''), fun[x.papel] || esc(x.papel || ''), x.regas || x.chuva ? num(x.regas) : '<b style="color:var(--crit)">0</b>', num(x.dias), num(x.campos),
+      x.regas ? (x.fotos3 < x.regas ? `<b style="color:var(--warn,#b26b00)">${num(x.fotos3)}</b>` : num(x.fotos3)) : '—', num(x.plantas), num(x.chuva),
+      x.ultima ? fmtData(x.ultima) : '<span style="color:var(--crit)">Ainda não testou</span>']));
+}
 function desenharMonitoria() {
   const M = DM; if (!$('#s-mon')) return;
   if (!M) { $('#s-mon').hidden = true; return; }
@@ -624,23 +648,25 @@ function semRedeSemPainel() {
 }
 async function carregar() {
   const c = !D && lerCache();
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharMonitoria(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharTestes(); desenharMonitoria(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
   const pRec = sb.rpc('recontagens_lista');   // ao mesmo tempo que os outros pedidos
   const pPl = sb.rpc('painel_plantas_marcadas');
+  const pTp = sb.rpc('painel_testes', { p_de: de, p_ate: ate });
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   const rec = await pRec; DR = rec.error ? null : rec.data;
   const pl = await pPl; DPL = pl.error ? null : pl.data;
+  const tp = await pTp; DTP = tp.error ? null : tp.data;
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) { if (erroDeRede(error)) avisoRede(c || { antigo: null }); return; }   // sem rede: fica o último painel guardado
   if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharMonitoria();
-  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, DPL, em: Date.now() })); } catch {}
+  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharTestes(); desenharMonitoria();
+  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, DPL, DTP, em: Date.now() })); } catch {}
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
 function mostrarLogin(msg = '') { $('#painel').style.display = 'none'; $('#login').style.display = ''; $('#l-msg').innerHTML = msg ? `<div class="erro">${esc(msg)}</div>` : ''; }
@@ -655,7 +681,7 @@ $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar()
 $('#b-act').onclick = carregar;
 $('#b-sair').onclick = async () => { try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {} await sb.auth.signOut(); location.reload(); };
 document.querySelectorAll('#v-meta button').forEach((b) => b.onclick = () => { VM = b.dataset.v; try { localStorage.setItem('rega.painel.meta', VM); } catch {} desenharMeta(); });
-let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharMonitoria(); }, 150); });
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharTestes(); desenharMonitoria(); }, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
 if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }
