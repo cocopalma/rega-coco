@@ -204,7 +204,7 @@ td.n,th.n{text-align:right}
         <div><i style="background:var(--por)"></i>Por regar nesta ronda (na app)</div>
         <div><i style="background:var(--feita)"></i>Regado nesta ronda (na app)</div>
         <div><i style="background:var(--sem)"></i>Sem activista</div>
-        <div id="leg-teste" style="display:none"><i style="background:#6a1b9a"></i>Regado em teste (por si)</div>
+        <div id="leg-teste" style="display:none"><i style="background:#6a1b9a"></i>Regado em teste (últimos 14 dias)</div>
         <div><i class="b" style="border-color:#1e5bd8"></i>Borda azul: já recebeu água nesta ronda, contando as regas de antes da app</div>
         <div><i class="b" style="border-color:#c62828"></i>Borda vermelha: não recebeu água nesta ronda, nem na app nem antes</div>
         <div>🔥 Queimada</div>
@@ -218,7 +218,7 @@ td.n,th.n{text-align:right}
         <select id="f-ambito"><option value="meus">As minhas áreas</option><option value="todas">Todas as áreas</option></select>
         <select id="f-com"><option value="">Todas as comunidades</option></select>
         <select id="f-act" style="display:none"><option value="">Todos os activistas</option></select>
-        <select id="f-sit"><option value="">Todas as situações</option><option value="por">Por regar nesta ronda</option><option value="feita">Regada nesta ronda</option><option value="sem">Por atribuir (sem activista)</option><option value="teste">Regado em teste (por si)</option><option value="nunca">Nunca regado</option><option value="queimada">Com queimada</option><option value="plantas">🌴 Com plantas marcadas</option></select>
+        <select id="f-sit"><option value="">Todas as situações</option><option value="por">Por regar nesta ronda</option><option value="feita">Regada nesta ronda</option><option value="sem">Por atribuir (sem activista)</option><option value="teste">Regado em teste (por si)</option><option value="testeq">Regado em teste (equipa)</option><option value="nunca">Nunca regado</option><option value="queimada">Com queimada</option><option value="plantas">🌴 Com plantas marcadas</option></select>
         <input id="f-txt" placeholder="Procurar produtor ou PR" style="flex:1;min-width:160px;margin:0;padding:8px">
       </div>
       <div class="pad" id="lista"></div>
@@ -231,11 +231,11 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=89"></script>
-<script src="i18n.js?v=89"></script>
+<script src="i18n-sw.js?v=90"></script>
+<script src="i18n.js?v=90"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=89"></script>
+<script src="app.js?v=90"></script>
 </body>
 </html>

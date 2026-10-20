@@ -134,7 +134,8 @@ function situacao(a) {
   let feita, n;
   if (souActivista() && a.activista_id === S.perfil.activista_id) { const ri = rondaInfo(a.activista_id); feita = ri.feitas.has(a.id); n = ri.n; }
   else { const e = S.estado[a.id] || {}; feita = !!e.feita; n = e.ronda || 1; }
-  if (!feita && !souActivista()) { const t = testeEm(a.id); if (t) return { cod: 'teste', txt: `Regado em teste (${fmtData(t).slice(0, 5)})`, u, n }; }
+  if (!feita && !souActivista()) { const t = testeEm(a.id); if (t) return { cod: 'teste', txt: `Regado em teste (${fmtData(t).slice(0, 5)})`, u, n };
+    const q = testeEquipa(a.id); if (q) return { cod: 'teste', txt: `Regado em teste (${fmtData(q.data).slice(0, 5)} · ${q.quem || ''})`, u, n }; }
   return feita ? { cod: 'feita', txt: `Regada na ronda ${n}`, u, n } : { cod: 'por', txt: `Por regar (ronda ${n})`, u, n };
 }
 // regas de teste do próprio técnico/supervisor (12/10/2026, Valdo): não contam para a ronda, mas o campo aparece com a cor "Teste"
@@ -143,6 +144,10 @@ function testeEm(id) {
   for (const r of filaRegistos()) if (r.teste && r.area_id === id && (!d || r.data > d)) d = r.data;
   return d;
 }
+// regas de teste da equipa, últimos 14 dias (v90, 21/10/2026, Valdo: "assim consigo ver as regas de teste de outros"):
+// técnico, supervisor, gestor e director; campos que a pessoa vê. Também a roxo no mapa. Guardado no telefone (rega.testesEquipa).
+const VER_TESTES_EQ = ['tecnico', 'supervisor', 'gestor', 'director'];
+const testeEquipa = (id) => (VER_TESTES_EQ.includes(S.perfil?.papel) ? (S.testesEq || {})[id] || null : null);
 const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a' };
 // borda do campo no mapa (16/10/2026, Dalmar via Valdo): azul = já recebeu rega nesta ronda, vermelho = ainda não (ver bordaAzul)
 const BORDA = { regado: '#1e5bd8', nunca: '#c62828' };
@@ -315,10 +320,14 @@ async function carregarEstado(pronto) {
     const r = await sb.from('registos_rega').select('area_id,data').eq('teste', true).eq('user_id', S.perfil.id).gte('data', desde).range(0, 999);
     if (!r.error) { const t = {}; for (const x of r.data) if (!t[x.area_id] || x.data > t[x.area_id]) t[x.area_id] = x.data; LS.set('meusTestes', t); }
   }
+  if (VER_TESTES_EQ.includes(S.perfil?.papel)) {
+    const q = await sb.rpc('testes_equipa');
+    if (!q.error && Array.isArray(q.data)) { S.testesEq = Object.fromEntries(q.data.map((x) => [x.area_id, { data: x.data, n: x.n, quem: x.quem }])); LS.set('testesEquipa', S.testesEq); }
+  }
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
   return !!(S.perfil && S.areas.length);
 }
 
@@ -399,7 +408,7 @@ async function entrar() {
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -865,6 +874,8 @@ function desenharLista() {
   if (sit === 'nunca') linhas = linhas.filter((x) => !jaRegado(x.a));
   else if (sit === 'queimada') linhas = linhas.filter((x) => queimadaDe(x.a.id));
   else if (sit === 'plantas') linhas = linhas.filter((x) => nPlantas(x.a.id));
+  else if (sit === 'teste') linhas = linhas.filter((x) => testeEm(x.a.id));
+  else if (sit === 'testeq') linhas = linhas.filter((x) => testeEm(x.a.id) || testeEquipa(x.a.id));
   else if (sit) linhas = linhas.filter((x) => x.s.cod === sit);
   linhas.sort((x, y) => (x.s.cod === 'feita') - (y.s.cod === 'feita') || (x.d ?? 1e12) - (y.d ?? 1e12));   // por regar primeiro
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
@@ -2825,7 +2836,9 @@ function mostrarApp() {
   $('#h-sync').style.display = cliente ? 'none' : '';
   // desde 18/10/2026 (Valdo) o servidor só manda ao activista os seus campos: o filtro "As minhas / Todas" deixa de ter sentido
   S.filtro = 'todas'; $('#f-ambito').value = 'todas'; $('#f-ambito').style.display = 'none';
-  $('#leg-teste').style.display = PODE_REGAR.includes(papel) && papel !== 'activista' ? '' : 'none';
+  $('#leg-teste').style.display = (PODE_REGAR.includes(papel) && papel !== 'activista') || VER_TESTES_EQ.includes(papel) ? '' : 'none';
+  const opTq = document.querySelector('#f-sit option[value="testeq"]'); if (opTq) opTq.hidden = !VER_TESTES_EQ.includes(papel);
+  const opT = document.querySelector('#f-sit option[value="teste"]'); if (opT) opT.hidden = !(PODE_REGAR.includes(papel) && papel !== 'activista');
   const tOpt = document.querySelector('#f-sit option[value="teste"]'); if (tOpt) tOpt.hidden = papel === 'activista';
   const coms = [...new Set(S.areas.map((a) => a.comunidade))].sort();
   if (!souActivista()) {                                  // filtro por activista (supervisor, técnico, gestor…)
