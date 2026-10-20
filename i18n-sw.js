@@ -368,6 +368,8 @@ window.I18N_SW_D = {
 "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Mvua inasajiliwa tu mahali pa kipimo cha mvua: programu inatumia GPS kujua jamii.",
 "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "Hakuna mashamba yenye kuratibu kwenye simu. Sajili mvua karibu na kipimo cha mvua, katika jamii.",
 "Pelo GPS está em": "Kwa GPS uko",
+"ℹ️ Legenda": "ℹ️ Ufunguo wa ramani",
+"Mostrar a legenda do mapa": "Onyesha ufunguo wa ramani",
 "Pare junto a cada muda e carregue em «Marcar planta aqui». Marcou por engano? Carregue em «↶ Apagar a última planta» ou toque no ponto do desenho e em «Remover este ponto». Para mudar o estado de uma muda, toque no ponto ou em «Planta mais perto de mim».": "Simama karibu na kila mche na ubonyeze «Weka alama ya mmea hapa». Umeweka alama kwa makosa? Bonyeza «↶ Futa mmea wa mwisho» au gusa nukta kwenye mchoro na «Ondoa nukta hii». Kubadilisha hali ya mche, gusa nukta au «Mmea ulio karibu nami».",
 "↶ Apagar a última planta": "↶ Futa mmea wa mwisho",
 "A melhorar o GPS… fique parado": "Inaboresha GPS… simama tuli",

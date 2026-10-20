@@ -2304,6 +2304,8 @@ async function desenharHoje() {
 function fotoVisivel(caminho) {
   return !!caminho && (S.perfil?.papel !== 'activista' || String(caminho).startsWith((S.perfil?.id || '-') + '/'));
 }
+// legenda do mapa: fechada, abre ao tocar em «ℹ️ Legenda» e fecha ao tocar nela (20/10/2026, Dalmar via Valdo: ocupa espaço no ecrã)
+function verLegenda(on) { $('#legenda').classList.toggle('fechada', !on); }
 async function verFoto(balde, caminho, legenda = '') {
   const m = document.createElement('div');
   m.id = 'foto-modal'; m.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;color:#fff;text-align:center';

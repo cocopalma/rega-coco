@@ -54,6 +54,9 @@ label{display:block;margin-top:12px;font-weight:600}
 .legenda{position:absolute;z-index:500;left:8px;bottom:8px;background:rgba(255,255,255,.95);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.7}
 .legenda i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .legenda i.b{background:transparent;border:3px solid;border-radius:3px;width:9px;height:9px}
+.legenda{max-width:calc(100% - 16px)}.legenda.fechada{background:none;padding:0}.legenda.fechada #leg-corpo,.legenda:not(.fechada) #leg-btn{display:none}
+#leg-btn{background:#fff;border:1px solid var(--borda);border-radius:10px;padding:8px 12px;font-weight:700;font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+#leg-fechar{float:right;margin:-4px -4px 0 8px;background:none;border:0;font-size:18px;line-height:1;padding:4px 6px;color:var(--cinza)}
 .ic-poco{font-size:16px;line-height:20px;text-align:center;filter:drop-shadow(0 0 2px #fff)}
 .ic-fogo{font-size:18px;line-height:22px;text-align:center;filter:drop-shadow(0 0 2px #fff)}
 .tag.t-fogo{background:#fff3e0;color:#7a3300}
@@ -193,7 +196,10 @@ td.n,th.n{text-align:right}
         <div class="pequeno" id="pc-leg"></div>
         <div class="chips"><button class="chip" onclick="ecraPercursos()">Outro activista ou dia</button><button class="chip" id="pc-fechar">Fechar</button></div>
       </div>
-      <div class="legenda">
+      <div class="legenda fechada" id="legenda">
+        <button id="leg-btn" title="Mostrar a legenda do mapa" onclick="verLegenda(true)">ℹ️ Legenda</button>
+        <div id="leg-corpo" onclick="verLegenda(false)">
+        <button id="leg-fechar" title="Fechar">✕</button>
         <div><i style="background:var(--por)"></i>Por regar nesta ronda (na app)</div>
         <div><i style="background:var(--feita)"></i>Regado nesta ronda (na app)</div>
         <div><i style="background:var(--sem)"></i>Sem activista</div>
@@ -202,6 +208,7 @@ td.n,th.n{text-align:right}
         <div><i class="b" style="border-color:#c62828"></i>Borda vermelha: não recebeu água nesta ronda, nem na app nem antes</div>
         <div>🔥 Queimada</div>
         <div>💧 Poço de água</div>
+        </div>
       </div>
     </section>
     <section class="ecra" id="e-lista">
@@ -222,11 +229,11 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=82"></script>
-<script src="i18n.js?v=82"></script>
+<script src="i18n-sw.js?v=83"></script>
+<script src="i18n.js?v=83"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="app.js?v=82"></script>
+<script src="app.js?v=83"></script>
 </body>
 </html>
