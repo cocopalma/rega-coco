@@ -82,7 +82,7 @@ function lerGPS() {
     if (S.fix && Date.now() - S.fix.t < 15000) return ok(S.fix.coords);   // leitura recente do GPS contínuo
     navigator.geolocation.getCurrentPosition(
       (p) => { S.pos = [p.coords.latitude, p.coords.longitude]; S.fix = { coords: p.coords, t: Date.now() }; ok(p.coords); },
-      (e) => falha(new Error(e.code === 1 ? 'A app não tem autorização para usar a localização. Autorize nas definições do telefone.' : 'Não foi possível obter o GPS. Vá para céu aberto e tente de novo.')),
+      (e) => { problemaApp('gps', `GPS falhou (código ${e.code})`, { msg: e.message }); falha(new Error(e.code === 1 ? 'A app não tem autorização para usar a localização. Autorize nas definições do telefone.' : 'Não foi possível obter o GPS. Vá para céu aberto e tente de novo.')); },
       { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 });
   });
 }
@@ -245,6 +245,7 @@ async function sincronizarAgora(silencioso) {
     }
   }
   if (!erro) erro = await enviarQueimadas();
+  if (!erro) erro = await enviarSugestoes();
   if (!erro) erro = await enviarGestaoRecontagens();
   if (!erro) erro = await enviarRecontagens();
   if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
@@ -252,7 +253,7 @@ async function sincronizarAgora(silencioso) {
   if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   b.textContent = n ? `${n} por enviar` : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0);
 }
@@ -1420,6 +1421,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
 
 function abrirFicha(id, nota = '') {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
+  S.fichaAberta = id;
   const s = situacao(a), emCurso = LS.get('emCurso');
   const d = S.pos ? distCampo(a, S.pos) : null;
   const podeRegar = PODE_REGAR.includes(S.perfil.papel) && (S.perfil.papel === 'activista' || a.activista_id);
@@ -2027,6 +2029,81 @@ async function enviarQueimadas() {
   }
   return null;
 }
+// ---------- sugestões de melhoria e problemas da app (v86, 20/10/2026, Valdo) ----------
+// "A app deve aprender com os constrangimentos encontrados no campo e propor melhorias": qualquer pessoa sugere (texto e
+// fotografia ou captura do ecrã); a app junta o ecrã, a versão e o telefone. Os problemas técnicos (erros, câmara, GPS)
+// ficam registados sozinhos. Tudo funciona sem rede. Só o gestor principal vê e avalia (Gestão); uma sugestão conta mesmo
+// que apareça uma só vez (Valdo: "se for importante, por mais que apareça 1 vez, já vai valer").
+const versaoApp = () => { try { return new URL(document.querySelector('script[src*="app.js"]').src).searchParams.get('v') || ''; } catch { return ''; } };
+const ecraActual = () => { const e = document.querySelector('section.ecra.on')?.id || ''; const f = $('#folha')?.classList.contains('on') ? $('#folha-c h2')?.textContent || '' : ''; return (e.replace('e-', '') + (f ? ' › ' + f : '')).slice(0, 100); };
+function problemaApp(tipo, mensagem, detalhe = null) {
+  try {
+    const l = LS.get('problemas', []), k = tipo + '|' + mensagem, agora = new Date().toISOString(), x = l.find((y) => y.k === k);
+    if (x) { x.vezes++; x.ultima_em = agora; } else { if (l.length >= 30) return; l.push({ k, tipo, mensagem: String(mensagem).slice(0, 500), detalhe, ecra: ecraActual(), versao: versaoApp(), telefone: navigator.userAgent, vezes: 1, primeira_em: agora, ultima_em: agora }); }
+    LS.set('problemas', l);
+  } catch {}
+}
+window.addEventListener('error', (e) => { if (e?.message) problemaApp('erro', e.message, { ficheiro: (e.filename || '').split('/').pop(), linha: e.lineno, coluna: e.colno }); });
+window.addEventListener('unhandledrejection', (e) => { const m = e?.reason?.message || String(e?.reason || ''); if (m && !/Failed to fetch|NetworkError|Load failed/i.test(m)) problemaApp('erro', m); });
+function ecraSugestao() {
+  S.sugCtx = { ecra: ecraActual(), area: S.fichaAberta && $('#folha')?.classList.contains('on') ? S.fichaAberta : null }; S.sugFoto = null;
+  folha(`<h2>💡 Sugerir uma melhoria</h2><p class="pequeno">Escreva o que pode melhorar na app ou o problema que encontrou no campo. Pode juntar uma fotografia ou uma captura do ecrã.</p>
+    <textarea id="sg-txt" rows="4" placeholder="Ex.: o que aconteceu, onde, e o que devia acontecer"></textarea>
+    ${campoFoto('sg-foto', 'Fotografia ou captura do ecrã (opcional)')}<p class="pequeno" id="sg-foto-ok"></p>
+    <p class="pequeno">A app junta o ecrã onde estava, a versão da app e o modelo do telefone. Funciona sem rede.</p>
+    <button class="btn" onclick="gravarSugestao()">Enviar a sugestão</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  ligarFoto('sg-foto', null, async (foto) => { S.sugFoto = foto; $('#sg-foto-ok').innerHTML = foto ? '<span style="color:var(--ok,#2e7d32)">✓ Fotografia junta</span>' : ''; });
+}
+async function gravarSugestao() {
+  const t = $('#sg-txt').value.trim(); if (t.length < 3) return alert('Escreva a sugestão.');
+  const id = crypto.randomUUID();
+  if (S.sugFoto) { try { await FOTOS.guardar('sug-' + id, S.sugFoto); } catch { (S.fotosMem ||= {})['sug-' + id] = S.sugFoto; } }
+  const f = LS.get('filaSug', []); f.push({ id, texto: t, foto: !!S.sugFoto, ecra: S.sugCtx?.ecra || '', area_id: S.sugCtx?.area || null, versao: versaoApp(), telefone: navigator.userAgent, lingua: LS.get('lingua', 'pt'), em: new Date().toISOString() });
+  LS.set('filaSug', f); S.sugFoto = null; fecharFolha(); actSync(); aviso('Obrigado! A sugestão foi guardada.', 'ok'); sincronizar(true);
+}
+async function enviarSugestoes() {
+  for (const g of LS.get('filaSug', [])) {
+    let foto = null, caminho = null;
+    if (g.foto) { try { foto = await FOTOS.ler('sug-' + g.id); } catch {} foto = foto || S.fotosMem?.['sug-' + g.id] || null; }
+    if (foto) { caminho = `${S.perfil.id}/${g.id}.jpg`; const up = await sb.storage.from('sugestoes-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
+    const r = await sb.rpc('enviar_sugestao', { p_id: g.id, p_texto: g.texto, p_foto: caminho, p_ecra: g.ecra, p_area: g.area_id, p_versao: g.versao, p_telefone: g.telefone, p_lingua: g.lingua, p_em: g.em });
+    if (r.error && !r.error.code) return r.error.message;
+    if (r.error) aviso(`Sugestão não enviada: ${r.error.message}`, 'erro');
+    LS.set('filaSug', LS.get('filaSug', []).filter((y) => y.id !== g.id));
+    try { await FOTOS.apagar('sug-' + g.id); } catch {}
+  }
+  const p = LS.get('problemas', []);
+  if (p.length) { const r = await sb.rpc('registar_problemas', { p_lista: p.map(({ k, ...x }) => x) }); if (!r.error) LS.set('problemas', LS.get('problemas', []).filter((x) => !p.some((y) => y.k === x.k && y.vezes === x.vezes))); }
+  return null;
+}
+// Gestão › sugestões e problemas: só o gestor principal
+const ESTADOS_SUG = { nova: 'Nova', aprovada: 'Aprovada', recusada: 'Recusada', feita: 'Feita' };
+async function cartaoSugestoes() {
+  const el = $('#g-sug'); if (!el) return;
+  const r = await sb.rpc('sugestoes_lista');
+  if (r.error) { el.innerHTML = `<h2>💡 Sugestões e problemas</h2><p class="pequeno">${esc(semRede(r.error) ? 'Sem rede.' : r.error.message)}</p>`; return; }
+  S.sug = r.data; desenharSugestoes();
+}
+function desenharSugestoes(filtro = S.sugFiltro || 'nova') {
+  S.sugFiltro = filtro; const el = $('#g-sug'); if (!el || !S.sug) return;
+  const lista = S.sug.sugestoes.filter((x) => filtro === 'todas' || x.estado === filtro), n = (e) => S.sug.sugestoes.filter((x) => x.estado === e).length;
+  el.innerHTML = `<h2>💡 Sugestões e problemas</h2>
+    <div class="chips">${['nova', 'aprovada', 'feita', 'recusada', 'todas'].map((e) => `<button class="chip${e === filtro ? ' on' : ''}" onclick="desenharSugestoes('${e}')">${e === 'todas' ? 'Todas' : ESTADOS_SUG[e]} (${e === 'todas' ? S.sug.sugestoes.length : n(e)})</button>`).join('')}</div>
+    ${lista.map((x) => `<div style="padding:8px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
+      <div class="pequeno">${fmtData(x.criada_em)} ${fmtHora(x.criada_em)} · ${esc(x.quem || '')} (${esc(FUNCOES[x.papel]?.nome || x.papel || '')}) · ${esc(x.ecra || '')}${x.area_id ? ' · ' + esc(x.area_id) : ''} · v${esc(x.versao || '?')}</div>
+      <div style="white-space:pre-wrap;margin:4px 0">${esc(x.texto)}</div>
+      <div class="chips">${x.foto_path ? `<button class="chip" onclick="verFoto('sugestoes-fotos', '${esc(x.foto_path)}', '${esc(x.quem || '')}')">📷 Fotografia</button>` : ''}
+        ${['aprovada', 'recusada', 'feita', 'nova'].filter((e) => e !== x.estado).map((e) => `<button class="chip" onclick="avaliarSugestao('${x.id}','${e}')">${ESTADOS_SUG[e]}</button>`).join('')}</div></div>`).join('') || '<p class="pequeno">Nenhuma.</p>'}
+    <h3 style="font-size:14px;margin:14px 0 4px">Problemas técnicos registados pela app (30 dias)</h3>
+    ${S.sug.problemas.map((p) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)"><div><b>${esc(p.tipo)}</b> · ${esc(p.mensagem || '')}</div>
+      <div class="pequeno">${p.vezes}× · ${p.pessoas} pessoa(s): ${esc(p.quem || '')} · último ${fmtData(p.ultima_em)} ${fmtHora(p.ultima_em)} · ${esc(p.ecra || '')}</div></div>`).join('') || '<p class="pequeno">Nenhum.</p>'}`;
+}
+async function avaliarSugestao(id, estado) {
+  const r = await sb.rpc('avaliar_sugestao', { p_id: id, p_estado: estado, p_nota: null });
+  if (r.error) return aviso(r.error.message, 'erro');
+  const x = S.sug.sugestoes.find((y) => y.id === id); if (x) x.estado = estado; desenharSugestoes();
+}
+
 // ---------- chuva (12/10/2026, Valdo; sugestão do Albino) ----------
 // O activista lê o pluviómetro da comunidade e regista os milímetros. Funciona sem rede (fila "filaChuva").
 // Técnico, supervisor e gestor registam chuva só em teste (13/10/2026, Valdo): não conta no painel.
@@ -2081,6 +2158,7 @@ async function camaraNaApp(aoFoto) {
   const abrirCam = (l) => navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: l }, width: { ideal: 1600 }, height: { ideal: 1200 } }, audio: false });
   try { stream = await abrirCam(lado); }
   catch (e) {
+    problemaApp('camara', `Câmara dentro da app não abriu: ${e?.name || ''}`, { msg: e?.message });
     if (e && e.name === 'NotAllowedError') { aviso('A app não tem autorização para usar a câmara. Autorize a câmara no Chrome (cadeado ao lado do endereço) ou use «Escolher da galeria».', 'erro'); return true; }
     return false;
   }
@@ -2560,7 +2638,7 @@ async function desenharGestao(msg = '') {
 async function montarGestao(d, msg = '') {
   const sem = d.activistas.filter((a) => !a.tem_login && a.activo !== false), com = d.activistas.filter((a) => a.tem_login);
   const gere = S.perfil?.gere_acessos !== false;   // false: gestor que não cria acessos nem muda senhas/PIN (15/10/2026)
-  $('#gestao').innerHTML = `${msg}${gere ? `<div class="cartao"><h2>Criar login de activista</h2>
+  $('#gestao').innerHTML = `${msg}${gere ? '<div class="cartao" id="g-sug"><h2>💡 Sugestões e problemas</h2><p class="pequeno">A carregar…</p></div>' : ''}${gere ? `<div class="cartao"><h2>Criar login de activista</h2>
     <label>Activista<select id="g-act">${sem.map((a) => `<option value="${a.id}" data-u="${sugerirUtilizador(a.nome)}">${esc(a.nome)} — ${esc(a.comunidade_principal || '')}</option>`).join('')}</select></label>
     <label>Utilizador<input id="g-user" autocapitalize="none"></label>
     <label>PIN provisório (6 dígitos)<input id="g-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"></label><p class="pequeno">Ao entrar pela primeira vez, o activista escolhe um PIN só dele.</p>
@@ -2591,6 +2669,7 @@ async function montarGestao(d, msg = '') {
     <div class="cartao"><h2>Acessos criados (${(d.utilizadores || []).length})</h2>
     ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div>${gere ? `<button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button>` : ''}</div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
   desenharVisitas(); desenharCoberturas(d);
+  if (gere) { if (S.sug) desenharSugestoes(); cartaoSugestoes(); }
   sb.from('config').select('valor').eq('chave', 'monitoria_campos_por_dia').maybeSingle().then(({ data }) => { if (data && $('#m-n')) $('#m-n').value = data.valor; });
   $('#m-gravar-n').onclick = async () => {
     const n = parseInt($('#m-n').value, 10);
