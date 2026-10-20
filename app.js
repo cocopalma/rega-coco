@@ -891,12 +891,20 @@ let vigiaPlantas = null, travaPlantas = null;
 const plantasLocais = (id) => ((LS.get('plantas', {}) || {})[id] || []);
 // campos com plantas marcadas (v88, 20/10/2026, Valdo: "como vou saber qual o campo onde se marcou plantas?"): filtro na lista,
 // etiqueta "🌴 N plantas" e 🌴 no mapa, para técnico, supervisor e gestor. Conta do servidor (plantas_por_campo) ou do telefone.
-const nPlantas = (id) => Math.max((S.nPlantas || {})[id] || 0, plantasLocais(id).length);
+const nPlantas = (id) => Math.max(((S.nPlantas || {})[id] || {}).n ?? (S.nPlantas || {})[id] ?? 0, plantasLocais(id).length);
+// resumo na ficha (v89): marcadas por estado, comparadas com as plantas vivas da base. Usa as plantas do telefone se forem mais
+function resumoPlantas(a) {
+  const loc = plantasLocais(a.id), sv = (S.nPlantas || {})[a.id] || {};
+  const c = loc.length >= (sv.n || 0) ? { n: loc.length, v: loc.filter((p) => p.estado === 'viva').length, s: loc.filter((p) => p.estado === 'seca').length, m: loc.filter((p) => p.estado === 'morta').length } : sv;
+  if (!c.n) return '';
+  const d = a.vivas != null ? c.v - a.vivas : null;
+  return `<div class="msg info">🌴 <span>Plantas marcadas no mapa:</span> <b>${num(c.n)}</b> (${num(c.v)} <span>vivas</span> · ${num(c.s)} <span>secas</span> · ${num(c.m)} <span>mortas</span>)${a.vivas != null ? `<br><span>Vivas na base:</span> ${num(a.vivas)} · <span>diferença:</span> ${d > 0 ? '+' : ''}${num(d)}` : ''}</div>`;
+}
 const verPlantas = () => PODE_COORD.includes(S.perfil?.papel);
 async function carregarNPlantas() {
   if (!verPlantas()) return;
   const r = await sb.rpc('plantas_por_campo');
-  if (!r.error && Array.isArray(r.data)) { S.nPlantas = Object.fromEntries(r.data.map((x) => [x.area_id, x.n])); LS.set('nPlantas', S.nPlantas); if ($('#e-lista')?.classList.contains('on')) desenharLista(); desenharMapa(); }
+  if (!r.error && Array.isArray(r.data)) { S.nPlantas = Object.fromEntries(r.data.map((x) => [x.area_id, { n: x.n, v: x.v ?? 0, s: x.s ?? 0, m: x.m ?? 0 }])); LS.set('nPlantas', S.nPlantas); if ($('#e-lista')?.classList.contains('on')) desenharLista(); desenharMapa(); }
 }
 function guardarPlantasLocais(id, lista) { const t = LS.get('plantas', {}) || {}; t[id] = lista; LS.set('plantas', t); }
 function pararPlantas() {
@@ -1260,6 +1268,7 @@ function botoesCampo(a) {
       : `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 ${temPoligono(a) ? 'Medir a área de novo (andar à volta)' : 'Medir a área (andar à volta do campo)'}</button>`;
   if (PODE_COORD.includes(S.perfil.papel) && (a.latitude == null || aberto))
     h += `<button class="btn sec" onclick="ecraCoordenada('${esc(a.id)}')">📍 ${a.latitude == null ? 'Gravar a coordenada deste campo' : 'Corrigir a coordenada (estou no campo)'}</button>`;
+  if (PODE_COORD.includes(S.perfil.papel)) h += resumoPlantas(a);
   if (PODE_COORD.includes(S.perfil.papel)) { const np = plantasLocais(a.id).length;
     h += `<button class="btn sec" onclick="ecraPlantas('${esc(a.id)}')">🌴 Mapa das plantas${np ? ` (${np})` : ''} · teste</button>`; }
   if (PODE_COORD.includes(S.perfil.papel) && (!temPoligono(a) || aberto))
