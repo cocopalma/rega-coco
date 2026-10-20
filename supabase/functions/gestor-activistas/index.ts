@@ -44,11 +44,12 @@ Deno.serve(async (req) => {
   if (accao === "listar") {
     const { data: acts, error } = await admin.from("activistas").select("id,nome,comunidade_principal,activo").order("nome");
     if (error) return resp(500, { erro: error.message });
-    const { data: perfis } = await admin.from("perfis").select("id,activista_id,nome,papel");
+    const { data: perfis } = await admin.from("perfis").select("id,activista_id,nome,papel,gere_acessos");
     const { data: lista } = await admin.auth.admin.listUsers({ perPage: 1000 });
     const email = new Map((lista?.users || []).map((u) => [u.id, String(u.email || "")]));
     const porAct = new Map((perfis || []).filter((p) => p.activista_id).map((p) => [p.activista_id, p]));
-    const outros = (perfis || []).filter((p) => PAPEIS_OUTROS.includes(p.papel))
+    // o gestor sem gestão de acessos (Dalmar) também aparece, para o gestor principal lhe poder dar uma senha nova (20/10/2026, Valdo)
+    const outros = (perfis || []).filter((p) => PAPEIS_OUTROS.includes(p.papel) || (p.papel === "gestor" && p.gere_acessos === false && p.id !== quem.user.id))
       .map((p) => ({ id: p.id, nome: p.nome, papel: p.papel, utilizador: nomeUtilizador(email.get(p.id) || "") }));
     return resp(200, {
       activistas: (acts || []).map((a) => {
@@ -89,8 +90,9 @@ Deno.serve(async (req) => {
   if (accao === "repor_senha") {
     const id = String(body?.perfil_id || "");
     if (senha.length < 8) return resp(400, { erro: "A senha tem de ter pelo menos 8 caracteres" });
-    const { data: p } = await admin.from("perfis").select("id,papel").eq("id", id).maybeSingle();
-    if (!p || !PAPEIS_OUTROS.includes(p.papel)) return resp(404, { erro: "Utilizador não encontrado" });
+    const { data: p } = await admin.from("perfis").select("id,papel,gere_acessos").eq("id", id).maybeSingle();
+    const gestorSemAcessos = p?.papel === "gestor" && p?.gere_acessos === false && p?.id !== quem.user.id;
+    if (!p || !(PAPEIS_OUTROS.includes(p.papel) || gestorSemAcessos)) return resp(404, { erro: "Utilizador não encontrado" });
     const { error } = await admin.auth.admin.updateUserById(p.id, { password: senha });
     if (error) return resp(400, { erro: error.message });
     await admin.from("perfis").update({ trocar_senha: true }).eq("id", p.id);
