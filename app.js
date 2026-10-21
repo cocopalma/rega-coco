@@ -319,6 +319,10 @@ async function carregarEstado(pronto) {
     const desde = new Date(Date.now() - 14 * 864e5).toLocaleDateString('sv-SE');
     const r = await sb.from('registos_rega').select('area_id,data').eq('teste', true).eq('user_id', S.perfil.id).gte('data', desde).range(0, 999);
     if (!r.error) { const t = {}; for (const x of r.data) if (!t[x.area_id] || x.data > t[x.area_id]) t[x.area_id] = x.data; LS.set('meusTestes', t); }
+    if (['tecnico', 'supervisor'].includes(S.perfil.papel)) {   // quantas regas de teste já fez (desde sempre), para o aviso no Hoje (v92)
+      const c = await sb.from('registos_rega').select('id', { count: 'exact', head: true }).eq('teste', true).eq('user_id', S.perfil.id);
+      if (!c.error && c.count != null) LS.set('nTestes', c.count);
+    }
   }
   if (VER_TESTES_EQ.includes(S.perfil?.papel)) {
     const q = await sb.rpc('testes_equipa');
@@ -408,7 +412,7 @@ async function entrar() {
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -2405,7 +2409,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoAvisos() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoAvisos() + cartaoPrimeiroTeste() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
@@ -2482,6 +2486,22 @@ async function carregarAvisos() {
 }
 const avisos = () => (Array.isArray(S.avisos) ? S.avisos : LS.get('avisos', []) || []);
 const textoAviso = (v) => `${v.sem_rega} de ${v.plantas_obs} plantas sem solo húmido · nota ${Number(v.nota).toLocaleString(LOC)}`;
+// Aviso a quem ainda não fez nenhuma rega de teste (v92, 21/10/2026, sugestão aceite pelo Valdo): técnico e supervisor.
+// Desaparece logo que haja uma rega de teste (no servidor, na fila do telefone ou em curso).
+function cartaoPrimeiroTeste() {
+  if (!['tecnico', 'supervisor'].includes(S.perfil?.papel)) return '';
+  const n = LS.get('nTestes', null);
+  if (n == null || n > 0 || LS.get('emCurso') || filaRegistos().length || Object.keys(LS.get('meusTestes', {}) || {}).length) return '';
+  return `<div class="cartao" style="border-left:4px solid #7b3fa0"><h2>🧪 Ainda não fez nenhuma rega de teste</h2>
+    <p class="pequeno">A rega de teste serve para experimentar a app no campo. Não conta para a ronda nem para o painel. Funciona sem rede.</p>
+    <ol class="pequeno" style="padding-left:18px;margin:6px 0">
+      <li>Em Campos ou no Mapa, toque num campo de uma equipa sua.</li>
+      <li>No campo, toque em «Cheguei — marcar entrada» e tire a fotografia da entrada.</li>
+      <li>Durante a rega, tire a fotografia da rega.</li>
+      <li>No fim, toque em «Terminei — marcar saída», escreva as plantas regadas e tire a fotografia da saída.</li>
+    </ol>
+    <button class="btn sec" onclick="mudar('lista')">Abrir os campos</button></div>`;
+}
 function cartaoAvisos() {
   const L = avisos(); if (!L.length) return '';
   const varias = S.perfil.papel !== 'activista';
