@@ -2500,6 +2500,7 @@ function cartaoPrimeiroTeste() {
       <li>Durante a rega, tire a fotografia da rega.</li>
       <li>No fim, toque em «Terminei — marcar saída», escreva as plantas regadas e tire a fotografia da saída.</li>
     </ol>
+    <p class="pequeno">Algum problema? Toque em 💡 no topo e junte a captura do ecrã.</p>
     <button class="btn sec" onclick="mudar('lista')">Abrir os campos</button></div>`;
 }
 function cartaoAvisos() {

@@ -368,6 +368,7 @@ window.I18N_SW_D = {
 "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Mvua inasajiliwa tu mahali pa kipimo cha mvua: programu inatumia GPS kujua jamii.",
 "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "Hakuna mashamba yenye kuratibu kwenye simu. Sajili mvua karibu na kipimo cha mvua, katika jamii.",
 "Pelo GPS está em": "Kwa GPS uko",
+"Algum problema? Toque em 💡 no topo e junte a captura do ecrã.": "Kuna tatizo? Gusa 💡 juu na uambatishe picha ya skrini.",
 "🧪 Ainda não fez nenhuma rega de teste": "🧪 Bado hujafanya umwagiliaji wowote wa majaribio",
 "A rega de teste serve para experimentar a app no campo. Não conta para a ronda nem para o painel. Funciona sem rede.": "Umwagiliaji wa majaribio ni wa kujaribu programu shambani. Hauhesabiwi kwa mzunguko wala kwa dashibodi. Inafanya kazi bila mtandao.",
 "Em Campos ou no Mapa, toque num campo de uma equipa sua.": "Kwenye Mashamba au Ramani, gusa shamba la mojawapo ya timu zako.",
