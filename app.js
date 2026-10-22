@@ -288,7 +288,8 @@ async function carregarTudo() {
   if (!qm.error && Array.isArray(qm.data)) { S.queimadas = qm.data; LS.set('queimadas', S.queimadas); }
   if (!rc.error && Array.isArray(rc.data)) { S.recont = rc.data; LS.set('recont', S.recont); }
   if (['me', 'gestor'].includes(p.data.papel)) oficiais().catch(() => {});
-  carregarNPlantas().catch(() => {});   // lista dos oficiais no telefone (encaminhar sem rede)
+  carregarNPlantas().catch(() => {});
+  carregarSugFeitas().catch(() => {});   // lista dos oficiais no telefone (encaminhar sem rede)
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
   // senha/PIN provisório dado pelo gestor: a pessoa escolhe outro (18/10/2026, Valdo)
   if (S.perfil.trocar_senha && !S.trocaAberta) setTimeout(() => ecraTrocarSenha(true), 400);
@@ -412,7 +413,7 @@ async function entrar() {
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -2147,10 +2148,21 @@ function desenharSugestoes(filtro = S.sugFiltro || 'nova') {
     ${S.sug.problemas.map((p) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)"><div><b>${esc(p.tipo)}</b> · ${esc(p.mensagem || '')}</div>
       <div class="pequeno">${p.vezes}× · ${p.pessoas} pessoa(s): ${esc(p.quem || '')} · último ${fmtData(p.ultima_em)} ${fmtHora(p.ultima_em)} · ${esc(p.ecra || '')}</div></div>`).join('') || '<p class="pequeno">Nenhum.</p>'}`;
 }
-async function avaliarSugestao(id, estado) {
-  const r = await sb.rpc('avaliar_sugestao', { p_id: id, p_estado: estado, p_nota: null });
+async function avaliarSugestao(id, estado, nota = null) {
+  // "Feita": pede uma mensagem opcional para quem enviou (aparece no Hoje dessa pessoa; v95, 22/10/2026)
+  if (estado === 'feita' && nota === null) {
+    const x = S.sug.sugestoes.find((y) => y.id === id) || {};
+    return folha(`<h2>Marcar como feita</h2><p class="pequeno sem-trad">«${esc((x.texto || '').slice(0, 160))}»</p>
+      <p class="pequeno">${esc(x.quem || 'Quem enviou')} vai ver no Hoje que a sugestão foi feita.</p>
+      <label>Mensagem para quem enviou (opcional)<textarea id="sf-nota" rows="2" placeholder="Ex.: já aparece na procura de campos"></textarea></label>
+      <button class="btn" onclick="avaliarSugestao('${esc(id)}', 'feita', $('#sf-nota').value)">Marcar como feita</button>
+      <button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  }
+  const r = await sb.rpc('avaliar_sugestao', { p_id: id, p_estado: estado, p_nota: nota });
   if (r.error) return aviso(r.error.message, 'erro');
-  const x = S.sug.sugestoes.find((y) => y.id === id); if (x) x.estado = estado; desenharSugestoes();
+  const x = S.sug.sugestoes.find((y) => y.id === id); if (x) { x.estado = estado; x.nota = nota; }
+  if (estado === 'feita') fecharFolha();
+  desenharSugestoes();
 }
 
 // ---------- chuva (12/10/2026, Valdo; sugestão do Albino) ----------
@@ -2422,7 +2434,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoAvisos() + cartaoPrimeiroTeste() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoAvisos() + cartaoSugFeitas() + cartaoPrimeiroTeste() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
@@ -2515,6 +2527,24 @@ function cartaoPrimeiroTeste() {
     </ol>
     <p class="pequeno">Algum problema? Toque em 💡 no topo e junte a captura do ecrã.</p>
     <button class="btn sec" onclick="mudar('lista')">Abrir os campos</button></div>`;
+}
+// Sugestões feitas (v95, 22/10/2026, Valdo): quem enviou a sugestão vê no Hoje que ela foi feita; "OK" esconde-a no telefone.
+async function carregarSugFeitas() {
+  if (!S.perfil || S.perfil.papel === 'cliente') return;
+  const r = await sb.rpc('minhas_sugestoes_feitas');
+  if (!r.error && Array.isArray(r.data)) { LS.set('sugFeitas', r.data); if ($('#e-hoje')?.classList.contains('on') && !$('#hoje-sugf') && cartaoSugFeitas()) desenharHoje(); }
+}
+function cartaoSugFeitas() {
+  const vistas = LS.get('sugVistas', []) || [], L = (LS.get('sugFeitas', []) || []).filter((x) => !vistas.includes(x.id));
+  if (!L.length) return '';
+  return `<div class="cartao" id="hoje-sugf" style="border-left:4px solid var(--ok,#2e7d32)"><h2>💡 <span>${L.length === 1 ? 'A sua sugestão foi feita' : 'As suas sugestões foram feitas'}</span></h2>` +
+    L.map((x) => `<div class="lin" style="display:block"><div class="sem-trad">«${esc(x.texto)}»</div>
+      <div class="pequeno"><span>Feita em</span> ${fmtData(String(x.avaliada_em).slice(0, 10))}${x.nota ? ` · <span class="sem-trad">${esc(x.nota)}</span>` : ''}</div>
+      <button class="chip" onclick="sugFeitaVista('${esc(x.id)}')">OK</button></div>`).join('') + '</div>';
+}
+function sugFeitaVista(id) {
+  const v = LS.get('sugVistas', []) || []; if (!v.includes(id)) v.push(id); LS.set('sugVistas', v.slice(-200));
+  const el = $('#hoje-sugf'); if (el) { const h = cartaoSugFeitas(); if (h) el.outerHTML = h; else el.remove(); }
 }
 function cartaoAvisos() {
   const L = avisos(); if (!L.length) return '';
