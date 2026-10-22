@@ -1221,30 +1221,43 @@ function gravarMedicao() {
 const eNovo = (a) => a.reactivada_em && Date.now() - new Date(a.reactivada_em) < 14 * 864e5;
 function ecraVoltarRega() {
   folha(`<h2>Voltar a pôr um campo na rega</h2>
-    <p class="pequeno">Campos que estão fora do plano de rega. Procure pelo nome do produtor ou pelo PR (pelo menos 3 letras). Precisa de rede.</p>
+    <p class="pequeno">Procure pelo nome do produtor ou pelo PR (pelo menos 3 letras). Aparecem os campos fora do plano de rega e também os que já estão na rega. Os campos fora do plano precisam de rede.</p>
     <input id="vr-txt" type="search" placeholder="Nome do produtor ou PR" autocomplete="off">
     <div id="vr-res" style="margin-top:8px"></div>
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
   let t; $('#vr-txt').oninput = () => { clearTimeout(t); t = setTimeout(procurarForaPlano, 400); };
   $('#vr-txt').focus();
 }
+// v94 (22/10/2026, sugestão do Nuro pelo 💡): mostra também os campos que já estão na rega (o Nuro procurou aqui um campo que já estava na rega e não o encontrou).
+function cartaoJaNaRega(a) {
+  const noTel = S.areas.some((x) => x.id === a.id);
+  return `<div class="cartao" style="margin:6px 0;padding:10px 12px;border-left:4px solid var(--ok,#2e7d32)">
+    <div class="nome"><b>${esc(a.produtor || '—')}</b> <span class="tag">Já está na rega</span></div>
+    <div class="sub pequeno">${esc(a.id)} · ${esc(a.comunidade || '')}${a.zona ? ' › ' + esc(a.zona) : ''} · ${a.vivas != null ? num(a.vivas) + ' vivas' : '—'}${a.activista ? ' · activista: ' + esc(a.activista) : ' · sem activista'}</div>
+    ${noTel ? `<button class="chip" style="margin-top:6px" onclick="abrirFicha('${esc(a.id)}')">Abrir a ficha</button>`
+      : `<div class="sub pequeno">Não está nos seus campos${a.supervisor ? ' (supervisor: ' + esc(a.supervisor) + ')' : ''}.</div>`}</div>`;
+}
 async function procurarForaPlano() {
   const q = $('#vr-txt').value.trim(), el = $('#vr-res'); if (!el) return;
   if (q.length < 3) { el.innerHTML = ''; return; }
-  if (!navigator.onLine) { el.innerHTML = '<div class="msg info">Sem rede. Esta procura precisa de internet.</div>'; return; }
-  el.innerHTML = '<p class="pequeno">A procurar…</p>';
-  const r = await sb.rpc('areas_fora_plano', { p_txt: q });
+  const t = q.toLowerCase();
+  const locais = S.areas.filter((a) => (a.produtor || '').toLowerCase().includes(t) || (a.pr || '').toLowerCase().includes(t) || a.id.toLowerCase().includes(t)).slice(0, 20)
+    .map((a) => ({ id: a.id, produtor: a.produtor, comunidade: a.comunidade, zona: a.zona, vivas: a.vivas, activista: a.activista_id ? nomeAct(a.activista_id) : null }));
+  const naRega = (L) => L.length ? `<p class="pequeno" style="margin-top:8px"><b>Já estão na rega (${L.length})</b></p>` + L.map(cartaoJaNaRega).join('') : '';
+  if (!navigator.onLine) { el.innerHTML = naRega(locais) + '<div class="msg info">Sem rede. Os campos fora do plano aparecem quando houver internet.</div>'; return; }
+  el.innerHTML = naRega(locais) + '<p class="pequeno">A procurar…</p>';
+  const r = await sb.rpc('areas_fora_plano2', { p_txt: q });
   if ($('#vr-txt')?.value.trim() !== q) return;
-  if (r.error) { el.innerHTML = `<div class="msg erro">${esc(r.error.message)}</div>`; return; }
-  const L = r.data || [];
-  if (!L.length) { el.innerHTML = '<div class="msg info">Nenhum campo fora do plano com esse nome ou PR. Se o campo existe, envie o PR ao gestor.</div>'; return; }
+  if (r.error) { el.innerHTML = naRega(locais) + `<div class="msg erro">${esc(r.error.message)}</div>`; return; }
+  const L = r.data?.fora || [], N = r.data?.na_rega || locais;
   S.foraPlano = L;
-  el.innerHTML = `<p class="pequeno">${L.length === 40 ? 'Primeiros 40 resultados. Escreva mais letras para afinar.' : L.length + ' campos'}</p>` + L.map((a, i) => `<div class="cartao" style="margin:6px 0;padding:10px 12px">
+  const fora = L.length ? `<p class="pequeno" style="margin-top:8px"><b>Fora do plano de rega</b> · ${L.length === 40 ? 'primeiros 40 resultados. Escreva mais letras para afinar.' : L.length === 1 ? '1 campo' : L.length + ' campos'}</p>` + L.map((a, i) => `<div class="cartao" style="margin:6px 0;padding:10px 12px">
     <div class="nome"><b>${esc(a.produtor || '—')}</b></div>
     <div class="sub pequeno">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${a.vivas != null ? num(a.vivas) + ' vivas' : '—'}${a.instaladas != null ? ' de ' + num(a.instaladas) + ' plantadas' : ''}${a.data_plantio ? ' · plantio ' + fmtData(a.data_plantio) : ''}</div>
     <div class="sub pequeno">${a.agua_origem === 'COM' ? 'Na base: tinha água' : a.agua_origem === 'SEM' ? 'Na base: sem água' : ''}${a.n_regas_origem ? ` · ${a.n_regas_origem} regas antes${a.ultima_rega_origem ? ' (última ' + fmtData(a.ultima_rega_origem) + ')' : ''}` : ''}${a.activista_origem ? ' · activista: ' + esc(a.activista_origem) : ''}${a.tem_coord ? '' : ' · <b>sem coordenada</b>'}</div>
     ${a.motivo_saida ? `<div class="sub pequeno">Saiu da rega: ${esc(a.motivo_saida)}</div>` : ''}
-    <button class="chip" style="margin-top:6px" onclick="confirmarVoltaRega(${i})">Voltar a regar</button></div>`).join('');
+    <button class="chip" style="margin-top:6px" onclick="confirmarVoltaRega(${i})">Voltar a regar</button></div>`).join('') : '';
+  el.innerHTML = (!L.length && !N.length) ? '<div class="msg info">Nenhum campo com esse nome ou PR, nem na rega nem fora do plano. Se o campo existe, envie o PR ao gestor.</div>' : naRega(N) + fora;
 }
 function confirmarVoltaRega(i) {
   const a = S.foraPlano[i];
