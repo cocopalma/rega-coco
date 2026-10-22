@@ -251,6 +251,7 @@ async function sincronizarAgora(silencioso) {
   }
   if (!erro) erro = await enviarQueimadas();
   if (!erro) erro = await enviarSugestoes();
+  if (!erro && filaMan().length) erro = await enviarManut();
   if (!erro) erro = await enviarGestaoRecontagens();
   if (!erro) erro = await enviarRecontagens();
   if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
@@ -258,7 +259,7 @@ async function sincronizarAgora(silencioso) {
   if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   b.textContent = n ? `${n} por enviar` : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0);
 }
@@ -289,7 +290,8 @@ async function carregarTudo() {
   if (!rc.error && Array.isArray(rc.data)) { S.recont = rc.data; LS.set('recont', S.recont); }
   if (['me', 'gestor'].includes(p.data.papel)) oficiais().catch(() => {});
   carregarNPlantas().catch(() => {});
-  carregarSugFeitas().catch(() => {});   // lista dos oficiais no telefone (encaminhar sem rede)
+  carregarSugFeitas().catch(() => {});
+  carregarManut().catch(() => {});   // lista dos oficiais no telefone (encaminhar sem rede)
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
   // senha/PIN provisório dado pelo gestor: a pessoa escolhe outro (18/10/2026, Valdo)
   if (S.perfil.trocar_senha && !S.trocaAberta) setTimeout(() => ecraTrocarSenha(true), 400);
@@ -332,7 +334,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega');
   return !!(S.perfil && S.areas.length);
 }
 
@@ -413,7 +415,7 @@ async function entrar() {
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -536,14 +538,15 @@ function desenharRotulos() {
   const b = mapa.getBounds(), fa = $('#f-act')?.value, c = mapa.getCenter();
   // os campos mais perto do centro do ecrã primeiro; uma etiqueta que tapasse outra já posta não aparece
   // (aparece ao aproximar o mapa) — 18/10/2026, Valdo
-  const L2 = visiveis().filter((a) => a.latitude != null && b.contains([a.latitude, a.longitude]) && !(fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)))
+  const man = modoManut();
+  const L2 = (man ? camposManut() : visiveis()).filter((a) => a.latitude != null && b.contains([a.latitude, a.longitude]) && (man || !(fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa))))
     .sort((x, y) => mapa.distance(c, [x.latitude, x.longitude]) - mapa.distance(c, [y.latitude, y.longitude]));
   const postas = []; let n = 0;
   const tapa = (r) => postas.some((p) => r.left < p.right + 2 && r.right > p.left - 2 && r.top < p.bottom + 2 && r.bottom > p.top - 2);
   for (const a of L2) {
     if (n >= MAX_ROTULOS) break;
     const nome = String(a.produtor || '').trim() || '—';   // nome completo e código do campo (18/10/2026, Valdo)
-    const pl = a.vivas > 0 ? `${num(a.vivas)} vivas` : `${num(a.instaladas || 0)} mudas`;
+    const pl = man ? `CR ${pctMan(a.cavaroda, a.plantas)}% · M ${pctMan(a.mulching, a.plantas)}%` : a.vivas > 0 ? `${num(a.vivas)} vivas` : `${num(a.instaladas || 0)} mudas`;
     const t = L.tooltip({ permanent: true, direction: 'top', offset: [0, -6], className: 'rot-campo', interactive: false })
       .setLatLng([a.latitude, a.longitude]).setContent(`${esc(nome)}<br><span class="rot-id">${esc(a.id)}</span> · <span>${pl}</span>`).addTo(rotulos);
     const el = t.getElement(), r = el && el.getBoundingClientRect();
@@ -810,6 +813,7 @@ function desenharRegua() {
 function desenharMapa(enquadrar = false) {
   if (!camada) return;
   camada.clearLayers();
+  if (modoManut()) return desenharMapaManut(enquadrar);   // manutenção: só os campos de Quiwia e Farol, cores próprias (v96)
   const pts = [];
   const fa = $('#f-act')?.value;
   for (const a of visiveis()) {
@@ -846,6 +850,229 @@ function textoRonda() {
   return `<b>Ronda ${r.n}</b> · ${r.feitas.size} de ${r.total} campos${r.total - r.feitas.size ? ` · faltam ${r.total - r.feitas.size}` : ''}`;
 }
 
+// ---------- manutenção das plantas em Quiwia e Farol (v96, 22/10/2026, pedido do Raul via Valdo) ----------
+// À parte da rega, para não se confundir campos por regar com campos por fazer: interruptor "💧 Rega / 🌱 Manutenção" no Mapa
+// e nos Campos, só para quem tem acesso (o gestor e o supervisor dessas comunidades registam; director e M&E vêem). Todos os
+// campos das duas comunidades (na rega ou fora). O supervisor regista quantas plantas TÊM cava-roda e quantas TÊM mulching
+// (totais do campo); 100% quando o número bate com as plantas do campo; "Feito" só quando o supervisor marca e as duas estão
+// a 100% (Valdo). Funciona sem rede (fila "filaMan", fotografia no telefone até haver rede).
+const COR_MAN = { por: '#9e9e9e', curso: '#f9a825', completo: '#8d6e63', feito: '#4e342e' };
+const TXT_MAN = { por: 'Por fazer', curso: 'Em curso', completo: 'Completo, por confirmar', feito: 'Feito' };
+const temManut = () => !!S.manut?.acesso;
+const escreveManut = () => S.manut?.acesso === 'escreve';
+const modoManut = () => temManut() && S.modo === 'manut';
+const filaMan = () => LS.get('filaMan', []);
+const pctMan = (v, n) => (!n ? 0 : (v || 0) >= n ? 100 : Math.min(99, Math.round((v || 0) * 100 / n)));
+function camposManut() {   // campos do servidor com o que está na fila do telefone por cima
+  const f = filaMan();
+  return (S.manut?.campos || []).map((c0) => {
+    const c = { ...c0 };
+    for (const x of f) {
+      if (x.area_id !== c.id) continue;
+      if (x.tipo === 'reg' && (!c.ultima_em || x.em > c.ultima_em)) {
+        c.cavaroda = x.cavaroda; c.mulching = x.mulching; c.ultima = x.data; c.ultima_em = x.em; c.n = (c.n || 0) + 1; c.pendente = true;
+        if (x.cavaroda < c.plantas || x.mulching < c.plantas) c.feito = false;
+      }
+      if (x.tipo === 'feito') { c.feito = x.feito; c.feito_em = x.em; c.pendente = true; }
+    }
+    return c;
+  });
+}
+function estadoMan(c) {
+  if (c.feito) return 'feito';
+  if (c.cavaroda == null) return 'por';
+  if (c.plantas > 0 && c.cavaroda >= c.plantas && c.mulching >= c.plantas) return 'completo';
+  return 'curso';
+}
+async function carregarManut() {
+  if (!S.perfil || !['gestor', 'supervisor', 'director', 'me'].includes(S.perfil.papel)) { S.manut = null; LS.del('manut'); mostrarModo(); return; }
+  const r = await sb.rpc('manutencao_campos');
+  if (r.error) return;
+  S.manut = r.data && r.data.acesso ? r.data : null;
+  if (S.manut) LS.set('manut', S.manut); else LS.del('manut');
+  mostrarModo();
+  if (modoManut()) { desenharMapa(); if ($('#e-lista')?.classList.contains('on')) desenharLista(); }
+}
+function mostrarModo() {
+  const tem = temManut(); if (!tem && S.modo === 'manut') S.modo = 'rega';
+  document.querySelectorAll('.modo-sw').forEach((d) => { d.style.display = tem ? '' : 'none'; d.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.m === (S.modo || 'rega'))); });
+  const m = modoManut();
+  if ($('#leg-rega')) { $('#leg-rega').style.display = m ? 'none' : ''; $('#leg-man').style.display = m ? '' : 'none'; }
+  const fl = $('#e-lista .filtros'); if (fl) fl.style.display = m ? 'none' : '';
+}
+function setModo(m) {
+  S.modo = m; LS.set('modo', m); mostrarModo();
+  desenharMapa(true); desenharLista();
+}
+function desenharMapaManut(enquadrar) {
+  const pts = [];
+  for (const c of camposManut()) {
+    if (c.latitude == null) continue;
+    const cor = COR_MAN[estadoMan(c)];
+    if (temPoligono(c)) L.polygon(c.poligono.map(([x, y]) => [y, x]), { color: cor, weight: 3, fillColor: cor, fillOpacity: .3 }).on('click', (e) => clicarManut(e, c)).addTo(camada);
+    L.circleMarker([c.latitude, c.longitude], { radius: temPoligono(c) ? 5 : 8, color: '#fff', weight: 2, fillColor: cor, fillOpacity: .95 }).on('click', (e) => clicarManut(e, c)).addTo(camada);
+    pts.push([c.latitude, c.longitude]);
+  }
+  if (enquadrar && pts.length) mapa.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
+  desenharRotulos();
+  $('#ronda-info').style.display = 'none'; $('#b-filtro').style.display = 'none';
+  $('#b-perc').style.display = podeVerPercursos() ? '' : 'none';
+}
+function clicarManut(e, c) {
+  if (S.regua) { L.DomEvent.stopPropagation(e); pontoRegua([c.latitude, c.longitude], c.id); return; }
+  abrirFichaManut(c.id);
+}
+const linhaManut = (c) => `<span>Cava-roda</span> ${num(c.cavaroda || 0)}/${num(c.plantas)} (${pctMan(c.cavaroda, c.plantas)}%) · <span>Mulching</span> ${num(c.mulching || 0)}/${num(c.plantas)} (${pctMan(c.mulching, c.plantas)}%)`;
+function desenharListaManut() {
+  const f = S.manFiltro ||= { com: '', est: '', txt: '' };
+  if (!$('#man-lista')) {
+    const coms = S.manut?.comunidades || [];
+    $('#lista').innerHTML = `<div class="msg info" style="margin-top:0">🌱 <b>Manutenção</b> · <span>cava-roda e mulching</span> · <span>separada da rega</span></div>
+      <div class="chips" style="margin:8px 0"><select id="man-com" style="width:auto;margin:0;padding:8px"><option value="">Todas as comunidades</option>${coms.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select>
+      <select id="man-est" style="width:auto;margin:0;padding:8px"><option value="">Todas as situações</option>${Object.entries(TXT_MAN).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select>
+      <input id="man-txt" placeholder="Procurar produtor ou PR" style="flex:1;min-width:150px;margin:0;padding:8px"></div><div id="man-resumo"></div><div id="man-lista"></div>`;
+    $('#man-com').value = f.com; $('#man-est').value = f.est; $('#man-txt').value = f.txt;
+    $('#man-com').onchange = () => { f.com = $('#man-com').value; desenharListaManut(); };
+    $('#man-est').onchange = () => { f.est = $('#man-est').value; desenharListaManut(); };
+    $('#man-txt').oninput = () => { f.txt = $('#man-txt').value; desenharListaManut(); };
+  }
+  const todos = camposManut(), txt = f.txt.trim().toLowerCase();
+  const base = todos.filter((c) => !f.com || c.comunidade === f.com);
+  const L2 = base.filter((c) => (!f.est || estadoMan(c) === f.est) && (!txt || (c.produtor || '').toLowerCase().includes(txt) || c.id.toLowerCase().includes(txt)))
+    .map((c) => ({ c, s: estadoMan(c), d: S.pos && c.latitude != null ? metros(S.pos, [c.latitude, c.longitude]) : null }));
+  const ORD = { por: 0, curso: 1, completo: 2, feito: 3 };
+  L2.sort((x, y) => (S.pos ? (x.d ?? 1e12) - (y.d ?? 1e12) : ORD[x.s] - ORD[y.s] || String(x.c.produtor).localeCompare(String(y.c.produtor))));
+  const cnt = (k) => base.filter((c) => estadoMan(c) === k).length;
+  const pl = base.reduce((s, c) => s + (c.plantas || 0), 0), cr = base.reduce((s, c) => s + Math.min(c.cavaroda || 0, c.plantas || 0), 0), mu = base.reduce((s, c) => s + Math.min(c.mulching || 0, c.plantas || 0), 0);
+  $('#man-resumo').innerHTML = `<p class="pequeno"><b>${num(cnt('feito'))}</b> <span>feitos</span> · <b>${num(cnt('completo'))}</b> <span>completos por confirmar</span> · <b>${num(cnt('curso'))}</b> <span>em curso</span> · <b>${num(cnt('por'))}</b> <span>por fazer</span><br>
+    <span>Plantas com cava-roda</span> ${pctMan(cr, pl)}% · <span>com mulching</span> ${pctMan(mu, pl)}% (${num(pl)} <span>plantas</span>)</p>`;
+  $('#man-lista').innerHTML = `<p class="pequeno">${L2.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` + L2.slice(0, 300).map(({ c, s, d }) => `<div class="item" data-mid="${esc(c.id)}"><div>
+      <div class="nome">${esc(c.produtor || '—')}</div><div class="sub">${esc(c.id)} · ${esc(c.comunidade)} · ${num(c.plantas)} <span>plantas</span>${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}${c.latitude == null ? ' · <span>sem coordenada</span>' : ''}</div>
+      <div class="sub">${linhaManut(c)}</div></div>${c.activa ? '' : '<span class="tag" style="background:#78909c;margin-right:4px">Fora da rega</span>'}<span class="tag" style="background:${COR_MAN[s]}">${TXT_MAN[s]}</span></div>`).join('');
+}
+const barraMan = (p, cor) => `<div style="height:10px;background:#eceee9;border-radius:5px;overflow:hidden;margin:4px 0 8px"><i style="display:block;height:100%;width:${p}%;background:${cor}"></i></div>`;
+function abrirFichaManut(id, nota = '') {
+  const c = camposManut().find((x) => x.id === id); if (!c) return;
+  S.fichaAberta = id;
+  const n = c.plantas, pc = pctMan(c.cavaroda, n), pm = pctMan(c.mulching, n), s = estadoMan(c), esc_ = escreveManut();
+  folha(`${nota}<h2 style="margin-top:0">🌱 ${esc(c.produtor || c.id)}</h2>
+    <p class="pequeno">${esc(c.id)} · ${esc(c.comunidade)}${c.activista ? ' · <span>activista:</span> ' + esc(c.activista) : ''}${c.activa ? '' : ' · <b>Fora da rega</b>'}</p>
+    <div class="msg info" style="margin-top:6px"><span>Manutenção (cava-roda e mulching), separada da rega.</span></div>
+    <div class="cartao" style="margin:8px 0">
+      <div class="lin"><span>Situação</span><b><span class="tag" style="background:${COR_MAN[s]}">${TXT_MAN[s]}</span></b></div>
+      <div class="lin"><span>Plantas do campo</span><b>${num(n)}</b></div>
+      <div style="margin-top:8px"><span>Com cava-roda</span>: <b>${num(c.cavaroda || 0)}</b> <span>de</span> ${num(n)} (${pc}%)</div>${barraMan(pc, '#8d6e63')}
+      <div><span>Com mulching</span>: <b>${num(c.mulching || 0)}</b> <span>de</span> ${num(n)} (${pm}%)</div>${barraMan(pm, '#8d6e63')}
+      ${c.ultima ? `<div class="lin"><span>Último registo</span><b>${fmtData(c.ultima)}</b></div>` : ''}
+      ${c.feito ? `<div class="lin"><span>Marcado como feito</span><b>${c.feito_em ? fmtData(String(c.feito_em).slice(0, 10)) : ''}${c.feito_por ? ' · ' + esc(c.feito_por) : ''}</b></div>` : ''}
+      ${c.pendente ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : ''}
+    </div>
+    ${esc_ ? `<button class="btn" onclick="ecraRegManut('${esc(id)}')">➕ Registar o trabalho</button>` : ''}
+    ${esc_ && s === 'completo' ? `<button class="btn" onclick="marcarFeitoManut('${esc(id)}', true)">✓ Marcar como feito</button>` : ''}
+    ${esc_ && s !== 'completo' && s !== 'feito' ? `<p class="pequeno">Para marcar como feito, todas as ${num(n)} plantas têm de ter cava-roda e mulching.</p>` : ''}
+    ${esc_ && s === 'feito' ? `<button class="btn sec" onclick="marcarFeitoManut('${esc(id)}', false)">Desfazer «Feito»</button>` : ''}
+    ${c.latitude != null ? `<button class="btn sec" onclick="fecharFolha();mudar('mapa');mapa.setView([${c.latitude},${c.longitude}],18)">Ver no mapa</button>` : ''}
+    <h3>Registos</h3><div id="man-regs" class="pequeno">${navigator.onLine ? 'A carregar…' : ''}</div>
+    <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+  regsManut(id);
+}
+async function regsManut(id) {
+  const loc = filaMan().filter((x) => x.tipo === 'reg' && x.area_id === id).map((x) => ({ ...x, local: true, quem: S.perfil?.nome }));
+  let serv = (S.manRegs || {})[id] || [];
+  if (navigator.onLine) { const r = await sb.rpc('manutencao_registos_campo', { p_area: id }); if (!r.error && Array.isArray(r.data)) { serv = r.data; (S.manRegs ||= {})[id] = serv; } }
+  const el = $('#man-regs'); if (!el || S.fichaAberta !== id) return;
+  const L2 = [...loc.sort((a, b) => (b.em > a.em ? 1 : -1)), ...serv];
+  if (!L2.length) { el.innerHTML = '<span>Ainda sem registos.</span>'; return; }
+  el.innerHTML = L2.map((x) => `<div class="lin" style="display:block;padding:6px 0;border-bottom:1px solid #eee">
+    <div><b>${fmtData(x.data)}</b> · <span>cava-roda</span> ${num(x.cavaroda)} · <span>mulching</span> ${num(x.mulching)}${x.pessoas != null ? ` · ${num(x.pessoas)} <span>sazonais</span>` : ''}${x.quem ? ' · ' + esc(x.quem) : ''}${x.local ? ' · <span>no telefone</span>' : ''}</div>
+    ${x.obs ? `<div class="sem-trad">${esc(x.obs)}</div>` : ''}
+    <div class="chips" style="margin-top:4px">${x.foto_path ? `<button class="chip" onclick="verFoto('manutencao-fotos', '${esc(x.foto_path)}', '${esc(fmtData(x.data))}')">📷 <span>Fotografia</span></button>` : ''}
+    ${escreveManut() ? `<button class="chip" onclick="removerRegManut('${esc(x.id)}', '${esc(id)}', ${x.local ? 'true' : 'false'})">Remover (engano)</button>` : ''}</div></div>`).join('');
+}
+function ecraRegManut(id) {
+  const c = camposManut().find((x) => x.id === id); if (!c) return;
+  const h = hojeISO(); S.manFoto = null;
+  folha(`<h2>🌱 Registar o trabalho</h2><p class="pequeno">${esc(c.produtor || '')} · ${esc(c.id)} · ${esc(c.comunidade)} · ${num(c.plantas)} <span>plantas</span></p>
+    <label>Data<input id="mn-data" type="date" max="${h}" value="${h}"></label>
+    <label>Plantas que já têm cava-roda (total do campo)<input id="mn-cav" type="number" inputmode="numeric" min="0" max="${c.plantas}" value="${c.cavaroda ?? ''}" placeholder="de ${num(c.plantas)}"></label>
+    <label>Plantas que já têm mulching (total do campo)<input id="mn-mul" type="number" inputmode="numeric" min="0" max="${c.plantas}" value="${c.mulching ?? ''}" placeholder="de ${num(c.plantas)}"></label>
+    <p class="pequeno">Escreva o total de plantas do campo com cada actividade feita (não só as de hoje). Quando os dois números chegarem a ${num(c.plantas)}, o campo fica a 100%.</p>
+    <label>Sazonais a trabalhar neste campo hoje (opcional)<input id="mn-pes" type="number" inputmode="numeric" min="0"></label>
+    <textarea id="mn-obs" rows="2" placeholder="Observação (opcional)"></textarea>
+    ${campoFoto('mn-foto', 'Fotografia do trabalho (obrigatória)')}
+    <img id="mn-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
+    <button class="btn" onclick="gravarRegManut('${esc(id)}')">Guardar</button><button class="btn sec" onclick="abrirFichaManut('${esc(id)}')">Cancelar</button>`);
+  ligarFoto('mn-foto', null, (foto) => { S.manFoto = foto; const img = $('#mn-prev'); if (foto) { img.src = URL.createObjectURL(foto); img.style.display = ''; } else img.style.display = 'none'; });
+}
+async function gravarRegManut(id) {
+  const c = camposManut().find((x) => x.id === id); if (!c) return;
+  const data = $('#mn-data').value, n = c.plantas;
+  const cav = $('#mn-cav').value === '' ? null : Math.round(+$('#mn-cav').value), mul = $('#mn-mul').value === '' ? null : Math.round(+$('#mn-mul').value);
+  const pes = $('#mn-pes').value === '' ? null : Math.round(+$('#mn-pes').value);
+  if (!data || data > hojeISO()) return alert('Escolha a data (hoje ou antes).');
+  if (cav == null || mul == null) return alert('Escreva quantas plantas têm cava-roda e quantas têm mulching (0 se nenhuma).');
+  if (cav < 0 || mul < 0 || (pes != null && pes < 0)) return alert('Os números não podem ser negativos.');
+  if (n > 0 && (cav > n || mul > n)) return alert(`O campo tem ${num(n)} plantas. O número não pode passar as plantas do campo.`);
+  if ((c.cavaroda != null && cav < c.cavaroda) || (c.mulching != null && mul < c.mulching)) {
+    if (!confirm(`O registo anterior tinha ${num(c.cavaroda)} com cava-roda e ${num(c.mulching)} com mulching. Os novos números são mais baixos. Gravar mesmo assim?`)) return;
+  }
+  if (!S.manFoto) return alert('Tire a fotografia do trabalho.');
+  const x = { tipo: 'reg', id: crypto.randomUUID(), area_id: id, data, cavaroda: cav, mulching: mul, pessoas: pes, obs: $('#mn-obs').value.trim() || null, lat: null, lon: null, precisao: null, em: new Date().toISOString() };
+  if (S.fix && Date.now() - S.fix.t < 60000) { x.lat = S.fix.coords.latitude; x.lon = S.fix.coords.longitude; x.precisao = Math.round(S.fix.coords.accuracy); }
+  try { await FOTOS.guardar('man-' + x.id, S.manFoto); } catch { S.fotosMem = { ...(S.fotosMem || {}), ['man-' + x.id]: S.manFoto }; }
+  LS.set('filaMan', [...filaMan(), x]); actSync();
+  aviso('Trabalho registado.', 'ok'); abrirFichaManut(id); desenharMapa(); if ($('#man-lista')) desenharListaManut(); sincronizar(true);
+}
+function marcarFeitoManut(id, v) {
+  const c = camposManut().find((x) => x.id === id); if (!c) return;
+  if (v && estadoMan(c) !== 'completo') return alert(`Ainda não está completo: todas as ${num(c.plantas)} plantas têm de ter cava-roda e mulching.`);
+  if (v && !confirm(`Confirma que as ${num(c.plantas)} plantas do campo têm cava-roda e mulching?`)) return;
+  LS.set('filaMan', [...filaMan().filter((y) => !(y.tipo === 'feito' && y.area_id === id)), { tipo: 'feito', id: crypto.randomUUID(), area_id: id, feito: v, em: new Date().toISOString() }]);
+  actSync(); abrirFichaManut(id); desenharMapa(); if ($('#man-lista')) desenharListaManut(); sincronizar(true);
+}
+async function removerRegManut(rid, areaId, local) {
+  if (!confirm('Remover este registo (feito por engano)?')) return;
+  if (local) { LS.set('filaMan', filaMan().filter((x) => x.id !== rid)); try { await FOTOS.apagar('man-' + rid); } catch {} }
+  else {
+    if (!navigator.onLine) return aviso('Precisa de rede para remover um registo já enviado.', 'erro');
+    const r = await sb.rpc('remover_manutencao', { p_id: rid }); if (r.error) return aviso(r.error.message, 'erro');
+    await carregarManut();
+  }
+  actSync(); abrirFichaManut(areaId); desenharMapa(); if ($('#man-lista')) desenharListaManut();
+}
+async function enviarManut() {
+  let mudou = false;
+  for (const x of filaMan()) {
+    let r;
+    if (x.tipo === 'reg') {
+      let foto = null; try { foto = await FOTOS.ler('man-' + x.id); } catch {} foto = foto || S.fotosMem?.['man-' + x.id] || null;
+      if (!foto) { aviso('Um registo da manutenção ficou sem fotografia no telefone e não foi enviado. Registe de novo.', 'erro'); LS.set('filaMan', filaMan().filter((y) => y.id !== x.id)); continue; }
+      const caminho = `${S.perfil.id}/${x.id}.jpg`;
+      const up = await sb.storage.from('manutencao-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message;
+      r = await sb.rpc('gravar_manutencao', { p_id: x.id, p_area: x.area_id, p_data: x.data, p_cavaroda: x.cavaroda, p_mulching: x.mulching, p_pessoas: x.pessoas, p_obs: x.obs, p_foto: caminho, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao, p_em: x.em });
+    } else if (x.tipo === 'feito') r = await sb.rpc('marcar_manutencao_feita', { p_area: x.area_id, p_feito: x.feito, p_em: x.em });
+    else r = { error: null };
+    if (r.error && !r.error.code) return r.error.message;
+    if (r.error) aviso(`Manutenção não gravada: ${r.error.message}`, 'erro');
+    LS.set('filaMan', filaMan().filter((y) => y.id !== x.id)); mudou = true;
+    if (x.tipo === 'reg') try { await FOTOS.apagar('man-' + x.id); } catch {}
+  }
+  if (mudou) await carregarManut();
+  return null;
+}
+// Hoje: resumo da manutenção (quem tem acesso)
+function cartaoManutHoje() {
+  if (!temManut()) return '';
+  const L0 = camposManut(), h = hojeISO(), coms = S.manut.comunidades || [];
+  const hoje = L0.filter((c) => c.ultima === h).length;
+  return `<div class="cartao"><h2>🌱 <span>Manutenção</span> · ${coms.map(esc).join(', ')}</h2>` + coms.map((k) => {
+    const b = L0.filter((c) => c.comunidade === k), pl = b.reduce((s, c) => s + (c.plantas || 0), 0);
+    const cr = b.reduce((s, c) => s + Math.min(c.cavaroda || 0, c.plantas || 0), 0), mu = b.reduce((s, c) => s + Math.min(c.mulching || 0, c.plantas || 0), 0);
+    return `<div class="lin"><span>${esc(k)}</span><b>${num(b.filter((c) => estadoMan(c) === 'feito').length)}/${num(b.length)} <span>feitos</span> · <span>cava-roda</span> ${pctMan(cr, pl)}% · <span>mulching</span> ${pctMan(mu, pl)}%</b></div>`;
+  }).join('') + `<div class="lin"><span>Campos com registo hoje</span><b>${num(hoje)}</b></div>
+    <button class="btn sec" onclick="setModo('manut');mudar('lista')">Abrir a manutenção</button></div>`;
+}
+
 // ---------- lista ----------
 // campos sem activista que este utilizador pode atribuir (supervisor e técnico: só os que vê; gestor: todos)
 const porAtribuir = () => (S.perfil && ['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel) ? S.areas.filter((a) => !a.activista_id) : []);
@@ -870,6 +1097,7 @@ function confirmarProposta(id) {
   aviso(`${a.produtor}: atribuído a ${nomeAct(a.activista_id)}.`, 'ok'); desenharMapa(); desenharLista();
 }
 function desenharLista() {
+  if (modoManut()) return desenharListaManut();
   const amb = $('#f-ambito').value, com = $('#f-com').value, sit = $('#f-sit').value, txt = $('#f-txt').value.trim().toLowerCase();
   let L2 = (amb === 'meus' && S.perfil?.papel === 'activista') ? minhas() : S.areas;
   const fa = $('#f-act').value; if (fa) L2 = L2.filter((a) => (fa === '__sem' ? !a.activista_id : a.activista_id === fa));
@@ -2434,7 +2662,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoAvisos() + cartaoSugFeitas() + cartaoPrimeiroTeste() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoAvisos() + cartaoSugFeitas() + cartaoPrimeiroTeste() + cartaoManutHoje() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
@@ -2915,6 +3143,7 @@ function mostrarApp() {
     zonasDe(c).map((z) => `<option value="${esc(c)}|${esc(z)}">&nbsp;&nbsp;${esc(c)} › ${esc(z)}</option>`).join('') +
     (zonasDe(c).length ? `<option value="${esc(c)}|">&nbsp;&nbsp;${esc(c)} › zona por definir</option>` : '')).join('');
   if (!mapa) iniciarMapa();
+  mostrarModo();
   desenharMapa(true); desenharLista(); actSync();
   const emCurso = LS.get('emCurso');
   if (cliente) { mudar('painel'); return; }
@@ -2972,7 +3201,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#lista').onclick = (e) => {
     const b = e.target.closest('button[data-acc]');
     if (b) { if (b.dataset.acc === 'confirmar') confirmarProposta(b.dataset.id); else ecraAtribuir(b.dataset.id); return; }
-    const it = e.target.closest('.item'); if (it) abrirFicha(it.dataset.id);
+    const it = e.target.closest('.item'); if (it) { if (it.dataset.mid) abrirFichaManut(it.dataset.mid); else abrirFicha(it.dataset.id); }
   };
   window.addEventListener('online', () => sincronizar(true));
   window.addEventListener('offline', actSync);
