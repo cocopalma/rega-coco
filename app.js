@@ -862,6 +862,8 @@ const temManut = () => !!S.manut?.acesso;
 const escreveManut = () => S.manut?.acesso === 'escreve';
 const modoManut = () => temManut() && S.modo === 'manut';
 const filaMan = () => LS.get('filaMan', []);
+// medir a área na manutenção (v97): supervisor e gestor (escrevem) e o técnico dessas equipas; sem limite, ou o gestor de novo
+const podeMedirManut = (c) => (escreveManut() || (temManut() && S.perfil?.papel === 'tecnico')) && (!temPoligono(c) || S.perfil?.papel === 'gestor');
 const pctMan = (v, n) => (!n ? 0 : (v || 0) >= n ? 100 : Math.min(99, Math.round((v || 0) * 100 / n)));
 function camposManut() {   // campos do servidor com o que está na fila do telefone por cima
   const f = filaMan();
@@ -885,7 +887,7 @@ function estadoMan(c) {
   return 'curso';
 }
 async function carregarManut() {
-  if (!S.perfil || !['gestor', 'supervisor', 'director', 'me'].includes(S.perfil.papel)) { S.manut = null; LS.del('manut'); mostrarModo(); return; }
+  if (!S.perfil || !['gestor', 'supervisor', 'tecnico', 'director', 'me'].includes(S.perfil.papel)) { S.manut = null; LS.del('manut'); mostrarModo(); return; }
   const r = await sb.rpc('manutencao_campos');
   if (r.error) return;
   S.manut = r.data && r.data.acesso ? r.data : null;
@@ -929,7 +931,7 @@ function desenharListaManut() {
     const coms = S.manut?.comunidades || [];
     $('#lista').innerHTML = `<div class="msg info" style="margin-top:0">🌱 <b>Manutenção</b> · <span>cava-roda e mulching</span> · <span>separada da rega</span></div>
       <div class="chips" style="margin:8px 0"><select id="man-com" style="width:auto;margin:0;padding:8px"><option value="">Todas as comunidades</option>${coms.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select>
-      <select id="man-est" style="width:auto;margin:0;padding:8px"><option value="">Todas as situações</option>${Object.entries(TXT_MAN).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select>
+      <select id="man-est" style="width:auto;margin:0;padding:8px"><option value="">Todas as situações</option>${Object.entries(TXT_MAN).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}<option value="semcoord">Sem coordenada</option></select>
       <input id="man-txt" placeholder="Procurar produtor ou PR" style="flex:1;min-width:150px;margin:0;padding:8px"></div><div id="man-resumo"></div><div id="man-lista"></div>`;
     $('#man-com').value = f.com; $('#man-est').value = f.est; $('#man-txt').value = f.txt;
     $('#man-com').onchange = () => { f.com = $('#man-com').value; desenharListaManut(); };
@@ -938,13 +940,13 @@ function desenharListaManut() {
   }
   const todos = camposManut(), txt = f.txt.trim().toLowerCase();
   const base = todos.filter((c) => !f.com || c.comunidade === f.com);
-  const L2 = base.filter((c) => (!f.est || estadoMan(c) === f.est) && (!txt || (c.produtor || '').toLowerCase().includes(txt) || c.id.toLowerCase().includes(txt)))
+  const L2 = base.filter((c) => (!f.est || (f.est === 'semcoord' ? c.latitude == null : estadoMan(c) === f.est)) && (!txt || (c.produtor || '').toLowerCase().includes(txt) || c.id.toLowerCase().includes(txt)))
     .map((c) => ({ c, s: estadoMan(c), d: S.pos && c.latitude != null ? metros(S.pos, [c.latitude, c.longitude]) : null }));
   const ORD = { por: 0, curso: 1, completo: 2, feito: 3 };
   L2.sort((x, y) => (S.pos ? (x.d ?? 1e12) - (y.d ?? 1e12) : ORD[x.s] - ORD[y.s] || String(x.c.produtor).localeCompare(String(y.c.produtor))));
   const cnt = (k) => base.filter((c) => estadoMan(c) === k).length;
   const pl = base.reduce((s, c) => s + (c.plantas || 0), 0), cr = base.reduce((s, c) => s + Math.min(c.cavaroda || 0, c.plantas || 0), 0), mu = base.reduce((s, c) => s + Math.min(c.mulching || 0, c.plantas || 0), 0);
-  $('#man-resumo').innerHTML = `<p class="pequeno"><b>${num(cnt('feito'))}</b> <span>feitos</span> · <b>${num(cnt('completo'))}</b> <span>completos por confirmar</span> · <b>${num(cnt('curso'))}</b> <span>em curso</span> · <b>${num(cnt('por'))}</b> <span>por fazer</span><br>
+  $('#man-resumo').innerHTML = `<p class="pequeno"><b>${num(cnt('feito'))}</b> <span>feitos</span> · <b>${num(cnt('completo'))}</b> <span>completos por confirmar</span> · <b>${num(cnt('curso'))}</b> <span>em curso</span> · <b>${num(cnt('por'))}</b> <span>por fazer</span>${base.some((c) => c.latitude == null) ? ` · <b>${num(base.filter((c) => c.latitude == null).length)}</b> <span>sem coordenada</span>` : ''}<br>
     <span>Plantas com cava-roda</span> ${pctMan(cr, pl)}% · <span>com mulching</span> ${pctMan(mu, pl)}% (${num(pl)} <span>plantas</span>)</p>`;
   $('#man-lista').innerHTML = `<p class="pequeno">${L2.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` + L2.slice(0, 300).map(({ c, s, d }) => `<div class="item" data-mid="${esc(c.id)}"><div>
       <div class="nome">${esc(c.produtor || '—')}</div><div class="sub">${esc(c.id)} · ${esc(c.comunidade)} · ${num(c.plantas)} <span>plantas</span>${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}${c.latitude == null ? ' · <span>sem coordenada</span>' : ''}</div>
@@ -971,6 +973,7 @@ function abrirFichaManut(id, nota = '') {
     ${esc_ && s === 'completo' ? `<button class="btn" onclick="marcarFeitoManut('${esc(id)}', true)">✓ Marcar como feito</button>` : ''}
     ${esc_ && s !== 'completo' && s !== 'feito' ? `<p class="pequeno">Para marcar como feito, todas as ${num(n)} plantas têm de ter cava-roda e mulching.</p>` : ''}
     ${esc_ && s === 'feito' ? `<button class="btn sec" onclick="marcarFeitoManut('${esc(id)}', false)">Desfazer «Feito»</button>` : ''}
+    ${podeMedirManut(c) ? `${c.latitude == null ? '<div class="msg info">Este campo ainda não tem coordenada. Vá ao campo com o produtor ou o activista e meça a área: o campo passa a aparecer no mapa.</div>' : ''}<button class="btn sec" onclick="ecraMedir('${esc(id)}')">📐 Medir a área (andar à volta do campo)</button>` : ''}
     ${c.latitude != null ? `<button class="btn sec" onclick="fecharFolha();mudar('mapa');mapa.setView([${c.latitude},${c.longitude}],18)">Ver no mapa</button>` : ''}
     <h3>Registos</h3><div id="man-regs" class="pequeno">${navigator.onLine ? 'A carregar…' : ''}</div>
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
@@ -1356,8 +1359,11 @@ function desenhoPontos(P, pos) {
     ${P.length ? `<circle cx="${pt(m[0]).split(',')[0]}" cy="${pt(m[0]).split(',')[1]}" r="5" fill="#d84315"/>` : ''}
     ${pos ? `<circle cx="${pt(m[m.length - 1]).split(',')[0]}" cy="${pt(m[m.length - 1]).split(',')[1]}" r="5" fill="#1565c0"/>` : ''}</svg>`;
 }
+// v97 (22/10/2026, Valdo): também mede campos da manutenção que não estão na rega (não vêm em S.areas), p. ex. os sem coordenada
+const areaMedir = (id) => S.areas.find((x) => x.id === id) || (S.manut?.campos || []).find((x) => x.id === id) || null;
+const voltarFichaMedir = (id) => (S.areas.some((x) => x.id === id) && !modoManut() ? abrirFicha(id) : abrirFichaManut(id));
 function ecraMedir(id, r) {
-  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  const a = areaMedir(id); if (!a) return;
   pararVigia();
   const rr = r && r.area_id === id ? r : (rascLer('rascMedir')?.area_id === id && rascLer('rascMedir')?.perfil === S.perfil?.id ? rascLer('rascMedir') : null);
   S.medir = { id, pts: rr?.pts || [], prec: null, pos: null, a_andar: false, melhor: rr?.melhor || null };
@@ -1373,7 +1379,7 @@ function ecraMedir(id, r) {
     <button class="btn" id="md-ir">▶ Começar</button>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"><button class="chip" id="md-canto">📍 Marcar canto</button><button class="chip" id="md-desf">↶ Desfazer último ponto</button><button class="chip" id="md-limpar">Recomeçar</button></div>
     <button class="btn" id="md-fim" disabled>✓ Terminar e gravar a área</button>
-    <button class="btn sec" onclick="pausarMedicao();pararMedicao();abrirFicha('${esc(id)}')">Sair (os pontos ficam guardados no telefone)</button>`);
+    <button class="btn sec" onclick="pausarMedicao();pararMedicao();voltarFichaMedir('${esc(id)}')">Sair (os pontos ficam guardados no telefone)</button>`);
   $('#md-ir').onclick = () => (S.medir.a_andar ? pausarMedicao() : comecarMedicao());
   $('#md-canto').onclick = () => { const p = S.medir.pos; if (!p) return aviso('Ainda sem posição do GPS.', 'erro'); if (p.prec > CFG.precisaoCoord) return aviso(`Precisão fraca (±${p.prec} m). Espere uns segundos.`, 'erro'); juntarPonto(p, true); };
   $('#md-desf').onclick = () => { S.medir.pts.pop(); guardarMedicao(); mostrarMedicao(); };
@@ -1420,7 +1426,7 @@ function mostrarMedicao() {
 function terminarMedicao() {
   const M = S.medir; if (M.pts.length < 4) return;
   pausarMedicao();
-  const P = simplificar(M.pts, 1), area = areaPontos(P), a = S.areas.find((x) => x.id === M.id);
+  const P = simplificar(M.pts, 1), area = areaPontos(P), a = areaMedir(M.id);
   const fim = M.pts[M.pts.length - 1], dFecho = metros([fim[1], fim[0]], [M.pts[0][1], M.pts[0][0]]);
   folha(`<h2>Área medida · ${esc(a.produtor)}</h2>
     ${dFecho > 20 ? `<div class="msg erro">O último ponto está a ${Math.round(dFecho)} m do início. Se não deu a volta completa, volte e continue a medir.</div>` : ''}
@@ -1434,15 +1440,17 @@ function terminarMedicao() {
   S.medir.final = P;
 }
 function gravarMedicao() {
-  const M = S.medir, P = M.final, a = S.areas.find((x) => x.id === M.id); if (!P || !a) return;
+  const M = S.medir, P = M.final, a = areaMedir(M.id); if (!P || !a) return;
   const area = Math.round(areaPontos(P) * 10) / 10, proposta = S.perfil.papel === 'activista', quando = new Date().toISOString();
   if (proposta) { a.poligono_proposto = P; a.area_m2_proposta = area; a.proposta_em = quando; }   // activista: fica por aprovar
   else { a.poligono = P; a.area_m2 = area; a.limites_abertos = false; a.poligono_proposto = null; if (a.latitude == null) { const c = centroPontos(P); a.latitude = c[1]; a.longitude = c[0]; } }
   LS.set('areas', S.areas);
+  const cm = (S.manut?.campos || []).find((x) => x.id === a.id);   // o mesmo campo na manutenção fica com o limite e a coordenada
+  if (cm && !proposta) { if (cm !== a) { cm.poligono = P; if (cm.latitude == null) { const c = centroPontos(P); cm.latitude = c[1]; cm.longitude = c[0]; } } LS.set('manut', S.manut); }
   porNaFilaAlt({ tipo: 'poligono', area_id: a.id, pontos: P, area_m2: area, precisao: M.melhor || null, medido_em: quando, proposta });
   LS.del('rascMedir'); S.medir = null;
   desenharMapa(true); desenharLista();
-  abrirFicha(a.id, `<div class="msg ok">${proposta ? 'Área enviada para aprovação' : 'Área gravada'}: ${textoArea(area)}${navigator.onLine ? '' : ' (no telefone; é enviada quando houver rede)'}.</div>`);
+  (S.areas.some((x) => x.id === a.id) && !modoManut() ? abrirFicha : abrirFichaManut)(a.id, `<div class="msg ok">${proposta ? 'Área enviada para aprovação' : 'Área gravada'}: ${textoArea(area)}${navigator.onLine ? '' : ' (no telefone; é enviada quando houver rede)'}.</div>`);
 }
 // ---------- campos fora do plano que voltam à rega (14/10/2026, Nuro / Valdo) ----------
 // O servidor tem as áreas do Controlo_Rega_Areas com REGA = NÃO (e as retiradas a 12/10) com activa = false.
@@ -3155,7 +3163,7 @@ function mostrarApp() {
 function retomarRascunhos() {
   try {
     const rd = rascLer('rascMedir');
-    if (rd && rd.a_andar && rd.perfil === S.perfil?.id && rd.pts?.length && S.areas.some((x) => x.id === rd.area_id)) return ecraMedir(rd.area_id, rd);
+    if (rd && rd.a_andar && rd.perfil === S.perfil?.id && rd.pts?.length && areaMedir(rd.area_id)) return ecraMedir(rd.area_id, rd);
     const rm = rascLer('rascMon');
     if (rm && rm.perfil === S.perfil?.id && (S.mon || []).some((x) => x.amostra_id === rm.amostraId)) return ecraMonitoria(rm.amostraId, rm);
     const rf = rascLer('rascFotoRega'), ec = LS.get('emCurso');
