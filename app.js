@@ -876,8 +876,8 @@ function textoRonda() {
 // estado, à parte da rega (não entra nas contas). Mapa › "🥥 Coqueiros": o gestor marca; o director só vê. GPS como no Mapa das
 // plantas (leituras ≤ ±10 m dos últimos 3 s, espera no máximo 4 s). Sem rede: fila "filaCoq", fotografia no telefone (coq-<id>).
 const COR_COQ = { viva: '#2e7d32', seca: '#ef8f00', morta: '#c62828' }, TXT_COQ = { viva: 'Vivo', seca: 'Seco', morta: 'Morto' };
-// v102 (23/10/2026, Valdo): em teste no ACE também para supervisores e técnicos; cada um muda ou remove só os que marcou (o gestor todos)
-const temCoq = () => ['gestor', 'director', 'supervisor', 'tecnico'].includes(S.perfil?.papel), escreveCoq = () => ['gestor', 'supervisor', 'tecnico'].includes(S.perfil?.papel);
+// v103 (23/10/2026, Valdo): no ACE só marcam ele e o Dalmar (gestores); técnicos, supervisores e activistas não têm acesso ao ACE
+const temCoq = () => ['gestor', 'director'].includes(S.perfil?.papel), escreveCoq = () => S.perfil?.papel === 'gestor';
 const mexeCoq = (c) => escreveCoq() && (S.perfil?.papel === 'gestor' || c.meu || c.porEnviar);
 let camadaCoq = null;
 const filaCoq = () => LS.get('filaCoq', []);
