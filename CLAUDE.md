@@ -162,6 +162,9 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Limites falados com o Valdo: a vara encostada ao tronco e a fotografia de frente; em coqueiros altos o topo fica mais longe da câmara do que a vara e a altura tem mais erro do que o diâmetro.
 - Teste: `rega-test/teste_vara.py` (PAPEL=gestor / director; LING=en / sw).
 
+## Botões do mapa mais pequenos (v105, 23/10/2026, Valdo: "para não ocuparem muito espaço do ecrã")
+- `.flutua button`, `#leg-btn`: 12px, padding 5px 8px; `.modo-sw` no mapa 12px (na lista fica como estava); `.b-fundo` 11px; `.ronda` right 112px; cartão da sugestão `bottom:40px`.
+
 ## Mapa de satélite (v102, 23/10/2026, Valdo)
 - Botão "🛰 Satélite" / "🗺 Mapa" por baixo do zoom (`BotaoFundo` em `iniciarMapa`): imagem de satélite Esri World Imagery (`server.arcgisonline.com`, CORS confirmado, imagem real até ao zoom 18 em Palma; no 19 aumenta a do 18, `maxNativeZoom`). A escolha fica no telefone (`rega.fundo`). Os mosaicos de satélite vistos ficam no telefone como os do mapa (cache `mosaicos` no sw, máx. 3000).
 
