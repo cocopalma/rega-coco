@@ -1,6 +1,6 @@
 // Service worker: guarda a app e as bibliotecas para funcionar sem rede.
 // Os pedidos ao Supabase nunca são guardados aqui (a fila offline está na app).
-const VERSAO = 'rega-v101';
+const VERSAO = 'rega-v102';
 const BASE = ['./', 'index.html', 'app.js', 'i18n.js', 'i18n-sw.js', 'painel.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js'];
@@ -16,7 +16,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET' || u.hostname.endsWith('supabase.co')) return;
-  if (u.hostname.endsWith('tile.openstreetmap.org')) {          // mosaicos do mapa já vistos: do telefone primeiro
+  if (u.hostname.endsWith('tile.openstreetmap.org') || u.hostname === 'server.arcgisonline.com') {   // + satélite (v102)          // mosaicos do mapa já vistos: do telefone primeiro
     e.respondWith(caches.open('mosaicos').then(async (c) => {
       const hit = await c.match(e.request); if (hit) return hit;
       try {

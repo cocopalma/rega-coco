@@ -472,7 +472,20 @@ function iniciarMapa() {
   // rotate: o mapa pode rodar com a direcção (leaflet-rotate; sem o complemento fica como antes, norte em cima)
   mapa = L.map('mapa', { zoomControl: true, preferCanvas: true, rotate: true, rotateControl: false, touchRotate: false, compassBearing: false }).setView([-10.75, 40.45], 11);
   mapa.on('dragstart', () => { S.seguirCentro = false; S.euVisivel = false; });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
+  // fundo do mapa: ruas (OpenStreetMap) ou satélite (Esri World Imagery) — v102, 23/10/2026, Valdo; a escolha fica no telefone
+  const fundos = {
+    mapa: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }),
+    satelite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18, crossOrigin: true, attribution: 'Imagens © Esri, Maxar, Earthstar Geographics' }),
+  };
+  let fundo = LS.get('fundo') === 'satelite' ? 'satelite' : 'mapa';
+  fundos[fundo].addTo(mapa);
+  const BotaoFundo = L.Control.extend({ options: { position: 'topleft' }, onAdd() {
+    const b = L.DomUtil.create('button', 'b-fundo'); b.type = 'button'; b.id = 'b-fundo';
+    const txt = () => { b.innerHTML = fundo === 'satelite' ? '🗺 <span>Mapa</span>' : '🛰 <span>Satélite</span>'; b.title = fundo === 'satelite' ? 'Ver o mapa de ruas' : 'Ver a imagem de satélite'; };
+    txt(); L.DomEvent.disableClickPropagation(b);
+    b.onclick = () => { mapa.removeLayer(fundos[fundo]); fundo = fundo === 'satelite' ? 'mapa' : 'satelite'; fundos[fundo].addTo(mapa); fundos[fundo].bringToBack(); LS.set('fundo', fundo); txt(); };
+    return b; } });
+  new BotaoFundo().addTo(mapa);
   camada = L.layerGroup().addTo(mapa);
   rotulos = L.layerGroup().addTo(mapa);
   mapa.on('zoomend moveend', desenharRotulos);
@@ -863,7 +876,9 @@ function textoRonda() {
 // estado, à parte da rega (não entra nas contas). Mapa › "🥥 Coqueiros": o gestor marca; o director só vê. GPS como no Mapa das
 // plantas (leituras ≤ ±10 m dos últimos 3 s, espera no máximo 4 s). Sem rede: fila "filaCoq", fotografia no telefone (coq-<id>).
 const COR_COQ = { viva: '#2e7d32', seca: '#ef8f00', morta: '#c62828' }, TXT_COQ = { viva: 'Vivo', seca: 'Seco', morta: 'Morto' };
-const temCoq = () => ['gestor', 'director'].includes(S.perfil?.papel), escreveCoq = () => S.perfil?.papel === 'gestor';
+// v102 (23/10/2026, Valdo): em teste no ACE também para supervisores e técnicos; cada um muda ou remove só os que marcou (o gestor todos)
+const temCoq = () => ['gestor', 'director', 'supervisor', 'tecnico'].includes(S.perfil?.papel), escreveCoq = () => ['gestor', 'supervisor', 'tecnico'].includes(S.perfil?.papel);
+const mexeCoq = (c) => escreveCoq() && (S.perfil?.papel === 'gestor' || c.meu || c.porEnviar);
 let camadaCoq = null;
 const filaCoq = () => LS.get('filaCoq', []);
 function coqLista() {                                    // o que veio do servidor + o que está na fila do telefone
@@ -912,7 +927,7 @@ function desenharCoq() {
       .on('click', () => verCoq(c.id)).addTo(camadaCoq);
   }
   $('#cq-total').innerHTML = `🥥 <span>Coqueiros fora de campo:</span> <b>${num(l.length)}</b> <span class="pequeno">(${num(v.viva)} <span>vivos</span> · ${num(v.seca)} <span>secos</span> · ${num(v.morta)} <span>mortos</span>)</span>`;
-  const u = escreveCoq() ? l.reduce((m, c) => (!m || c.marcado_em > m.marcado_em ? c : m), null) : null;
+  const u = escreveCoq() ? l.filter((c) => c.meu || c.porEnviar).reduce((m, c) => (!m || c.marcado_em > m.marcado_em ? c : m), null) : null;
   const bd = $('#cq-desf'); bd.style.display = u ? '' : 'none'; if (u) bd.textContent = u.n ? `↶ Apagar o último (nº ${u.n})` : '↶ Apagar o último';
   $('#cq-csv').style.display = l.length ? '' : 'none';
 }
@@ -973,7 +988,7 @@ function verCoq(id) {
     <div class="lin"><span>GPS</span><b>±${c.precisao_m ?? '?'} m${d != null ? ` · a ${Math.round(d)} m de si` : ''}</b></div>
     ${c.observacao ? `<p class="sem-trad">${esc(c.observacao)}</p>` : ''}</div>
     ${c.porEnviar ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : c.foto_path ? `<button class="chip" onclick="verFoto('coqueiros-fotos','${esc(c.foto_path)}')">📷 Ver a fotografia</button>` : ''}
-    ${escreveCoq() ? `<label>Mudar o estado</label><div class="chips">${['viva', 'seca', 'morta'].map((e) => `<button class="chip${c.estado === e ? ' on' : ''}" onclick="estadoCoq('${esc(c.id)}','${e}')">${TXT_COQ[e]}</button>`).join('')}</div>
+    ${mexeCoq(c) ? `<label>Mudar o estado</label><div class="chips">${['viva', 'seca', 'morta'].map((e) => `<button class="chip${c.estado === e ? ' on' : ''}" onclick="estadoCoq('${esc(c.id)}','${e}')">${TXT_COQ[e]}</button>`).join('')}</div>
       <button class="chip" onclick="removerCoq('${esc(c.id)}')">Remover este ponto (marcado por engano)</button>` : ''}
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
 }
@@ -992,7 +1007,7 @@ async function removerCoq(id) {
   fecharFolha(); actSync(); desenharCoq(); sincronizar(true);
 }
 function apagarUltimoCoq() {
-  const l = coqLista(); if (!l.length) return;
+  const l = coqLista().filter((c) => c.meu || c.porEnviar); if (!l.length) return;
   removerCoq(l.reduce((m, c) => (c.marcado_em > m.marcado_em ? c : m)).id);
 }
 async function enviarCoq() {
