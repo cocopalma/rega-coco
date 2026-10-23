@@ -859,7 +859,8 @@ function textoRonda() {
 const COR_MAN = { por: '#9e9e9e', curso: '#f9a825', completo: '#8d6e63', feito: '#4e342e' };
 const TXT_MAN = { por: 'Por fazer', curso: 'Em curso', completo: 'Completo, por confirmar', feito: 'Feito' };
 const temManut = () => !!S.manut?.acesso;
-const escreveManut = () => S.manut?.acesso === 'escreve';
+const escreveManut = () => S.manut?.acesso === 'escreve';                 // supervisor das comunidades e gestor: registam e marcam "Feito"
+const registaManut = () => ['escreve', 'regista'].includes(S.manut?.acesso);   // + técnico dessas equipas (v99): só regista
 const modoManut = () => temManut() && S.modo === 'manut';
 const filaMan = () => LS.get('filaMan', []);
 // fase de teste até ao início (v98, 23/10/2026, Valdo: a manutenção começa a 02/11; até lá o Raul e o Guidion testam)
@@ -867,7 +868,7 @@ const avisoTesteManut = () => (S.manut?.teste && S.manut.inicio
   ? `<div class="msg info">🧪 <span>Fase de teste.</span> ${(R_TESTE_MAN(fmtData(S.manut.inicio)))}</div>` : '');
 const R_TESTE_MAN = (d) => `<span>A manutenção começa a ${d}. O que se registar antes é teste e deixa de contar nesse dia.</span>`;
 // medir a área na manutenção (v97): supervisor e gestor (escrevem) e o técnico dessas equipas; sem limite, ou o gestor de novo
-const podeMedirManut = (c) => (escreveManut() || (temManut() && S.perfil?.papel === 'tecnico')) && (!temPoligono(c) || S.perfil?.papel === 'gestor');
+const podeMedirManut = (c) => (registaManut() || (temManut() && S.perfil?.papel === 'tecnico')) && (!temPoligono(c) || S.perfil?.papel === 'gestor');
 const pctMan = (v, n) => (!n ? 0 : (v || 0) >= n ? 100 : Math.min(99, Math.round((v || 0) * 100 / n)));
 function camposManut() {   // campos do servidor com o que está na fila do telefone por cima
   const f = filaMan();
@@ -973,10 +974,11 @@ function abrirFichaManut(id, nota = '') {
       ${c.feito ? `<div class="lin"><span>Marcado como feito</span><b>${c.feito_em ? fmtData(String(c.feito_em).slice(0, 10)) : ''}${c.feito_por ? ' · ' + esc(c.feito_por) : ''}</b></div>` : ''}
       ${c.pendente ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : ''}
     </div>
-    ${esc_ ? `<button class="btn" onclick="ecraRegManut('${esc(id)}')">➕ Registar o trabalho</button>` : ''}
+    ${registaManut() ? `<button class="btn" onclick="ecraRegManut('${esc(id)}')">➕ Registar o trabalho</button>` : ''}
     ${esc_ && s === 'completo' ? `<button class="btn" onclick="marcarFeitoManut('${esc(id)}', true)">✓ Marcar como feito</button>` : ''}
     ${esc_ && s !== 'completo' && s !== 'feito' ? `<p class="pequeno">Para marcar como feito, todas as ${num(n)} plantas têm de ter cava-roda e mulching.</p>` : ''}
     ${esc_ && s === 'feito' ? `<button class="btn sec" onclick="marcarFeitoManut('${esc(id)}', false)">Desfazer «Feito»</button>` : ''}
+    ${!esc_ && registaManut() && s === 'completo' ? '<p class="pequeno">Completo. Só o supervisor pode marcar como feito.</p>' : ''}
     ${podeMedirManut(c) ? `${c.latitude == null ? '<div class="msg info">Este campo ainda não tem coordenada. Vá ao campo com o produtor ou o activista e meça a área: o campo passa a aparecer no mapa.</div>' : ''}<button class="btn sec" onclick="ecraMedir('${esc(id)}')">📐 Medir a área (andar à volta do campo)</button>` : ''}
     ${c.latitude != null ? `<button class="btn sec" onclick="fecharFolha();mudar('mapa');mapa.setView([${c.latitude},${c.longitude}],18)">Ver no mapa</button>` : ''}
     <h3>Registos</h3><div id="man-regs" class="pequeno">${navigator.onLine ? 'A carregar…' : ''}</div>
@@ -994,7 +996,7 @@ async function regsManut(id) {
     <div><b>${fmtData(x.data)}</b> · <span>cava-roda</span> ${num(x.cavaroda)} · <span>mulching</span> ${num(x.mulching)}${x.pessoas != null ? ` · ${num(x.pessoas)} <span>sazonais</span>` : ''}${x.quem ? ' · ' + esc(x.quem) : ''}${x.local ? ' · <span>no telefone</span>' : ''}</div>
     ${x.obs ? `<div class="sem-trad">${esc(x.obs)}</div>` : ''}
     <div class="chips" style="margin-top:4px">${x.foto_path ? `<button class="chip" onclick="verFoto('manutencao-fotos', '${esc(x.foto_path)}', '${esc(fmtData(x.data))}')">📷 <span>Fotografia</span></button>` : ''}
-    ${escreveManut() ? `<button class="chip" onclick="removerRegManut('${esc(x.id)}', '${esc(id)}', ${x.local ? 'true' : 'false'})">Remover (engano)</button>` : ''}</div></div>`).join('');
+    ${escreveManut() || (registaManut() && (x.local || x.feito_por === S.perfil?.id)) ? `<button class="chip" onclick="removerRegManut('${esc(x.id)}', '${esc(id)}', ${x.local ? 'true' : 'false'})">Remover (engano)</button>` : ''}</div></div>`).join('');
 }
 function ecraRegManut(id) {
   const c = camposManut().find((x) => x.id === id); if (!c) return;
