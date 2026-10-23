@@ -415,7 +415,7 @@ async function entrar() {
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -684,6 +684,7 @@ function modoPercurso(on) {
   for (const g of [camada, rotulos]) { if (!g) continue; if (on && mapa.hasLayer(g)) mapa.removeLayer(g); if (!on && !mapa.hasLayer(g)) g.addTo(mapa); }
   if (eu) eu.setStyle({ opacity: on ? .5 : 1, fillOpacity: on ? .5 : 1 });
   $('.legenda').style.display = on ? 'none' : ''; $('#b-perc').classList.toggle('on', on);
+  mostrarSugFixa();
 }
 function enquadrarPercurso(lim) {
   if (!lim.length) return;
@@ -786,10 +787,12 @@ function alternarRegua() {
   S.regua = []; if (!regua) regua = L.layerGroup().addTo(mapa);
   $('#b-regua').classList.add('on'); $('#regua').style.display = ''; $('.legenda').style.display = 'none';
   desenharRegua();
+  mostrarSugFixa();
 }
 function fecharRegua() {
   S.regua = null; if (regua) regua.clearLayers();
   $('#b-regua').classList.remove('on'); $('#regua').style.display = 'none'; $('.legenda').style.display = '';
+  mostrarSugFixa();
 }
 function pontoRegua(ll, nome = '') { if (!S.regua) return false; S.regua.push({ ll, nome }); desenharRegua(); return true; }
 function clicarCampo(e, a) {
@@ -813,7 +816,7 @@ function desenharRegua() {
 function desenharMapa(enquadrar = false) {
   if (!camada) return;
   camada.clearLayers();
-  if (modoManut()) return desenharMapaManut(enquadrar);   // manutenção: só os campos de Quiwia e Farol, cores próprias (v96)
+  if (modoManut()) { mostrarSugFixa(); return desenharMapaManut(enquadrar); }   // manutenção: só os campos de Quiwia e Farol, cores próprias (v96)
   const pts = [];
   const fa = $('#f-act')?.value;
   for (const a of visiveis()) {
@@ -844,6 +847,7 @@ function desenharMapa(enquadrar = false) {
   $('#b-perc').style.display = podeVerPercursos() ? '' : 'none';
   const ri = $('#ronda-info');
   if (souActivista() && S.perfil.activista_id) { ri.style.display = ''; ri.innerHTML = textoRonda(); } else ri.style.display = 'none';
+  mostrarSugFixa();
 }
 function textoRonda() {
   const r = rondaInfo(S.perfil.activista_id);
@@ -1788,7 +1792,7 @@ async function marcarEntrada(id) {
   if (g.valido === false) return abrirFicha(id, `<div class="msg erro">Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Só pode marcar a entrada até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'} do campo.</div>`);
   const ent = { area_id: id, entrada_em: new Date().toISOString(), entrada_lat: g.lat, entrada_lon: g.lon, gps_precisao_m: g.precisao, distancia_area_m: g.dist, gps_valido: g.valido };
   const sug = LS.get('sugestao');
-  if (sug) { ent.area_sugerida_id = sug.area_id; ent.seguiu_sugestao = sug.area_id === id; LS.del('sugestao'); }
+  if (sug) { ent.area_sugerida_id = sug.area_id; ent.seguiu_sugestao = sug.area_id === id; LS.del('sugestao'); mostrarSugFixa(); }
   if (souActivista() && !minha) {                               // campo de outra equipa ou sem activista
     LS.set('pendenteAlerta', ent);
     return folha(`<h2>Atenção: campo fora da sua lista</h2>
@@ -1909,27 +1913,74 @@ async function marcarSaida() {
     const depois = rondaInfo(actId);
     if (depois.n > antes.n) nota = `<div class="msg ok"><b>Ronda ${antes.n} concluída!</b> Os ${antes.total} campos da lista foram regados de ${fmtData(depois.anterior.ini)} a ${fmtData(depois.anterior.fim)}. A ronda ${depois.n} começa agora.</div>`;
   }
-  sugerirProximo(a, nota);
+  sugerirProximo(a, nota, reg.id);
 }
 
 // ---------- próximo campo (sugestão opcional) ----------
-function sugerirProximo(feito, nota = '') {
-  const de = S.pos || (feito.latitude != null ? [feito.latitude, feito.longitude] : null);
-  const cand = (S.perfil.papel === 'activista' ? minhas() : S.areas.filter((a) => a.comunidade === feito.comunidade))
-    .filter((a) => a.id !== feito.id && a.latitude != null && situacao(a).cod === 'por');
-  if (!de || !cand.length) return folha(`<div class="msg ok">Rega guardada.</div>${nota}<p>Não há sugestão de próximo campo.</p><button class="btn" onclick="fecharFolha()">Fechar</button>`);
+// v100 (23/10/2026, Valdo): a sugestão fica também fixa no Mapa e no Hoje até à próxima entrada (LS 'sugestao') e a app
+// regista no servidor quando mostra ou não mostra a sugestão, com o motivo (fila 'filaSugProx' → RPC registar_sugestoes_proximo).
+function registarSugProx(o) {
+  const f = LS.get('filaSugProx', []); f.push({ id: crypto.randomUUID(), versao: versaoApp(), teste: S.perfil.papel !== 'activista', em: new Date().toISOString(), ...o });
+  LS.set('filaSugProx', f.slice(-100));
+}
+function sugerirProximo(feito, nota = '', regId = null) {
+  const semSug = () => folha(`<div class="msg ok">Rega guardada.</div>${nota}<p>Não há sugestão de próximo campo.</p><button class="btn" onclick="fecharFolha()">Fechar</button>`);
+  const log = { registo_id: regId, area_feita_id: feito.id };
+  let lista, de, cand;
+  try {
+    de = S.pos || (feito.latitude != null ? [feito.latitude, feito.longitude] : null);
+    lista = (S.perfil.papel === 'activista' ? minhas() : S.areas.filter((a) => a.comunidade === feito.comunidade)).filter((a) => a.id !== feito.id);
+    const por = lista.filter((a) => situacao(a).cod === 'por');
+    cand = por.filter((a) => a.latitude != null);
+    Object.assign(log, { n_lista: lista.length, n_por: por.length, n_sem_coord: por.length - cand.length, n_candidatos: cand.length, origem_pos: S.pos ? 'gps' : de ? 'campo' : null });
+  } catch (e) {
+    registarSugProx({ ...log, mostrada: false, motivo: 'erro: ' + (e?.message || e) }); return semSug();
+  }
+  if (!de || !cand.length) {
+    registarSugProx({ ...log, mostrada: false, motivo: !de ? 'sem_posicao' : !lista.length ? 'lista_vazia' : !log.n_por ? 'todos_regados' : 'sem_coordenada' });
+    return semSug();
+  }
   cand.sort((x, y) => metros(de, [x.latitude, x.longitude]) - metros(de, [y.latitude, y.longitude]));
   const p = cand[0], d = metros(de, [p.latitude, p.longitude]), s = situacao(p);
   LS.set('sugestao', { area_id: p.id, em: new Date().toISOString() });
+  registarSugProx({ ...log, mostrada: true, area_sugerida_id: p.id, distancia_m: Math.round(d) });
+  mostrarSugFixa();
   folha(`<div class="msg ok">Rega guardada${navigator.onLine ? '' : ' no telefone (será enviada quando houver rede)'}.</div>${nota}
     <h2>Próximo campo sugerido</h2>
     <div class="cartao"><div class="lin"><span>Produtor</span><b>${esc(p.produtor)}</b></div>
      <div class="lin"><span>PR</span><b>${esc(p.pr)}</b></div><div class="lin"><span>Plantas</span><b>${plantasTxt(p)}</b></div>
      <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div><div class="lin"><span>Ronda</span><span class="tag t-${s.cod}">${s.txt}</span></div>
      <div class="lin"><span>Distância</span><b>${d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km'} · ${rumo(de, [p.latitude, p.longitude])}</b></div></div>
-    <p class="pequeno">É só uma sugestão. Pode escolher outro campo.</p>
-    <button class="btn" onclick="fecharFolha();mapa.setView([${p.latitude},${p.longitude}],16);mudar('mapa')">Ver no mapa</button>
+    <p class="pequeno">É só uma sugestão. Pode escolher outro campo. Fica no Mapa e no Hoje até marcar a próxima entrada.</p>
+    <button class="btn" onclick="fecharFolha();verSugMapa()">Ver no mapa</button>
     <button class="btn sec" onclick="fecharFolha()">Escolher outro campo</button>`);
+}
+function sugActual() {                                 // a sugestão guardada, só do dia de hoje e com o campo no telefone
+  const g = LS.get('sugestao'); if (!g || !g.em) return null;
+  const d = new Date(g.em); if (isNaN(d) || `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` !== hojeISO()) return null;
+  if (LS.get('emCurso')) return null;
+  const a = S.areas.find((x) => x.id === g.area_id); return a && a.latitude != null ? a : null;
+}
+function textoSugFixa(a) {
+  const dist = S.pos ? metros(S.pos, [a.latitude, a.longitude]) : null;
+  return `➡️ <span>Próximo campo sugerido</span>: <b class="sem-trad">${esc(a.produtor)}</b> · <span class="sem-trad">${esc(a.pr)}</span>${dist != null ? ` · <span class="sem-trad">${dist < 1000 ? Math.round(dist) + ' m' : (dist / 1000).toFixed(1) + ' km'}</span> · <span>${rumo(S.pos, [a.latitude, a.longitude])}</span>` : ''}`;
+}
+function mostrarSugFixa() {                            // cartão fixo no Mapa (em baixo)
+  const el = $('#sug-mapa'); if (!el) return;
+  const a = souActivista() || ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) ? sugActual() : null;
+  const tapa = !$('#legenda')?.classList.contains('fechada') || S.regua || S.modoPerc || modoManut();
+  if (!a || tapa) { el.style.display = 'none'; return; }
+  el.innerHTML = `<div>${textoSugFixa(a)}</div><div class="chips"><button class="chip" onclick="verSugMapa()">Ver no mapa</button><button class="chip" onclick="abrirFicha('${esc(a.id)}')">Abrir a ficha</button></div>`;
+  el.style.display = '';
+}
+function cartaoSugHoje() {
+  const a = sugActual(); if (!a) return '';
+  return `<div class="cartao" id="hoje-sugprox"><div>${textoSugFixa(a)}</div><p class="pequeno">É só uma sugestão. Fica aqui até marcar a próxima entrada.</p>
+    <div class="chips"><button class="chip" onclick="verSugMapa()">Ver no mapa</button><button class="chip" onclick="abrirFicha('${esc(a.id)}')">Abrir a ficha</button></div></div>`;
+}
+function verSugMapa() {
+  const a = sugActual(); if (!a) return;
+  mudar('mapa'); setTimeout(() => { mapa.invalidateSize(); mapa.setView([a.latitude, a.longitude], 16); }, 50);
 }
 
 // ---------- regas do campo e queimadas (16/10/2026, Dalmar via Valdo) ----------
@@ -2364,6 +2415,8 @@ async function enviarSugestoes() {
     LS.set('filaSug', LS.get('filaSug', []).filter((y) => y.id !== g.id));
     try { await FOTOS.apagar('sug-' + g.id); } catch {}
   }
+  const sp = LS.get('filaSugProx', []);                 // registo das sugestões do próximo campo (v100)
+  if (sp.length) { const r = await sb.rpc('registar_sugestoes_proximo', { p_lista: sp }); if (!r.error) LS.set('filaSugProx', LS.get('filaSugProx', []).filter((x) => !sp.some((y) => y.id === x.id))); }
   const p = LS.get('problemas', []);
   if (p.length) { const r = await sb.rpc('registar_problemas', { p_lista: p.map(({ k, ...x }) => x) }); if (!r.error) LS.set('problemas', LS.get('problemas', []).filter((x) => !p.some((y) => y.k === x.k && y.vezes === x.vezes))); }
   return null;
@@ -2676,7 +2729,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoAvisos() + cartaoSugFeitas() + cartaoPrimeiroTeste() + cartaoManutHoje() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoPrimeiroTeste() + cartaoManutHoje() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
@@ -2690,7 +2743,7 @@ function fotoVisivel(caminho) {
   return !!caminho && (S.perfil?.papel !== 'activista' || String(caminho).startsWith((S.perfil?.id || '-') + '/'));
 }
 // legenda do mapa: fechada, abre ao tocar em «ℹ️ Legenda» e fecha ao tocar nela (20/10/2026, Dalmar via Valdo: ocupa espaço no ecrã)
-function verLegenda(on) { $('#legenda').classList.toggle('fechada', !on); }
+function verLegenda(on) { $('#legenda').classList.toggle('fechada', !on); mostrarSugFixa(); }
 async function verFoto(balde, caminho, legenda = '') {
   const m = document.createElement('div');
   m.id = 'foto-modal'; m.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;color:#fff;text-align:center';
