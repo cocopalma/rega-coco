@@ -169,7 +169,12 @@ const plantasTxt = (a) => (a.vivas > 0 ? `${num(a.vivas)} plantas vivas` : `${nu
 const plantasN = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
 const nomeAct = (id) => (S.activistas.find((x) => x.id === id) || {}).nome || '(por atribuir)';
 const minhas = () => S.areas.filter((a) => a.activista_id && a.activista_id === S.perfil?.activista_id);
-const visiveis = () => (S.filtro === 'meus' && S.perfil?.papel === 'activista' ? minhas() : S.areas);
+// supervisores vêem todos os campos, mas têm a sua lista (24/10/2026, Valdo): campos dos activistas da equipa e,
+// sem activista, os das comunidades da equipa. Fora da lista: só ver, ou passar o campo para a sua equipa (com motivo).
+const listaPropria = () => S.perfil?.papel === 'supervisor' && Array.isArray(S.visiveis);
+const meuCampo = (a) => !listaPropria() || (a.activista_id ? S.visiveis.includes(a.activista_id) : (S.minhasCom || []).includes(a.comunidade));
+const meusCampos = () => S.areas.filter(meuCampo);
+const visiveis = () => (S.filtro === 'meus' && S.perfil?.papel === 'activista' ? minhas() : S.filtro === 'meus' && listaPropria() ? meusCampos() : S.areas);
 
 // ---------- fila offline ----------
 const filaRegistos = () => LS.get('fila', []);
@@ -228,7 +233,7 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'planta_est' ? await sb.rpc('estado_planta', { p_id: x.planta_id, p_estado: x.estado, p_cavaroda: x.cavaroda, p_mulching: x.mulching, p_em: x.em })
         : x.tipo === 'planta_rem' ? await sb.rpc('remover_planta', { p_id: x.planta_id, p_em: x.em })
         : x.tipo === 'plantas_rega' ? await sb.rpc('corrigir_plantas_rega', { p_id: x.registo_id, p_plantas: x.plantas, p_motivo: x.motivo, p_em: x.em })
-        : await sb.rpc('atribuir_area', { p_area: x.area_id, p_activista: x.activista_id });
+        : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
       if (r4.error) aviso(`Não foi gravado (${x.area_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
       LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); alteradas++;
@@ -305,8 +310,9 @@ async function carregarTudo() {
   }
   S.visiveis = null;
   if (['tecnico', 'supervisor'].includes(S.perfil.papel)) {
-    const [v] = await Promise.all([sb.rpc('meus_activistas'), carregarMonitoria()]);
+    const [v, mc] = await Promise.all([sb.rpc('meus_activistas'), sb.rpc('minhas_comunidades'), carregarMonitoria()]);
     S.visiveis = v.error ? null : v.data; LS.set('visiveis', S.visiveis);
+    if (!mc.error) { S.minhasCom = mc.data || []; LS.set('minhasCom', S.minhasCom); }
   }
   LS.set('perfil', S.perfil); LS.set('activistas', S.activistas); LS.set('areas', S.areas);
   await carregarEstado(est);
@@ -337,7 +343,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega');
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega');
   return !!(S.perfil && S.areas.length);
 }
 
@@ -862,7 +868,7 @@ function desenharMapa(enquadrar = false) {
   marcasItinerario();
   desenharRotulos();
   $('#b-filtro').textContent = S.filtro === 'meus' ? 'As minhas' : 'Todas';
-  $('#b-filtro').style.display = 'none';
+  $('#b-filtro').style.display = listaPropria() ? '' : 'none';
   $('#b-perc').style.display = podeVerPercursos() ? '' : 'none';
   $('#b-coq').style.display = temCoq() ? '' : 'none';
   const ri = $('#ronda-info');
@@ -1548,7 +1554,7 @@ function cartaoManutHoje() {
 
 // ---------- lista ----------
 // campos sem activista que este utilizador pode atribuir (supervisor e técnico: só os que vê; gestor: todos)
-const porAtribuir = () => (S.perfil && ['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel) ? S.areas.filter((a) => !a.activista_id) : []);
+const porAtribuir = () => (S.perfil && ['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel) ? S.areas.filter((a) => !a.activista_id && meuCampo(a)) : []);
 const daMinhaEquipa = (id) => !S.visiveis || S.visiveis.includes(id);
 // a proposta vem da base com o NOME do activista; devolve o id (null se não existir ou estiver desactivado)
 function propostaId(a) {
@@ -1572,7 +1578,7 @@ function confirmarProposta(id) {
 function desenharLista() {
   if (modoManut()) return desenharListaManut();
   const amb = $('#f-ambito').value, com = $('#f-com').value, sit = $('#f-sit').value, txt = $('#f-txt').value.trim().toLowerCase();
-  let L2 = (amb === 'meus' && S.perfil?.papel === 'activista') ? minhas() : S.areas;
+  let L2 = (amb === 'meus' && S.perfil?.papel === 'activista') ? minhas() : (amb === 'meus' && listaPropria()) ? meusCampos() : S.areas;
   const fa = $('#f-act').value; if (fa) L2 = L2.filter((a) => (fa === '__sem' ? !a.activista_id : a.activista_id === fa));
   if (com) { const [c, z] = com.split('|'); L2 = L2.filter((a) => a.comunidade === c && (z === undefined || (a.zona || '') === z)); }
   if (txt) L2 = L2.filter((a) => (a.produtor || '').toLowerCase().includes(txt) || a.pr.toLowerCase().includes(txt));
@@ -1592,7 +1598,7 @@ function desenharLista() {
     `<p class="pequeno">${linhas.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` +
     linhas.slice(0, 300).map(({ a, s, d }) => `<div class="item" data-id="${esc(a.id)}"><div>
       <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
-      </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}<span class="tag t-${s.cod}">${s.txt}</span>${s.cod === 'sem' && podeAtribuir(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
+      </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}<span class="tag t-${s.cod}">${s.txt}</span>${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
 }
 
 // ---------- mapa de plantas (15/10/2026, pedido do Dalmar; teste com gestor/director, supervisores e técnicos) ----------
@@ -2135,8 +2141,15 @@ function activistasProximos(a) {
   }
   return Object.entries(melhor).map(([id, o]) => ({ id, ...o })).sort((x, y) => x.d - y.d);
 }
+// nome do supervisor do activista do campo, e texto curto da equipa de um campo fora da lista
+const supDe = (a) => (S.activistas.find((t) => t.id === a.activista_id) || {}).supervisor || '';
+const equipaDe = (a) => (a.activista_id ? `equipa de ${nomeAct(a.activista_id)}${supDe(a) ? ' · ' + supDe(a) : ''}` : 'sem activista, fora das comunidades da sua equipa');
+function botaoPassar(a) {
+  return podeAtribuir(a) ? `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">➡️ Passar para a minha equipa</button>` : '';
+}
 function ecraAtribuir(id, nota = '') {
   const a = S.areas.find((x) => x.id === id), daEquipa = (t) => !S.visiveis || S.visiveis.includes(t);
+  const outra = listaPropria() && a.activista_id && !daEquipa(a.activista_id);
   const prox = activistasProximos(a).filter((p) => daEquipa(p.id)).slice(0, 3);
   const km = (d) => d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km';
   const resto = S.activistas.filter((t) => activo(t) && daEquipa(t.id) && !prox.some((p) => p.id === t.id));
@@ -2146,6 +2159,8 @@ function ecraAtribuir(id, nota = '') {
       ${prox.length ? `<optgroup label="Mais próximos (campo da lista mais perto)">${prox.map((p) => `<option value="${p.id}">${esc(nomeAct(p.id))} — ${km(p.d)} (${esc(p.com)})</option>`).join('')}</optgroup>` : ''}
       <optgroup label="Todos">${resto.map((t) => `<option value="${t.id}">${esc(t.nome)} — ${esc(t.comunidade_principal || '')}</option>`).join('')}</optgroup>
     </select></label>
+    ${outra ? `<div class="msg erro">Este campo é da equipa de ${esc(nomeAct(a.activista_id))}. Ao gravar passa para a sua equipa e sai da lista dessa equipa.</div>
+    <label>Porque passa este campo para a sua equipa?<textarea id="t-motivo" rows="2" placeholder="Escreva o motivo"></textarea></label>` : ''}
     <p class="pequeno">Regra: rega o activista da comunidade onde o campo está. Confirme antes de gravar.</p>
     <button class="btn" onclick="gravarAtribuicao('${esc(id)}')">Gravar</button>
     <button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
@@ -2154,8 +2169,10 @@ function ecraAtribuir(id, nota = '') {
 function gravarAtribuicao(id) {
   const a = S.areas.find((x) => x.id === id), novo = $('#t-act').value;
   if (!novo) return;
+  const motivo = $('#t-motivo') ? $('#t-motivo').value.trim() : '';
+  if ($('#t-motivo') && motivo.length < 3) { alert('Escreva o motivo.'); return; }
   a.activista_id = novo; LS.set('areas', S.areas);
-  porNaFilaAlt({ tipo: 'atrib', area_id: id, activista_id: novo }); desenharMapa(); desenharLista();
+  porNaFilaAlt({ tipo: 'atrib', area_id: id, activista_id: novo, motivo: motivo || null }); desenharMapa(); desenharLista();
   abrirFicha(id, `<div class="msg ok">Campo atribuído a ${esc(nomeAct(novo))}.${navigator.onLine ? '' : ' Será enviado quando houver rede.'}</div>`);
 }
 async function recarregarAreas() {
@@ -2190,13 +2207,15 @@ function abrirFicha(id, nota = '') {
          <button class="btn sec" onclick="marcarAgua(true)">A água já estava no campo quando chegámos</button>`) +
     `<button class="btn aviso" onclick="ecraSaida()">Terminei — marcar saída</button>`;
   else if (emCurso) acc = `<div class="msg info">Tem a rega de outro campo em curso. Termine-a primeiro.</div><button class="btn sec" onclick="abrirFicha('${esc(emCurso.area_id)}')">Abrir o campo em curso</button>`;
-  else if (podeRegar) acc = `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`;
+  else if (podeRegar && meuCampo(a)) acc = `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`;
+  const alheio = !meuCampo(a); S.soVer = alheio;
   folha(`${nota}<h2 style="margin-top:0">${esc(a.produtor)}</h2>
    <div class="cartao" style="margin:8px 0">
     <div class="lin"><span>PR · área</span><b>${esc(a.pr)} · ${a.area_n ?? '—'}</b></div>
     <div class="lin"><span>Comunidade</span><b>${esc(a.comunidade)}</b></div>
     ${zonasDe(a.comunidade).length ? `<div class="lin"><span>Zona</span><b>${a.zona ? esc(a.zona) : '<span class="pequeno">por definir</span>'}</b></div>` : ''}
     <div class="lin"><span>Activista</span><b>${esc(nomeAct(a.activista_id))}</b></div>
+    ${listaPropria() && a.activista_id ? `<div class="lin"><span>Supervisor</span><b>${esc(supDe(a) || '—')}</b></div>` : ''}
     ${a.instaladas != null ? `<div class="lin"><span>Plantas instaladas</span><b>${num(a.instaladas)}</b></div>` : ''}<div class="lin"><span>Plantas vivas</span><b>${a.vivas != null ? num(a.vivas) : '—'}</b></div>${a.instaladas != null && a.vivas != null && a.instaladas >= a.vivas ? `<div class="lin"><span>Plantas mortas</span><b>${num(a.instaladas - a.vivas)}</b></div>` : ''}
     <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div>
     ${linhasRegasCampo(a)}
@@ -2206,7 +2225,8 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${botaoMonitoria(a)}${botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+  S.soVer = false;
   if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
 }
 
@@ -2470,7 +2490,7 @@ function queimadaDe(id) {
 }
 function cartaoQueimada(a) {
   const q = queimadaDe(a.id); if (!q) return '';
-  const meu = q.registada_por === S.perfil?.id || q.local, pode = meu || ['supervisor', 'gestor'].includes(S.perfil?.papel);
+  const meu = q.registada_por === S.perfil?.id || q.local, pode = !S.soVer && (meu || ['supervisor', 'gestor'].includes(S.perfil?.papel));
   const pl = q.plantas_afectadas != null ? `<div>${num(q.plantas_afectadas)} plantas afectadas${q.plantas_mortas != null ? ` · ${num(q.plantas_mortas)} mortas` : ''}</div>` : '';
   // a recontagem (pedida sozinha pela queimada) aparece no cartão "Recontagem das plantas" da ficha
   const rec = q.local || recontagemDe(a.id) ? '' : q.recontagem_em
@@ -2488,7 +2508,7 @@ function cartaoQueimada(a) {
 const souOficial = () => S.perfil?.papel === 'oficial_me';
 const gereRecont = () => ['me', 'gestor'].includes(S.perfil?.papel);   // encaminham, cancelam, escolhem o oficial
 // técnicos e supervisores também pedem (18/10/2026, Valdo): o pedido vai para o M&E, que encaminha aos oficiais
-const podePedirRec = () => ['me', 'gestor', 'tecnico', 'supervisor'].includes(S.perfil?.papel);
+const podePedirRec = () => ['me', 'gestor', 'tecnico', 'supervisor'].includes(S.perfil?.papel) && !S.soVer;
 const veRecontagens = () => ['me', 'gestor', 'director', 'tecnico', 'supervisor'].includes(S.perfil?.papel);
 const filaRec = () => LS.get('filaRec', []);
 async function carregarRecontagens() {
@@ -3199,7 +3219,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoPrimeiroTeste() + cartaoManutHoje() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoPrimeiroTeste() + cartaoManutHoje() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
@@ -3230,7 +3250,7 @@ async function regasDoCampo(id) {
   if (r.error || !el || !Array.isArray(r.data) || !r.data.length) return;
   for (const x of LS.get('filaAlt', [])) if (x.tipo === 'plantas_rega') { const v = r.data.find((y) => y.id === x.registo_id); if (v) { v.pendente = { era: v.plantas_regadas }; v.plantas_regadas = x.plantas; } }
   (S.regasCampo ||= {})[id] = r.data;
-  const podeCorr = PODE_CORRIGIR_PLANTAS.includes(S.perfil?.papel);
+  const ar = S.areas.find((x) => x.id === id), podeCorr = PODE_CORRIGIR_PLANTAS.includes(S.perfil?.papel) && (!ar || meuCampo(ar));
   const bt = (v, t, rot) => fotoVisivel(v['foto_' + t]) ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(v['foto_' + t])}', '${esc(rot)} · ${esc(fmtData(v.data))} ${esc(fmtHora(v['foto_' + t + '_em'] || v.entrada_em))} · ${esc(v.quem || '')}')">📷 ${rot}</button>` : '';
   el.innerHTML = `<div class="cartao" style="margin-top:10px"><h2>Regas deste campo</h2>` + r.data.map((v) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
       <div class="lin" style="border:0;padding:0"><span>${fmtData(v.data)} · ${fmtHora(v.entrada_em)}–${v.saida_em ? fmtHora(v.saida_em) : '…'}${v.teste ? ' <span class="tag t-teste">teste</span>' : ''}</span><b>${num(v.plantas_regadas)} plantas</b></div>
@@ -3278,6 +3298,19 @@ const avisos = () => (Array.isArray(S.avisos) ? S.avisos : LS.get('avisos', []) 
 const textoAviso = (v) => `${v.sem_rega} de ${v.plantas_obs} plantas sem solo húmido · nota ${Number(v.nota).toLocaleString(LOC)}`;
 // Aviso a quem ainda não fez nenhuma rega de teste (v92, 21/10/2026, sugestão aceite pelo Valdo): técnico e supervisor.
 // Desaparece logo que haja uma rega de teste (no servidor, na fila do telefone ou em curso).
+// campos da lista sem activista (24/10/2026, Valdo: "não termos campos que não tenham equipas"): técnico e supervisor
+function cartaoSemEquipa() {
+  if (!['tecnico', 'supervisor'].includes(S.perfil?.papel)) return '';
+  const L = porAtribuir(); if (!L.length) return '';
+  const comProp = L.filter((a) => propostaId(a) && daMinhaEquipa(propostaId(a))).length;
+  return `<div class="cartao" style="border-left:4px solid #c62828"><h2 style="margin-top:0">⚠️ <span>${L.length === 1 ? '1 campo sem equipa' : L.length + ' campos sem equipa'}</span></h2>
+    <p class="pequeno">${comProp ? `<span>${comProp === 1 ? '1 tem proposta: basta confirmar.' : comProp + ' têm proposta: basta confirmar.'}</span> ` : ''}<span>Atribua cada campo a um activista da sua equipa.</span></p>
+    <button class="btn" onclick="irPorAtribuir()">Atribuir os campos</button></div>`;
+}
+function irPorAtribuir() {
+  if (listaPropria()) { S.filtro = 'meus'; LS.set('filtroSup', 'meus'); $('#f-ambito').value = 'meus'; }
+  $('#f-sit').value = 'sem'; mudar('lista'); desenharLista();
+}
 function cartaoPrimeiroTeste() {
   if (!['tecnico', 'supervisor'].includes(S.perfil?.papel)) return '';
   const n = LS.get('nTestes', null);
@@ -3664,7 +3697,8 @@ function mostrarApp() {
   document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.e === 'hoje') b.style.display = cliente ? 'none' : ''; });
   $('#h-sync').style.display = cliente ? 'none' : '';
   // desde 18/10/2026 (Valdo) o servidor só manda ao activista os seus campos: o filtro "As minhas / Todas" deixa de ter sentido
-  S.filtro = 'todas'; $('#f-ambito').value = 'todas'; $('#f-ambito').style.display = 'none';
+  S.filtro = papel === 'supervisor' ? LS.get('filtroSup', 'meus') : 'todas';
+  $('#f-ambito').value = S.filtro; $('#f-ambito').style.display = papel === 'supervisor' ? '' : 'none';
   $('#leg-teste').style.display = (PODE_REGAR.includes(papel) && papel !== 'activista') || VER_TESTES_EQ.includes(papel) ? '' : 'none';
   const opTq = document.querySelector('#f-sit option[value="testeq"]'); if (opTq) opTq.hidden = !VER_TESTES_EQ.includes(papel);
   const opT = document.querySelector('#f-sit option[value="teste"]'); if (opT) opT.hidden = !(PODE_REGAR.includes(papel) && papel !== 'activista');
@@ -3736,8 +3770,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#rg-limpar').onclick = () => { if (S.regua) { S.regua = []; desenharRegua(); } };
   $('#rg-eu').onclick = () => { if (!S.pos) return aviso('Ainda sem posição do GPS. Espere uns segundos.'); pontoRegua([...S.pos], 'Eu'); };
   $('#b-centrar').onclick = () => { S.seguirCentro = true; if (S.pos) mapa.setView(S.pos, 16); else lerGPS().then(() => mapa.setView(S.pos, 16)).catch((e) => aviso(e.message, 'erro')); };
-  $('#b-filtro').onclick = () => { S.filtro = S.filtro === 'meus' ? 'todas' : 'meus'; desenharMapa(true); };
-  ['#f-ambito', '#f-com', '#f-sit'].forEach((s) => $(s).onchange = desenharLista);
+  $('#b-filtro').onclick = () => { S.filtro = S.filtro === 'meus' ? 'todas' : 'meus'; LS.set('filtroSup', S.filtro); $('#f-ambito').value = S.filtro; desenharMapa(true); desenharLista(); };
+  ['#f-com', '#f-sit'].forEach((s) => $(s).onchange = desenharLista);
+  $('#f-ambito').onchange = () => { S.filtro = $('#f-ambito').value; LS.set('filtroSup', S.filtro); desenharLista(); desenharMapa(true); };
   $('#f-act').onchange = () => { desenharLista(); desenharMapa(true); };
   $('#f-txt').oninput = desenharLista;
   $('#lista').onclick = (e) => {
