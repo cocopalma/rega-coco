@@ -171,7 +171,7 @@ const nomeAct = (id) => (S.activistas.find((x) => x.id === id) || {}).nome || '(
 const minhas = () => S.areas.filter((a) => a.activista_id && a.activista_id === S.perfil?.activista_id);
 // supervisores vêem todos os campos, mas têm a sua lista (24/10/2026, Valdo): campos dos activistas da equipa e,
 // sem activista, os das comunidades da equipa. Fora da lista: só ver, ou passar o campo para a sua equipa (com motivo).
-const listaPropria = () => S.perfil?.papel === 'supervisor' && Array.isArray(S.visiveis);
+const listaPropria = () => ['supervisor', 'tecnico'].includes(S.perfil?.papel) && Array.isArray(S.visiveis);   // técnicos desde 24/10/2026 (Valdo)
 const meuCampo = (a) => !listaPropria() || (a.activista_id ? S.visiveis.includes(a.activista_id) : (S.minhasCom || []).includes(a.comunidade));
 const meusCampos = () => S.areas.filter(meuCampo);
 const visiveis = () => (S.filtro === 'meus' && S.perfil?.papel === 'activista' ? minhas() : S.filtro === 'meus' && listaPropria() ? meusCampos() : S.areas);
@@ -1998,7 +1998,7 @@ function folha(html) {
 function fecharFolha() { pararVigia(); $('#folha').classList.remove('on'); }
 // ---------- coordenada e atribuição de campos (técnico, supervisor, gestor) ----------
 const PODE_COORD = ['tecnico', 'supervisor', 'gestor'];
-const podeAtribuir = (a) => ['gestor', 'supervisor'].includes(S.perfil.papel) || (S.perfil.papel === 'tecnico' && !a.activista_id);
+const podeAtribuir = () => ['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel);   // técnico: com motivo se o campo já tem activista (24/10/2026, Valdo)
 function botoesCampo(a) {
   let h = '';
   // depois de gravadas, coordenada e área ficam fechadas; só o gestor corrige ou volta a abrir (15/10/2026, Nuro/Valdo)
@@ -2150,6 +2150,7 @@ function botaoPassar(a) {
 function ecraAtribuir(id, nota = '') {
   const a = S.areas.find((x) => x.id === id), daEquipa = (t) => !S.visiveis || S.visiveis.includes(t);
   const outra = listaPropria() && a.activista_id && !daEquipa(a.activista_id);
+  const pedeMotivo = outra || (S.perfil.papel === 'tecnico' && a.activista_id);
   const prox = activistasProximos(a).filter((p) => daEquipa(p.id)).slice(0, 3);
   const km = (d) => d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km';
   const resto = S.activistas.filter((t) => activo(t) && daEquipa(t.id) && !prox.some((p) => p.id === t.id));
@@ -2159,8 +2160,8 @@ function ecraAtribuir(id, nota = '') {
       ${prox.length ? `<optgroup label="Mais próximos (campo da lista mais perto)">${prox.map((p) => `<option value="${p.id}">${esc(nomeAct(p.id))} — ${km(p.d)} (${esc(p.com)})</option>`).join('')}</optgroup>` : ''}
       <optgroup label="Todos">${resto.map((t) => `<option value="${t.id}">${esc(t.nome)} — ${esc(t.comunidade_principal || '')}</option>`).join('')}</optgroup>
     </select></label>
-    ${outra ? `<div class="msg erro">Este campo é da equipa de ${esc(nomeAct(a.activista_id))}. Ao gravar passa para a sua equipa e sai da lista dessa equipa.</div>
-    <label>Porque passa este campo para a sua equipa?<textarea id="t-motivo" rows="2" placeholder="Escreva o motivo"></textarea></label>` : ''}
+    ${outra ? `<div class="msg erro">Este campo é da equipa de ${esc(nomeAct(a.activista_id))}. Ao gravar passa para a sua equipa e sai da lista dessa equipa.</div>` : ''}
+    ${pedeMotivo ? `<label>${outra ? 'Porque passa este campo para a sua equipa?' : 'Porque muda o activista deste campo?'}<textarea id="t-motivo" rows="2" placeholder="Escreva o motivo"></textarea></label>` : ''}
     <p class="pequeno">Regra: rega o activista da comunidade onde o campo está. Confirme antes de gravar.</p>
     <button class="btn" onclick="gravarAtribuicao('${esc(id)}')">Gravar</button>
     <button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
@@ -3697,8 +3698,9 @@ function mostrarApp() {
   document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.e === 'hoje') b.style.display = cliente ? 'none' : ''; });
   $('#h-sync').style.display = cliente ? 'none' : '';
   // desde 18/10/2026 (Valdo) o servidor só manda ao activista os seus campos: o filtro "As minhas / Todas" deixa de ter sentido
-  S.filtro = papel === 'supervisor' ? LS.get('filtroSup', 'meus') : 'todas';
-  $('#f-ambito').value = S.filtro; $('#f-ambito').style.display = papel === 'supervisor' ? '' : 'none';
+  const lp = ['supervisor', 'tecnico'].includes(papel);
+  S.filtro = lp ? LS.get('filtroSup', 'meus') : 'todas';
+  $('#f-ambito').value = S.filtro; $('#f-ambito').style.display = lp ? '' : 'none';
   $('#leg-teste').style.display = (PODE_REGAR.includes(papel) && papel !== 'activista') || VER_TESTES_EQ.includes(papel) ? '' : 'none';
   const opTq = document.querySelector('#f-sit option[value="testeq"]'); if (opTq) opTq.hidden = !VER_TESTES_EQ.includes(papel);
   const opT = document.querySelector('#f-sit option[value="teste"]'); if (opT) opT.hidden = !(PODE_REGAR.includes(papel) && papel !== 'activista');
