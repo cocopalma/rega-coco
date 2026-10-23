@@ -316,6 +316,7 @@ async function carregarEstado(pronto) {
   if (error) return;
   S.estado = {}; for (const e of data) S.estado[e.area_id] = { u: e.ultima_rega, ronda: e.ronda_actual, feita: e.regada_na_ronda, n: e.regas_app || 0, pl: e.plantas_app || 0 };
   LS.set('estado', S.estado); LS.set('estadoEm', new Date().toISOString());
+  if (!['cliente', 'oficial_me'].includes(S.perfil?.papel)) { const q = await sb.rpc('planos_lista'); if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data); }
   if (souActivista() && S.perfil.activista_id) {        // registos da minha equipa (para a ronda funcionar sem rede)
     const r = await sb.from('registos_rega').select('id,area_id,activista_id,data,ronda,plantas_regadas,teste')
       .eq('activista_id', S.perfil.activista_id).eq('teste', false).gt('plantas_regadas', 0).range(0, 9999);
@@ -417,7 +418,7 @@ async function entrar() {
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -858,6 +859,7 @@ function desenharMapa(enquadrar = false) {
       .on('click', () => { if (pontoRegua([q.lat, q.lon], q.codigo)) setTimeout(() => mapa.closePopup(), 0); }).addTo(camada);
   }
   if (enquadrar && pts.length) mapa.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
+  marcasItinerario();
   desenharRotulos();
   $('#b-filtro').textContent = S.filtro === 'meus' ? 'As minhas' : 'Todas';
   $('#b-filtro').style.display = 'none';
@@ -1195,6 +1197,123 @@ async function enviarMed() {
   }
   return null;
 }
+// ---------- plano da equipa e itinerário (23/10/2026, Valdo) ----------
+// A partir de 24/10 o Claude aprende como cada activista agrupa os campos (regas, horas, percurso GPS) e no fim da ronda
+// prepara o plano da equipa para a ronda seguinte (ferramentas/plano_equipa.py, meta de 140 plantas por pessoa por dia).
+// Aprovam o supervisor e depois o Valdo (só aprovar ou recusar com motivo). O itinerário é uma sugestão: o dia de hoje é o
+// próximo dia do plano ainda por fazer; regar fora dele pede o motivo (fica no registo da rega).
+const ESTADO_PLANO = { por_supervisor: 'À espera do supervisor', por_gestor: 'À espera do gestor', aprovado: 'Aprovado', recusado: 'Recusado' };
+const MOTIVOS_IT = ['Falta de água ou do tuk-tuk', 'Pedido do supervisor ou do técnico', 'Campo do itinerário com problema (acesso, produtor ausente)', 'Este campo ficou mais perto', 'Outro motivo'];
+const planos = () => LS.get('planos', []) || [];
+function itinerarioHoje() {                              // { plano, dia, campos (ids), feitas } ou null
+  if (!souActivista() || !S.perfil.activista_id) return null;
+  const ri = rondaInfo(S.perfil.activista_id);
+  const p = planos().find((x) => x.activista_id === S.perfil.activista_id && x.estado === 'aprovado' && x.ronda === ri.n);
+  if (!p) return null;
+  const naLista = new Set(S.areas.filter((a) => a.activista_id === S.perfil.activista_id).map((a) => a.id));
+  for (const d of p.dias || []) {
+    const ids = d.campos.map((c) => c.area_id).filter((i) => naLista.has(i));
+    if (ids.some((i) => !ri.feitas.has(i))) return { plano: p, dia: d, campos: ids, feitas: ri.feitas, total: (p.dias || []).length };
+  }
+  return null;
+}
+function ecraMotivoItinerario(id, it) {
+  const a = S.areas.find((x) => x.id === id) || {};
+  folha(`<h2>Este campo não está no itinerário de hoje</h2>
+    <p class="pequeno"><span class="sem-trad">${esc(a.produtor || '')} · ${esc(a.pr || '')}</span></p>
+    <div class="msg info">Itinerário de hoje (dia ${it.dia.n} de ${it.total}): ${it.campos.filter((i) => !it.feitas.has(i)).length} campos por regar. Pode regar este campo, mas diga porquê.</div>
+    <label>Porque vai regar este campo?</label><div class="chips" id="it-mot">${MOTIVOS_IT.map((m, k) => `<button class="chip" data-k="${k}">${m}</button>`).join('')}</div>
+    <textarea id="it-txt" rows="2" placeholder="Explique (obrigatório em «Outro motivo»)"></textarea>
+    <button class="btn" id="it-ok">Continuar</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Voltar</button>`);
+  document.querySelectorAll('#it-mot .chip').forEach((b) => b.onclick = () => document.querySelectorAll('#it-mot .chip').forEach((c) => c.classList.toggle('on', c === b)));
+  $('#it-ok').onclick = () => {
+    const k = $('#it-mot .chip.on')?.dataset.k, txt = $('#it-txt').value.trim();
+    if (k == null) { alert('Escolha o motivo.'); return; }
+    if (+k === MOTIVOS_IT.length - 1 && txt.length < 3) { alert('Escreva o motivo.'); return; }
+    marcarEntrada(id, MOTIVOS_IT[k] + (txt ? ': ' + txt : ''));
+  };
+}
+function cartaoItinerario() {
+  const it = itinerarioHoje(); if (!it) return '';
+  const linhas = it.campos.map((i, k) => { const a = S.areas.find((x) => x.id === i) || {}, feito = it.feitas.has(i);
+    return `<div class="lin"><span>${feito ? '✓' : `<b>${k + 1}</b>`} <span class="sem-trad">${esc(a.produtor || i)}</span></span><b>${plantasTxt(a)}</b></div>`; }).join('');
+  return `<div class="cartao" id="hoje-itin"><h2>🗺 <span>Itinerário de hoje</span> · <span>dia ${it.dia.n} de ${it.total}</span></h2>${linhas}
+    <p class="pequeno">É uma sugestão do plano da equipa. Se regar outro campo, a app pergunta porquê.</p>
+    <div class="chips"><button class="chip" onclick="verItinerarioMapa()">Ver no mapa</button></div></div>`;
+}
+function verItinerarioMapa() {
+  const it = itinerarioHoje(); if (!it) return;
+  const pts = it.campos.map((i) => S.areas.find((x) => x.id === i)).filter((a) => a && a.latitude != null).map((a) => [a.latitude, a.longitude]);
+  mudar('mapa'); setTimeout(() => { mapa.invalidateSize(); if (pts.length) mapa.fitBounds(pts, { padding: [40, 40], maxZoom: 17 }); }, 50);
+}
+function marcasItinerario() {                            // números do itinerário de hoje no mapa do activista
+  const it = itinerarioHoje(); if (!it || !camada) return;
+  it.campos.forEach((i, k) => { const a = S.areas.find((x) => x.id === i); if (!a || a.latitude == null) return;
+    L.marker([a.latitude, a.longitude], { interactive: false, icon: L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 30],
+      html: `<div style="width:22px;height:22px;border-radius:11px;background:${it.feitas.has(i) ? '#2e7d32' : '#1e5bd8'};color:#fff;font:700 12px/22px sans-serif;text-align:center;border:2px solid #fff">${it.feitas.has(i) ? '✓' : k + 1}</div>` }) }).addTo(camada); });
+}
+// supervisor, técnico, gestor, director, M&E: planos das equipas que vêem
+const souAprovadorGestor = () => S.perfil?.papel === 'gestor' && S.perfil?.gere_acessos !== false;
+const esperaPorMim = (p) => (p.estado === 'por_supervisor' && S.perfil?.papel === 'supervisor') || (p.estado === 'por_gestor' && souAprovadorGestor());
+function cartaoPlanos() {
+  if (souActivista() || !['tecnico', 'supervisor', 'gestor', 'director', 'me'].includes(S.perfil?.papel)) return '';
+  const l = planos().filter((p) => p.estado !== 'recusado' || Date.now() - new Date(p.recusado_em) < 7 * 864e5); if (!l.length) return '';
+  const meus = l.filter(esperaPorMim);
+  return `<div class="cartao" id="hoje-planos"><h2>🗺 <span>Planos das equipas</span>${meus.length ? ` · <span>${meus.length} por aprovar</span>` : ''}</h2>
+    ${l.map((p) => `<div class="lin" style="flex-wrap:wrap"><span><span class="sem-trad">${esc(p.activista)}</span> · <span>ronda ${p.ronda}</span> · <span>${(p.dias || []).length} dias</span></span>
+      <span>${esperaPorMim(p) ? '<b style="color:var(--aviso,#b26b00)">Por aprovar por si</b>' : `<span>${ESTADO_PLANO[p.estado] || esc(p.estado)}</span>`} <button class="chip" onclick="ecraPlano('${esc(p.id)}')">Ver</button></span></div>`).join('')}</div>`;
+}
+function ecraPlano(id) {
+  const p = planos().find((x) => x.id === id); if (!p) return;
+  const ap = p.aprendizagem || {}, nome = (i) => (S.areas.find((x) => x.id === i) || {}).produtor || i;
+  const h = (m) => (m == null ? '—' : `${Math.floor(m / 60)} h ${String(Math.round(m % 60)).padStart(2, '0')}`);
+  folha(`<h2>🗺 <span>Plano da equipa</span> · <span class="sem-trad">${esc(p.activista)}</span></h2>
+    <p class="pequeno"><span>Ronda ${p.ronda}</span> · <span>${ESTADO_PLANO[p.estado] || esc(p.estado)}</span>${p.supervisor_nome ? ` · <span>Supervisor:</span> <span class="sem-trad">${esc(p.supervisor_nome)}</span> ✓` : ''}${p.gestor_nome ? ` · <span>Gestor:</span> <span class="sem-trad">${esc(p.gestor_nome)}</span> ✓` : ''}</p>
+    ${p.estado === 'recusado' ? `<div class="msg erro"><span>Recusado por</span> <span class="sem-trad">${esc(p.recusado_nome || '')}</span>: <span class="sem-trad">${esc(p.recusa_motivo || '')}</span></div>` : ''}
+    <div class="cartao"><h2 style="margin:0 0 6px">O que a equipa fez na ronda ${ap.ronda ?? p.ronda - 1}</h2>
+      <div class="lin"><span>Dias de trabalho</span><b>${ap.dias_trabalhados ?? '—'}</b></div>
+      <div class="lin"><span>Pessoas por dia</span><b>${ap.pessoas ?? '—'}</b></div>
+      <div class="lin"><span>Plantas por dia</span><b>${ap.plantas_por_dia != null ? num(ap.plantas_por_dia) : '—'}</b></div>
+      <div class="lin"><span>Início e fim do dia</span><b>${ap.hora_inicio || '—'} – ${ap.hora_fim || '—'}</b></div>
+      <div class="lin"><span>Tempo por 100 plantas</span><b>${ap.min_por_planta != null ? Math.round(ap.min_por_planta * 100) + ' min' : '—'}</b></div></div>
+    <div class="msg info"><span>Meta:</span> ${num(p.capacidade)} <span>plantas por dia</span> (140 × ${p.pessoas} <span>pessoas</span>) · ${(p.dias || []).length} <span>dias</span></div>
+    ${p.notas ? `<p class="pequeno">${esc(p.notas)}</p>` : ''}
+    ${(p.dias || []).map((d) => `<div class="cartao"><div class="lin"><b>Dia ${d.n}</b><span>${num(d.plantas)} plantas · ${(d.dist_m / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km · ${h(d.minutos)}</span></div>
+      <p class="pequeno sem-trad">${d.campos.map((c, k) => `${k + 1}. ${esc(nome(c.area_id))}${c.sem_coordenada ? ' (?)' : ''}`).join(' · ')}</p></div>`).join('')}
+    <div class="chips"><button class="chip" onclick="verPlanoMapa('${esc(p.id)}')">Ver no mapa</button></div>
+    ${esperaPorMim(p) ? `<label>Motivo (obrigatório para recusar)<textarea id="pl-mot" rows="2"></textarea></label>
+      <button class="btn" onclick="aprovarPlano('${esc(p.id)}', true)">✓ Aprovar</button><button class="btn aviso" onclick="aprovarPlano('${esc(p.id)}', false)">✗ Recusar</button>` : ''}
+    <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
+async function aprovarPlano(id, sim) {
+  const mot = $('#pl-mot')?.value.trim() || null;
+  if (!sim && (!mot || mot.length < 3)) { alert('Escreva o motivo da recusa.'); return; }
+  if (!navigator.onLine) { aviso('Precisa de rede para aprovar ou recusar o plano.', 'erro'); return; }
+  const r = await sb.rpc('aprovar_plano', { p_id: id, p_aprovar: sim, p_motivo: mot });
+  if (r.error) { aviso(r.error.message, 'erro'); return; }
+  const q = await sb.rpc('planos_lista'); if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data);
+  aviso(sim ? 'Plano aprovado.' : 'Plano recusado.', 'ok'); ecraPlano(id); if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
+}
+let camadaPlano = null;
+const CORES_DIA = ['#1e5bd8', '#c62828', '#2e7d32', '#ef6c00', '#6a1b9a', '#00838f', '#ad1457', '#5d4037', '#283593', '#827717'];
+function verPlanoMapa(id) {
+  const p = planos().find((x) => x.id === id); if (!p) return;
+  fecharFolha(); mudar('mapa');
+  if (!camadaPlano) camadaPlano = L.layerGroup(); camadaPlano.clearLayers(); camadaPlano.addTo(mapa);
+  const pts = [];
+  (p.dias || []).forEach((d, j) => {
+    const cor = CORES_DIA[j % CORES_DIA.length], ll = d.campos.map((c) => S.areas.find((x) => x.id === c.area_id)).filter((a) => a && a.latitude != null).map((a) => [a.latitude, a.longitude]);
+    if (ll.length > 1) L.polyline(ll, { color: cor, weight: 3, opacity: .8 }).addTo(camadaPlano);
+    ll.forEach((q, k) => { pts.push(q); L.marker(q, { interactive: false, icon: L.divIcon({ className: '', iconSize: [30, 18], iconAnchor: [15, 26],
+      html: `<div style="background:${cor};color:#fff;border-radius:9px;font:700 11px/18px sans-serif;text-align:center;border:1.5px solid #fff;white-space:nowrap">${d.n}·${k + 1}</div>` }) }).addTo(camadaPlano); });
+  });
+  if (pts.length) setTimeout(() => { mapa.invalidateSize(); mapa.fitBounds(pts, { padding: [40, 40], maxZoom: 16 }); }, 50);
+  const el = $('#sug-mapa');
+  el.innerHTML = `<div>🗺 <span>Plano da equipa</span> · <span class="sem-trad">${esc(p.activista)}</span> · <span>dia·ordem</span></div><div class="chips"><button class="chip" onclick="ecraPlano('${esc(p.id)}')">Ver o plano</button><button class="chip" onclick="fecharPlanoMapa()">Fechar</button></div>`;
+  el.style.display = ''; S.planoMapa = true;
+}
+function fecharPlanoMapa() { S.planoMapa = false; if (camadaPlano) { camadaPlano.clearLayers(); mapa.removeLayer(camadaPlano); } mostrarSugFixa(); }
+
 // ---------- manutenção das plantas em Quiwia e Farol (v96, 22/10/2026, pedido do Raul via Valdo) ----------
 // À parte da rega, para não se confundir campos por regar com campos por fazer: interruptor "💧 Rega / 🌱 Manutenção" no Mapa
 // e nos Campos, só para quem tem acesso (o gestor e o supervisor dessas comunidades registam; director e M&E vêem). Todos os
@@ -2121,7 +2240,7 @@ function guardarJornada(depois) {
   if (depois) marcarEntrada(depois); else { fecharFolha(); if ($('#e-hoje').classList.contains('on')) desenharHoje(); }
 }
 
-async function marcarEntrada(id) {
+async function marcarEntrada(id, motivoIt = null) {
   const a = S.areas.find((x) => x.id === id);
   const minha = souActivista() && a.activista_id === S.perfil.activista_id;
   if (souActivista() && minha) {                                // regra da ronda: não repetir antes de acabar a lista
@@ -2129,10 +2248,13 @@ async function marcarEntrada(id) {
     if (ri.feitas.has(id)) return abrirFicha(id, `<div class="msg erro">Este campo já foi regado na ronda ${ri.n}. Só pode voltar a regá-lo depois de regar todos os campos da sua lista (faltam ${ri.total - ri.feitas.size} de ${ri.total}).</div>`);
   }
   if (souActivista() && S.perfil.activista_id && !jornadaHoje()) return ecraJornada(id);
+  const it = minha ? itinerarioHoje() : null;               // plano da equipa aprovado (23/10/2026, Valdo): sugestão; fora dele, diz porquê
+  if (it && !it.campos.includes(id) && motivoIt == null) return ecraMotivoItinerario(id, it);
   folha('<h2>A ler o GPS…</h2><p class="pequeno">Pode levar até 30 segundos. Fique em céu aberto.</p>');
   let g; try { g = await validarPosicao(a); } catch (e) { return abrirFicha(id, `<div class="msg erro">${esc(e.message)}</div>`); }
   if (g.valido === false) return abrirFicha(id, `<div class="msg erro">Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Só pode marcar a entrada até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'} do campo.</div>`);
   const ent = { area_id: id, entrada_em: new Date().toISOString(), entrada_lat: g.lat, entrada_lon: g.lon, gps_precisao_m: g.precisao, distancia_area_m: g.dist, gps_valido: g.valido };
+  if (it) { ent.plano_id = it.plano.id; ent.plano_dia = it.dia.n; ent.fora_itinerario = !it.campos.includes(id); ent.motivo_itinerario = ent.fora_itinerario ? motivoIt : null; }
   const sug = LS.get('sugestao');
   if (sug) { ent.area_sugerida_id = sug.area_id; ent.seguiu_sugestao = sug.area_id === id; LS.del('sugestao'); mostrarSugFixa(); }
   if (souActivista() && !minha) {                               // campo de outra equipa ou sem activista
@@ -2244,6 +2366,7 @@ async function marcarSaida() {
     saida_lat: g.lat, saida_lon: g.lon, gps_precisao_m: Math.max(ent.gps_precisao_m || 0, g.precisao),
     distancia_area_m: ent.distancia_area_m, gps_valido: ent.gps_valido, plantas_regadas: plantas,
     alerta: ent.alerta || null, motivo_alerta: ent.motivo_alerta || null,
+    plano_id: ent.plano_id || null, plano_dia: ent.plano_dia ?? null, fora_itinerario: ent.fora_itinerario ?? null, motivo_itinerario: ent.motivo_itinerario || null,
     area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null,
     criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista', observacao: obs || null,
     constr: tipos.map((t) => ({ id: crypto.randomUUID(), tipo: t, descricao: obs || null })),
@@ -2283,7 +2406,11 @@ function sugerirProximo(feito, nota = '', regId = null) {
     return semSug();
   }
   cand.sort((x, y) => metros(de, [x.latitude, x.longitude]) - metros(de, [y.latitude, y.longitude]));
-  const p = cand[0], d = metros(de, [p.latitude, p.longitude]), s = situacao(p);
+  // com plano aprovado, o próximo campo é o seguinte do itinerário de hoje (23/10/2026, Valdo)
+  const it = souActivista() ? itinerarioHoje() : null;
+  const pIt = it ? it.campos.map((i) => S.areas.find((x) => x.id === i)).find((x) => x && x.id !== feito.id && !it.feitas.has(x.id) && x.latitude != null) : null;
+  const p = pIt || cand[0], d = metros(de, [p.latitude, p.longitude]), s = situacao(p);
+  if (pIt) log.motivo = 'itinerario';
   LS.set('sugestao', { area_id: p.id, em: new Date().toISOString() });
   registarSugProx({ ...log, mostrada: true, area_sugerida_id: p.id, distancia_m: Math.round(d) });
   mostrarSugFixa();
@@ -2309,6 +2436,7 @@ function textoSugFixa(a) {
 }
 function mostrarSugFixa() {                            // cartão fixo no Mapa (em baixo)
   const el = $('#sug-mapa'); if (!el) return;
+  if (S.planoMapa) return;
   const a = souActivista() || ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) ? sugActual() : null;
   const tapa = !$('#legenda')?.classList.contains('fechada') || S.regua || S.modoPerc || S.coq || modoManut();
   if (!a || tapa) { el.style.display = 'none'; return; }
@@ -3071,7 +3199,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoPrimeiroTeste() + cartaoManutHoje() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoPrimeiroTeste() + cartaoManutHoje() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
