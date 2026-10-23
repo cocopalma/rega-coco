@@ -252,6 +252,7 @@ async function sincronizarAgora(silencioso) {
   if (!erro) erro = await enviarQueimadas();
   if (!erro) erro = await enviarSugestoes();
   if (!erro && filaMan().length) erro = await enviarManut();
+  if (!erro && filaCoq().length) erro = await enviarCoq();
   if (!erro) erro = await enviarGestaoRecontagens();
   if (!erro) erro = await enviarRecontagens();
   if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
@@ -259,7 +260,7 @@ async function sincronizarAgora(silencioso) {
   if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length + LS.get('filaCoq', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   b.textContent = n ? `${n} por enviar` : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0);
 }
@@ -415,7 +416,7 @@ async function entrar() {
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -479,6 +480,7 @@ function iniciarMapa() {
   if (navigator.geolocation) navigator.geolocation.watchPosition((p) => {
     S.pos = [p.coords.latitude, p.coords.longitude]; S.fix = { coords: p.coords, t: Date.now() };
     pontoPercurso(p.coords);
+    if (S.coq) coqLeitura(p.coords);
     if (!eu) eu = L.circleMarker(S.pos, { radius: 9, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 }).addTo(mapa);
     else eu.setLatLng(S.pos);
     // o ponto saiu do ecrã (a andar ou de carro): o mapa acompanha (16/10/2026, Dalmar). Se a pessoa arrastou o mapa
@@ -784,6 +786,7 @@ let regua;
 const fmtDist = (m) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toLocaleString(LOC, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`);
 function alternarRegua() {
   if (S.regua) return fecharRegua();
+  if (S.coq) fecharCoq();
   S.regua = []; if (!regua) regua = L.layerGroup().addTo(mapa);
   $('#b-regua').classList.add('on'); $('#regua').style.display = ''; $('.legenda').style.display = 'none';
   desenharRegua();
@@ -845,6 +848,7 @@ function desenharMapa(enquadrar = false) {
   $('#b-filtro').textContent = S.filtro === 'meus' ? 'As minhas' : 'Todas';
   $('#b-filtro').style.display = 'none';
   $('#b-perc').style.display = podeVerPercursos() ? '' : 'none';
+  $('#b-coq').style.display = temCoq() ? '' : 'none';
   const ri = $('#ronda-info');
   if (souActivista() && S.perfil.activista_id) { ri.style.display = ''; ri.innerHTML = textoRonda(); } else ri.style.display = 'none';
   mostrarSugFixa();
@@ -854,6 +858,173 @@ function textoRonda() {
   return `<b>Ronda ${r.n}</b> · ${r.feitas.size} de ${r.total} campos${r.total - r.feitas.size ? ` · faltam ${r.total - r.feitas.size}` : ''}`;
 }
 
+// ---------- coqueiros fora de campo (v101, 23/10/2026, Valdo: opção B; o Dalmar marca) ----------
+// Coqueiros que não estão num campo da base (p. ex. no acampamento ACE, em Palma): cada um é um ponto com GPS, fotografia e
+// estado, à parte da rega (não entra nas contas). Mapa › "🥥 Coqueiros": o gestor marca; o director só vê. GPS como no Mapa das
+// plantas (leituras ≤ ±10 m dos últimos 3 s, espera no máximo 4 s). Sem rede: fila "filaCoq", fotografia no telefone (coq-<id>).
+const COR_COQ = { viva: '#2e7d32', seca: '#ef8f00', morta: '#c62828' }, TXT_COQ = { viva: 'Vivo', seca: 'Seco', morta: 'Morto' };
+const temCoq = () => ['gestor', 'director'].includes(S.perfil?.papel), escreveCoq = () => S.perfil?.papel === 'gestor';
+let camadaCoq = null;
+const filaCoq = () => LS.get('filaCoq', []);
+function coqLista() {                                    // o que veio do servidor + o que está na fila do telefone
+  let l = LS.get('coqueiros', []) || [];
+  for (const x of filaCoq()) {
+    if (x.op === 'gravar') l = l.some((y) => y.id === x.c.id) ? l.map((y) => (y.id === x.c.id ? { ...y, ...x.c, porEnviar: true } : y)) : [...l, { ...x.c, porEnviar: true }];
+    if (x.op === 'remover') l = l.filter((y) => y.id !== x.id);
+  }
+  return l;
+}
+async function carregarCoq() {
+  if (!temCoq() || !navigator.onLine) return;
+  const r = await sb.rpc('coqueiros_lista');
+  if (!r.error && Array.isArray(r.data)) { LS.set('coqueiros', r.data); if (S.coq) desenharCoq(); }
+}
+function abrirCoq() {
+  if (S.coq) return fecharCoq();
+  if (S.regua) fecharRegua();
+  S.coq = { hist: [], lendo: false };
+  if (S.fix && Date.now() - S.fix.t < 20000) coqLeitura(S.fix.coords);
+  if (!camadaCoq) camadaCoq = L.layerGroup(); camadaCoq.addTo(mapa);
+  $('#b-coq').classList.add('on'); $('#coq').style.display = ''; $('.legenda').style.display = 'none';
+  $('#cq-marcar').style.display = escreveCoq() ? '' : 'none';
+  desenharCoq(); mostrarSugFixa();
+  carregarCoq();
+  const l = coqLista(); if (l.length && !S.pos) mapa.fitBounds(l.map((c) => [c.lat, c.lon]), { padding: [40, 40], maxZoom: 18 });
+}
+function fecharCoq() {
+  S.coq = null; if (camadaCoq) { camadaCoq.clearLayers(); mapa.removeLayer(camadaCoq); }
+  $('#b-coq').classList.remove('on'); $('#coq').style.display = 'none'; $('.legenda').style.display = '';
+  mostrarSugFixa();
+}
+function coqLeitura(c) {                                 // leituras do GPS do mapa (sem ligar outro GPS)
+  const P = S.coq; if (!P) return;
+  P.pos = { lat: c.latitude, lon: c.longitude, prec: Math.round(c.accuracy), t: Date.now() };
+  P.hist = [...P.hist.filter((x) => Date.now() - x.t < 10000), P.pos];
+  const el = $('#cq-gps'); if (el) { el.textContent = `GPS ±${P.pos.prec} m${P.pos.prec > PL_PREC ? ' (fraco)' : ''}`; el.style.color = P.pos.prec <= CFG.precisaoIdeal ? '#1b5e20' : P.pos.prec <= PL_PREC ? '#ef8f00' : '#c62828'; }
+}
+function desenharCoq() {
+  if (!S.coq || !camadaCoq) return;
+  camadaCoq.clearLayers();
+  const l = coqLista(), v = { viva: 0, seca: 0, morta: 0 };
+  for (const c of l) {
+    v[c.estado] = (v[c.estado] || 0) + 1;
+    L.circleMarker([c.lat, c.lon], { radius: 7, color: '#fff', weight: 2, fillColor: COR_COQ[c.estado] || '#777', fillOpacity: 1 })
+      .on('click', () => verCoq(c.id)).addTo(camadaCoq);
+  }
+  $('#cq-total').innerHTML = `🥥 <span>Coqueiros fora de campo:</span> <b>${num(l.length)}</b> <span class="pequeno">(${num(v.viva)} <span>vivos</span> · ${num(v.seca)} <span>secos</span> · ${num(v.morta)} <span>mortos</span>)</span>`;
+  const u = escreveCoq() ? l.reduce((m, c) => (!m || c.marcado_em > m.marcado_em ? c : m), null) : null;
+  const bd = $('#cq-desf'); bd.style.display = u ? '' : 'none'; if (u) bd.textContent = u.n ? `↶ Apagar o último (nº ${u.n})` : '↶ Apagar o último';
+  $('#cq-csv').style.display = l.length ? '' : 'none';
+}
+async function marcarCoq() {
+  const P = S.coq; if (!P || P.lendo || !escreveCoq()) return;
+  if (!P.pos) return aviso('Ainda sem posição do GPS. Espere uns segundos.', 'erro');
+  const boasAgora = () => P.hist.filter((x) => Date.now() - x.t <= PL_JANELA_MS && x.prec <= PL_PREC);
+  let boas = boasAgora();
+  if (!boas.length) {
+    P.lendo = true; const b = $('#cq-marcar'); b.disabled = true; b.textContent = 'A melhorar o GPS… fique parado';
+    const fim = Date.now() + PL_ESPERA_MS;
+    while (Date.now() < fim && !(boas = boasAgora()).length) await new Promise((ok) => setTimeout(ok, 250));
+    P.lendo = false; b.disabled = false; b.textContent = '📍 Marcar coqueiro aqui';
+  }
+  let fraco = false;
+  if (!boas.length) { const rec = P.hist.filter((x) => Date.now() - x.t <= 5000); boas = [(rec.length ? rec : [P.pos]).reduce((u, w) => (w.prec < u.prec ? w : u))]; fraco = true; }
+  let sw = 0, la = 0, lo = 0; for (const x of boas) { const wgt = 1 / Math.max(1, x.prec) ** 2; sw += wgt; la += x.lat * wgt; lo += x.lon * wgt; }
+  const pos = { lat: la / sw, lon: lo / sw, prec: Math.min(...boas.map((x) => x.prec)), fraco };
+  let perto = null, dp = Infinity; for (const c of coqLista()) { const d = metros([pos.lat, pos.lon], [c.lat, c.lon]); if (d < dp) { dp = d; perto = c; } }
+  if (perto && dp < PL_PERTO && !confirm(`Já há um coqueiro marcado a ${Math.round(dp)} m. Marcar outro aqui?`)) return verCoq(perto.id);
+  ecraCoq({ id: crypto.randomUUID(), lat: pos.lat, lon: pos.lon, precisao_m: pos.prec, fraco, perfil: S.perfil.id });
+}
+function ecraCoq(r) {                                    // formulário do coqueiro novo (r = rascunho: posição e o que já escreveu)
+  S.coqFoto = null; rascGuardar('rascCoq', { ...r, camara: false });
+  folha(`<h2>🥥 <span>Coqueiro novo</span></h2>${r.camara ? AVISO_CAMARA : ''}
+    <p class="pequeno">GPS ±${r.precisao_m} m${r.fraco ? ' (fraco)' : ''}</p>
+    <label>Estado</label><div class="chips" id="cq-est">${['viva', 'seca', 'morta'].map((e) => `<button class="chip${(r.estado || 'viva') === e ? ' on' : ''}" data-v="${e}">${TXT_COQ[e]}</button>`).join('')}</div>
+    <label>Local<input id="cq-local" maxlength="100" placeholder="Ex.: Acampamento ACE"></label>
+    <textarea id="cq-obs" rows="2" placeholder="Observação (opcional)"></textarea>
+    ${campoFoto('cq-foto', 'Fotografia do coqueiro (obrigatória)')}
+    <img id="cq-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
+    <button class="btn" onclick="gravarCoq()">Gravar</button><button class="btn sec" onclick="LS.del('rascCoq');fecharFolha()">Cancelar</button>`);
+  $('#cq-local').value = r.local ?? LS.get('coqLocal', ''); $('#cq-obs').value = r.obs || '';
+  const guardar = () => rascGuardar('rascCoq', { local: $('#cq-local').value, obs: $('#cq-obs').value, estado: $('#cq-est .chip.on')?.dataset.v || 'viva' });
+  document.querySelectorAll('#cq-est .chip').forEach((b) => b.onclick = () => { document.querySelectorAll('#cq-est .chip').forEach((c) => c.classList.toggle('on', c === b)); guardar(); });
+  ['#cq-local', '#cq-obs'].forEach((q) => $(q).addEventListener('input', guardar));
+  ligarFoto('cq-foto', 'rascCoq', (foto) => { S.coqFoto = foto; const img = $('#cq-prev'); if (foto) { img.src = URL.createObjectURL(foto); img.style.display = ''; } else img.style.display = 'none'; });
+}
+async function gravarCoq() {
+  const r = LS.get('rascCoq'); if (!r) return fecharFolha();
+  if (!S.coqFoto) { alert('Tire a fotografia do coqueiro.'); return; }
+  const c = { id: r.id, lat: r.lat, lon: r.lon, precisao_m: r.precisao_m, estado: $('#cq-est .chip.on')?.dataset.v || 'viva',
+    local: $('#cq-local').value.trim() || null, observacao: $('#cq-obs').value.trim() || null, marcado_em: new Date().toISOString() };
+  try { await FOTOS.guardar('coq-' + c.id, S.coqFoto); } catch { S.fotosMem = { ...(S.fotosMem || {}), ['coq-' + c.id]: S.coqFoto }; }
+  LS.set('filaCoq', [...filaCoq(), { fid: crypto.randomUUID(), op: 'gravar', c, foto: true }]); LS.del('rascCoq'); if (c.local) LS.set('coqLocal', c.local);
+  S.coqFoto = null; fecharFolha(); actSync(); desenharCoq();
+  aviso(r.fraco ? `Coqueiro marcado com GPS fraco (±${c.precisao_m} m).` : `Coqueiro marcado (±${c.precisao_m} m).`, r.fraco ? 'info' : 'ok');
+  sincronizar(true);
+}
+function verCoq(id) {
+  const c = coqLista().find((x) => x.id === id); if (!c) return;
+  const d = S.pos ? metros(S.pos, [c.lat, c.lon]) : null;
+  folha(`<h2>🥥 <span>${c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro'}</span></h2>
+    <div class="cartao"><div class="lin"><span>Estado</span><b>${TXT_COQ[c.estado] || esc(c.estado)}</b></div>
+    ${c.local ? `<div class="lin"><span>Local</span><b class="sem-trad">${esc(c.local)}</b></div>` : ''}
+    <div class="lin"><span>Marcado</span><b>${fmtData(c.marcado_em.slice(0, 10))} ${fmtHora(c.marcado_em)}</b></div>
+    ${c.marcado_por_nome ? `<div class="lin"><span>Por</span><b class="sem-trad">${esc(c.marcado_por_nome)}</b></div>` : ''}
+    <div class="lin"><span>GPS</span><b>±${c.precisao_m ?? '?'} m${d != null ? ` · a ${Math.round(d)} m de si` : ''}</b></div>
+    ${c.observacao ? `<p class="sem-trad">${esc(c.observacao)}</p>` : ''}</div>
+    ${c.porEnviar ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : c.foto_path ? `<button class="chip" onclick="verFoto('coqueiros-fotos','${esc(c.foto_path)}')">📷 Ver a fotografia</button>` : ''}
+    ${escreveCoq() ? `<label>Mudar o estado</label><div class="chips">${['viva', 'seca', 'morta'].map((e) => `<button class="chip${c.estado === e ? ' on' : ''}" onclick="estadoCoq('${esc(c.id)}','${e}')">${TXT_COQ[e]}</button>`).join('')}</div>
+      <button class="chip" onclick="removerCoq('${esc(c.id)}')">Remover este ponto (marcado por engano)</button>` : ''}
+    <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
+function estadoCoq(id, estado) {
+  const c = coqLista().find((x) => x.id === id); if (!c || c.estado === estado) return verCoq(id);
+  const f = filaCoq(), i = f.findIndex((x) => x.op === 'gravar' && x.c.id === id);
+  if (i >= 0) f[i].c.estado = estado;                    // ainda não enviado: muda o próprio pedido
+  else f.push({ fid: crypto.randomUUID(), op: 'gravar', c: { id, lat: c.lat, lon: c.lon, precisao_m: c.precisao_m, estado, local: c.local, observacao: c.observacao, marcado_em: c.marcado_em }, foto: false });
+  LS.set('filaCoq', f); actSync(); desenharCoq(); verCoq(id); sincronizar(true);
+}
+async function removerCoq(id) {
+  if (!confirm('Remover este coqueiro (marcado por engano)?')) return;
+  const f = filaCoq(), novo = f.some((x) => x.op === 'gravar' && x.c.id === id && x.foto);
+  if (novo) { LS.set('filaCoq', f.filter((x) => !(x.op === 'gravar' && x.c.id === id))); try { await FOTOS.apagar('coq-' + id); } catch {} }
+  else LS.set('filaCoq', [...f.filter((x) => !(x.op === 'gravar' && x.c.id === id)), { fid: crypto.randomUUID(), op: 'remover', id }]);
+  fecharFolha(); actSync(); desenharCoq(); sincronizar(true);
+}
+function apagarUltimoCoq() {
+  const l = coqLista(); if (!l.length) return;
+  removerCoq(l.reduce((m, c) => (c.marcado_em > m.marcado_em ? c : m)).id);
+}
+async function enviarCoq() {
+  for (const x of filaCoq()) {
+    let r;
+    if (x.op === 'gravar') {
+      let caminho = null;
+      if (x.foto) {
+        let b = null; try { b = await FOTOS.ler('coq-' + x.c.id); } catch {} b = b || S.fotosMem?.['coq-' + x.c.id] || null;
+        if (b) { caminho = `${S.perfil.id}/${x.c.id}.jpg`; const up = await sb.storage.from('coqueiros-fotos').upload(caminho, b, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
+      }
+      r = await sb.rpc('gravar_coqueiro', { p_id: x.c.id, p_lat: x.c.lat, p_lon: x.c.lon, p_precisao: x.c.precisao_m, p_estado: x.c.estado, p_local: x.c.local, p_obs: x.c.observacao, p_foto: caminho, p_em: x.c.marcado_em });
+    } else r = await sb.rpc('remover_coqueiro', { p_id: x.id });
+    if (r.error && !r.error.code) return r.error.message;
+    if (r.error) aviso(`Coqueiro não gravado: ${r.error.message}`, 'erro');
+    LS.set('filaCoq', filaCoq().filter((y) => y.fid !== x.fid));
+    if (x.op === 'gravar' && x.foto) try { await FOTOS.apagar('coq-' + x.c.id); } catch {}
+  }
+  await carregarCoq();
+  return null;
+}
+// tabela para o Excel: separador ";" e BOM (o Excel em português abre com as colunas e os acentos certos)
+function descarregarCoq() {
+  const cel = (v) => { const t = String(v ?? ''); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const T = (x) => (window.trEN ? window.trEN(x) : x);
+  const dt = (t) => (t ? new Date(t).toLocaleString('pt-PT', { timeZone: 'Africa/Maputo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '') : '');
+  const cab = ['Nº', 'Latitude', 'Longitude', 'Precisão do GPS (m)', 'Estado', 'Local', 'Observação', 'Marcado em', 'Marcado por', 'Fotografia'];
+  const linhas = coqLista().map((c) => [c.n ?? '', c.lat.toFixed(7), c.lon.toFixed(7), c.precisao_m ?? '', T(TXT_COQ[c.estado] || c.estado), c.local, c.observacao, dt(c.marcado_em), c.marcado_por_nome || '', T(c.foto_path ? 'sim' : c.porEnviar ? 'no telefone' : 'não')]);
+  const csv = '﻿' + [cab.map(T), ...linhas].map((l) => l.map(cel).join(';')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `Coqueiros_fora_de_campo_${hojeISO().replace(/-/g, '')}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
 // ---------- manutenção das plantas em Quiwia e Farol (v96, 22/10/2026, pedido do Raul via Valdo) ----------
 // À parte da rega, para não se confundir campos por regar com campos por fazer: interruptor "💧 Rega / 🌱 Manutenção" no Mapa
 // e nos Campos, só para quem tem acesso (o gestor e o supervisor dessas comunidades registam; director e M&E vêem). Todos os
@@ -1968,7 +2139,7 @@ function textoSugFixa(a) {
 function mostrarSugFixa() {                            // cartão fixo no Mapa (em baixo)
   const el = $('#sug-mapa'); if (!el) return;
   const a = souActivista() || ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) ? sugActual() : null;
-  const tapa = !$('#legenda')?.classList.contains('fechada') || S.regua || S.modoPerc || modoManut();
+  const tapa = !$('#legenda')?.classList.contains('fechada') || S.regua || S.modoPerc || S.coq || modoManut();
   if (!a || tapa) { el.style.display = 'none'; return; }
   el.innerHTML = `<div>${textoSugFixa(a)}</div><div class="chips"><button class="chip" onclick="verSugMapa()">Ver no mapa</button><button class="chip" onclick="abrirFicha('${esc(a.id)}')">Abrir a ficha</button></div>`;
   el.style.display = '';
@@ -3232,6 +3403,8 @@ function retomarRascunhos() {
     }
     const rq = rascLer('rascQueim');
     if (rq && rq.camara && rq.perfil === S.perfil?.id && S.areas.some((x) => x.id === rq.area)) return ecraQueimada(rq.area, rq);
+    const rk = rascLer('rascCoq');
+    if (rk && rk.camara && rk.perfil === S.perfil?.id && escreveCoq()) { mudar('mapa'); return ecraCoq(rk); }
     const rr = rascLer('rascRec');
     if (rr && rr.camara && rr.perfil === S.perfil?.id && recontagens().some((x) => x.id === rr.rid)) return ecraRecontar(rr.rid, rr);
     const rc = rascLer('rascChuva');
@@ -3254,6 +3427,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#folha-x').onclick = fecharFolha;
   $('#b-rodar').onclick = alternarRodar; botaoRodar();
   $('#b-regua').onclick = alternarRegua;
+  $('#b-coq').onclick = abrirCoq; $('#cq-marcar').onclick = marcarCoq; $('#cq-fechar').onclick = fecharCoq; $('#cq-desf').onclick = apagarUltimoCoq; $('#cq-csv').onclick = descarregarCoq;
   $('#b-perc').onclick = ecraPercursos; $('#pc-fechar').onclick = fecharPercurso;
   setInterval(() => { if (navigator.onLine && percursoPorEnviar()) sincronizar(true); }, 5 * 60 * 1000);
   $('#rg-fechar').onclick = fecharRegua;
