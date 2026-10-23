@@ -1083,7 +1083,8 @@ function linhasMed(l) {
 function ecraVara(r) {
   S.vara = { ...r, pts: [], saltou: {}, foto: null, img: null, toque: null };
   rascGuardar('rascVara', { tipo: r.tipo, alvo: r.alvo, area: r.area || null, nome: r.nome, perfil: S.perfil?.id, camara: false });
-  const pode = r.tipo === 'coqueiro' ? escreveCoq() : PODE_COORD.includes(S.perfil?.papel);
+  // v106 (23/10/2026, Valdo): por enquanto só testam ele e o Dalmar (gestores); depois abre-se a técnicos e supervisores
+  const pode = r.tipo === 'coqueiro' ? escreveCoq() : S.perfil?.papel === 'gestor';
   const desenha = () => {
     const l = medLocais(r.alvo);
     folha(`<h2>📏 <span>${pode ? 'Medir com a vara' : 'Medições com a vara'}</span> · <span>${esc(r.nome)}</span></h2>${r.camara ? AVISO_CAMARA : ''}
@@ -1633,7 +1634,7 @@ function mostrarPlanta() {
     <label>Estado</label><div class="chips" id="ps-est">${['viva', 'seca', 'morta'].map((e) => `<button class="chip${x.estado === e ? ' on' : ''}" data-v="${e}">${{ viva: 'Viva', seca: 'Seca', morta: 'Morta' }[e]}</button>`).join('')}</div>
     <label>Cuidados</label><div class="chips" id="ps-cuid"><button class="chip${x.cavaroda ? ' on' : ''}" data-k="cavaroda">Cava-roda</button><button class="chip${x.mulching ? ' on' : ''}" data-k="mulching">Mulching</button></div>
     <button class="btn" onclick="gravarPlanta()">Gravar o estado desta planta</button>
-    <button class="chip" onclick="ecraVara({tipo:'planta',alvo:'${x.id}',area:'${esc(P.id)}',nome:'Planta nº ${x.n}'})">📏 Medir com a vara · teste</button>
+    ${S.perfil?.papel === 'gestor' ? `<button class="chip" onclick="ecraVara({tipo:'planta',alvo:'${x.id}',area:'${esc(P.id)}',nome:'Planta nº ${x.n}'})">📏 Medir com a vara · teste</button>` : ''}
     <button class="chip" onclick="removerPlanta()">Remover este ponto (marcado por engano)</button></div>`;
   document.querySelectorAll('#ps-est .chip').forEach((b) => b.onclick = () => document.querySelectorAll('#ps-est .chip').forEach((c) => c.classList.toggle('on', c === b)));
   document.querySelectorAll('#ps-cuid .chip').forEach((b) => b.onclick = () => b.classList.toggle('on'));

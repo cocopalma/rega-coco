@@ -175,6 +175,12 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <div class="grelha kpis" id="k-pl"></div>
     <div class="tabela" id="t-pl" style="max-height:none"></div></section>
 
+  <section class="card sec" id="s-med" hidden><h2>📏 Medições com a vara · teste</h2>
+    <p class="desc">Altura, diâmetro do tronco e largura da copa medidos na fotografia com a vara de 1 m (plantas do Mapa das plantas e coqueiros do ACE). Crescimento = último registo − penúltimo registo. Entram as plantas e os coqueiros com a última medição no período.</p>
+    <div class="grelha kpis" id="k-med"></div>
+    <p style="margin:8px 0"><button class="foto-btn" id="b-med-csv" type="button">⬇ Descarregar a tabela (Excel, .csv)</button></p>
+    <div class="tabela" id="t-med" style="max-height:none"></div></section>
+
   <section class="card sec" id="s-tp" hidden><h2>🧪 Testes por pessoa</h2>
     <p class="desc">Regas de teste e chuva de teste feitas por técnicos, supervisores e gestores no período. Não contam para a ronda nem para o resto do painel.</p>
     <div class="grelha kpis" id="k-tp"></div>
@@ -206,8 +212,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=105"></script>
-<script src="i18n.js?v=105"></script>
+<script src="i18n-sw.js?v=106"></script>
+<script src="i18n.js?v=106"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -583,6 +589,51 @@ function desenharPlantasMarcadas() {
 // ---------- testes por pessoa (v91, 21/10/2026, Valdo: ver quem já testou e quem ainda não) ----------
 // Ao cliente o servidor devolve null e a secção fica escondida.
 let DTP = null, DMN = null;
+// medições com a vara (v106, 23/10/2026, Valdo): só gestor, director e M&E (o servidor devolve null aos outros)
+let DMD = null;
+const cmTxt = (v) => (v == null ? '—' : v >= 100 ? `${(v / 100).toLocaleString(LOC, { maximumFractionDigits: 2 })} m` : `${Math.round(v)} cm`);
+const difTxt = (u, p) => (u == null || p == null ? '' : ` <span style="color:${u - p >= 0 ? 'var(--good)' : 'var(--crit)'}">(${u - p > 0 ? '+' : u - p < 0 ? '−' : ''}${cmTxt(Math.abs(u - p))})</span>`);
+const diasMed = (x) => (x.pen_em ? Math.round((new Date(x.ult_em) - new Date(x.pen_em)) / 864e5) : null);
+const oQueMed = (x) => (x.tipo === 'coqueiro' ? `Coqueiro nº ${x.coqueiro_n ?? '?'}${x.local ? ' · ' + x.local : ''}` : `Planta nº ${x.planta_n ?? '?'} · ${x.area_id || ''}`);
+function desenharMedicoes() {
+  const el = $('#s-med'); if (!el) return;
+  const L = Array.isArray(DMD) ? DMD : null; el.hidden = !L; if (!L) return;
+  const kpi = (rot, v, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${v}</div><div class="sub">${sub}</div></div>`;
+  const com2 = L.filter((x) => x.pen_em && x.ult_altura != null && x.pen_altura != null);
+  const media = (k) => { const v = com2.filter((x) => x['ult_' + k] != null && x['pen_' + k] != null); return v.length ? v.reduce((a, x) => a + (x['ult_' + k] - x['pen_' + k]), 0) / v.length : null; };
+  const pl = L.filter((x) => x.tipo === 'planta').length, cq = L.length - pl, mA = media('altura'), mD = media('diametro');
+  $('#k-med').innerHTML = kpi('Medidos', num(L.length), `${num(pl)} plantas · ${num(cq)} coqueiros · ${num(L.reduce((a, x) => a + (x.medicoes || 0), 0))} medições`) +
+    kpi('Com 2 ou mais medições', num(com2.length), 'para calcular o crescimento') +
+    kpi('Crescimento médio da altura', mA == null ? '—' : `${mA >= 0 ? '+' : '−'}${cmTxt(Math.abs(mA))}`, mD == null ? 'entre o penúltimo e o último registo' : `diâmetro ${mD >= 0 ? '+' : '−'}${cmTxt(Math.abs(mD))} · entre o penúltimo e o último registo`);
+  if (!L.length) { $('#t-med').innerHTML = '<div class="vazio">Ainda sem medições no período.</div>'; return; }
+  const d = (t) => (t ? fmtData(diaDe(t)) : '—');
+  tabela('#t-med', [['Planta ou coqueiro'], ['Produtor'], ['Comunidade'], ['Medições', 1], ['Penúltima'], ['Última'], ['Dias', 1], ['Altura', 1], ['Diâmetro', 1], ['Copa', 1], ['Medido por'], ['Fotografia']],
+    L.map((x) => [esc(oQueMed(x)), esc(x.produtor || ''), esc(x.comunidade || ''), num(x.medicoes), d(x.pen_em), d(x.ult_em), diasMed(x) != null ? num(diasMed(x)) : '—',
+      cmTxt(x.ult_altura) + difTxt(x.ult_altura, x.pen_altura), cmTxt(x.ult_diametro) + difTxt(x.ult_diametro, x.pen_diametro), cmTxt(x.ult_copa) + difTxt(x.ult_copa, x.pen_copa),
+      esc(x.ult_quem || ''), x.ult_foto ? `<button class="foto-btn" type="button" onclick="verFotoMed('${esc(x.ult_foto)}')">📷</button>` : '—']));
+}
+async function verFotoMed(caminho) {
+  const m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px;color:#fff;text-align:center';
+  m.innerHTML = '<p>A abrir a fotografia…</p>'; m.onclick = () => m.remove(); document.body.appendChild(m);
+  const r = await sb.storage.from('medicoes-fotos').createSignedUrl(caminho, 600);
+  m.innerHTML = (r.error ? `<p>${esc('Sem acesso a esta fotografia ou sem rede.')}</p>` : `<img src="${esc(r.data.signedUrl)}" alt="" style="max-width:100%;max-height:80vh;border-radius:8px">`) + '<p style="color:#ddd;font-size:12px">Toque para fechar.</p>';
+}
+function descarregarMed() {
+  const L = Array.isArray(DMD) ? DMD : [], cel = (v) => { const t = String(v ?? ''); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const T = (x) => (window.trEN ? window.trEN(x) : x);
+  const dt = (t) => (t ? new Date(t).toLocaleString('pt-PT', { timeZone: 'Africa/Maputo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '') : '');
+  const r1 = (v) => (v == null ? '' : (Math.round(v * 10) / 10).toLocaleString(LOC, { useGrouping: false, maximumFractionDigits: 1 })), dif = (u, p) => (u == null || p == null ? '' : r1(u - p));   // vírgula decimal no Excel em português
+  const cab = ['Tipo', 'Nº', 'Campo', 'PR', 'Produtor', 'Comunidade', 'Local', 'Medições', 'Primeira medição', 'Penúltima medição', 'Altura penúltima (cm)', 'Diâmetro penúltima (cm)', 'Copa penúltima (cm)',
+    'Última medição', 'Altura última (cm)', 'Diâmetro última (cm)', 'Copa última (cm)', 'Crescimento da altura (cm)', 'Crescimento do diâmetro (cm)', 'Crescimento da copa (cm)', 'Dias entre as duas', 'Medido por', 'Fotografia'];
+  const linhas = L.map((x) => [T(x.tipo === 'coqueiro' ? 'Coqueiro' : 'Planta'), x.tipo === 'coqueiro' ? x.coqueiro_n : x.planta_n, x.area_id, x.pr, x.produtor, x.comunidade, x.local, x.medicoes, dt(x.primeira),
+    dt(x.pen_em), r1(x.pen_altura), r1(x.pen_diametro), r1(x.pen_copa), dt(x.ult_em), r1(x.ult_altura), r1(x.ult_diametro), r1(x.ult_copa),
+    dif(x.ult_altura, x.pen_altura), dif(x.ult_diametro, x.pen_diametro), dif(x.ult_copa, x.pen_copa), diasMed(x) ?? '', x.ult_quem, T(x.ult_foto ? 'sim' : 'não')]);
+  const csv = '﻿' + [cab.map(T), ...linhas].map((l) => l.map(cel).join(';')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `Rega_Coco_medicoes_vara_${diaMaputo().replace(/-/g, '')}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+$('#b-med-csv').onclick = descarregarMed;
 // manutenção (v96, 22/10/2026, pedido do Raul via Valdo): só para quem tem acesso (o servidor devolve null aos outros)
 function desenharManut() {
   const el = $('#s-man'); if (!el) return;
@@ -670,7 +721,7 @@ function semRedeSemPainel() {
 }
 async function carregar() {
   const c = !D && lerCache();
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharTestes(); desenharManut(); desenharMonitoria(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
@@ -678,19 +729,21 @@ async function carregar() {
   const pPl = sb.rpc('painel_plantas_marcadas');
   const pTp = sb.rpc('painel_testes', { p_de: de, p_ate: ate });
   const pMn = sb.rpc('painel_manutencao', { p_de: de, p_ate: ate });
+  const pMd = sb.rpc('painel_medicoes', { p_de: de, p_ate: ate });
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   const rec = await pRec; DR = rec.error ? null : rec.data;
   const pl = await pPl; DPL = pl.error ? null : pl.data;
   const tp = await pTp; DTP = tp.error ? null : tp.data;
   const mn = await pMn; DMN = mn.error ? null : mn.data;
+  const md = await pMd; DMD = md.error ? null : md.data;
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) { if (erroDeRede(error)) avisoRede(c || { antigo: null }); return; }   // sem rede: fica o último painel guardado
   if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharTestes(); desenharManut(); desenharMonitoria();
-  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, em: Date.now() })); } catch {}
+  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria();
+  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, em: Date.now() })); } catch {}
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
 function mostrarLogin(msg = '') { $('#painel').style.display = 'none'; $('#login').style.display = ''; $('#l-msg').innerHTML = msg ? `<div class="erro">${esc(msg)}</div>` : ''; }
@@ -705,7 +758,7 @@ $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar()
 $('#b-act').onclick = carregar;
 $('#b-sair').onclick = async () => { try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {} await sb.auth.signOut(); location.reload(); };
 document.querySelectorAll('#v-meta button').forEach((b) => b.onclick = () => { VM = b.dataset.v; try { localStorage.setItem('rega.painel.meta', VM); } catch {} desenharMeta(); });
-let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharTestes(); desenharManut(); desenharMonitoria(); }, 150); });
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
 if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }
