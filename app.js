@@ -253,6 +253,7 @@ async function sincronizarAgora(silencioso) {
   if (!erro) erro = await enviarSugestoes();
   if (!erro && filaMan().length) erro = await enviarManut();
   if (!erro && filaCoq().length) erro = await enviarCoq();
+  if (!erro && filaMed().length) erro = await enviarMed();
   if (!erro) erro = await enviarGestaoRecontagens();
   if (!erro) erro = await enviarRecontagens();
   if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
@@ -260,7 +261,7 @@ async function sincronizarAgora(silencioso) {
   if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length + LS.get('filaCoq', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length + LS.get('filaCoq', []).length + LS.get('filaMed', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   b.textContent = n ? `${n} por enviar` : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0);
 }
@@ -416,7 +417,7 @@ async function entrar() {
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -990,6 +991,7 @@ function verCoq(id) {
     ${c.porEnviar ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : c.foto_path ? `<button class="chip" onclick="verFoto('coqueiros-fotos','${esc(c.foto_path)}')">📷 Ver a fotografia</button>` : ''}
     ${mexeCoq(c) ? `<label>Mudar o estado</label><div class="chips">${['viva', 'seca', 'morta'].map((e) => `<button class="chip${c.estado === e ? ' on' : ''}" onclick="estadoCoq('${esc(c.id)}','${e}')">${TXT_COQ[e]}</button>`).join('')}</div>
       <button class="chip" onclick="removerCoq('${esc(c.id)}')">Remover este ponto (marcado por engano)</button>` : ''}
+    <button class="chip" onclick="ecraVara({tipo:'coqueiro',alvo:'${esc(c.id)}',nome:'${c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro'}'})">📏 ${escreveCoq() ? 'Medir com a vara · teste' : 'Medições com a vara'}</button>
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
 }
 function estadoCoq(id, estado) {
@@ -1039,6 +1041,158 @@ function descarregarCoq() {
   const csv = '﻿' + [cab.map(T), ...linhas].map((l) => l.map(cel).join(';')).join('\r\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = `Coqueiros_fora_de_campo_${hojeISO().replace(/-/g, '')}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+// ---------- medição com a vara de 1 m na fotografia (v104, 23/10/2026, Valdo; desafio do Dalmar de 23/10 08:13) ----------
+// Em teste: técnicos, supervisores e gestor nas plantas do Mapa das plantas; nos coqueiros do ACE só o gestor (o director vê).
+// A vara fica encostada ao tronco; na fotografia toca-se no fundo e no topo da vara (escala), depois na base e no topo da planta
+// (altura), nos dois lados do tronco (diâmetro) e nas pontas da copa (largura). Cada medição guarda a fotografia, a data e quem mediu;
+// a ficha mostra o crescimento entre o penúltimo e o último registo (Valdo). Sem rede: fila "filaMed", fotografia em IndexedDB med-<id>.
+const VARA_CM = 100;
+const PASSOS_VARA = [
+  { k: 'vara', cor: '#d32f2f', a: 'Toque no fundo da vara', b: 'Toque no topo da vara (1 m)' },
+  { k: 'altura', cor: '#2e7d32', a: 'Toque na base da planta (no chão)', b: 'Toque no topo da planta (ponta da folha mais alta)' },
+  { k: 'diametro', cor: '#ef6c00', a: 'Toque num lado do tronco', b: 'Toque no outro lado do tronco', saltar: true },
+  { k: 'copa', cor: '#1565c0', a: 'Toque na ponta da folha mais à esquerda', b: 'Toque na ponta da folha mais à direita', saltar: true },
+];
+const TXT_MED = { altura: 'Altura', diametro: 'Diâmetro do tronco', copa: 'Largura da copa' };
+const filaMed = () => LS.get('filaMed', []);
+const medLocais = (alvo) => {                            // do servidor (guardadas no telefone) + as que estão na fila
+  const sv = ((LS.get('medicoes', {}) || {})[alvo] || []), fila = filaMed().filter((m) => m.alvo === alvo).map((m) => ({ ...m, porEnviar: true }));
+  return [...fila, ...sv.filter((x) => !fila.some((f) => f.id === x.id))].sort((a, b) => (a.medido_em < b.medido_em ? 1 : -1));
+};
+const fmtCm = (v) => (v == null ? '—' : v >= 100 ? `${(v / 100).toLocaleString(LOC, { maximumFractionDigits: 2 })} m` : `${Math.round(v)} cm`);
+const difCm = (a, b) => (a == null || b == null ? null : a - b);
+const sinal = (v) => (v == null ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtCm(Math.abs(v))}`);
+async function carregarMed(r) {
+  if (!navigator.onLine) return;
+  const q = await sb.rpc('medicoes_alvo', { p_tipo: r.tipo, p_alvo: r.alvo, p_area: r.area || null });
+  if (!q.error && Array.isArray(q.data)) { const t = LS.get('medicoes', {}) || {}; t[r.alvo] = q.data; LS.set('medicoes', t); }
+}
+function crescimentoMed(l) {                             // último − penúltimo registo
+  if (l.length < 2) return '';
+  const u = l[0], p = l[1], dias = Math.max(0, Math.round((new Date(u.medido_em) - new Date(p.medido_em)) / 864e5));
+  return `<div class="msg ok"><b>Crescimento entre o penúltimo e o último registo</b><br><span>${fmtData(p.medido_em.slice(0, 10))} → ${fmtData(u.medido_em.slice(0, 10))} (${dias} dias)</span><br>
+    <span>Altura</span>: <b>${sinal(difCm(u.altura_cm, p.altura_cm))}</b> · <span>Diâmetro</span>: <b>${sinal(difCm(u.diametro_cm, p.diametro_cm))}</b> · <span>Copa</span>: <b>${sinal(difCm(u.copa_cm, p.copa_cm))}</b></div>`;
+}
+function linhasMed(l) {
+  if (!l.length) return '<p class="pequeno">Ainda sem medições.</p>';
+  return l.map((m) => `<div class="lin" style="flex-wrap:wrap"><span>${fmtData(m.medido_em.slice(0, 10))}${m.medido_por_nome ? ` · <span class="sem-trad">${esc(m.medido_por_nome)}</span>` : ''}</span>
+    <b>A ${fmtCm(m.altura_cm)} · D ${fmtCm(m.diametro_cm)} · C ${fmtCm(m.copa_cm)}</b>
+    ${m.porEnviar ? '<span class="pequeno">No telefone: é enviado quando houver rede.</span>' : m.foto_path ? `<button class="chip" onclick="verFoto('medicoes-fotos','${esc(m.foto_path)}')">📷</button>` : ''}</div>`).join('');
+}
+function ecraVara(r) {
+  S.vara = { ...r, pts: [], saltou: {}, foto: null, img: null, toque: null };
+  rascGuardar('rascVara', { tipo: r.tipo, alvo: r.alvo, area: r.area || null, nome: r.nome, perfil: S.perfil?.id, camara: false });
+  const pode = r.tipo === 'coqueiro' ? escreveCoq() : PODE_COORD.includes(S.perfil?.papel);
+  const desenha = () => {
+    const l = medLocais(r.alvo);
+    folha(`<h2>📏 <span>${pode ? 'Medir com a vara' : 'Medições com a vara'}</span> · <span>${esc(r.nome)}</span></h2>${r.camara ? AVISO_CAMARA : ''}
+      <p class="pequeno"><b>🧪 <span>Teste</span></b> · <span>Encoste a vara de 1 m ao tronco e tire a fotografia de frente, a uns metros, com a planta inteira na imagem.</span></p>
+      ${crescimentoMed(l)}
+      <div class="cartao"><h2 style="margin:0 0 6px">Medições</h2>${linhasMed(l)}</div>
+      ${pode ? `${campoFoto('vr-foto', 'Fotografia com a vara (obrigatória)')}
+      <div id="vr-zona" style="display:none;margin-top:8px">
+        <div class="msg info" id="vr-passo" style="min-height:3.2em"></div>
+        <canvas id="vr-cv" style="width:100%;touch-action:none;border-radius:10px;background:#000"></canvas>
+        <div class="chips"><button class="chip" id="vr-desf">↶ Desfazer ponto</button><button class="chip" id="vr-saltar" style="display:none">Não dá para medir</button></div>
+        <div class="cartao" id="vr-res"></div>
+        <button class="btn" id="vr-gravar">Gravar a medição</button>
+      </div>` : ''}
+      <button class="btn sec" onclick="LS.del('rascVara');voltarVara()">Voltar</button>`);
+    if (!pode) return;
+    ligarFoto('vr-foto', 'rascVara', (foto) => { if (!foto) return; S.vara.foto = foto; S.vara.pts = []; S.vara.saltou = {}; carregarImgVara(foto); });
+    $('#vr-desf').onclick = () => { const V = S.vara; if (!V.pts.length) return; const ult = V.pts.pop(); if (ult === null) V.pts.pop(); desenharVara(); };
+    $('#vr-saltar').onclick = () => { const V = S.vara, i = V.pts.length, p = PASSOS_VARA[i >> 1]; if (!p?.saltar || i % 2) return; V.pts.push(null, null); V.saltou[p.k] = true; desenharVara(); };
+    $('#vr-gravar').onclick = gravarVara;
+    const cv = $('#vr-cv');
+    const pos = (e) => { const b = cv.getBoundingClientRect(); return [(e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height]; };
+    // tocar = novo ponto; arrastar (a partir de um ponto já marcado) = acertar esse ponto. Assim dois pontos podem ficar perto (tronco fino).
+    cv.onpointerdown = (e) => {
+      const V = S.vara; if (!V.img) return; const [x, y] = pos(e), b = cv.getBoundingClientRect();
+      let perto = -1, dm = 22; V.pts.forEach((q, i) => { if (!q) return; const d = Math.hypot((q[0] - x) * b.width, (q[1] - y) * b.height); if (d < dm) { dm = d; perto = i; } });
+      V.toque = { x: e.clientX, y: e.clientY, perto, arrasta: false }; cv.setPointerCapture(e.pointerId);
+    };
+    cv.onpointermove = (e) => {
+      const V = S.vara, t = V.toque; if (!t || t.perto < 0) return;
+      if (!t.arrasta && Math.hypot(e.clientX - t.x, e.clientY - t.y) < 6) return;
+      t.arrasta = true; V.pts[t.perto] = pos(e); desenharVara();
+    };
+    cv.onpointerup = (e) => {
+      const V = S.vara, t = V.toque; V.toque = null; if (!t || t.arrasta) return;
+      if (V.pts.length < PASSOS_VARA.length * 2) { V.pts.push(pos(e)); desenharVara(); }
+    };
+    cv.onpointercancel = () => { S.vara.toque = null; };
+  };
+  desenha();
+  carregarMed(r).then(() => { if (S.vara?.alvo === r.alvo && !S.vara.img && $('#vr-zona')) desenha(); });
+}
+function voltarVara() {
+  const V = S.vara || LS.get('rascVara') || {}; S.vara = null;
+  if (V.tipo === 'coqueiro') return verCoq(V.alvo);
+  if (V.area && S.areas.some((a) => a.id === V.area)) { ecraPlantas(V.area); if (S.pl) { S.pl.sel = V.alvo; mostrarPlanta(); } return; }
+  fecharFolha();
+}
+function carregarImgVara(foto) {
+  const img = new Image(); img.onload = () => { S.vara.img = img; $('#vr-zona').style.display = ''; desenharVara(); $('#vr-zona').scrollIntoView({ block: 'start' }); };
+  img.src = URL.createObjectURL(foto);
+}
+function medidasVara() {                                 // em cm, a partir dos pontos (coordenadas da imagem)
+  const V = S.vara, img = V.img; if (!img) return {};
+  const d = (i) => { const a = V.pts[i], b = V.pts[i + 1]; return a && b ? Math.hypot((a[0] - b[0]) * img.naturalWidth, (a[1] - b[1]) * img.naturalHeight) : null; };
+  const vara = d(0); if (!vara) return {};
+  const cm = (i) => { const x = d(i); return x == null ? null : (x / vara) * VARA_CM; };
+  return { altura: cm(2), diametro: cm(4), copa: cm(6) };
+}
+function desenharVara() {
+  const V = S.vara, cv = $('#vr-cv'); if (!V || !cv || !V.img) return;
+  // a fotografia inteira cabe no ecrã (no máximo 65% da altura), para a instrução e os botões ficarem à vista
+  const max = cv.parentElement.clientWidth || 320, larg = Math.min(max, Math.round(window.innerHeight * 0.65 * V.img.naturalWidth / V.img.naturalHeight));
+  cv.style.width = larg + 'px'; cv.style.display = 'block'; cv.style.margin = '0 auto';
+  const k = larg / V.img.naturalWidth, dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(larg * dpr); cv.height = Math.round(V.img.naturalHeight * k * dpr); cv.style.height = Math.round(V.img.naturalHeight * k) + 'px';
+  const g = cv.getContext('2d'); g.drawImage(V.img, 0, 0, cv.width, cv.height);
+  const W = cv.width, H = cv.height;
+  PASSOS_VARA.forEach((p, j) => {
+    const a = V.pts[2 * j], b = V.pts[2 * j + 1];
+    g.strokeStyle = p.cor; g.fillStyle = p.cor; g.lineWidth = 3 * dpr;
+    if (a && b) { g.beginPath(); g.moveTo(a[0] * W, a[1] * H); g.lineTo(b[0] * W, b[1] * H); g.stroke(); }
+    for (const q of [a, b]) if (q) { g.beginPath(); g.arc(q[0] * W, q[1] * H, 7 * dpr, 0, 7); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2 * dpr; g.stroke(); g.strokeStyle = p.cor; }
+  });
+  const i = V.pts.length, p = PASSOS_VARA[i >> 1];
+  $('#vr-passo').innerHTML = p ? `<b>${(i >> 1) + 1}/${PASSOS_VARA.length}</b> · <span>${i % 2 ? p.b : p.a}</span>` : '<span>Pontos todos marcados. Arraste um ponto para o acertar.</span>';
+  $('#vr-saltar').style.display = p?.saltar && i % 2 === 0 ? '' : 'none';
+  const m = medidasVara(), ant = medLocais(V.alvo)[0];
+  $('#vr-res').innerHTML = ['altura', 'diametro', 'copa'].map((c) => `<div class="lin"><span>${TXT_MED[c]}</span><b>${fmtCm(m[c])}${ant && m[c] != null && ant[c + '_cm'] != null ? ` <span class="pequeno">(${sinal(m[c] - ant[c + '_cm'])} <span>desde</span> ${fmtData(ant.medido_em.slice(0, 10))})</span>` : ''}</b></div>`).join('');
+}
+async function gravarVara() {
+  const V = S.vara; if (!V) return;
+  if (!V.foto) { alert('Tire a fotografia com a vara.'); return; }
+  const m = medidasVara();
+  if (!m.altura) { alert('Marque a vara e a altura da planta na fotografia.'); return; }
+  if (V.pts.length < PASSOS_VARA.length * 2) { alert('Marque também o diâmetro e a copa, ou toque em «Não dá para medir».'); return; }
+  const r = { id: crypto.randomUUID(), tipo: V.tipo, alvo: V.alvo, area: V.area || null, altura_cm: Math.round(m.altura * 10) / 10,
+    diametro_cm: m.diametro != null ? Math.round(m.diametro * 10) / 10 : null, copa_cm: m.copa != null ? Math.round(m.copa * 10) / 10 : null,
+    pontos: V.pts, medido_em: new Date().toISOString(), medido_por_nome: S.perfil?.nome };
+  try { await FOTOS.guardar('med-' + r.id, V.foto); } catch { S.fotosMem = { ...(S.fotosMem || {}), ['med-' + r.id]: V.foto }; }
+  LS.set('filaMed', [...filaMed(), r]); LS.del('rascVara'); actSync();
+  aviso('Medição guardada.', 'ok'); S.vara.img = null; ecraVara({ tipo: V.tipo, alvo: V.alvo, area: V.area, nome: V.nome });
+  sincronizar(true);
+}
+async function enviarMed() {
+  for (const m of filaMed()) {
+    let b = null; try { b = await FOTOS.ler('med-' + m.id); } catch {} b = b || S.fotosMem?.['med-' + m.id] || null;
+    if (!b) { LS.set('filaMed', filaMed().filter((x) => x.id !== m.id)); aviso('Uma medição perdeu a fotografia no telefone. Meça de novo.', 'erro'); continue; }
+    const caminho = `${S.perfil.id}/${m.id}.jpg`;
+    const up = await sb.storage.from('medicoes-fotos').upload(caminho, b, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message;
+    const r = await sb.rpc('gravar_medicao', { p_id: m.id, p_tipo: m.tipo, p_alvo: m.alvo, p_area: m.area, p_altura: m.altura_cm, p_diametro: m.diametro_cm, p_copa: m.copa_cm,
+      p_vara: VARA_CM, p_pontos: m.pontos, p_foto: caminho, p_em: m.medido_em });
+    if (r.error && !r.error.code) return r.error.message;
+    if (r.error) aviso(`Medição não gravada: ${r.error.message}`, 'erro');
+    LS.set('filaMed', filaMed().filter((x) => x.id !== m.id));
+    try { await FOTOS.apagar('med-' + m.id); } catch {}
+    if (!r.error) { const t = LS.get('medicoes', {}) || {}; t[m.alvo] = [{ ...m, foto_path: caminho }, ...(t[m.alvo] || []).filter((x) => x.id !== m.id)]; LS.set('medicoes', t); }
+  }
+  return null;
 }
 // ---------- manutenção das plantas em Quiwia e Farol (v96, 22/10/2026, pedido do Raul via Valdo) ----------
 // À parte da rega, para não se confundir campos por regar com campos por fazer: interruptor "💧 Rega / 🌱 Manutenção" no Mapa
@@ -1479,6 +1633,7 @@ function mostrarPlanta() {
     <label>Estado</label><div class="chips" id="ps-est">${['viva', 'seca', 'morta'].map((e) => `<button class="chip${x.estado === e ? ' on' : ''}" data-v="${e}">${{ viva: 'Viva', seca: 'Seca', morta: 'Morta' }[e]}</button>`).join('')}</div>
     <label>Cuidados</label><div class="chips" id="ps-cuid"><button class="chip${x.cavaroda ? ' on' : ''}" data-k="cavaroda">Cava-roda</button><button class="chip${x.mulching ? ' on' : ''}" data-k="mulching">Mulching</button></div>
     <button class="btn" onclick="gravarPlanta()">Gravar o estado desta planta</button>
+    <button class="chip" onclick="ecraVara({tipo:'planta',alvo:'${x.id}',area:'${esc(P.id)}',nome:'Planta nº ${x.n}'})">📏 Medir com a vara · teste</button>
     <button class="chip" onclick="removerPlanta()">Remover este ponto (marcado por engano)</button></div>`;
   document.querySelectorAll('#ps-est .chip').forEach((b) => b.onclick = () => document.querySelectorAll('#ps-est .chip').forEach((c) => c.classList.toggle('on', c === b)));
   document.querySelectorAll('#ps-cuid .chip').forEach((b) => b.onclick = () => b.classList.toggle('on'));
@@ -3418,6 +3573,8 @@ function retomarRascunhos() {
     }
     const rq = rascLer('rascQueim');
     if (rq && rq.camara && rq.perfil === S.perfil?.id && S.areas.some((x) => x.id === rq.area)) return ecraQueimada(rq.area, rq);
+    const rv = rascLer('rascVara');
+    if (rv && rv.camara && rv.perfil === S.perfil?.id) { mudar('mapa'); return ecraVara(rv); }
     const rk = rascLer('rascCoq');
     if (rk && rk.camara && rk.perfil === S.perfil?.id && escreveCoq()) { mudar('mapa'); return ecraCoq(rk); }
     const rr = rascLer('rascRec');
