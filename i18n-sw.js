@@ -368,6 +368,7 @@ window.I18N_SW_D = {
 "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Mvua inasajiliwa tu mahali pa kipimo cha mvua: programu inatumia GPS kujua jamii.",
 "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "Hakuna mashamba yenye kuratibu kwenye simu. Sajili mvua karibu na kipimo cha mvua, katika jamii.",
 "Pelo GPS está em": "Kwa GPS uko",
+"Fase de teste.": "Awamu ya majaribio.",
 "Este campo ainda não tem coordenada. Vá ao campo com o produtor ou o activista e meça a área: o campo passa a aparecer no mapa.": "Shamba hili bado halina kuratibu. Nenda shambani pamoja na mkulima au mhamasishaji na upime eneo: shamba litaonekana kwenye ramani.",
 "Sem coordenada": "Bila kuratibu",
 "💧 Rega": "💧 Umwagiliaji",
@@ -1226,4 +1227,5 @@ window.I18N_SW_R = (tr) => [
     [/^Manutenção não gravada: (.+)$/, 'Matunzo hayakuhifadhiwa: $1'],
     [/^campos feitos · cava-roda (\d+%) · mulching (\d+%)$/, 'mashamba yamefanyika · palizi ya mduara $1 · matandazo $2'],
     [/^de ([\d.,  ]+)$/, 'kati ya $1'],
+    [/^A manutenção começa a (\d{2}\/\d{2}\/\d{4})\. O que se registar antes é teste e deixa de contar nesse dia\.$/, 'Matunzo yanaanza tarehe $1. Kinachoandikwa kabla ni majaribio na hakitahesabiwa siku hiyo.'],
   ];

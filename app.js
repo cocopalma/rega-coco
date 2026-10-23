@@ -862,6 +862,10 @@ const temManut = () => !!S.manut?.acesso;
 const escreveManut = () => S.manut?.acesso === 'escreve';
 const modoManut = () => temManut() && S.modo === 'manut';
 const filaMan = () => LS.get('filaMan', []);
+// fase de teste até ao início (v98, 23/10/2026, Valdo: a manutenção começa a 02/11; até lá o Raul e o Guidion testam)
+const avisoTesteManut = () => (S.manut?.teste && S.manut.inicio
+  ? `<div class="msg info">🧪 <span>Fase de teste.</span> ${(R_TESTE_MAN(fmtData(S.manut.inicio)))}</div>` : '');
+const R_TESTE_MAN = (d) => `<span>A manutenção começa a ${d}. O que se registar antes é teste e deixa de contar nesse dia.</span>`;
 // medir a área na manutenção (v97): supervisor e gestor (escrevem) e o técnico dessas equipas; sem limite, ou o gestor de novo
 const podeMedirManut = (c) => (escreveManut() || (temManut() && S.perfil?.papel === 'tecnico')) && (!temPoligono(c) || S.perfil?.papel === 'gestor');
 const pctMan = (v, n) => (!n ? 0 : (v || 0) >= n ? 100 : Math.min(99, Math.round((v || 0) * 100 / n)));
@@ -929,7 +933,7 @@ function desenharListaManut() {
   const f = S.manFiltro ||= { com: '', est: '', txt: '' };
   if (!$('#man-lista')) {
     const coms = S.manut?.comunidades || [];
-    $('#lista').innerHTML = `<div class="msg info" style="margin-top:0">🌱 <b>Manutenção</b> · <span>cava-roda e mulching</span> · <span>separada da rega</span></div>
+    $('#lista').innerHTML = `<div class="msg info" style="margin-top:0">🌱 <b>Manutenção</b> · <span>cava-roda e mulching</span> · <span>separada da rega</span></div>${avisoTesteManut()}
       <div class="chips" style="margin:8px 0"><select id="man-com" style="width:auto;margin:0;padding:8px"><option value="">Todas as comunidades</option>${coms.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select>
       <select id="man-est" style="width:auto;margin:0;padding:8px"><option value="">Todas as situações</option>${Object.entries(TXT_MAN).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}<option value="semcoord">Sem coordenada</option></select>
       <input id="man-txt" placeholder="Procurar produtor ou PR" style="flex:1;min-width:150px;margin:0;padding:8px"></div><div id="man-resumo"></div><div id="man-lista"></div>`;
@@ -959,7 +963,7 @@ function abrirFichaManut(id, nota = '') {
   const n = c.plantas, pc = pctMan(c.cavaroda, n), pm = pctMan(c.mulching, n), s = estadoMan(c), esc_ = escreveManut();
   folha(`${nota}<h2 style="margin-top:0">🌱 ${esc(c.produtor || c.id)}</h2>
     <p class="pequeno">${esc(c.id)} · ${esc(c.comunidade)}${c.activista ? ' · <span>activista:</span> ' + esc(c.activista) : ''}${c.activa ? '' : ' · <b>Fora da rega</b>'}</p>
-    <div class="msg info" style="margin-top:6px"><span>Manutenção (cava-roda e mulching), separada da rega.</span></div>
+    <div class="msg info" style="margin-top:6px"><span>Manutenção (cava-roda e mulching), separada da rega.</span></div>${avisoTesteManut()}
     <div class="cartao" style="margin:8px 0">
       <div class="lin"><span>Situação</span><b><span class="tag" style="background:${COR_MAN[s]}">${TXT_MAN[s]}</span></b></div>
       <div class="lin"><span>Plantas do campo</span><b>${num(n)}</b></div>
@@ -1068,7 +1072,7 @@ function cartaoManutHoje() {
   if (!temManut()) return '';
   const L0 = camposManut(), h = hojeISO(), coms = S.manut.comunidades || [];
   const hoje = L0.filter((c) => c.ultima === h).length;
-  return `<div class="cartao"><h2>🌱 <span>Manutenção</span> · ${coms.map(esc).join(', ')}</h2>` + coms.map((k) => {
+  return `<div class="cartao"><h2>🌱 <span>Manutenção</span> · ${coms.map(esc).join(', ')}</h2>${avisoTesteManut()}` + coms.map((k) => {
     const b = L0.filter((c) => c.comunidade === k), pl = b.reduce((s, c) => s + (c.plantas || 0), 0);
     const cr = b.reduce((s, c) => s + Math.min(c.cavaroda || 0, c.plantas || 0), 0), mu = b.reduce((s, c) => s + Math.min(c.mulching || 0, c.plantas || 0), 0);
     return `<div class="lin"><span>${esc(k)}</span><b>${num(b.filter((c) => estadoMan(c) === 'feito').length)}/${num(b.length)} <span>feitos</span> · <span>cava-roda</span> ${pctMan(cr, pl)}% · <span>mulching</span> ${pctMan(mu, pl)}%</b></div>`;
