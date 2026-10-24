@@ -131,6 +131,10 @@ function rondaInfo(actId) {
   return { n: mr, feitas: cur.areas, total: lista.length, ini: cur.ini };
 }
 const souActivista = () => S.perfil?.papel === 'activista';
+// activista sem telemóvel (24/10/2026, Raul/Valdo: Azizi e Mariano): o técnico, o supervisor ou o gestor registam por ele
+// nos campos da lista dele e a rega conta a sério para essa equipa (no servidor: privado.regista_por).
+const semTelefone = (id) => !!(id && (S.activistas || []).find((t) => t.id === id)?.sem_telefone);
+const porEquipa = (a) => !!(a && !souActivista() && ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) && semTelefone(a.activista_id) && meuCampo(a));
 // o que cada função pode fazer na app
 const FUNCOES = {
   tecnico: { nome: 'Técnico', desc: 'vê os campos e a rega das equipas dos seus activistas (e das que cobre) e o painel geral; grava coordenadas, atribui campos e pode fazer regas de teste.' },
@@ -289,8 +293,8 @@ function actSync() {
 // todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
   const [p, ac, ar, zs, est, lc, pc, qm, po, rc] = await Promise.all([
-    sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos,trocar_senha').eq('id', S.user.id).maybeSingle(),
-    sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho').order('nome'),
+    sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos,trocar_senha,marca_coqueiros').eq('id', S.user.id).maybeSingle(),
+    sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho,sem_telefone').order('nome'),
     sb.from('areas').select(COLS_AREAS).eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
     sb.rpc('estado_ronda2'),
@@ -899,16 +903,20 @@ function textoRonda() {
 // Coqueiros que não estão num campo da base (p. ex. no acampamento ACE, em Palma): cada um é um ponto com GPS, fotografia e
 // estado, à parte da rega (não entra nas contas). Mapa › "🥥 Coqueiros": o gestor marca; o director só vê. GPS como no Mapa das
 // plantas (leituras ≤ ±10 m dos últimos 3 s, espera no máximo 4 s). Sem rede: fila "filaCoq", fotografia no telefone (coq-<id>).
-const COR_COQ = { viva: '#2e7d32', seca: '#ef8f00', morta: '#c62828' }, TXT_COQ = { viva: 'Vivo', seca: 'Seco', morta: 'Morto' };
-// v103 (23/10/2026, Valdo): no ACE só marcam ele e o Dalmar (gestores); técnicos, supervisores e activistas não têm acesso ao ACE
-const temCoq = () => ['gestor', 'director'].includes(S.perfil?.papel), escreveCoq = () => S.perfil?.papel === 'gestor';
+// v111 (24/10/2026, áudios do Dalmar): "retirado" = o coqueiro já não existe; o ponto fica guardado (a posição é boa), a vermelho
+// e vazio, e não conta nos coqueiros existentes. Até 3 fotografias, "precisa de tratamento", "tem cachos", "tem cocos".
+// Círculo de 2,5 m (RAIO_COQ) à volta de cada coqueiro: ao entrar nele o telefone vibra e avisa que já está marcado.
+const COR_COQ = { viva: '#2e7d32', seca: '#ef8f00', morta: '#c62828', retirado: '#c62828' }, TXT_COQ = { viva: 'Vivo', seca: 'Seco', morta: 'Morto', retirado: 'Retirado' };
+const EST_COQ = ['viva', 'seca', 'morta', 'retirado'], RAIO_COQ = 2.5, MAX_FOTOS_COQ = 3;
+// v103 (23/10/2026, Valdo): no ACE só marcam ele e o Dalmar (gestores); v111: e quem tiver perfis.marca_coqueiros (Bafana)
+const temCoq = () => ['gestor', 'director'].includes(S.perfil?.papel) || !!S.perfil?.marca_coqueiros, escreveCoq = () => S.perfil?.papel === 'gestor' || !!S.perfil?.marca_coqueiros;
 const mexeCoq = (c) => escreveCoq() && (S.perfil?.papel === 'gestor' || c.meu || c.porEnviar);
 let camadaCoq = null;
 const filaCoq = () => LS.get('filaCoq', []);
 function coqLista() {                                    // o que veio do servidor + o que está na fila do telefone
   let l = LS.get('coqueiros', []) || [];
   for (const x of filaCoq()) {
-    if (x.op === 'gravar') l = l.some((y) => y.id === x.c.id) ? l.map((y) => (y.id === x.c.id ? { ...y, ...x.c, porEnviar: true } : y)) : [...l, { ...x.c, porEnviar: true }];
+    if (x.op === 'gravar') l = l.some((y) => y.id === x.c.id) ? l.map((y) => (y.id === x.c.id ? { ...y, ...x.c, porEnviar: true, porEnviarExtras: (y.porEnviarExtras || 0) + (x.extras || []).length } : y)) : [...l, { ...x.c, porEnviar: true, porEnviarExtras: (x.extras || []).length }];
     if (x.op === 'remover') l = l.filter((y) => y.id !== x.id);
   }
   return l;
@@ -940,17 +948,26 @@ function coqLeitura(c) {                                 // leituras do GPS do m
   P.pos = { lat: c.latitude, lon: c.longitude, prec: Math.round(c.accuracy), t: Date.now() };
   P.hist = [...P.hist.filter((x) => Date.now() - x.t < 10000), P.pos];
   const el = $('#cq-gps'); if (el) { el.textContent = `GPS ±${P.pos.prec} m${P.pos.prec > PL_PREC ? ' (fraco)' : ''}`; el.style.color = P.pos.prec <= CFG.precisaoIdeal ? '#1b5e20' : P.pos.prec <= PL_PREC ? '#ef8f00' : '#c62828'; }
+  let perto = null, dp = Infinity; for (const x of coqLista()) { const d = metros([P.pos.lat, P.pos.lon], [x.lat, x.lon]); if (d < dp) { dp = d; perto = x; } }
+  const av = $('#cq-perto'), dentro = perto && dp <= RAIO_COQ;
+  if (av) { av.style.display = dentro ? '' : 'none'; if (dentro) av.textContent = `⚠️ ${perto.n ? 'Coqueiro nº ' + perto.n : 'Coqueiro'} já marcado aqui (a ${dp.toFixed(1)} m).`; }
+  if (dentro && P.dentro !== perto.id) { try { navigator.vibrate?.([200, 100, 200]); } catch {} }
+  P.dentro = dentro ? perto.id : null;
 }
 function desenharCoq() {
   if (!S.coq || !camadaCoq) return;
   camadaCoq.clearLayers();
-  const l = coqLista(), v = { viva: 0, seca: 0, morta: 0 };
+  const l = coqLista(), v = { viva: 0, seca: 0, morta: 0, retirado: 0 };
   for (const c of l) {
     v[c.estado] = (v[c.estado] || 0) + 1;
-    L.circleMarker([c.lat, c.lon], { radius: 7, color: '#fff', weight: 2, fillColor: COR_COQ[c.estado] || '#777', fillOpacity: 1 })
+    L.circle([c.lat, c.lon], { radius: RAIO_COQ, color: '#c62828', weight: 1, fillColor: '#c62828', fillOpacity: 0.12, interactive: false }).addTo(camadaCoq);
+    const ret = c.estado === 'retirado';
+    L.circleMarker([c.lat, c.lon], { radius: 7, color: ret ? '#c62828' : '#fff', weight: ret ? 3 : 2, fillColor: COR_COQ[c.estado] || '#777', fillOpacity: ret ? 0 : 1 })
       .on('click', () => verCoq(c.id)).addTo(camadaCoq);
   }
-  $('#cq-total').innerHTML = `🥥 <span>Coqueiros fora de campo:</span> <b>${num(l.length)}</b> <span class="pequeno">(${num(v.viva)} <span>vivos</span> · ${num(v.seca)} <span>secos</span> · ${num(v.morta)} <span>mortos</span>)</span>`;
+  const exist = l.filter((c) => c.estado !== 'retirado'), trat = exist.filter((c) => c.tratamento).length, prod = exist.filter((c) => c.cachos || c.cocos).length;
+  $('#cq-total').innerHTML = `🥥 <span>Coqueiros fora de campo:</span> <b>${num(exist.length)}</b> <span class="pequeno">(${num(v.viva)} <span>vivos</span> · ${num(v.seca)} <span>secos</span> · ${num(v.morta)} <span>mortos</span>)</span>` +
+    (trat || prod || v.retirado ? `<div class="pequeno">${prod ? `🥥 <span>${prod}</span> <span>com cachos ou cocos</span> · ` : ''}${trat ? `🩺 <span>${trat}</span> <span>precisam de tratamento</span> · ` : ''}${v.retirado ? `⭕ <span>${v.retirado}</span> <span>retirados</span>` : ''}</div>` : '');
   const u = escreveCoq() ? l.filter((c) => c.meu || c.porEnviar).reduce((m, c) => (!m || c.marcado_em > m.marcado_em ? c : m), null) : null;
   const bd = $('#cq-desf'); bd.style.display = u ? '' : 'none'; if (u) bd.textContent = u.n ? `↶ Apagar o último (nº ${u.n})` : '↶ Apagar o último';
   $('#cq-csv').style.display = l.length ? '' : 'none';
@@ -970,23 +987,36 @@ async function marcarCoq() {
   if (!boas.length) { const rec = P.hist.filter((x) => Date.now() - x.t <= 5000); boas = [(rec.length ? rec : [P.pos]).reduce((u, w) => (w.prec < u.prec ? w : u))]; fraco = true; }
   let sw = 0, la = 0, lo = 0; for (const x of boas) { const wgt = 1 / Math.max(1, x.prec) ** 2; sw += wgt; la += x.lat * wgt; lo += x.lon * wgt; }
   const pos = { lat: la / sw, lon: lo / sw, prec: Math.min(...boas.map((x) => x.prec)), fraco };
-  let perto = null, dp = Infinity; for (const c of coqLista()) { const d = metros([pos.lat, pos.lon], [c.lat, c.lon]); if (d < dp) { dp = d; perto = c; } }
-  if (perto && dp < PL_PERTO && !confirm(`Já há um coqueiro marcado a ${Math.round(dp)} m. Marcar outro aqui?`)) return verCoq(perto.id);
+  // perto de um coqueiro já marcado: conta a média e a última leitura (a pessoa pode ter acabado de chegar)
+  let perto = null, dp = Infinity; for (const c of coqLista()) { const d = Math.min(metros([pos.lat, pos.lon], [c.lat, c.lon]), metros([P.pos.lat, P.pos.lon], [c.lat, c.lon])); if (d < dp) { dp = d; perto = c; } }
+  if (perto && dp <= RAIO_COQ && !confirm(`Este coqueiro já está marcado (a ${dp.toFixed(1)} m). Marcar outro aqui?`)) return verCoq(perto.id);
   ecraCoq({ id: crypto.randomUUID(), lat: pos.lat, lon: pos.lon, precisao_m: pos.prec, fraco, perfil: S.perfil.id });
 }
+const SIMNAO_COQ = [['tratamento', 'Precisa de tratamento'], ['cachos', 'Tem cachos'], ['cocos', 'Tem cocos']];
+const chipsCoq = (id, c) => `<div class="chips" id="${id}">${SIMNAO_COQ.map(([k, t]) => `<button class="chip${c?.[k] ? ' on' : ''}" data-k="${k}">${t}</button>`).join('')}</div>`;
+function miniFotosCoq() {
+  const el = $('#cq-mais-prev'); if (!el) return;
+  el.innerHTML = (S.coqExtras || []).map((b) => `<img src="${URL.createObjectURL(b)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:8px">`).join('');
+  const lim = (S.coqExtras || []).length >= MAX_FOTOS_COQ - 1; document.querySelectorAll('#cq-mais-box .foto-esc').forEach((x) => { x.style.display = lim ? 'none' : 'flex'; });
+}
 function ecraCoq(r) {                                    // formulário do coqueiro novo (r = rascunho: posição e o que já escreveu)
-  S.coqFoto = null; rascGuardar('rascCoq', { ...r, camara: false });
+  S.coqFoto = null; S.coqExtras = []; rascGuardar('rascCoq', { ...r, camara: false });
   folha(`<h2>🥥 <span>Coqueiro novo</span></h2>${r.camara ? AVISO_CAMARA : ''}
     <p class="pequeno">GPS ±${r.precisao_m} m${r.fraco ? ' (fraco)' : ''}</p>
-    <label>Estado</label><div class="chips" id="cq-est">${['viva', 'seca', 'morta'].map((e) => `<button class="chip${(r.estado || 'viva') === e ? ' on' : ''}" data-v="${e}">${TXT_COQ[e]}</button>`).join('')}</div>
+    <label>Estado</label><div class="chips" id="cq-est">${EST_COQ.map((e) => `<button class="chip${(r.estado || 'viva') === e ? ' on' : ''}" data-v="${e}">${TXT_COQ[e]}</button>`).join('')}</div>
+    <label>Marque o que se aplica</label>${chipsCoq('cq-sn', r)}
     <label>Local<input id="cq-local" maxlength="100" placeholder="Ex.: Acampamento ACE"></label>
     <textarea id="cq-obs" rows="2" placeholder="Observação (opcional)"></textarea>
     ${campoFoto('cq-foto', 'Fotografia do coqueiro (obrigatória)')}
     <img id="cq-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
+    <div id="cq-mais-box">${campoFoto('cq-mais', 'Mais fotografias (opcional, até 2): cachos, cocos…')}<div id="cq-mais-prev" style="display:flex;gap:6px;margin-top:6px"></div></div>
     <button class="btn" onclick="gravarCoq()">Gravar</button><button class="btn sec" onclick="LS.del('rascCoq');fecharFolha()">Cancelar</button>`);
   $('#cq-local').value = r.local ?? LS.get('coqLocal', ''); $('#cq-obs').value = r.obs || '';
-  const guardar = () => rascGuardar('rascCoq', { local: $('#cq-local').value, obs: $('#cq-obs').value, estado: $('#cq-est .chip.on')?.dataset.v || 'viva' });
+  const sn = () => Object.fromEntries(SIMNAO_COQ.map(([k]) => [k, !!$(`#cq-sn .chip[data-k="${k}"]`)?.classList.contains('on')]));
+  const guardar = () => rascGuardar('rascCoq', { local: $('#cq-local').value, obs: $('#cq-obs').value, estado: $('#cq-est .chip.on')?.dataset.v || 'viva', ...sn() });
   document.querySelectorAll('#cq-est .chip').forEach((b) => b.onclick = () => { document.querySelectorAll('#cq-est .chip').forEach((c) => c.classList.toggle('on', c === b)); guardar(); });
+  document.querySelectorAll('#cq-sn .chip').forEach((b) => b.onclick = () => { b.classList.toggle('on'); guardar(); });
+  ligarFoto('cq-mais', null, (foto) => { if (foto && (S.coqExtras || []).length < MAX_FOTOS_COQ - 1) S.coqExtras = [...(S.coqExtras || []), foto]; miniFotosCoq(); });
   ['#cq-local', '#cq-obs'].forEach((q) => $(q).addEventListener('input', guardar));
   ligarFoto('cq-foto', 'rascCoq', (foto) => { S.coqFoto = foto; const img = $('#cq-prev'); if (foto) { img.src = URL.createObjectURL(foto); img.style.display = ''; } else img.style.display = 'none'; });
 }
@@ -994,9 +1024,11 @@ async function gravarCoq() {
   const r = LS.get('rascCoq'); if (!r) return fecharFolha();
   if (!S.coqFoto) { alert('Tire a fotografia do coqueiro.'); return; }
   const c = { id: r.id, lat: r.lat, lon: r.lon, precisao_m: r.precisao_m, estado: $('#cq-est .chip.on')?.dataset.v || 'viva',
-    local: $('#cq-local').value.trim() || null, observacao: $('#cq-obs').value.trim() || null, marcado_em: new Date().toISOString() };
+    local: $('#cq-local').value.trim() || null, observacao: $('#cq-obs').value.trim() || null, marcado_em: new Date().toISOString(),
+    ...Object.fromEntries(SIMNAO_COQ.map(([k]) => [k, !!$(`#cq-sn .chip[data-k="${k}"]`)?.classList.contains('on')])) };
   try { await FOTOS.guardar('coq-' + c.id, S.coqFoto); } catch { S.fotosMem = { ...(S.fotosMem || {}), ['coq-' + c.id]: S.coqFoto }; }
-  LS.set('filaCoq', [...filaCoq(), { fid: crypto.randomUUID(), op: 'gravar', c, foto: true }]); LS.del('rascCoq'); if (c.local) LS.set('coqLocal', c.local);
+  const extras = await guardarExtrasCoq(c.id, S.coqExtras); S.coqExtras = [];
+  LS.set('filaCoq', [...filaCoq(), { fid: crypto.randomUUID(), op: 'gravar', c, foto: true, extras }]); LS.del('rascCoq'); if (c.local) LS.set('coqLocal', c.local);
   S.coqFoto = null; fecharFolha(); actSync(); desenharCoq();
   aviso(r.fraco ? `Coqueiro marcado com GPS fraco (±${c.precisao_m} m).` : `Coqueiro marcado (±${c.precisao_m} m).`, r.fraco ? 'info' : 'ok');
   sincronizar(true);
@@ -1010,19 +1042,43 @@ function verCoq(id) {
     <div class="lin"><span>Marcado</span><b>${fmtData(c.marcado_em.slice(0, 10))} ${fmtHora(c.marcado_em)}</b></div>
     ${c.marcado_por_nome ? `<div class="lin"><span>Por</span><b class="sem-trad">${esc(c.marcado_por_nome)}</b></div>` : ''}
     <div class="lin"><span>GPS</span><b>±${c.precisao_m ?? '?'} m${d != null ? ` · a ${Math.round(d)} m de si` : ''}</b></div>
+    ${SIMNAO_COQ.map(([k, t]) => `<div class="lin"><span>${t}</span><b>${c[k] == null ? '—' : c[k] ? 'Sim' : 'Não'}</b></div>`).join('')}
+    ${c.estado === 'retirado' ? '<p class="pequeno">Já não existe: o ponto fica guardado, mas não conta nos coqueiros.</p>' : ''}
     ${c.observacao ? `<p class="sem-trad">${esc(c.observacao)}</p>` : ''}</div>
-    ${c.porEnviar ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : c.foto_path ? `<button class="chip" onclick="verFoto('coqueiros-fotos','${esc(c.foto_path)}')">📷 Ver a fotografia</button>` : ''}
-    ${mexeCoq(c) ? `<label>Mudar o estado</label><div class="chips">${['viva', 'seca', 'morta'].map((e) => `<button class="chip${c.estado === e ? ' on' : ''}" onclick="estadoCoq('${esc(c.id)}','${e}')">${TXT_COQ[e]}</button>`).join('')}</div>
+    ${c.porEnviar ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : ''}
+    <div class="chips">${c.foto_path ? `<button class="chip" onclick="verFoto('coqueiros-fotos','${esc(c.foto_path)}')">📷 ${(c.fotos_extra || []).length ? 'Fotografia 1' : 'Ver a fotografia'}</button>` : ''}${(c.fotos_extra || []).map((f, i) => `<button class="chip" onclick="verFoto('coqueiros-fotos','${esc(f)}')">📷 Fotografia ${i + 2}</button>`).join('')}</div>
+    ${mexeCoq(c) ? `<label>Mudar o estado</label><div class="chips">${EST_COQ.map((e) => `<button class="chip${c.estado === e ? ' on' : ''}" onclick="estadoCoq('${esc(c.id)}','${e}')">${TXT_COQ[e]}</button>`).join('')}</div>
+      <label>Marque o que se aplica</label><div class="chips">${SIMNAO_COQ.map(([k, t]) => `<button class="chip${c[k] ? ' on' : ''}" onclick="marcaCoq('${esc(c.id)}','${k}')">${t}</button>`).join('')}</div>
+      ${1 + (c.fotos_extra || []).length + (c.porEnviarExtras || 0) < MAX_FOTOS_COQ ? `<div id="cq-junta-box">${campoFoto('cq-junta', 'Juntar uma fotografia (cachos, cocos…)')}</div>` : ''}
       <button class="chip" onclick="removerCoq('${esc(c.id)}')">Remover este ponto (marcado por engano)</button>` : ''}
     <button class="chip" onclick="ecraVara({tipo:'coqueiro',alvo:'${esc(c.id)}',nome:'${c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro'}'})">📏 ${escreveCoq() ? 'Medir com a vara · teste' : 'Medições com a vara'}</button>
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+  if ($('#cq-junta')) ligarFoto('cq-junta', null, async (foto) => { if (foto) await juntarFotoCoq(id, foto); });
+}
+// muda um coqueiro: se ainda não foi enviado, muda o próprio pedido; senão põe um pedido novo na fila
+function mudarCoq(id, mud, extras = []) {
+  const c = coqLista().find((x) => x.id === id); if (!c) return;
+  const f = filaCoq(), i = f.findIndex((x) => x.op === 'gravar' && x.c.id === id);
+  if (i >= 0) { Object.assign(f[i].c, mud); f[i].extras = [...(f[i].extras || []), ...extras]; }
+  else f.push({ fid: crypto.randomUUID(), op: 'gravar', c: { id, lat: c.lat, lon: c.lon, precisao_m: c.precisao_m, estado: c.estado, local: c.local, observacao: c.observacao, marcado_em: c.marcado_em,
+    tratamento: c.tratamento ?? null, cachos: c.cachos ?? null, cocos: c.cocos ?? null, ...mud }, foto: false, extras });
+  LS.set('filaCoq', f); actSync(); desenharCoq(); verCoq(id); sincronizar(true);
 }
 function estadoCoq(id, estado) {
   const c = coqLista().find((x) => x.id === id); if (!c || c.estado === estado) return verCoq(id);
-  const f = filaCoq(), i = f.findIndex((x) => x.op === 'gravar' && x.c.id === id);
-  if (i >= 0) f[i].c.estado = estado;                    // ainda não enviado: muda o próprio pedido
-  else f.push({ fid: crypto.randomUUID(), op: 'gravar', c: { id, lat: c.lat, lon: c.lon, precisao_m: c.precisao_m, estado, local: c.local, observacao: c.observacao, marcado_em: c.marcado_em }, foto: false });
-  LS.set('filaCoq', f); actSync(); desenharCoq(); verCoq(id); sincronizar(true);
+  if (estado === 'retirado' && !confirm('Este coqueiro já não existe? O ponto fica guardado, mas deixa de contar nos coqueiros.')) return;
+  mudarCoq(id, { estado });
+}
+function marcaCoq(id, k) { const c = coqLista().find((x) => x.id === id); if (c) mudarCoq(id, { [k]: !c[k] }); }
+async function guardarExtrasCoq(id, fotos) {           // fotografias a mais ficam no telefone até haver rede (coq-<id>-<chave>)
+  const ks = [];
+  for (const b of fotos || []) { const k = `coq-${id}-${crypto.randomUUID().slice(0, 8)}`; try { await FOTOS.guardar(k, b); } catch { S.fotosMem = { ...(S.fotosMem || {}), [k]: b }; } ks.push(k); }
+  return ks;
+}
+async function juntarFotoCoq(id, foto) {
+  const c = coqLista().find((x) => x.id === id); if (!c) return;
+  if (1 + (c.fotos_extra || []).length + (c.porEnviarExtras || 0) >= MAX_FOTOS_COQ) return aviso('Este coqueiro já tem 3 fotografias.', 'erro');
+  mudarCoq(id, {}, await guardarExtrasCoq(id, [foto])); aviso('Fotografia juntada.', 'ok');
 }
 async function removerCoq(id) {
   if (!confirm('Remover este coqueiro (marcado por engano)?')) return;
@@ -1044,12 +1100,20 @@ async function enviarCoq() {
         let b = null; try { b = await FOTOS.ler('coq-' + x.c.id); } catch {} b = b || S.fotosMem?.['coq-' + x.c.id] || null;
         if (b) { caminho = `${S.perfil.id}/${x.c.id}.jpg`; const up = await sb.storage.from('coqueiros-fotos').upload(caminho, b, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
       }
-      r = await sb.rpc('gravar_coqueiro', { p_id: x.c.id, p_lat: x.c.lat, p_lon: x.c.lon, p_precisao: x.c.precisao_m, p_estado: x.c.estado, p_local: x.c.local, p_obs: x.c.observacao, p_foto: caminho, p_em: x.c.marcado_em });
+      const extras = [];
+      for (const k of x.extras || []) {
+        let b = null; try { b = await FOTOS.ler(k); } catch {} b = b || S.fotosMem?.[k] || null; if (!b) continue;
+        const cam = `${S.perfil.id}/${k.slice(4)}.jpg`, up = await sb.storage.from('coqueiros-fotos').upload(cam, b, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message;
+        extras.push(cam);
+      }
+      r = await sb.rpc('gravar_coqueiro2', { p_id: x.c.id, p_lat: x.c.lat, p_lon: x.c.lon, p_precisao: x.c.precisao_m, p_estado: x.c.estado, p_local: x.c.local, p_obs: x.c.observacao, p_foto: caminho, p_em: x.c.marcado_em,
+        p_tratamento: x.c.tratamento ?? null, p_cachos: x.c.cachos ?? null, p_cocos: x.c.cocos ?? null, p_fotos_extra: extras });
     } else r = await sb.rpc('remover_coqueiro', { p_id: x.id });
     if (r.error && !r.error.code) return r.error.message;
     if (r.error) aviso(`Coqueiro não gravado: ${r.error.message}`, 'erro');
     LS.set('filaCoq', filaCoq().filter((y) => y.fid !== x.fid));
     if (x.op === 'gravar' && x.foto) try { await FOTOS.apagar('coq-' + x.c.id); } catch {}
+    for (const k of (x.op === 'gravar' && x.extras) || []) try { await FOTOS.apagar(k); } catch {}
   }
   await carregarCoq();
   return null;
@@ -1059,8 +1123,10 @@ function descarregarCoq() {
   const cel = (v) => { const t = String(v ?? ''); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
   const T = (x) => (window.trEN ? window.trEN(x) : x);
   const dt = (t) => (t ? new Date(t).toLocaleString('pt-PT', { timeZone: 'Africa/Maputo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '') : '');
-  const cab = ['Nº', 'Latitude', 'Longitude', 'Precisão do GPS (m)', 'Estado', 'Local', 'Observação', 'Marcado em', 'Marcado por', 'Fotografia'];
-  const linhas = coqLista().map((c) => [c.n ?? '', c.lat.toFixed(7), c.lon.toFixed(7), c.precisao_m ?? '', T(TXT_COQ[c.estado] || c.estado), c.local, c.observacao, dt(c.marcado_em), c.marcado_por_nome || '', T(c.foto_path ? 'sim' : c.porEnviar ? 'no telefone' : 'não')]);
+  const sn = (v) => (v == null ? '' : T(v ? 'sim' : 'não'));
+  const cab = ['Nº', 'Latitude', 'Longitude', 'Precisão do GPS (m)', 'Estado', 'Precisa de tratamento', 'Tem cachos', 'Tem cocos', 'Local', 'Observação', 'Marcado em', 'Marcado por', 'Fotografias'];
+  const linhas = coqLista().map((c) => [c.n ?? '', c.lat.toFixed(7), c.lon.toFixed(7), c.precisao_m ?? '', T(TXT_COQ[c.estado] || c.estado), sn(c.tratamento), sn(c.cachos), sn(c.cocos), c.local, c.observacao, dt(c.marcado_em), c.marcado_por_nome || '',
+    c.porEnviar ? T('no telefone') : (c.foto_path ? 1 : 0) + (c.fotos_extra || []).length]);
   const csv = '﻿' + [cab.map(T), ...linhas].map((l) => l.map(cel).join(';')).join('\r\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = `Coqueiros_fora_de_campo_${hojeISO().replace(/-/g, '')}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
@@ -2223,7 +2289,7 @@ function abrirFicha(id, nota = '') {
          <button class="btn sec" onclick="marcarAgua(true)">A água já estava no campo quando chegámos</button>`) +
     `<button class="btn aviso" onclick="ecraSaida()">Terminei — marcar saída</button>`;
   else if (emCurso) acc = `<div class="msg info">Tem a rega de outro campo em curso. Termine-a primeiro.</div><button class="btn sec" onclick="abrirFicha('${esc(emCurso.area_id)}')">Abrir o campo em curso</button>`;
-  else if (podeRegar && meuCampo(a)) acc = `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`;
+  else if (podeRegar && meuCampo(a)) acc = (porEquipa(a) ? `<div class="msg info">📵 <span>${esc(nomeAct(a.activista_id))} não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele.</span></div>` : '') + `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`;
   const alheio = !meuCampo(a); S.soVer = alheio;
   folha(`${nota}<h2 style="margin-top:0">${esc(a.produtor)}</h2>
    <div class="cartao" style="margin:8px 0">
@@ -2279,8 +2345,8 @@ function guardarJornada(depois) {
 async function marcarEntrada(id, motivoIt = null) {
   const a = S.areas.find((x) => x.id === id);
   const minha = souActivista() && a.activista_id === S.perfil.activista_id;
-  if (souActivista() && minha) {                                // regra da ronda: não repetir antes de acabar a lista
-    const ri = rondaInfo(S.perfil.activista_id);
+  if ((souActivista() && minha) || porEquipa(a)) {             // regra da ronda: não repetir antes de acabar a lista
+    const ri = rondaInfo(a.activista_id);
     if (ri.feitas.has(id)) return abrirFicha(id, `<div class="msg erro">Este campo já foi regado na ronda ${ri.n}. Só pode voltar a regá-lo depois de regar todos os campos da sua lista (faltam ${ri.total - ri.feitas.size} de ${ri.total}).</div>`);
   }
   if (souActivista() && S.perfil.activista_id && !jornadaHoje()) return ecraJornada(id);
@@ -2404,13 +2470,13 @@ async function marcarSaida() {
     alerta: ent.alerta || null, motivo_alerta: ent.motivo_alerta || null,
     plano_id: ent.plano_id || null, plano_dia: ent.plano_dia ?? null, fora_itinerario: ent.fora_itinerario ?? null, motivo_itinerario: ent.motivo_itinerario || null,
     area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null,
-    criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista', observacao: obs || null,
+    criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista' && !porEquipa(a), observacao: obs || null,
     constr: tipos.map((t) => ({ id: crypto.randomUUID(), tipo: t, descricao: obs || null })),
   };
   porNaFila(reg); LS.del('emCurso'); LS.del('rascFotoRega'); actSync(); desenharMapa(); desenharLista();
   sincronizar(true);
   let nota = '';
-  if (souActivista() && antes && plantas > 0) {
+  if ((souActivista() || porEquipa(a)) && antes && plantas > 0) {
     const depois = rondaInfo(actId);
     if (depois.n > antes.n) nota = `<div class="msg ok"><b>Ronda ${antes.n} concluída!</b> Os ${antes.total} campos da lista foram regados de ${fmtData(depois.anterior.ini)} a ${fmtData(depois.anterior.fim)}. A ronda ${depois.n} começa agora.</div>`;
   }
@@ -3146,6 +3212,7 @@ function ecraTamanho(id) {
   folha(`<h2>${esc(nomeAct(id))}</h2>
     <label>Quantas pessoas tem esta equipa (incluindo o activista)?<input id="t-n" type="number" inputmode="numeric" min="1" max="30" value="${tamanhoEquipa(id) ?? ''}"></label>
     <p class="pequeno">Serve para mostrar as faltas: pessoas presentes no dia comparadas com este número.</p>
+    <label style="display:flex;gap:8px;align-items:flex-start"><input id="t-semtel" type="checkbox" style="width:auto" ${semTelefone(id) ? 'checked' : ''}> <span>Este activista não tem telemóvel: o técnico ou o supervisor registam as regas por ele.</span></label>
     <button class="btn" onclick="gravarTamanho('${esc(id)}')">Guardar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
 }
 async function gravarTamanho(id) {
@@ -3153,7 +3220,9 @@ async function gravarTamanho(id) {
   if (!(n >= 1 && n <= 30)) { alert('Escreva um número entre 1 e 30.'); return; }
   const r = await sb.rpc('definir_equipa_tamanho', { p_activista: id, p_n: n });
   if (r.error) return aviso(r.error.message, 'erro');
-  const t = S.activistas.find((x) => x.id === id); if (t) t.equipa_tamanho = n; LS.set('activistas', S.activistas);
+  const st = $('#t-semtel').checked, t = S.activistas.find((x) => x.id === id);
+  if (st !== semTelefone(id)) { const r2 = await sb.rpc('definir_sem_telefone', { p_activista: id, p_valor: st }); if (r2.error) return aviso(r2.error.message, 'erro'); if (t) t.sem_telefone = st; }
+  if (t) t.equipa_tamanho = n; LS.set('activistas', S.activistas);
   fecharFolha(); desenharHoje();
 }
 // Os botões "Rega hoje" / "Recontagens das plantas" mudam logo (18/10/2026, Valdo: demorava ~3 s): mostram o que está
@@ -3237,7 +3306,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoPrimeiroTeste() + cartaoManutHoje() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
@@ -3316,6 +3385,18 @@ const avisos = () => (Array.isArray(S.avisos) ? S.avisos : LS.get('avisos', []) 
 const textoAviso = (v) => `${v.sem_rega} de ${v.plantas_obs} plantas sem solo húmido · nota ${Number(v.nota).toLocaleString(LOC)}`;
 // Aviso a quem ainda não fez nenhuma rega de teste (v92, 21/10/2026, sugestão aceite pelo Valdo): técnico e supervisor.
 // Desaparece logo que haja uma rega de teste (no servidor, na fila do telefone ou em curso).
+function cartaoSemTelefone() {
+  if (!['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel)) return '';
+  const L = (S.activistas || []).filter((t) => t.sem_telefone && t.activo !== false && (S.perfil.papel === 'gestor' || (S.visiveis || []).includes(t.id)));
+  if (!L.length) return '';
+  return `<div class="cartao" style="border-left:4px solid #0b6e8a"><h2 style="margin-top:0">📵 <span>Activistas sem telemóvel</span></h2>
+    <p class="pequeno">As regas que registar nos campos destes activistas contam a sério para a equipa deles. Esteja com a equipa desde a entrada até à saída.</p>
+    ${L.map((t) => `<div class="lin"><span class="sem-trad">${esc(t.nome)}</span><button class="chip" onclick="verCamposDe('${t.id}')">Ver os campos</button></div>`).join('')}</div>`;
+}
+function verCamposDe(id) {
+  if (listaPropria()) { S.filtro = 'meus'; LS.set('filtroSup', 'meus'); $('#f-ambito').value = 'meus'; }
+  $('#f-sit').value = ''; $('#f-act').value = id; mudar('lista'); desenharLista();
+}
 // campos da lista sem activista (24/10/2026, Valdo: "não termos campos que não tenham equipas"): técnico e supervisor
 function cartaoSemEquipa() {
   if (!['tecnico', 'supervisor'].includes(S.perfil?.papel)) return '';

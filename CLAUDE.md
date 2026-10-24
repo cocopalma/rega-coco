@@ -197,6 +197,21 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Câmara dentro da app (Dalmar, 24/10: o botão de tirar devia destacar-se e ficar por cima): "📷 Tirar" grande e branco em cima; "Cancelar" e "Virar a câmara" escuros e pequenos por baixo.
 - Ibraimo Ali Selemane usa o navegador da Xiaomi (MiuiBrowser, "Script error."): deve usar o Chrome. Martins Joaquim Fernando tinha a v98 em cache (erro "onclick" de null).
 
+## Activistas sem telemóvel (v111, 24/10/2026, Raul/Valdo)
+- Azizi (Azize Abdala Selemane, Macala) e Mariano (Senga, substituiu o Mateus; criado a 24/10 só com o nome "Mariano": falta o nome completo; sem login) não têm telemóvel. Valdo: "Técnico regista por ele".
+- `activistas.sem_telefone`; `definir_sem_telefone(p_activista, p_valor)` (gestor; técnico/supervisor das suas equipas; na app: Hoje › tabela das equipas › tamanho da equipa › caixa "Este activista não tem telemóvel"). `privado.regista_por(act)`: técnico/supervisor/gestor que vêem o activista (gestor todos) e o activista activo com `sem_telefone`. RLS `registos_inserir` e `jornadas_inserir` aceitam `teste = false` nesse caso (o `user_id` = quem registou). Testado: Raul grava rega real do Azize; noutro activista o servidor recusa.
+- App: `semTelefone(id)`, `porEquipa(a)` (técnico/supervisor/gestor, campo da sua lista com activista sem telefone): na ficha "📵 X não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele."; a regra da ronda vale como para o activista; a rega vai com `teste = false` e a ronda da equipa. Hoje: cartão "📵 Activistas sem telemóvel" com "Ver os campos" (`verCamposDe`). O percurso do técnico continua de teste.
+- Teste: `rega-test/teste_sem_telefone.py` (SEMTEL=0; LING=en / sw).
+
+## Coqueiros v111 (24/10/2026, áudios do Dalmar, aprovados pelo Valdo)
+- Estado "Retirado" (o coqueiro já não existe; o ponto fica guardado a vermelho e vazio, não conta nos coqueiros existentes). Restrição `coqueiros_estado_check` alargada.
+- Círculo de 2,5 m (`RAIO_COQ`) à volta de cada coqueiro; ao entrar nele o telefone vibra e aparece "⚠️ Coqueiro nº N já marcado aqui" (`#cq-perto`, em `coqLeitura`); ao marcar dentro do raio pede confirmação (média e última leitura).
+- Até 3 fotografias (`MAX_FOTOS_COQ`): a principal + "Mais fotografias (opcional, até 2)" no formulário e "Juntar uma fotografia" na ficha. Ficam no telefone (`coq-<id>-<chave>`), vão para `coqueiros-fotos/<perfil>/<id>-<chave>.jpg`; coluna `coqueiros.fotos_extra` (text[]).
+- "Precisa de tratamento", "Tem cachos", "Tem cocos" (`coqueiros.tratamento/cachos/cocos`; chips no formulário e na ficha; contagem no painel do mapa; colunas no Excel).
+- RPC `gravar_coqueiro2(…, p_tratamento, p_cachos, p_cocos, p_fotos_extra)` (junta as fotografias; a `gravar_coqueiro` antiga fica para versões em cache); `coqueiros_lista` devolve os campos novos.
+- Bafana (Valdo: "Marcar coqueiros"): `perfis.marca_coqueiros`; `privado.coq_acesso()` dá 'escreve' a quem o tiver. Falta o nome/acesso dele: quando o Valdo criar o acesso, pôr `marca_coqueiros = true` no perfil.
+- Teste: `rega-test/teste_coqueiros2.py` (PAPEL=tecnico MARCA=1; LING=en / sw).
+
 ## Sugestão do próximo campo (v100, 23/10/2026, Valdo)
 - Origem: o Gelson disse que a app não sugeriu o próximo campo no teste da Desteria (23/10, 1.º dia de teste dos activistas); a rega dela (PR2169481-1) chegou com `area_sugerida_id` null e o servidor não diz se a sugestão foi mostrada. No teste em navegador a sugestão aparecia.
 - Depois de guardar a saída, a sugestão continua na folha e fica também fixa no Mapa (cartão `#sug-mapa` em baixo; esconde-se com a legenda aberta, a régua, os percursos ou a manutenção) e no Hoje (`cartaoSugHoje`, `#hoje-sugprox`): "➡️ Próximo campo sugerido: produtor · PR · distância · rumo", com "Ver no mapa" e "Abrir a ficha". Fica até à próxima entrada (`LS 'sugestao'`), só no dia em que foi feita e sem rega em curso (`sugActual`).
