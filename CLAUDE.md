@@ -198,7 +198,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Ibraimo Ali Selemane usa o navegador da Xiaomi (MiuiBrowser, "Script error."): deve usar o Chrome. Martins Joaquim Fernando tinha a v98 em cache (erro "onclick" de null).
 
 ## Activistas sem telemóvel (v111, 24/10/2026, Raul/Valdo)
-- Azizi (Azize Abdala Selemane, Macala) e Mariano (Senga, substituiu o Mateus; criado a 24/10 só com o nome "Mariano": falta o nome completo; sem login) não têm telemóvel. Valdo: "Técnico regista por ele".
+- Azizi (Azize Abdala Selemane, Macala) e Mariano Tomás (Senga, substituiu o Mateus; criado a 24/10, nome completo dado pelo Valdo no mesmo dia; sem login) não têm telemóvel. Valdo: "Técnico regista por ele".
 - `activistas.sem_telefone`; `definir_sem_telefone(p_activista, p_valor)` (gestor; técnico/supervisor das suas equipas; na app: Hoje › tabela das equipas › tamanho da equipa › caixa "Este activista não tem telemóvel"). `privado.regista_por(act)`: técnico/supervisor/gestor que vêem o activista (gestor todos) e o activista activo com `sem_telefone`. RLS `registos_inserir` e `jornadas_inserir` aceitam `teste = false` nesse caso (o `user_id` = quem registou). Testado: Raul grava rega real do Azize; noutro activista o servidor recusa.
 - App: `semTelefone(id)`, `porEquipa(a)` (técnico/supervisor/gestor, campo da sua lista com activista sem telefone): na ficha "📵 X não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele."; a regra da ronda vale como para o activista; a rega vai com `teste = false` e a ronda da equipa. Hoje: cartão "📵 Activistas sem telemóvel" com "Ver os campos" (`verCamposDe`). O percurso do técnico continua de teste.
 - Teste: `rega-test/teste_sem_telefone.py` (SEMTEL=0; LING=en / sw).
