@@ -76,13 +76,27 @@ function rumo(a, b) {
   const g = (Math.atan2(y, x) / r + 360) % 360;
   return ['Norte', 'Nordeste', 'Este', 'Sudeste', 'Sul', 'Sudoeste', 'Oeste', 'Noroeste'][Math.round(g / 45) % 8];
 }
+// GPS sem autorização (24/10/2026: Sitambur e Eduardo, "User denied Geolocation"). O bloqueio é do site no Chrome,
+// não do telefone: o vídeo do Gelson mostra que nas definições do telefone o Chrome tinha autorização.
+function ajudaGps(forcar) {
+  const f = $('#gps-neg'); if (f) f.style.display = '';           // faixa vermelha fica até a localização voltar
+  if (!forcar && (S.ajudaGpsVista || $('#folha').classList.contains('on'))) return;
+  S.ajudaGpsVista = true;
+  folha(`<h2>📍 <span>A app não consegue ler a localização</span></h2>
+   <p>O Chrome está a bloquear a localização desta app. Sem localização não se pode marcar a entrada nos campos.</p>
+   <ol style="padding-left:20px"><li>No Chrome, toque no ícone à esquerda do endereço (cocopalma.github.io).</li>
+   <li>Toque em «Permissões» › «Localização» › «Permitir».</li>
+   <li>Toque em «Já autorizei».</li></ol>
+   <p class="pequeno">Se não resolver: Definições do telefone › Aplicações › Chrome › Autorizações › Localização › «Permitir apenas enquanto usa a app» e ligue «Localização exata». A localização do telefone tem de estar ligada.</p>
+   <button class="btn" onclick="location.reload()">Já autorizei</button><button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
 function lerGPS() {
   return new Promise((ok, falha) => {
     if (!navigator.geolocation) return falha(new Error('Este telefone não tem GPS disponível no navegador.'));
     if (S.fix && Date.now() - S.fix.t < 15000) return ok(S.fix.coords);   // leitura recente do GPS contínuo
     navigator.geolocation.getCurrentPosition(
       (p) => { S.pos = [p.coords.latitude, p.coords.longitude]; S.fix = { coords: p.coords, t: Date.now() }; ok(p.coords); },
-      (e) => { problemaApp('gps', `GPS falhou (código ${e.code})`, { msg: e.message }); falha(new Error(e.code === 1 ? 'A app não tem autorização para usar a localização. Autorize nas definições do telefone.' : 'Não foi possível obter o GPS. Vá para céu aberto e tente de novo.')); },
+      (e) => { problemaApp('gps', `GPS falhou (código ${e.code})`, { msg: e.message }); if (e.code === 1) ajudaGps(); falha(new Error(e.code === 1 ? 'O Chrome está a bloquear a localização. Toque no ícone à esquerda do endereço › Permissões › Localização › Permitir.' : 'Não foi possível obter o GPS. Vá para céu aberto e tente de novo.')); },
       { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 });
   });
 }
@@ -500,6 +514,7 @@ function iniciarMapa() {
   mapa.on('click', (e) => { if (S.regua) pontoRegua([e.latlng.lat, e.latlng.lng]); });
   if (navigator.geolocation) navigator.geolocation.watchPosition((p) => {
     S.pos = [p.coords.latitude, p.coords.longitude]; S.fix = { coords: p.coords, t: Date.now() };
+    if ($('#gps-neg')) $('#gps-neg').style.display = 'none';
     pontoPercurso(p.coords);
     if (S.coq) coqLeitura(p.coords);
     if (!eu) eu = L.circleMarker(S.pos, { radius: 9, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 }).addTo(mapa);
@@ -517,7 +532,7 @@ function iniciarMapa() {
       const h = p.coords.heading;
       if (Date.now() - (S.bussolaEm || 0) > 3000 && h != null && !isNaN(h) && (p.coords.speed || 0) > 0.5) rodarPara(h);
     }
-  }, () => {}, { enableHighAccuracy: true, maximumAge: 10000 });
+  }, (e) => { if (e && e.code === 1) { problemaApp('gps', 'GPS falhou (código 1)', { msg: e.message }); ajudaGps(); } }, { enableHighAccuracy: true, maximumAge: 10000 });
 }
 // ---------- mapa a rodar com a direcção, como no Google Maps (16/10/2026, Dalmar "M3" via Valdo) ----------
 // Liga no botão 🧭: o mapa segue a pessoa e roda com a bússola do telefone (a direcção para onde aponta fica para cima).
@@ -3012,8 +3027,10 @@ async function camaraNaApp(aoFoto) {
   const ov = document.createElement('div'); ov.id = 'cam-ov';
   ov.style.cssText = 'position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column';
   ov.innerHTML = `<video autoplay playsinline muted style="flex:1;min-height:0;width:100%;object-fit:contain;background:#000"></video>
-    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;padding:16px 16px calc(16px + env(safe-area-inset-bottom));background:#000">
-      <button type="button" class="btn sec" id="cam-x" style="width:auto;margin:0">Cancelar</button><button type="button" class="btn sec" id="cam-virar" style="width:auto;margin:0">🔄 Virar a câmara</button><button type="button" class="btn" id="cam-ok" style="width:auto;margin:0;min-width:120px">📷 Tirar</button></div>`;
+    <div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:14px 16px calc(14px + env(safe-area-inset-bottom));background:#000">
+      <button type="button" id="cam-ok" style="width:auto;min-width:180px;margin:0;padding:16px 28px;border-radius:40px;border:4px solid #9be29b;background:#fff;color:#111;font-size:20px;font-weight:700">📷 Tirar</button>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button type="button" id="cam-x" style="width:auto;margin:0;padding:8px 14px;border-radius:10px;border:1px solid #555;background:#222;color:#bbb;font-size:14px">Cancelar</button><button type="button" id="cam-virar" style="width:auto;margin:0;padding:8px 14px;border-radius:10px;border:1px solid #555;background:#222;color:#bbb;font-size:14px">🔄 Virar a câmara</button></div></div>`;
   document.body.appendChild(ov);
   const v = ov.querySelector('video'); v.srcObject = stream;
   const espelho = () => { v.style.transform = lado === 'user' ? 'scaleX(-1)' : ''; };
