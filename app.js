@@ -3070,7 +3070,7 @@ function desenharSugestoes(filtro = S.sugFiltro || 'nova') {
     ${lista.map((x) => `<div style="padding:8px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
       <div class="pequeno">${fmtData(x.criada_em)} ${fmtHora(x.criada_em)} · ${esc(x.quem || '')} (${esc(FUNCOES[x.papel]?.nome || x.papel || '')}) · ${esc(x.ecra || '')}${x.area_id ? ' · ' + esc(x.area_id) : ''} · v${esc(x.versao || '?')}</div>
       <div style="white-space:pre-wrap;margin:4px 0" class="sem-trad">${esc(x.texto)}</div>
-      ${x.nota ? `<div class="pequeno"><span>Resposta</span>: <span class="sem-trad">${esc(x.nota)}</span>${x.pendente ? ' · <span>por enviar</span>' : ''}</div>` : x.pendente ? '<div class="pequeno">Por enviar.</div>' : ''}
+      ${x.nota ? `<div class="pequeno"><span>Resposta</span>: <span class="sem-trad" style="white-space:pre-wrap">${esc(x.nota)}</span>${x.pendente ? ' · <span>por enviar</span>' : ''}</div>` : x.pendente ? '<div class="pequeno">Por enviar.</div>' : ''}
       ${x.diag ? `<details class="pequeno"><summary>Estado da app</summary><pre style="white-space:pre-wrap;font-size:11px" class="sem-trad">${esc(JSON.stringify(x.diag, null, 1))}</pre></details>` : ''}
       <div class="chips">${x.foto_path ? `<button class="chip" onclick="verFoto('sugestoes-fotos', '${esc(x.foto_path)}', '${esc(x.quem || '')}')">📷 Fotografia</button>` : ''}
         ${['aprovada', 'recusada', 'feita', 'nova'].filter((e) => e !== x.estado).map((e) => `<button class="chip" onclick="avaliarSugestao('${x.id}','${e}')">${ESTADOS_SUG[e]}</button>`).join('')}</div></div>`).join('') || '<p class="pequeno">Nenhuma.</p>'}
@@ -3556,7 +3556,7 @@ function cartaoSugFeitas() {
   return `<div class="cartao" id="hoje-sugf" style="border-left:4px solid var(--ok,#2e7d32)"><h2>💡 <span>${L.length === 1 ? 'Resposta à sua sugestão' : 'Respostas às suas sugestões'}</span></h2>` +
     L.map((x) => { const [t, c] = RESP_TXT[x.estado || 'feita'] || RESP_TXT.feita;
       return `<div class="lin" style="display:block"><div class="sem-trad">«${esc(x.texto)}»</div>
-      <div class="pequeno"><b style="color:${c}">${t}</b> · ${fmtData(String(x.avaliada_em).slice(0, 10))}</div>${x.nota ? `<div class="sem-trad" style="margin:4px 0">${esc(x.nota)}</div>` : ''}
+      <div class="pequeno"><b style="color:${c}">${t}</b> · ${fmtData(String(x.avaliada_em).slice(0, 10))}</div>${x.nota ? `<div class="sem-trad" style="margin:4px 0;white-space:pre-wrap">${esc(x.nota)}</div>` : ''}
       <button class="chip" onclick="sugFeitaVista('${esc(chaveResp(x))}')">OK</button></div>`; }).join('') + '</div>';
 }
 function sugFeitaVista(id) {
