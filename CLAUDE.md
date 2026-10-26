@@ -219,6 +219,10 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Respostas escritas nas 20 sugestões de 22–26/10 (`sugestoes.nota`); as de testes/treinos recusadas com a explicação do botão 💡 (os técnicos voltam a explicar).
 - Testes: `rega-test/teste_v112.py` e `rega-test/teste_painel_v112.py` (LING=en / sw).
 
+## Percursos com ordem e regas fora da lista (v114, 26/10/2026, sugestão do Valdo pelo 💡 às 14:16, "Sim")
+- Percurso de uma equipa: o caminho muda de cor com a hora (verde no início, amarelo a meio, vermelho no fim; `corGrad`), com quadrados numerados 1–9 pela ordem do caminho (repartidos pelos pontos; tocar = hora) e barra de cores na legenda. Os campos continuam visíveis no mapa, esbatidos (`S.modoPerc` em `desenharMapa`; só as etiquetas saem). O percurso fica num painel próprio do mapa (`mapa.createPane('perc')`, zIndex 450, opção `PP`), por cima dos campos. "Todas as equipas" mantém uma cor por equipa.
+- Regas fora da lista: o activista só vê os seus campos (desde 18/10) e a app já pedia o motivo fora da lista (`confirmarAlerta`). No servidor, gatilho `marca_fora_lista` (BEFORE INSERT em `registos_rega`, só regas reais; `privado.marca_fora_lista`): se o campo não é do activista da rega, fica `alerta = 'fora_da_lista'`; sem motivo, `motivo_alerta` = "Sem justificação: no servidor o campo não está na lista deste activista". Não recusa (o telefone pode ter a lista antiga, sem rede). De 24 a 26/10 não houve nenhuma rega fora da lista.
+
 ## Coqueiros v111 (24/10/2026, áudios do Dalmar, aprovados pelo Valdo)
 - Estado "Retirado" (o coqueiro já não existe; o ponto fica guardado a vermelho e vazio, não conta nos coqueiros existentes). Restrição `coqueiros_estado_check` alargada.
 - Círculo de 2,5 m (`RAIO_COQ`) à volta de cada coqueiro; ao entrar nele o telefone vibra e aparece "⚠️ Coqueiro nº N já marcado aqui" (`#cq-perto`, em `coqLeitura`); ao marcar dentro do raio pede confirmação (média e última leitura).

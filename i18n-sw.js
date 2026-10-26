@@ -368,6 +368,7 @@ window.I18N_SW_D = {
 "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Mvua inasajiliwa tu mahali pa kipimo cha mvua: programu inatumia GPS kujua jamii.",
 "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "Hakuna mashamba yenye kuratibu kwenye simu. Sajili mvua karibu na kipimo cha mvua, katika jamii.",
 "Pelo GPS está em": "Kwa GPS uko",
+"Caminho: verde no início, amarelo a meio, vermelho no fim · quadrados 1–9: ordem do caminho (toque = hora) · círculos azuis: campos regados, pela ordem · cinzento tracejado: sem registo.": "Njia: kijani mwanzoni, njano katikati, nyekundu mwishoni · miraba 1–9: mpangilio wa njia (gusa = saa) · duara za buluu: mashamba yaliyomwagiliwa, kwa mpangilio · kijivu cha vistari: hakuna rekodi.",
 "campo": "shamba",
 "Estado da app": "Hali ya programu",
 "Sem rede: lista guardada no telefone": "Hakuna mtandao: orodha imehifadhiwa kwenye simu",

@@ -694,6 +694,12 @@ function terminarDia(sim) {
 }
 // ver o percurso no mapa
 let percCamada = null;
+// o percurso fica por cima dos campos (v114): painel próprio do mapa entre os campos (400) e os marcadores (600)
+const PP = { pane: 'perc' };
+function camadaPerc() { if (!mapa.getPane('perc')) mapa.createPane('perc').style.zIndex = 450; if (!percCamada) percCamada = L.layerGroup().addTo(mapa); }
+// cor pela hora (v114, 26/10/2026, Valdo: "ver a ordem do caminho, de onde começou até onde terminou, com gradiente de cor e
+// numeração"): verde no início, amarelo a meio, vermelho no fim
+const corGrad = (f) => `hsl(${Math.round(120 - 120 * Math.max(0, Math.min(1, f)))},80%,38%)`;
 const podeVerPercursos = () => ['tecnico', 'supervisor', 'gestor', 'director', 'cliente'].includes(S.perfil?.papel);
 // Ver sem rede (19/10/2026, Valdo: "precisa de rede apenas para actualizar"): a lista de cada dia fica em rega.percDias e
 // cada percurso no IndexedDB (perc-<dia>-<pessoa>). Ao abrir a lista com rede, descarrega todos os percursos desse dia;
@@ -756,8 +762,11 @@ async function verPercurso(i, d) {
 const fmtH = (t) => fmtHora(new Date(t * 1000).toISOString());
 const durTxt = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.max(1, Math.round(s / 60))} min`);
 function modoPercurso(on) {
-  S.modoPerc = on;
-  for (const g of [camada, rotulos]) { if (!g) continue; if (on && mapa.hasLayer(g)) mapa.removeLayer(g); if (!on && !mapa.hasLayer(g)) g.addTo(mapa); }
+  const mudou = !!S.modoPerc !== !!on; S.modoPerc = on;
+  // os campos ficam visíveis, esbatidos (v114, Valdo: "os campos devem estar visíveis no mapa do percurso também"); só as etiquetas saem
+  if (rotulos) { if (on && mapa.hasLayer(rotulos)) mapa.removeLayer(rotulos); if (!on && !mapa.hasLayer(rotulos)) rotulos.addTo(mapa); }
+  if (camada && !mapa.hasLayer(camada)) camada.addTo(mapa);
+  if (mudou && on) desenharMapa();
   if (eu) eu.setStyle({ opacity: on ? .5 : 1, fillOpacity: on ? .5 : 1 });
   $('.legenda').style.display = on ? 'none' : ''; $('#b-perc').classList.toggle('on', on);
   mostrarSugFixa();
@@ -768,18 +777,24 @@ function enquadrarPercurso(lim) {
   mapa.fitBounds(lim, { paddingTopLeft: [30, 30], paddingBottomRight: [30, painel + 30], maxZoom: 18 });
 }
 function campoRega(a, k, cor) {   // campo onde a equipa regou: limite + número
-  if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { color: cor, weight: 2, fillColor: cor, fillOpacity: .12, interactive: false }).addTo(percCamada);
+  if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { ...PP, color: cor, weight: 2, fillColor: cor, fillOpacity: .12, interactive: false }).addTo(percCamada);
   L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-rega-n', html: `<b style="display:block;width:26px;height:26px;line-height:22px;border-radius:13px;background:${cor};color:#fff;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);text-align:center;font-size:13px">${k}</b>`, iconSize: [26, 26], iconAnchor: [13, 13] }) })
     .on('click', () => abrirFicha(a.id)).addTo(percCamada);
 }
 function desenharPercurso(x, d, dados, guardadoEm) {
-  if (!percCamada) percCamada = L.layerGroup().addTo(mapa);
+  camadaPerc();
   percCamada.clearLayers(); modoPercurso(true);
   const P = pontosPerc(dados), regas = dados.regas || [], COR = '#6a1b9a';
   regas.forEach((g, k) => { const a = S.areas.find((y) => y.id === g.area_id); if (a && a.latitude != null) campoRega(a, k + 1, '#1565c0'); });
-  const { dist, semReg } = tracarPercurso(P, COR, '#777');
-  P.forEach((p, k) => { if (k && k < P.length - 1) L.circleMarker(p.ll, { radius: 4, color: COR, weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip(fmtH(p.t), { direction: 'top' }).addTo(percCamada); });
-  const marca = (ll, txt, cor) => L.circleMarker(ll, { radius: 9, color: '#fff', weight: 3, fillColor: cor, fillOpacity: 1 }).bindTooltip(txt, { permanent: true, direction: 'top', offset: [0, -9], className: 'rot-regua' }).addTo(percCamada);
+  const t0 = P.length ? P[0].t : 0, dur = P.length > 1 ? P[P.length - 1].t - t0 : 0, fr = (p) => (dur ? (p.t - t0) / dur : 0);
+  const { dist, semReg } = tracarPercurso(P, COR, '#777', fr);
+  P.forEach((p, k) => { if (k && k < P.length - 1) L.circleMarker(p.ll, { ...PP, radius: 4, color: corGrad(fr(p)), weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip(fmtH(p.t), { direction: 'top' }).addTo(percCamada); });
+  // números da ordem do caminho: até 9 marcas seguidas, repartidas pelos pontos entre o início e o fim (tocar = hora)
+  if (P.length > 4) { let ult = -1, n = 0;
+    for (let k = 1; k <= 9; k++) { const i = Math.round(k * (P.length - 1) / 10); if (i <= ult || i <= 0 || i >= P.length - 1) continue; ult = i; const num = ++n;
+      L.marker(P[i].ll, { icon: L.divIcon({ className: 'ic-perc-n', html: `<b style="display:block;width:20px;height:20px;line-height:16px;border-radius:5px;background:${corGrad(fr(P[i]))};color:#fff;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);text-align:center;font-size:11px">${num}</b>`, iconSize: [20, 20], iconAnchor: [10, 10] }) })
+        .bindTooltip(fmtH(P[i].t), { direction: 'top', offset: [0, -10] }).addTo(percCamada); } }
+  const marca = (ll, txt, cor) => L.circleMarker(ll, { ...PP, radius: 9, color: '#fff', weight: 3, fillColor: cor, fillOpacity: 1 }).bindTooltip(txt, { permanent: true, direction: 'top', offset: [0, -9], className: 'rot-regua' }).addTo(percCamada);
   if (P.length) { marca(P[0].ll, `Início ${fmtH(P[0].t)}`, '#2e7d32'); if (P.length > 1) marca(P[P.length - 1].ll, `Fim ${fmtH(P[P.length - 1].t)}`, '#c62828'); }
   // sequência do dia pela hora: início, cada rega, fim
   const linhas = [];
@@ -795,24 +810,25 @@ function desenharPercurso(x, d, dados, guardadoEm) {
     : '<div><span>Sem pontos neste dia.</span></div>') + linhas.map((l) => l[1]).join('')
     + (guardadoEm ? `<div class="pequeno"><span>Sem rede: guardado no telefone às</span> <span>${fmtHora(guardadoEm)}</span></div>` : '');
   $('#pc-info').style.cssText = 'max-height:32vh;overflow:auto';
-  $('#pc-leg').innerHTML = '<span>Roxo: caminho · pontos: posições com hora (toque) · azul: campos regados, pela ordem · cinzento tracejado: sem registo.</span>';
+  $('#pc-leg').innerHTML = `<span>Caminho: verde no início, amarelo a meio, vermelho no fim · quadrados 1–9: ordem do caminho (toque = hora) · círculos azuis: campos regados, pela ordem · cinzento tracejado: sem registo.</span><div style="height:6px;border-radius:3px;margin:4px 0;background:linear-gradient(90deg,${corGrad(0)},${corGrad(.5)},${corGrad(1)})"></div>`;
   $('#percurso').style.display = '';
   enquadrarPercurso([...P.map((p) => p.ll), ...regas.map((g) => { const a = S.areas.find((y) => y.id === g.area_id); return a && a.latitude != null ? [a.latitude, a.longitude] : null; }).filter(Boolean)]);
 }
 const pontosPerc = (dados) => (dados.pontos || []).map((p) => ({ ll: [p[1], p[0]], t: p[2] }));
 // desenha um percurso: partes seguidas a cheio; buracos de mais de 10 min a tracejado (sem registo)
-function tracarPercurso(P, cor, corBuraco) {
+function tracarPercurso(P, cor, corBuraco, fr = null) {
   const partes = []; let cur = [], dist = 0, semReg = 0;
   P.forEach((p, k) => {
     if (k && p.t - P[k - 1].t > PERC.buraco) { if (cur.length) partes.push(cur); semReg += p.t - P[k - 1].t;
-      L.polyline([P[k - 1].ll, p.ll], { color: corBuraco, weight: 3, dashArray: '4 8', opacity: .8, interactive: false }).addTo(percCamada); cur = []; }
+      L.polyline([P[k - 1].ll, p.ll], { ...PP, color: corBuraco, weight: 3, dashArray: '4 8', opacity: .8, interactive: false }).addTo(percCamada); cur = []; }
     else if (k) dist += metros(P[k - 1].ll, p.ll);
     cur.push(p);
   });
   if (cur.length) partes.push(cur);
   for (const pt of partes) if (pt.length > 1) {
-    L.polyline(pt.map((p) => p.ll), { color: '#fff', weight: 9, opacity: .9, interactive: false }).addTo(percCamada);
-    L.polyline(pt.map((p) => p.ll), { color: cor, weight: 5, opacity: 1, interactive: false }).addTo(percCamada);
+    L.polyline(pt.map((p) => p.ll), { ...PP, color: '#fff', weight: 9, opacity: .9, interactive: false }).addTo(percCamada);
+    if (fr) for (let k = 1; k < pt.length; k++) L.polyline([pt[k - 1].ll, pt[k].ll], { ...PP, color: corGrad(fr(pt[k])), weight: 5, opacity: 1, interactive: false }).addTo(percCamada);
+    else L.polyline(pt.map((p) => p.ll), { ...PP, color: cor, weight: 5, opacity: 1, interactive: false }).addTo(percCamada);
   }
   return { dist, semReg };
 }
@@ -829,7 +845,7 @@ async function verTodasEquipas(d) {
     res.push({ x, dados });
   }
   fecharFolha(); mudar('mapa'); if (S.regua) fecharRegua();
-  if (!percCamada) percCamada = L.layerGroup().addTo(mapa);
+  camadaPerc();
   percCamada.clearLayers(); modoPercurso(true);
   const lim = [], linhas = [];
   res.forEach(({ x, dados }, i) => {
@@ -839,7 +855,7 @@ async function verTodasEquipas(d) {
     regas.forEach((g, k) => { const a = S.areas.find((y) => y.id === g.area_id); if (a && a.latitude != null) { campoRega(a, k + 1, cor); lim.push([a.latitude, a.longitude]); } });
     const { dist } = tracarPercurso(P, cor, cor);
     if (P.length) { const u = P[P.length - 1];
-      L.circleMarker(u.ll, { radius: 7, color: '#fff', weight: 2, fillColor: cor, fillOpacity: 1 })
+      L.circleMarker(u.ll, { ...PP, radius: 7, color: '#fff', weight: 2, fillColor: cor, fillOpacity: 1 })
         .bindTooltip(esc(x.nome.split(' ').slice(0, 2).join(' ')), { permanent: true, direction: 'top', offset: [0, -7], className: 'rot-regua' }).addTo(percCamada);
       lim.push(...P.map((p) => p.ll)); }
     linhas.push(`<div class="pequeno" style="padding:5px 0;cursor:pointer;border-bottom:1px solid #eee" onclick="verPercurso(${i}, '${d}')"><i style="display:inline-block;width:12px;height:12px;border-radius:6px;background:${cor}"></i> <b>${esc(x.nome)}</b>${x.teste ? ' <span>(teste)</span>' : ''} · <span>${fmtDist(dist)}</span> · <span>${regas.length}</span> <span>${regas.length === 1 ? 'rega' : 'regas'}</span></div>`);
@@ -901,9 +917,10 @@ function desenharMapa(enquadrar = false) {
     if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
     const s = situacao(a);
     const borda = bordaAzul(a, s) ? BORDA.regado : BORDA.nunca;
-    if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { color: borda, weight: 3, fillColor: COR[s.cod], fillOpacity: .25 })
+    const esb = !!S.modoPerc;                                // percurso aberto: campos esbatidos
+    if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { color: borda, weight: esb ? 2 : 3, opacity: esb ? .5 : 1, fillColor: COR[s.cod], fillOpacity: esb ? .1 : .25 })
       .on('click', (e) => clicarCampo(e, a)).addTo(camada);
-    L.circleMarker([a.latitude, a.longitude], { radius: temPoligono(a) ? 5 : 8, color: temPoligono(a) ? '#fff' : borda, weight: temPoligono(a) ? 2 : 3, fillColor: COR[s.cod], fillOpacity: .95 })
+    L.circleMarker([a.latitude, a.longitude], { radius: temPoligono(a) ? 5 : 8, color: temPoligono(a) ? '#fff' : borda, weight: temPoligono(a) ? 2 : 3, opacity: esb ? .5 : 1, fillColor: COR[s.cod], fillOpacity: esb ? .45 : .95 })
       .on('click', (e) => clicarCampo(e, a)).addTo(camada);
     if (queimadaDe(a.id)) L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-fogo', html: '🔥', iconSize: [22, 22], iconAnchor: [11, 26] }) })
       .on('click', (e) => clicarCampo(e, a)).addTo(camada);
