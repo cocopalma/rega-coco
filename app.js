@@ -280,10 +280,11 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'plantas_rega' ? await sb.rpc('corrigir_plantas_rega', { p_id: x.registo_id, p_plantas: x.plantas, p_motivo: x.motivo, p_em: x.em })
         : x.tipo === 'aval_sug' ? await sb.rpc('avaliar_sugestao', { p_id: x.sug_id, p_estado: x.estado, p_nota: x.nota })
         : x.tipo === 'com_act' ? await sb.rpc('definir_comunidade_activista', { p_activista: x.activista_id, p_comunidade: x.comunidade })
+        : x.tipo === 'justif' ? await sb.rpc('justificar_rega', { p_id: x.registo_id, p_motivo: x.motivo })
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
       if (r4.error) aviso(`Não foi gravado (${x.area_id || x.sug_id || x.activista_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
-      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act'].includes(x.tipo)) alteradas++;
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif'].includes(x.tipo)) alteradas++;
     }
   }
   if (!erro) erro = await enviarPercurso();
@@ -383,6 +384,7 @@ async function carregarEstado(pronto) {
       if (!c.error && c.count != null) LS.set('nTestes', c.count);
     }
   }
+  if (PODE_REGAR.includes(S.perfil?.papel)) carregarSemMotivo().catch(() => {});
   if (VER_TESTES_EQ.includes(S.perfil?.papel)) {
     const q = await sb.rpc('testes_equipa');
     if (!q.error && Array.isArray(q.data)) { S.testesEq = Object.fromEntries(q.data.map((x) => [x.area_id, { data: x.data, n: x.n, quem: x.quem }])); LS.set('testesEquipa', S.testesEq); }
@@ -476,7 +478,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -2327,7 +2329,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
     else if (x.tipo === 'poligono' && x.proposta) { a.poligono_proposto = x.pontos; a.area_m2_proposta = x.area_m2; a.proposta_em = x.medido_em; }
     else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
     else if (x.tipo === 'plantas_rega') {}                          // correcção das plantas de uma rega: não muda o campo
-    else if (['aval_sug', 'com_act'].includes(x.tipo)) {}           // resposta a uma sugestão, comunidade do activista: não mudam o campo
+    else if (['aval_sug', 'com_act', 'justif'].includes(x.tipo)) {}           // resposta a uma sugestão, comunidade do activista: não mudam o campo
     else if (!String(x.tipo).startsWith('planta')) a.activista_id = x.activista_id; }
   for (const x of LS.get('filaRecG', [])) if (x.op === 'validar' && x.sim) { const a = lista.find((y) => y.id === x.area_id); if (a) a.vivas = x.vivas; }   // validação por enviar
   return lista;
@@ -2400,6 +2402,7 @@ function guardarJornada(depois) {
 }
 
 async function marcarEntrada(id, motivoIt = null) {
+  if ((LS.get('semMotivo', []) || []).length) return ecraSemMotivo();   // v115: primeiro o motivo das regas fora da lista
   const a = S.areas.find((x) => x.id === id);
   const minha = souActivista() && a.activista_id === S.perfil.activista_id;
   if ((souActivista() && minha) || porEquipa(a)) {             // regra da ronda: não repetir antes de acabar a lista
@@ -3919,6 +3922,41 @@ function mudar(e) {
   if (e === 'gestao') desenharGestao();
   if (e === 'painel') { const f = $('#painel-f'); if (!f.src) f.src = 'painel.html?embutido=1'; else f.contentWindow?.postMessage('actualizar', location.origin); }
 }
+// Regas fora da lista sem motivo (v115, 26/10/2026, Valdo: "tem de ter motivo. Obrigatório ter motivo."). O servidor não
+// recusa a rega (pode vir de um telefone com a lista antiga, sem rede) mas marca-a "Sem justificação"; a app pede o motivo a
+// quem a registou até estar escrito: faixa vermelha por baixo do menu e ecrã sem ✕. Funciona sem rede (fila 'justif').
+async function carregarSemMotivo() {
+  const r = await sb.rpc('regas_sem_motivo'); if (r.error || !Array.isArray(r.data)) return;
+  const pend = new Set(LS.get('filaAlt', []).filter((x) => x.tipo === 'justif').map((x) => x.registo_id));
+  LS.set('semMotivo', r.data.filter((x) => !pend.has(x.id))); avisoSemMotivo(true);
+}
+function avisoSemMotivo(abrir) {
+  const L = LS.get('semMotivo', []) || []; let f = $('#sem-motivo');
+  if (!L.length) { if (f) f.remove(); return; }
+  if (!f) { f = document.createElement('div'); f.id = 'sem-motivo'; f.onclick = () => ecraSemMotivo();
+    f.style.cssText = 'background:#c62828;color:#fff;padding:8px 12px;font-size:14px;font-weight:600;cursor:pointer';
+    const g = $('#gps-neg'); if (g) g.after(f); else document.body.prepend(f); }
+  f.innerHTML = `⚠️ <span>${L.length === 1 ? '1 rega fora da lista sem motivo. Toque aqui para escrever o motivo.' : `${L.length} regas fora da lista sem motivo. Toque aqui para escrever o motivo.`}</span>`;
+  if (abrir && !S.semMotivoVisto && !$('#folha').classList.contains('on')) { S.semMotivoVisto = true; ecraSemMotivo(); }
+}
+function ecraSemMotivo() {
+  const L = LS.get('semMotivo', []) || []; if (!L.length) return;
+  folha(`<h2>⚠️ <span>Motivo obrigatório</span></h2>
+    <p>${L.length === 1 ? 'Esta rega foi feita num campo que não está na sua lista.' : 'Estas regas foram feitas em campos que não estão na sua lista.'} Escreva porque regou ${L.length === 1 ? 'este campo' : 'cada campo'}.</p>
+    ${L.map((x, i) => `<div class="cartao" style="margin:8px 0"><b class="sem-trad">${esc(x.produtor || x.area_id)}</b><div class="pequeno"><span class="sem-trad">${esc(x.pr || '')} · ${esc(x.comunidade || '')}</span> · ${fmtData(x.data)}${x.entrada_em ? ' ' + fmtHora(x.entrada_em) : ''}${x.dono ? ` · <span>campo de</span> <span class="sem-trad">${esc(x.dono)}</span>` : ''}</div>
+      <label>Porque regou este campo?<textarea id="sm-${i}" rows="2" placeholder="Escreva o motivo"></textarea></label></div>`).join('')}
+    <p class="pequeno">Só pode marcar a entrada noutro campo depois de escrever o motivo.</p>
+    <button class="btn" onclick="gravarSemMotivo()">Gravar ${L.length === 1 ? 'o motivo' : 'os motivos'}</button>`);
+  $('#folha-x').style.display = 'none';                                  // obrigatório: sem ✕
+}
+function gravarSemMotivo() {
+  const L = LS.get('semMotivo', []) || [], m = L.map((x, i) => ($(`#sm-${i}`)?.value || '').trim());
+  if (m.some((t) => t.length < 3)) return alert('Escreva o motivo de cada rega.');
+  const f = LS.get('filaAlt', []);
+  L.forEach((x, i) => f.push({ id: crypto.randomUUID(), tipo: 'justif', registo_id: x.id, motivo: m[i] }));
+  LS.set('filaAlt', f); LS.set('semMotivo', []); avisoSemMotivo(false);
+  $('#folha-x').style.display = ''; fecharFolha(); actSync(); sincronizar(true); aviso('Obrigado. O motivo foi guardado.', 'ok');
+}
 // Navegador da Xiaomi (v112, 26/10/2026: Eduardo e Ibraimo, "Script error." e GPS bloqueado): a app só é testada no Chrome.
 const navXiaomi = () => /MiuiBrowser|XiaoMi\//i.test(navigator.userAgent);
 function avisoNavegador() {
@@ -3930,7 +3968,7 @@ function avisoNavegador() {
 }
 function mostrarApp() {
   const papel = S.perfil.papel;
-  $('#login').style.display = 'none'; $('#app').style.display = 'flex'; avisoNavegador();
+  $('#login').style.display = 'none'; $('#app').style.display = 'flex'; avisoNavegador(); avisoSemMotivo(false);
   $('#h-nome').textContent = `${S.perfil.nome}${['activista', 'cliente'].includes(papel) ? '' : ' · ' + (S.perfil.titulo || (papel === 'gestor' ? 'Gestor' : FUNCOES[papel]?.nome || papel))}`;
   $('#h-nome').title = S.perfil.papel === 'activista' ? 'Mudar o meu PIN' : 'Mudar a minha senha';
   $('#h-nome').onclick = () => ecraTrocarSenha(false);
