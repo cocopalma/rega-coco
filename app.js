@@ -281,7 +281,7 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'aval_sug' ? await sb.rpc('avaliar_sugestao', { p_id: x.sug_id, p_estado: x.estado, p_nota: x.nota })
         : x.tipo === 'com_act' ? await sb.rpc('definir_comunidade_activista', { p_activista: x.activista_id, p_comunidade: x.comunidade })
         : x.tipo === 'justif' ? await sb.rpc('justificar_rega', { p_id: x.registo_id, p_motivo: x.motivo })
-        : x.tipo === 'dia_sem_rega' ? await sb.rpc('gravar_dia_sem_rega', { p_id: x.d.id, p_activista: x.d.activista_id, p_data: x.d.data, p_motivo: x.d.motivo, p_todo_dia: x.d.todo_dia, p_descricao: x.d.descricao, p_lat: x.d.lat, p_lon: x.d.lon })
+        : x.tipo === 'dia_sem_rega' ? await enviarDiaSemRega(x.d)
         : x.tipo === 'dia_sem_rega_rem' ? await sb.rpc('remover_dia_sem_rega', { p_id: x.dsr_id })
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
@@ -3535,7 +3535,7 @@ function cartaoDiaSemRega() {
   return `<div class="cartao" style="border-left:4px solid var(--warn,#b26b00)"><h2 style="margin-top:0">⚠️ <span>Dia sem rega</span></h2>
     <p class="pequeno">O tuk-tuk não chegou, não havia água ou a equipa não pôde regar? Registe aqui o motivo.</p>
     ${L.map((x) => `<div class="lin" style="display:block"><div><b class="sem-trad">${esc(x.activista || nomeAct(x.activista_id))}</b> · ${x.data === h ? '<span>hoje</span>' : '<span>ontem</span>'}: <span>${nomeMotivoDsr(x.motivo)}</span>${x.todo_dia === false ? ' <span>(parte do dia)</span>' : ''}${x.pendente ? ' · <span>por enviar</span>' : ''}</div>
-      ${x.descricao ? `<div class="pequeno sem-trad">${esc(x.descricao)}</div>` : ''}${x.meu !== false ? `<button class="chip" onclick="removerDiaSemRega('${esc(x.id)}')">Remover (engano)</button>` : ''}</div>`).join('')}
+      ${x.descricao ? `<div class="pequeno sem-trad">${esc(x.descricao)}</div>` : ''}${x.foto_path ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(x.foto_path)}', '${esc(x.activista || '')}')">📷 Fotografia</button>` : x.foto && x.pendente ? ' <span class="pequeno">📷</span>' : ''}${x.meu !== false ? `<button class="chip" onclick="removerDiaSemRega('${esc(x.id)}')">Remover (engano)</button>` : ''}</div>`).join('')}
     <button class="btn sec" onclick="ecraDiaSemRega()">⚠️ Registar dia sem rega</button></div>`;
 }
 function ecraDiaSemRega() {
@@ -3548,15 +3548,28 @@ function ecraDiaSemRega() {
     <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="dsr-todo" checked style="width:auto"> <span>Não houve rega o dia todo</span></label>
     <p class="pequeno">Tire o visto se a rega parou a meio do dia.</p>
     <label>Observação (obrigatória em «Outro motivo»)<textarea id="dsr-obs" rows="2" placeholder="Ex.: esperámos pelo tuk-tuk até às 10:00"></textarea></label>
+    ${campoFoto('dsr-foto', 'Fotografia (opcional): a fonte sem água, a equipa à espera…')}<p class="pequeno" id="dsr-foto-ok"></p>
     <button class="btn" onclick="gravarDiaSemRega()">Guardar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  S.dsrFoto = null;
+  ligarFoto('dsr-foto', null, async (foto) => { S.dsrFoto = foto; $('#dsr-foto-ok').innerHTML = foto ? '<span style="color:var(--ok,#2e7d32)">✓ Fotografia junta</span>' : ''; });
 }
-function gravarDiaSemRega() {
+// fotografia opcional (v117, 26/10/2026, Valdo: "Sim"): fica no telefone (IndexedDB dsr-<id>) até haver rede; rega-fotos/<perfil>/dsr-<id>.jpg
+async function enviarDiaSemRega(d) {
+  let foto = null, caminho = null;
+  if (d.foto) { try { foto = await FOTOS.ler('dsr-' + d.id); } catch {} foto = foto || S.fotosMem?.['dsr-' + d.id] || null; }
+  if (foto) { caminho = `${S.perfil.id}/dsr-${d.id}.jpg`; const up = await sb.storage.from('rega-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return { error: { message: up.error.message } }; }
+  const r = await sb.rpc('gravar_dia_sem_rega2', { p_id: d.id, p_activista: d.activista_id, p_data: d.data, p_motivo: d.motivo, p_todo_dia: d.todo_dia, p_descricao: d.descricao, p_lat: d.lat, p_lon: d.lon, p_foto: caminho });
+  if (!r.error && foto) { try { await FOTOS.apagar('dsr-' + d.id); } catch {} }
+  return r;
+}
+async function gravarDiaSemRega() {
   const act = $('#dsr-act').value, mot = document.querySelector('input[name="dsr-m"]:checked')?.value, obs = $('#dsr-obs').value.trim();
   if (!act) return alert('Escolha a equipa.');
   if (!mot) return alert('Escolha o motivo.');
   if (mot === 'outro' && obs.length < 3) return alert('Escreva o motivo.');
   const d = { id: crypto.randomUUID(), activista_id: act, activista: nomeAct(act), data: $('#dsr-dia').value, motivo: mot, todo_dia: $('#dsr-todo').checked, descricao: obs || null,
-    lat: S.pos ? +S.pos[0].toFixed(6) : null, lon: S.pos ? +S.pos[1].toFixed(6) : null };
+    lat: S.pos ? +S.pos[0].toFixed(6) : null, lon: S.pos ? +S.pos[1].toFixed(6) : null, foto: !!S.dsrFoto };
+  if (S.dsrFoto) { try { await FOTOS.guardar('dsr-' + d.id, S.dsrFoto); } catch { (S.fotosMem ||= {})['dsr-' + d.id] = S.dsrFoto; } S.dsrFoto = null; }
   const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), tipo: 'dia_sem_rega', d }); LS.set('filaAlt', f);
   LS.set('diasSemRega', [{ ...d, pendente: true, meu: true }, ...(LS.get('diasSemRega', []) || [])]);
   fecharFolha(); actSync(); sincronizar(true); aviso('Guardado. É enviado quando houver rede.', 'ok');
