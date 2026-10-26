@@ -281,10 +281,12 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'aval_sug' ? await sb.rpc('avaliar_sugestao', { p_id: x.sug_id, p_estado: x.estado, p_nota: x.nota })
         : x.tipo === 'com_act' ? await sb.rpc('definir_comunidade_activista', { p_activista: x.activista_id, p_comunidade: x.comunidade })
         : x.tipo === 'justif' ? await sb.rpc('justificar_rega', { p_id: x.registo_id, p_motivo: x.motivo })
+        : x.tipo === 'dia_sem_rega' ? await sb.rpc('gravar_dia_sem_rega', { p_id: x.d.id, p_activista: x.d.activista_id, p_data: x.d.data, p_motivo: x.d.motivo, p_todo_dia: x.d.todo_dia, p_descricao: x.d.descricao, p_lat: x.d.lat, p_lon: x.d.lon })
+        : x.tipo === 'dia_sem_rega_rem' ? await sb.rpc('remover_dia_sem_rega', { p_id: x.dsr_id })
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
       if (r4.error) aviso(`Não foi gravado (${x.area_id || x.sug_id || x.activista_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
-      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif'].includes(x.tipo)) alteradas++;
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem'].includes(x.tipo)) alteradas++;
     }
   }
   if (!erro) erro = await enviarPercurso();
@@ -384,7 +386,7 @@ async function carregarEstado(pronto) {
       if (!c.error && c.count != null) LS.set('nTestes', c.count);
     }
   }
-  if (PODE_REGAR.includes(S.perfil?.papel)) carregarSemMotivo().catch(() => {});
+  if (PODE_REGAR.includes(S.perfil?.papel)) { carregarSemMotivo().catch(() => {}); carregarDiasSemRega().catch(() => {}); }
   if (VER_TESTES_EQ.includes(S.perfil?.papel)) {
     const q = await sb.rpc('testes_equipa');
     if (!q.error && Array.isArray(q.data)) { S.testesEq = Object.fromEntries(q.data.map((x) => [x.area_id, { data: x.data, n: x.n, quem: x.quem }])); LS.set('testesEquipa', S.testesEq); }
@@ -478,7 +480,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -2329,7 +2331,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
     else if (x.tipo === 'poligono' && x.proposta) { a.poligono_proposto = x.pontos; a.area_m2_proposta = x.area_m2; a.proposta_em = x.medido_em; }
     else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
     else if (x.tipo === 'plantas_rega') {}                          // correcção das plantas de uma rega: não muda o campo
-    else if (['aval_sug', 'com_act', 'justif'].includes(x.tipo)) {}           // resposta a uma sugestão, comunidade do activista: não mudam o campo
+    else if (['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem'].includes(x.tipo)) {}           // resposta a uma sugestão, comunidade do activista: não mudam o campo
     else if (!String(x.tipo).startsWith('planta')) a.activista_id = x.activista_id; }
   for (const x of LS.get('filaRecG', [])) if (x.op === 'validar' && x.sim) { const a = lista.find((y) => y.id === x.area_id); if (a) a.vivas = x.vivas; }   // validação por enviar
   return lista;
@@ -3430,7 +3432,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoDiaSemRega() + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
@@ -3509,6 +3511,64 @@ const avisos = () => (Array.isArray(S.avisos) ? S.avisos : LS.get('avisos', []) 
 const textoAviso = (v) => `${v.sem_rega} de ${v.plantas_obs} plantas sem solo húmido · nota ${Number(v.nota).toLocaleString(LOC)}`;
 // Aviso a quem ainda não fez nenhuma rega de teste (v92, 21/10/2026, sugestão aceite pelo Valdo): técnico e supervisor.
 // Desaparece logo que haja uma rega de teste (no servidor, na fila do telefone ou em curso).
+// ---------- dia sem rega: constrangimento da equipa (v116, 26/10/2026, Valdo: "É preciso ter um campo de constrangimentos para
+// casos de não haver rega para uma equipa, não chegar o tuk tuk") ----------
+// O activista regista a sua equipa; técnico, supervisor e gestor as equipas que vêem. Funciona sem rede (fila 'dia_sem_rega').
+const MOTIVOS_DSR = [['tuk_tuk', 'O tuk-tuk não chegou'], ['avaria_tuk_tuk', 'Tuk-tuk avariado ou sem combustível'], ['sem_agua', 'Sem água na fonte ou no poço'],
+  ['chuva', 'Choveu: não foi preciso regar'], ['material', 'Falta de material (bidões, regadores)'], ['equipa', 'A equipa não compareceu'], ['outro', 'Outro motivo']];
+const nomeMotivoDsr = (m) => (MOTIVOS_DSR.find((x) => x[0] === m) || [m, m])[1];
+async function carregarDiasSemRega() {
+  const de = new Date(Date.now() - 14 * 864e5).toLocaleDateString('sv-SE');
+  const r = await sb.rpc('dias_sem_rega_lista', { p_de: de, p_ate: hojeISO() }); if (r.error || !Array.isArray(r.data)) return;
+  const pend = LS.get('filaAlt', []).filter((x) => x.tipo === 'dia_sem_rega').map((x) => ({ ...x.d, pendente: true }));
+  const rem = new Set(LS.get('filaAlt', []).filter((x) => x.tipo === 'dia_sem_rega_rem').map((x) => x.dsr_id));
+  LS.set('diasSemRega', [...pend, ...r.data.filter((x) => !pend.some((y) => y.id === x.id) && !rem.has(x.id))]);
+}
+function equipasDsr() {
+  if (souActivista()) return S.perfil.activista_id ? [S.activistas.find((t) => t.id === S.perfil.activista_id) || { id: S.perfil.activista_id, nome: S.perfil.nome }] : [];
+  return (S.activistas || []).filter((t) => t.activo !== false && (S.perfil.papel === 'gestor' || (S.visiveis || []).includes(t.id))).sort((a, b) => a.nome.localeCompare(b.nome));
+}
+function cartaoDiaSemRega() {
+  if (!PODE_REGAR.includes(S.perfil?.papel) || !equipasDsr().length) return '';
+  const h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
+  const L = (LS.get('diasSemRega', []) || []).filter((x) => x.data === h || x.data === ontem);
+  return `<div class="cartao" style="border-left:4px solid var(--warn,#b26b00)"><h2 style="margin-top:0">⚠️ <span>Dia sem rega</span></h2>
+    <p class="pequeno">O tuk-tuk não chegou, não havia água ou a equipa não pôde regar? Registe aqui o motivo.</p>
+    ${L.map((x) => `<div class="lin" style="display:block"><div><b class="sem-trad">${esc(x.activista || nomeAct(x.activista_id))}</b> · ${x.data === h ? '<span>hoje</span>' : '<span>ontem</span>'}: <span>${nomeMotivoDsr(x.motivo)}</span>${x.todo_dia === false ? ' <span>(parte do dia)</span>' : ''}${x.pendente ? ' · <span>por enviar</span>' : ''}</div>
+      ${x.descricao ? `<div class="pequeno sem-trad">${esc(x.descricao)}</div>` : ''}${x.meu !== false ? `<button class="chip" onclick="removerDiaSemRega('${esc(x.id)}')">Remover (engano)</button>` : ''}</div>`).join('')}
+    <button class="btn sec" onclick="ecraDiaSemRega()">⚠️ Registar dia sem rega</button></div>`;
+}
+function ecraDiaSemRega() {
+  const eq = equipasDsr(), h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
+  folha(`<h2>⚠️ <span>Dia sem rega</span></h2>
+    ${eq.length > 1 ? `<label>Equipa (activista)<select id="dsr-act" class="sem-trad"><option value="">—</option>${eq.map((t) => `<option value="${t.id}">${esc(t.nome)}</option>`).join('')}</select></label>` : `<p><b class="sem-trad">${esc(eq[0].nome)}</b></p><input type="hidden" id="dsr-act" value="${eq[0].id}">`}
+    <label>Dia<select id="dsr-dia"><option value="${h}">Hoje</option><option value="${ontem}">Ontem</option></select></label>
+    <label>Porque não houve rega?</label>
+    <div id="dsr-mot">${MOTIVOS_DSR.map(([k, t]) => `<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="radio" name="dsr-m" value="${k}" style="width:auto"> <span>${t}</span></label>`).join('')}</div>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="dsr-todo" checked style="width:auto"> <span>Não houve rega o dia todo</span></label>
+    <p class="pequeno">Tire o visto se a rega parou a meio do dia.</p>
+    <label>Observação (obrigatória em «Outro motivo»)<textarea id="dsr-obs" rows="2" placeholder="Ex.: esperámos pelo tuk-tuk até às 10:00"></textarea></label>
+    <button class="btn" onclick="gravarDiaSemRega()">Guardar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+}
+function gravarDiaSemRega() {
+  const act = $('#dsr-act').value, mot = document.querySelector('input[name="dsr-m"]:checked')?.value, obs = $('#dsr-obs').value.trim();
+  if (!act) return alert('Escolha a equipa.');
+  if (!mot) return alert('Escolha o motivo.');
+  if (mot === 'outro' && obs.length < 3) return alert('Escreva o motivo.');
+  const d = { id: crypto.randomUUID(), activista_id: act, activista: nomeAct(act), data: $('#dsr-dia').value, motivo: mot, todo_dia: $('#dsr-todo').checked, descricao: obs || null,
+    lat: S.pos ? +S.pos[0].toFixed(6) : null, lon: S.pos ? +S.pos[1].toFixed(6) : null };
+  const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), tipo: 'dia_sem_rega', d }); LS.set('filaAlt', f);
+  LS.set('diasSemRega', [{ ...d, pendente: true, meu: true }, ...(LS.get('diasSemRega', []) || [])]);
+  fecharFolha(); actSync(); sincronizar(true); aviso('Guardado. É enviado quando houver rede.', 'ok');
+  if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
+}
+function removerDiaSemRega(id) {
+  if (!confirm('Remover este registo (foi um engano)?')) return;
+  const f = LS.get('filaAlt', []), i = f.findIndex((x) => x.tipo === 'dia_sem_rega' && x.d.id === id);
+  if (i >= 0) f.splice(i, 1); else f.push({ id: crypto.randomUUID(), tipo: 'dia_sem_rega_rem', dsr_id: id });
+  LS.set('filaAlt', f); LS.set('diasSemRega', (LS.get('diasSemRega', []) || []).filter((x) => x.id !== id));
+  actSync(); sincronizar(true); if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
+}
 function cartaoSemTelefone() {
   if (!['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel)) return '';
   const L = (S.activistas || []).filter((t) => t.sem_telefone && t.activo !== false && (S.perfil.papel === 'gestor' || (S.visiveis || []).includes(t.id)));
