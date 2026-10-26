@@ -84,11 +84,38 @@ function ajudaGps(forcar) {
   S.ajudaGpsVista = true;
   folha(`<h2>📍 <span>A app não consegue ler a localização</span></h2>
    <p>O Chrome está a bloquear a localização desta app. Sem localização não se pode marcar a entrada nos campos.</p>
-   <ol style="padding-left:20px"><li>No Chrome, toque no ícone à esquerda do endereço (cocopalma.github.io).</li>
-   <li>Toque em «Permissões» › «Localização» › «Permitir».</li>
-   <li>Toque em «Já autorizei».</li></ol>
-   <p class="pequeno">Se não resolver: Definições do telefone › Aplicações › Chrome › Autorizações › Localização › «Permitir apenas enquanto usa a app» e ligue «Localização exata». A localização do telefone tem de estar ligada.</p>
+   ${passosPermissao('Localização')}
+   <p class="pequeno">A localização do telefone tem de estar ligada.</p>
    <button class="btn" onclick="location.reload()">Já autorizei</button><button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
+// Passos para desbloquear (v112, 26/10/2026): instalada no ecrã do telefone, a app não mostra o endereço; por isso os passos
+// «ícone à esquerda do endereço» não serviam a quem abre a app pelo ícone. Agora há os dois caminhos.
+const appInstalada = () => { try { return matchMedia('(display-mode: standalone)').matches; } catch { return false; } };
+function passosPermissao(qual) {
+  const viaChrome = `<li>Abra o Chrome › ⋮ (3 pontos, em cima à direita) › «Definições» › «Definições de sites» › «${qual}».</li>
+     <li>Em «Bloqueados», toque em cocopalma.github.io › «Permitir».</li>`;
+  return appInstalada()
+    ? `<ol style="padding-left:20px">${viaChrome}<li>Volte à app Rega Coco e toque em «Já autorizei».</li></ol>
+       <p class="pequeno">Ou: toque sem soltar no ícone Rega Coco no ecrã do telefone › ⓘ «Informações da app» › «Autorizações» › «${qual}» › «Permitir».</p>`
+    : `<ol style="padding-left:20px"><li>Toque no ícone à esquerda do endereço (cocopalma.github.io), em cima.</li>
+       <li>Toque em «Permissões» › «${qual}» › «Permitir».</li><li>Toque em «Já autorizei».</li></ol>
+       <p class="pequeno">Se não aparecer:</p><ol style="padding-left:20px">${viaChrome}</ol>
+       <p class="pequeno">Se continuar: Definições do telefone › Aplicações › Chrome › Autorizações › «${qual}» › «Permitir».</p>`;
+}
+// Câmara bloqueada no Chrome (v112: Oliveira, Eduardo; "NotAllowedError"). Não fecha o formulário: abre por cima, ensina a
+// desbloquear e deixa tirar a fotografia com a câmara do telefone, que não precisa desta autorização.
+function ajudaCamara(continuar) {
+  if ($('#perm-ov')) return;
+  const ov = document.createElement('div'); ov.id = 'perm-ov';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML = `<div style="background:var(--fundo,#fff);color:inherit;max-width:520px;width:100%;max-height:90vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px">
+    <h2 style="margin-top:0">📷 <span>O Chrome está a bloquear a câmara</span></h2>
+    <p>Pode tirar a fotografia agora com a câmara do telefone. Para a câmara voltar a abrir dentro da app:</p>
+    ${passosPermissao('Câmara')}
+    <button class="btn" id="perm-cont">📷 Tirar com a câmara do telefone</button><button class="btn sec" id="perm-ok">Já autorizei</button></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#perm-cont').onclick = () => { ov.remove(); continuar && continuar(); };
+  ov.querySelector('#perm-ok').onclick = () => { ov.remove(); };
 }
 function lerGPS() {
   return new Promise((ok, falha) => {
@@ -251,10 +278,12 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'planta_est' ? await sb.rpc('estado_planta', { p_id: x.planta_id, p_estado: x.estado, p_cavaroda: x.cavaroda, p_mulching: x.mulching, p_em: x.em })
         : x.tipo === 'planta_rem' ? await sb.rpc('remover_planta', { p_id: x.planta_id, p_em: x.em })
         : x.tipo === 'plantas_rega' ? await sb.rpc('corrigir_plantas_rega', { p_id: x.registo_id, p_plantas: x.plantas, p_motivo: x.motivo, p_em: x.em })
+        : x.tipo === 'aval_sug' ? await sb.rpc('avaliar_sugestao', { p_id: x.sug_id, p_estado: x.estado, p_nota: x.nota })
+        : x.tipo === 'com_act' ? await sb.rpc('definir_comunidade_activista', { p_activista: x.activista_id, p_comunidade: x.comunidade })
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
-      if (r4.error) aviso(`Não foi gravado (${x.area_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
-      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); alteradas++;
+      if (r4.error) aviso(`Não foi gravado (${x.area_id || x.sug_id || x.activista_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act'].includes(x.tipo)) alteradas++;
     }
   }
   if (!erro) erro = await enviarPercurso();
@@ -404,6 +433,7 @@ async function entrarSemRede(email, segredo) {
   const a = LS.get('acessoOff');
   if (!a || a.email !== email) return 'Sem rede. A primeira entrada neste telefone precisa de internet. Depois disso, pode entrar sem rede.';
   let ok = false; try { ok = b64(await impressao(segredo, deB64(a.sal))) === a.imp; } catch {}
+  if (!ok && /^\d{5}$/.test(segredo)) { try { if (b64(await impressao('0' + segredo, deB64(a.sal))) === a.imp) { ok = true; segredo = '0' + segredo; } } catch {} }
   if (!ok) return S.modoEntrada === 'activista' ? 'Utilizador ou PIN errado.' : 'Utilizador ou senha errados.';
   S.perfil = a.perfil; LS.set('perfil', S.perfil); carregarDoTelefone(); S.perfil = a.perfil;
   S.credPend = { email, segredo };                        // só em memória: serve para ligar ao servidor quando houver rede
@@ -424,12 +454,14 @@ const semRede = (e) => !navigator.onLine || /Failed to fetch|NetworkError|Load f
 async function entrar() {
   const m = S.modoEntrada || 'activista';
   const u = (m === 'escritorio' ? $('#le-user') : $('#l-user')).value.trim().toLowerCase();
-  const pin = m === 'escritorio' ? $('#le-senha').value : m === 'tecnico' ? $('#l-senha').value : $('#l-pin').value;
+  let pin = m === 'escritorio' ? $('#le-senha').value : m === 'tecnico' ? $('#l-senha').value : $('#l-pin').value;
   const email = u.includes('@') ? u : `${u}@${CFG.dominio}`;
   if (!u || !pin) { msgEntrada(`<div class="msg erro">${m === 'activista' ? 'Escreva o utilizador e o PIN.' : 'Escreva o utilizador e a senha.'}</div>`); return; }
   msgEntrada('<div class="msg info">A entrar…</div>');
   if (!navigator.onLine) { const e = await entrarSemRede(email, pin); if (e) msgEntrada(`<div class="msg erro">${esc(e)}</div>`); return; }
-  const { data, error } = await sb.auth.signInWithPassword({ email, password: pin });
+  let { data, error } = await sb.auth.signInWithPassword({ email, password: pin });
+  // PIN com 5 algarismos (24/10/2026, Guidion): na folha de Excel o 0 do início desapareceu. Tenta também com o 0.
+  if (error && !semRede(error) && m === 'activista' && /^\d{5}$/.test(pin)) { const r0 = await sb.auth.signInWithPassword({ email, password: '0' + pin }); if (!r0.error) { ({ data, error } = r0); pin = '0' + pin; } }
   if (error && semRede(error)) { const e = await entrarSemRede(email, pin); if (e) msgEntrada(`<div class="msg erro">${esc(e)}</div>`); return; }
   if (error) { msgEntrada(`<div class="msg erro">${/Invalid login/i.test(error.message) ? (m === 'activista' ? 'Utilizador ou PIN errado.' : 'Utilizador ou senha errados.') : esc(error.message)}</div>`); return; }
   S.user = data.user;
@@ -441,8 +473,10 @@ async function entrar() {
 }
 async function sair() {
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
+  // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
+  if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -891,9 +925,14 @@ function desenharMapa(enquadrar = false) {
   $('#b-perc').style.display = podeVerPercursos() ? '' : 'none';
   $('#b-coq').style.display = temCoq() ? '' : 'none';
   const ri = $('#ronda-info');
-  if (souActivista() && S.perfil.activista_id) { ri.style.display = ''; ri.innerHTML = textoRonda(); } else ri.style.display = 'none';
+  if (souActivista() && S.perfil.activista_id) { ri.style.display = ''; ri.innerHTML = textoRonda(); }
+  // O filtro do activista escolhido na lista também vale no mapa. Mostra-o (v112, 26/10/2026: o Manuel e o Nuro não viam
+  // o polígono de um campo de Olumbe; com um activista escolhido na lista, os campos dos outros não aparecem no mapa).
+  else if (fa) { ri.style.display = ''; ri.innerHTML = `🔎 <span>Só os campos de</span> <b class="sem-trad">${esc(fa === '__sem' ? '—' : nomeAct(fa))}</b>${fa === '__sem' ? ' <span>(sem activista)</span>' : ''} · <button class="chip" onclick="limparFiltroAct()">Mostrar todos</button>`; }
+  else ri.style.display = 'none';
   mostrarSugFixa();
 }
+function limparFiltroAct() { $('#f-act').value = ''; desenharLista(); desenharMapa(); }
 function textoRonda() {
   const r = rondaInfo(S.perfil.activista_id);
   return `<b>Ronda ${r.n}</b> · ${r.feitas.size} de ${r.total} campos${r.total - r.feitas.size ? ` · faltam ${r.total - r.feitas.size}` : ''}`;
@@ -2271,6 +2310,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
     else if (x.tipo === 'poligono' && x.proposta) { a.poligono_proposto = x.pontos; a.area_m2_proposta = x.area_m2; a.proposta_em = x.medido_em; }
     else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
     else if (x.tipo === 'plantas_rega') {}                          // correcção das plantas de uma rega: não muda o campo
+    else if (['aval_sug', 'com_act'].includes(x.tipo)) {}           // resposta a uma sugestão, comunidade do activista: não mudam o campo
     else if (!String(x.tipo).startsWith('planta')) a.activista_id = x.activista_id; }
   for (const x of LS.get('filaRecG', [])) if (x.op === 'validar' && x.sim) { const a = lista.find((y) => y.id === x.area_id); if (a) a.vivas = x.vivas; }   // validação por enviar
   return lista;
@@ -2961,8 +3001,19 @@ function problemaApp(tipo, mensagem, detalhe = null) {
 }
 window.addEventListener('error', (e) => { if (e?.message) problemaApp('erro', e.message, { ficheiro: (e.filename || '').split('/').pop(), linha: e.lineno, coluna: e.colno }); });
 window.addEventListener('unhandledrejection', (e) => { const m = e?.reason?.message || String(e?.reason || ''); if (m && !/Failed to fetch|NetworkError|Load failed/i.test(m)) problemaApp('erro', m); });
+// Estado da app junto da sugestão (v112, 26/10/2026): para perceber casos como "o polígono não aparece no meu telefone"
+// sem ter de pedir mais informação a quem enviou.
+function diagApp() {
+  try {
+    const comPol = S.areas.filter(temPoligono).length, a = S.fichaAberta ? S.areas.find((x) => x.id === S.fichaAberta) : null;
+    return { papel: S.perfil?.papel, filtro: S.filtro, f_act: $('#f-act')?.value || '', ambito: $('#f-ambito')?.value || '', modo: S.modo || 'rega', percurso: !!S.modoPerc,
+      areas: S.areas.length, com_poligono: comPol, visiveis: visiveis().length, ficha: a ? { id: a.id, poligono: temPoligono(a), lat: a.latitude != null, meu: meuCampo(a) } : null,
+      pos: S.pos ? S.pos.map((v) => +v.toFixed(5)) : null, precisao: S.fix?.coords?.accuracy != null ? Math.round(S.fix.coords.accuracy) : null,
+      instalada: matchMedia('(display-mode: standalone)').matches, online: navigator.onLine, sinc: LS.get('ultimaSync'), dados: LS.get('estadoEm') };
+  } catch (e) { return { erro: String(e?.message || e) }; }
+}
 function ecraSugestao() {
-  S.sugCtx = { ecra: ecraActual(), area: S.fichaAberta && $('#folha')?.classList.contains('on') ? S.fichaAberta : null }; S.sugFoto = null;
+  S.sugCtx = { ecra: ecraActual(), area: S.fichaAberta && $('#folha')?.classList.contains('on') ? S.fichaAberta : null, diag: diagApp() }; S.sugFoto = null;
   folha(`<h2>💡 Sugerir uma melhoria</h2><p class="pequeno">Escreva o que pode melhorar na app ou o problema que encontrou no campo. Pode juntar uma fotografia ou uma captura do ecrã.</p>
     <textarea id="sg-txt" rows="4" placeholder="Ex.: o que aconteceu, onde, e o que devia acontecer"></textarea>
     ${campoFoto('sg-foto', 'Fotografia ou captura do ecrã (opcional)')}<p class="pequeno" id="sg-foto-ok"></p>
@@ -2973,7 +3024,7 @@ async function gravarSugestao() {
   const t = $('#sg-txt').value.trim(); if (t.length < 3) return alert('Escreva a sugestão.');
   const id = crypto.randomUUID();
   if (S.sugFoto) { try { await FOTOS.guardar('sug-' + id, S.sugFoto); } catch { (S.fotosMem ||= {})['sug-' + id] = S.sugFoto; } }
-  const f = LS.get('filaSug', []); f.push({ id, texto: t, foto: !!S.sugFoto, ecra: S.sugCtx?.ecra || '', area_id: S.sugCtx?.area || null, versao: versaoApp(), telefone: navigator.userAgent, lingua: LS.get('lingua', 'pt'), em: new Date().toISOString() });
+  const f = LS.get('filaSug', []); f.push({ id, texto: t, foto: !!S.sugFoto, ecra: S.sugCtx?.ecra || '', area_id: S.sugCtx?.area || null, versao: versaoApp(), telefone: navigator.userAgent, lingua: LS.get('lingua', 'pt'), em: new Date().toISOString(), diag: S.sugCtx?.diag || null });
   LS.set('filaSug', f); S.sugFoto = null; fecharFolha(); actSync(); aviso('Obrigado! A sugestão foi guardada.', 'ok'); sincronizar(true);
 }
 async function enviarSugestoes() {
@@ -2981,7 +3032,7 @@ async function enviarSugestoes() {
     let foto = null, caminho = null;
     if (g.foto) { try { foto = await FOTOS.ler('sug-' + g.id); } catch {} foto = foto || S.fotosMem?.['sug-' + g.id] || null; }
     if (foto) { caminho = `${S.perfil.id}/${g.id}.jpg`; const up = await sb.storage.from('sugestoes-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
-    const r = await sb.rpc('enviar_sugestao', { p_id: g.id, p_texto: g.texto, p_foto: caminho, p_ecra: g.ecra, p_area: g.area_id, p_versao: g.versao, p_telefone: g.telefone, p_lingua: g.lingua, p_em: g.em });
+    const r = await sb.rpc('enviar_sugestao2', { p_id: g.id, p_texto: g.texto, p_foto: caminho, p_ecra: g.ecra, p_area: g.area_id, p_versao: g.versao, p_telefone: g.telefone, p_lingua: g.lingua, p_em: g.em, p_diag: g.diag || null });
     if (r.error && !r.error.code) return r.error.message;
     if (r.error) aviso(`Sugestão não enviada: ${r.error.message}`, 'erro');
     LS.set('filaSug', LS.get('filaSug', []).filter((y) => y.id !== g.id));
@@ -2995,41 +3046,67 @@ async function enviarSugestoes() {
 }
 // Gestão › sugestões e problemas: só o gestor principal
 const ESTADOS_SUG = { nova: 'Nova', aprovada: 'Aprovada', recusada: 'Recusada', feita: 'Feita' };
+// Sem rede (v112, 26/10/2026, Valdo: "as respostas às solicitações de melhoria devem também funcionar offline"): a lista fica
+// no telefone (rega.sugGest) e as avaliações vão para a fila (filaAlt, tipo 'aval_sug'), enviadas quando houver rede.
+function aplicarAvalPendentes() {
+  for (const x of LS.get('filaAlt', []).filter((y) => y.tipo === 'aval_sug')) { const g = S.sug?.sugestoes.find((y) => y.id === x.sug_id); if (g) { g.estado = x.estado; g.nota = x.nota; g.pendente = true; } }
+}
 async function cartaoSugestoes() {
   const el = $('#g-sug'); if (!el) return;
-  const r = await sb.rpc('sugestoes_lista');
-  if (r.error) { el.innerHTML = `<h2>💡 Sugestões e problemas</h2><p class="pequeno">${esc(semRede(r.error) ? 'Sem rede.' : r.error.message)}</p>`; return; }
-  S.sug = r.data; desenharSugestoes();
+  const g = LS.get('sugGest');
+  if (g && !S.sug) { S.sug = g.dados; S.sugEm = g.em; aplicarAvalPendentes(); desenharSugestoes(); }
+  const r = navigator.onLine ? await sb.rpc('sugestoes_lista') : { error: { message: 'Failed to fetch' } };
+  if (r.error) {
+    if (S.sug) { S.sugSemRede = true; desenharSugestoes(); return; }
+    el.innerHTML = `<h2>💡 Sugestões e problemas</h2><p class="pequeno">${esc(semRede(r.error) ? 'Sem rede. A lista aparece quando houver rede; depois fica guardada no telefone.' : r.error.message)}</p>`; return;
+  }
+  S.sug = r.data; S.sugEm = new Date().toISOString(); S.sugSemRede = false; LS.set('sugGest', { dados: r.data, em: S.sugEm }); aplicarAvalPendentes(); desenharSugestoes();
 }
 function desenharSugestoes(filtro = S.sugFiltro || 'nova') {
   S.sugFiltro = filtro; const el = $('#g-sug'); if (!el || !S.sug) return;
   const lista = S.sug.sugestoes.filter((x) => filtro === 'todas' || x.estado === filtro), n = (e) => S.sug.sugestoes.filter((x) => x.estado === e).length;
-  el.innerHTML = `<h2>💡 Sugestões e problemas</h2>
+  el.innerHTML = `<h2>💡 Sugestões e problemas</h2>${S.sugSemRede ? `<p class="pequeno"><span>Sem rede: lista guardada no telefone</span> (${fmtData(S.sugEm)} ${fmtHora(S.sugEm)}). <span>As respostas são enviadas quando houver rede.</span></p>` : ''}
     <div class="chips">${['nova', 'aprovada', 'feita', 'recusada', 'todas'].map((e) => `<button class="chip${e === filtro ? ' on' : ''}" onclick="desenharSugestoes('${e}')">${e === 'todas' ? 'Todas' : ESTADOS_SUG[e]} (${e === 'todas' ? S.sug.sugestoes.length : n(e)})</button>`).join('')}</div>
     ${lista.map((x) => `<div style="padding:8px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
       <div class="pequeno">${fmtData(x.criada_em)} ${fmtHora(x.criada_em)} · ${esc(x.quem || '')} (${esc(FUNCOES[x.papel]?.nome || x.papel || '')}) · ${esc(x.ecra || '')}${x.area_id ? ' · ' + esc(x.area_id) : ''} · v${esc(x.versao || '?')}</div>
-      <div style="white-space:pre-wrap;margin:4px 0">${esc(x.texto)}</div>
+      <div style="white-space:pre-wrap;margin:4px 0" class="sem-trad">${esc(x.texto)}</div>
+      ${x.nota ? `<div class="pequeno"><span>Resposta</span>: <span class="sem-trad">${esc(x.nota)}</span>${x.pendente ? ' · <span>por enviar</span>' : ''}</div>` : x.pendente ? '<div class="pequeno">Por enviar.</div>' : ''}
+      ${x.diag ? `<details class="pequeno"><summary>Estado da app</summary><pre style="white-space:pre-wrap;font-size:11px" class="sem-trad">${esc(JSON.stringify(x.diag, null, 1))}</pre></details>` : ''}
       <div class="chips">${x.foto_path ? `<button class="chip" onclick="verFoto('sugestoes-fotos', '${esc(x.foto_path)}', '${esc(x.quem || '')}')">📷 Fotografia</button>` : ''}
         ${['aprovada', 'recusada', 'feita', 'nova'].filter((e) => e !== x.estado).map((e) => `<button class="chip" onclick="avaliarSugestao('${x.id}','${e}')">${ESTADOS_SUG[e]}</button>`).join('')}</div></div>`).join('') || '<p class="pequeno">Nenhuma.</p>'}
     <h3 style="font-size:14px;margin:14px 0 4px">Problemas técnicos registados pela app (30 dias)</h3>
     ${S.sug.problemas.map((p) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)"><div><b>${esc(p.tipo)}</b> · ${esc(p.mensagem || '')}</div>
       <div class="pequeno">${p.vezes}× · ${p.pessoas} pessoa(s): ${esc(p.quem || '')} · último ${fmtData(p.ultima_em)} ${fmtHora(p.ultima_em)} · ${esc(p.ecra || '')}</div></div>`).join('') || '<p class="pequeno">Nenhum.</p>'}`;
 }
+const TIT_AVAL = { feita: 'Marcar como feita', aprovada: 'Aprovar', recusada: 'Recusar' };
 async function avaliarSugestao(id, estado, nota = null) {
-  // "Feita": pede uma mensagem opcional para quem enviou (aparece no Hoje dessa pessoa; v95, 22/10/2026)
-  if (estado === 'feita' && nota === null) {
+  // Feita, aprovada ou recusada: mensagem para quem enviou, que a vê no Hoje (feita desde v95; aprovada e recusada desde v112)
+  if (estado !== 'nova' && nota === null) {
     const x = S.sug.sugestoes.find((y) => y.id === id) || {};
-    return folha(`<h2>Marcar como feita</h2><p class="pequeno sem-trad">«${esc((x.texto || '').slice(0, 160))}»</p>
-      <p class="pequeno">${esc(x.quem || 'Quem enviou')} vai ver no Hoje que a sugestão foi feita.</p>
-      <label>Mensagem para quem enviou (opcional)<textarea id="sf-nota" rows="2" placeholder="Ex.: já aparece na procura de campos"></textarea></label>
-      <button class="btn" onclick="avaliarSugestao('${esc(id)}', 'feita', $('#sf-nota').value)">Marcar como feita</button>
+    return folha(`<h2>${TIT_AVAL[estado]}</h2><p class="pequeno sem-trad">«${esc((x.texto || '').slice(0, 160))}»</p>
+      <p class="pequeno"><span class="sem-trad">${esc(x.quem || '')}</span> <span>vai ver a resposta no Hoje.</span></p>
+      <label>Mensagem para quem enviou${estado === 'recusada' ? '' : ' (opcional)'}<textarea id="sf-nota" rows="3" placeholder="${estado === 'recusada' ? 'Porque não se faz e o que fazer em vez disso' : 'Ex.: já aparece na procura de campos'}">${esc(x.nota || '')}</textarea></label>
+      <button class="btn" onclick="avaliarSugestao('${esc(id)}', '${estado}', $('#sf-nota').value)">${TIT_AVAL[estado]}</button>
       <button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
   }
-  const r = await sb.rpc('avaliar_sugestao', { p_id: id, p_estado: estado, p_nota: nota });
-  if (r.error) return aviso(r.error.message, 'erro');
-  const x = S.sug.sugestoes.find((y) => y.id === id); if (x) { x.estado = estado; x.nota = nota; }
-  if (estado === 'feita') fecharFolha();
-  desenharSugestoes();
+  if (estado === 'recusada' && !String(nota || '').trim()) return alert('Escreva a resposta para quem enviou.');
+  nota = String(nota || '').trim() || null;
+  const x = S.sug.sugestoes.find((y) => y.id === id);
+  const guardarNaFila = () => {
+    const f = LS.get('filaAlt', []).filter((y) => !(y.tipo === 'aval_sug' && y.sug_id === id));
+    f.push({ id: crypto.randomUUID(), tipo: 'aval_sug', sug_id: id, estado, nota }); LS.set('filaAlt', f); actSync();
+    if (x) { x.estado = estado; x.nota = nota; x.pendente = true; }
+    aviso('Sem rede: a resposta fica no telefone e é enviada quando houver rede.', 'info');
+  };
+  if (!navigator.onLine) guardarNaFila();
+  else {
+    const r = await sb.rpc('avaliar_sugestao', { p_id: id, p_estado: estado, p_nota: nota });
+    if (r.error && semRede(r.error)) guardarNaFila();
+    else if (r.error) return aviso(r.error.message, 'erro');
+    else if (x) { x.estado = estado; x.nota = nota; x.pendente = false; }
+  }
+  if (S.sug) LS.set('sugGest', { dados: S.sug, em: S.sugEm || new Date().toISOString() });
+  fecharFolha(); desenharSugestoes();
 }
 
 // ---------- chuva (12/10/2026, Valdo; sugestão do Albino) ----------
@@ -3080,15 +3157,15 @@ function campoFoto(id, rotulo) {
 // Aqui a imagem vem do vídeo da câmara, sem sair da página. Se o telefone não deixar, usa a câmara do sistema.
 // Botão "🔄 Virar a câmara" (v76, 19/10/2026, Valdo): para selfies, p. ex. a fotografia no campo da recontagem, onde têm de
 // aparecer o produtor e o oficial. Com a câmara da frente o ecrã mostra a imagem como num espelho; a fotografia fica direita.
-async function camaraNaApp(aoFoto) {
+async function camaraNaApp(aoFoto, semCam) {
   if (!navigator.mediaDevices?.getUserMedia) return false;
   let lado = 'environment', stream;
   const abrirCam = (l) => navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: l }, width: { ideal: 1600 }, height: { ideal: 1200 } }, audio: false });
   try { stream = await abrirCam(lado); }
   catch (e) {
     problemaApp('camara', `Câmara dentro da app não abriu: ${e?.name || ''}`, { msg: e?.message });
-    if (e && e.name === 'NotAllowedError') { aviso('A app não tem autorização para usar a câmara. Autorize a câmara no Chrome (cadeado ao lado do endereço) ou use «Escolher da galeria».', 'erro'); return true; }
-    return false;
+    if (e && e.name === 'NotAllowedError') { if (!S.ajudaCamVista) { S.ajudaCamVista = true; ajudaCamara(semCam); return true; } }
+    return false;                                       // câmara do telefone (não precisa da autorização do Chrome)
   }
   const ov = document.createElement('div'); ov.id = 'cam-ov';
   ov.style.cssText = 'position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column';
@@ -3102,12 +3179,25 @@ async function camaraNaApp(aoFoto) {
   const espelho = () => { v.style.transform = lado === 'user' ? 'scaleX(-1)' : ''; };
   const fechar = () => { stream.getTracks().forEach((t) => t.stop()); ov.remove(); };
   ov.querySelector('#cam-x').onclick = fechar;
+  // Virar (v112, 26/10/2026, Razaque: no telefone dele continuava a câmara de trás): alguns telefones ignoram o pedido
+  // "câmara da frente" quando é só uma preferência. Tenta "exact" e, se a câmara não mudou, passa para outra câmara da lista.
+  const idDe = (st) => { try { return st.getVideoTracks()[0].getSettings().deviceId || ''; } catch { return ''; } };
+  const espera = (ms) => new Promise((r) => setTimeout(r, ms));
   ov.querySelector('#cam-virar').onclick = async () => {
-    const novo = lado === 'user' ? 'environment' : 'user';
-    stream.getTracks().forEach((t) => t.stop());
-    try { stream = await abrirCam(novo); lado = novo; }
-    catch { try { stream = await abrirCam(lado); } catch { fechar(); return aviso('Não foi possível abrir a câmara. Use «Escolher da galeria».', 'erro'); }
-      aviso('Este telefone não deixou mudar de câmara.', 'erro'); }
+    const novo = lado === 'user' ? 'environment' : 'user', antes = idDe(stream);
+    stream.getTracks().forEach((t) => t.stop()); await espera(250);
+    const tenta = async (c) => { try { return await navigator.mediaDevices.getUserMedia({ video: c, audio: false }); } catch { return null; } };
+    let st = await tenta({ facingMode: { exact: novo }, width: { ideal: 1600 }, height: { ideal: 1200 } });
+    if (!st || (antes && idDe(st) === antes)) {
+      if (st) { st.getTracks().forEach((t) => t.stop()); await espera(250); st = null; }
+      let cams = []; try { cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput'); } catch {}
+      const pal = novo === 'user' ? /front|frente|user|facing front|selfie/i : /back|tr[aá]s|rear|environment|facing back/i;
+      const ordem = [...cams.filter((d) => d.deviceId !== antes && pal.test(d.label)), ...cams.filter((d) => d.deviceId !== antes && !pal.test(d.label))];
+      for (const d of ordem) { st = await tenta({ deviceId: { exact: d.deviceId }, width: { ideal: 1600 }, height: { ideal: 1200 } }); if (st) break; await espera(150); }
+    }
+    if (st) { stream = st; lado = novo; }
+    else { try { stream = await abrirCam(lado); } catch { fechar(); return aviso('Não foi possível abrir a câmara. Use «Escolher da galeria».', 'erro'); }
+      problemaApp('camara', 'Virar a câmara não funcionou'); aviso('Este telefone não deixou mudar de câmara.', 'erro'); }
     v.srcObject = stream; espelho();
   };
   try { const n = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput').length; if (n === 1) ov.querySelector('#cam-virar').style.display = 'none'; } catch {}
@@ -3123,9 +3213,10 @@ function ligarFoto(id, rasc, aoLer) {
   const abrir = () => { if (rasc) rascGuardar(rasc, { camara: true }); };
   document.querySelectorAll(`label[for="${id}"]`).forEach((l) => l.addEventListener('click', abrir));
   $(`#${id}-cambtn`).onclick = async () => {
+    const doSistema = () => { abrir(); $(`#${id}-cam`)?.click(); };   // câmara do telefone
     const ok = await camaraNaApp(async (b) => { if (!b) return aviso('Não foi possível ler a fotografia. Tire outra.', 'erro');
-      try { await aoLer(await reduzirFoto(b)); } catch { aoLer(null); aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); } });
-    if (!ok) { abrir(); $(`#${id}-cam`).click(); }               // sem câmara na página: câmara do sistema
+      try { await aoLer(await reduzirFoto(b)); } catch { aoLer(null); aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); } }, doSistema);
+    if (!ok) doSistema();                                         // sem câmara na página: câmara do sistema
   };
   for (const i of [$(`#${id}-cam`), $(`#${id}`)]) i.onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -3208,21 +3299,34 @@ function deslocacao(regs) {
   for (let i = 1; i < o.length; i++) { const d = (new Date(o[i].entrada_em) - new Date(o[i - 1].saida_em)) / 60000; if (d >= 0) m.push(d); }
   return m.length ? Math.round(m.reduce((a, b) => a + b, 0) / m.length) : null;
 }
+// Comunidade do activista (v112, 26/10/2026, Valdo: o técnico ajusta na app; caso do Sitambur, pedido do Gelson).
+// Muda a comunidade principal, que decide de que comunidade são os campos "sem activista" que a equipa vê.
+function opcoesComunidade(actual) {
+  const l = [...new Set([...(S.comunidades || []), ...S.areas.map((x) => x.comunidade), actual].filter(Boolean))].sort((x, y) => x.localeCompare(y));
+  return l.map((c) => `<option value="${esc(c)}"${c === actual ? ' selected' : ''}>${esc(c)}</option>`).join('');
+}
 function ecraTamanho(id) {
+  const act = S.activistas.find((t) => t.id === id) || {};
   folha(`<h2>${esc(nomeAct(id))}</h2>
+    <label>Comunidade do activista<select id="t-com" class="sem-trad">${opcoesComunidade(act.comunidade_principal)}</select></label>
+    <p class="pequeno">Para passar campos para este activista: Campos › abrir o campo › Atribuir.</p>
     <label>Quantas pessoas tem esta equipa (incluindo o activista)?<input id="t-n" type="number" inputmode="numeric" min="1" max="30" value="${tamanhoEquipa(id) ?? ''}"></label>
     <p class="pequeno">Serve para mostrar as faltas: pessoas presentes no dia comparadas com este número.</p>
     <label style="display:flex;gap:8px;align-items:flex-start"><input id="t-semtel" type="checkbox" style="width:auto" ${semTelefone(id) ? 'checked' : ''}> <span>Este activista não tem telemóvel: o técnico ou o supervisor registam as regas por ele.</span></label>
     <button class="btn" onclick="gravarTamanho('${esc(id)}')">Guardar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
 }
 async function gravarTamanho(id) {
-  const n = parseInt($('#t-n').value, 10);
-  if (!(n >= 1 && n <= 30)) { alert('Escreva um número entre 1 e 30.'); return; }
-  const r = await sb.rpc('definir_equipa_tamanho', { p_activista: id, p_n: n });
-  if (r.error) return aviso(r.error.message, 'erro');
-  const st = $('#t-semtel').checked, t = S.activistas.find((x) => x.id === id);
+  const v = $('#t-n').value.trim(), n = parseInt(v, 10), t = S.activistas.find((x) => x.id === id), com = $('#t-com')?.value, st = $('#t-semtel').checked;
+  if (v && !(n >= 1 && n <= 30)) { alert('Escreva um número entre 1 e 30.'); return; }
+  if (!v && tamanhoEquipa(id)) { alert('Escreva um número entre 1 e 30.'); return; }
+  if (t && com && com !== t.comunidade_principal) {           // vai pela fila: funciona sem rede (v112)
+    const f = LS.get('filaAlt', []).filter((y) => !(y.tipo === 'com_act' && y.activista_id === id));
+    f.push({ id: crypto.randomUUID(), tipo: 'com_act', activista_id: id, comunidade: com }); LS.set('filaAlt', f);
+    t.comunidade_principal = com; LS.set('activistas', S.activistas); actSync(); sincronizar(true);
+  }
+  if (v && n !== tamanhoEquipa(id)) { const r = await sb.rpc('definir_equipa_tamanho', { p_activista: id, p_n: n }); if (r.error) return aviso(r.error.message, 'erro'); if (t) t.equipa_tamanho = n; }
   if (st !== semTelefone(id)) { const r2 = await sb.rpc('definir_sem_telefone', { p_activista: id, p_valor: st }); if (r2.error) return aviso(r2.error.message, 'erro'); if (t) t.sem_telefone = st; }
-  if (t) t.equipa_tamanho = n; LS.set('activistas', S.activistas);
+  LS.set('activistas', S.activistas);
   fecharFolha(); desenharHoje();
 }
 // Os botões "Rega hoje" / "Recontagens das plantas" mudam logo (18/10/2026, Valdo: demorava ~3 s): mostram o que está
@@ -3306,7 +3410,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html;   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
@@ -3393,6 +3497,16 @@ function cartaoSemTelefone() {
     <p class="pequeno">As regas que registar nos campos destes activistas contam a sério para a equipa deles. Esteja com a equipa desde a entrada até à saída.</p>
     ${L.map((t) => `<div class="lin"><span class="sem-trad">${esc(t.nome)}</span><button class="chip" onclick="verCamposDe('${t.id}')">Ver os campos</button></div>`).join('')}</div>`;
 }
+// Todas as equipas do técnico/supervisor (gestor: todas), mesmo sem regas hoje (v112): comunidade, pessoas e telemóvel.
+function cartaoEquipas() {
+  if (!['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel)) return '';
+  const L = (S.activistas || []).filter((t) => t.activo !== false && (S.perfil.papel === 'gestor' || (S.visiveis || []).includes(t.id)));
+  if (!L.length) return '';
+  const nC = (id) => S.areas.filter((a) => a.activista_id === id).length;
+  return `<div class="cartao"><details><summary><b>👥 <span>As minhas equipas</span> (${L.length})</b></summary>
+    <p class="pequeno">Toque num activista para mudar a comunidade, o número de pessoas da equipa ou marcar que não tem telemóvel.</p>
+    ${L.map((t) => `<div class="lin"><span><span class="sem-trad">${esc(t.nome)}</span><br><span class="pequeno"><span class="sem-trad">${esc(t.comunidade_principal || '—')}</span> · ${nC(t.id)} <span>${nC(t.id) === 1 ? 'campo' : 'campos'}</span> · ${t.equipa_tamanho ? t.equipa_tamanho + ' <span>pessoas</span>' : '<span>equipa por definir</span>'}${t.sem_telefone ? ' · 📵' : ''}</span></span><button class="chip" onclick="ecraTamanho('${t.id}')">Alterar</button></div>`).join('')}</details></div>`;
+}
 function verCamposDe(id) {
   if (listaPropria()) { S.filtro = 'meus'; LS.set('filtroSup', 'meus'); $('#f-ambito').value = 'meus'; }
   $('#f-sit').value = ''; $('#f-act').value = id; mudar('lista'); desenharLista();
@@ -3428,16 +3542,22 @@ function cartaoPrimeiroTeste() {
 // Sugestões feitas (v95, 22/10/2026, Valdo): quem enviou a sugestão vê no Hoje que ela foi feita; "OK" esconde-a no telefone.
 async function carregarSugFeitas() {
   if (!S.perfil || S.perfil.papel === 'cliente') return;
-  const r = await sb.rpc('minhas_sugestoes_feitas');
+  let r = await sb.rpc('minhas_respostas');                   // feitas, aprovadas e recusadas (v112)
+  if (r.error && !semRede(r.error)) r = await sb.rpc('minhas_sugestoes_feitas');
   if (!r.error && Array.isArray(r.data)) { LS.set('sugFeitas', r.data); if ($('#e-hoje')?.classList.contains('on') && !$('#hoje-sugf') && cartaoSugFeitas()) desenharHoje(); }
 }
+// Respostas (v112, 26/10/2026, Valdo): quem enviou vê também quando a sugestão foi aprovada ou recusada, com a mensagem do
+// gestor. Fica no telefone (funciona sem rede); "OK" esconde-a até o estado mudar outra vez.
+const chaveResp = (x) => x.id + '|' + (x.estado || 'feita');
+const RESP_TXT = { feita: ['Feita', 'var(--ok,#2e7d32)'], aprovada: ['Aprovada: vai ser feita', 'var(--warn,#b26b00)'], recusada: ['Não vai ser feita', 'var(--crit,#b42318)'] };
 function cartaoSugFeitas() {
-  const vistas = LS.get('sugVistas', []) || [], L = (LS.get('sugFeitas', []) || []).filter((x) => !vistas.includes(x.id));
+  const vistas = LS.get('sugVistas', []) || [], L = (LS.get('sugFeitas', []) || []).filter((x) => !vistas.includes(chaveResp(x)) && !vistas.includes(x.id + ((x.estado || 'feita') === 'feita' ? '' : '|x')));
   if (!L.length) return '';
-  return `<div class="cartao" id="hoje-sugf" style="border-left:4px solid var(--ok,#2e7d32)"><h2>💡 <span>${L.length === 1 ? 'A sua sugestão foi feita' : 'As suas sugestões foram feitas'}</span></h2>` +
-    L.map((x) => `<div class="lin" style="display:block"><div class="sem-trad">«${esc(x.texto)}»</div>
-      <div class="pequeno"><span>Feita em</span> ${fmtData(String(x.avaliada_em).slice(0, 10))}${x.nota ? ` · <span class="sem-trad">${esc(x.nota)}</span>` : ''}</div>
-      <button class="chip" onclick="sugFeitaVista('${esc(x.id)}')">OK</button></div>`).join('') + '</div>';
+  return `<div class="cartao" id="hoje-sugf" style="border-left:4px solid var(--ok,#2e7d32)"><h2>💡 <span>${L.length === 1 ? 'Resposta à sua sugestão' : 'Respostas às suas sugestões'}</span></h2>` +
+    L.map((x) => { const [t, c] = RESP_TXT[x.estado || 'feita'] || RESP_TXT.feita;
+      return `<div class="lin" style="display:block"><div class="sem-trad">«${esc(x.texto)}»</div>
+      <div class="pequeno"><b style="color:${c}">${t}</b> · ${fmtData(String(x.avaliada_em).slice(0, 10))}</div>${x.nota ? `<div class="sem-trad" style="margin:4px 0">${esc(x.nota)}</div>` : ''}
+      <button class="chip" onclick="sugFeitaVista('${esc(chaveResp(x))}')">OK</button></div>`; }).join('') + '</div>';
 }
 function sugFeitaVista(id) {
   const v = LS.get('sugVistas', []) || []; if (!v.includes(id)) v.push(id); LS.set('sugVistas', v.slice(-200));
@@ -3782,9 +3902,18 @@ function mudar(e) {
   if (e === 'gestao') desenharGestao();
   if (e === 'painel') { const f = $('#painel-f'); if (!f.src) f.src = 'painel.html?embutido=1'; else f.contentWindow?.postMessage('actualizar', location.origin); }
 }
+// Navegador da Xiaomi (v112, 26/10/2026: Eduardo e Ibraimo, "Script error." e GPS bloqueado): a app só é testada no Chrome.
+const navXiaomi = () => /MiuiBrowser|XiaoMi\//i.test(navigator.userAgent);
+function avisoNavegador() {
+  if (!navXiaomi() || $('#nav-xiaomi')) return;
+  const d = document.createElement('div'); d.id = 'nav-xiaomi';
+  d.style.cssText = 'background:#b26b00;color:#fff;padding:8px 12px;font-size:14px;font-weight:600';
+  d.innerHTML = '⚠️ <span>Está a usar o navegador da Xiaomi. Abra a app no Chrome: neste navegador a localização e a câmara falham.</span>';
+  const g = $('#gps-neg'); if (g) g.after(d); else document.body.prepend(d);
+}
 function mostrarApp() {
   const papel = S.perfil.papel;
-  $('#login').style.display = 'none'; $('#app').style.display = 'flex';
+  $('#login').style.display = 'none'; $('#app').style.display = 'flex'; avisoNavegador();
   $('#h-nome').textContent = `${S.perfil.nome}${['activista', 'cliente'].includes(papel) ? '' : ' · ' + (S.perfil.titulo || (papel === 'gestor' ? 'Gestor' : FUNCOES[papel]?.nome || papel))}`;
   $('#h-nome').title = S.perfil.papel === 'activista' ? 'Mudar o meu PIN' : 'Mudar a minha senha';
   $('#h-nome').onclick = () => ecraTrocarSenha(false);

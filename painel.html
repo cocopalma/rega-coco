@@ -212,8 +212,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=111"></script>
-<script src="i18n.js?v=111"></script>
+<script src="i18n-sw.js?v=112"></script>
+<script src="i18n.js?v=112"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -254,7 +254,7 @@ function marcarFiltro() {
 }
 function escolher(p) {
   P = p; try { localStorage.setItem('rega.painel.periodo', JSON.stringify(P)); } catch {}
-  marcarFiltro(); carregar();
+  marcarFiltro(); carregar(true);
 }
 document.querySelectorAll('#filtro [data-p]').forEach((b) => b.onclick = () => {
   if (b.dataset.p === 'periodo') { const [de, ate] = datasDe(P); P = { tipo: 'periodo', de: de || diaMaputo(6), ate: ate || diaMaputo() }; marcarFiltro(); $('#f-de').focus(); return; }
@@ -355,14 +355,16 @@ function desenhar() {
     : per.de && per.de === per.ate ? `Dia: ${fmtData(per.de)}`
     : `Período: ${per.de ? fmtData(per.de) : 'início'} a ${per.ate ? fmtData(per.ate) : 'hoje'}`;
   $('#d-equipa').hidden = !filtrado;
-  $('#d-agua').textContent = `${filtrado ? 'No período escolhido.' : 'Últimos 14 dias.'} Espera = minutos entre a entrada no campo e a chegada da água.`;
+  const hc = D.chegada_equipa?.hora_combinada || '06:00';
+  $('#d-agua').textContent = `${filtrado ? 'No período escolhido.' : 'Últimos 14 dias.'} Espera = minutos entre a chegada da equipa ao campo e a chegada do tuk-tuk (água). As equipas devem chegar ao campo às ${hc}; atraso = minutos depois das ${hc} na chegada ao 1.º campo do dia.`;
   const pA = pct(D.areas_regadas, u.areas), pV = pct(D.vivas_regadas, u.vivas);
   const kpi = (rot, val, sub, barra) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${val}</div><div class="sub">${sub}</div>${barra != null ? `<div class="barra"><i style="width:${Math.min(100, barra)}%"></i></div>` : ''}</div>`;
   $('#kpis').innerHTML =
     kpi('Plantas vivas em campos regados', fmtPct(pV), `${num(D.vivas_regadas)} de ${num(u.vivas)} plantas vivas`, pV) +
     kpi('Campos regados', fmtPct(pA), `${num(D.areas_regadas)} de ${num(u.areas)} campos`, pA) +
     kpi('Frequência média', D.dias_medios_entre_regas != null ? `${Number(D.dias_medios_entre_regas).toLocaleString(LOC)} dias` : '—', 'entre duas regas do mesmo campo') +
-    kpi('Espera pela água', D.espera_agua_min != null ? `${num(D.espera_agua_min)} min` : '—', 'média, da entrada no campo à chegada do tuk-tuk');
+    kpi('Espera pela água', D.espera_agua_min != null ? `${num(D.espera_agua_min)} min` : '—', 'média, da chegada da equipa ao campo à chegada do tuk-tuk') +
+    kpi('Chegada da equipa ao 1.º campo', D.chegada_equipa?.hora_media || '—', D.chegada_equipa ? `média; devia ser às ${D.chegada_equipa.hora_combinada}. ${num(D.chegada_equipa.depois_hora)} de ${num(D.chegada_equipa.dias)} dias de equipa depois dessa hora (atraso médio ${num(D.chegada_equipa.atraso_min)} min)` : 'sem dados');
   $('#kpis').innerHTML += kpi('Plantas regadas (total)', num(D.plantas_regadas_total), `em ${num(D.registos)} regas de campo`) +
     kpi('Pessoas-dia', num(D.pessoas_dia_total), 'soma das pessoas presentes por equipa e dia') +
     kpi('Plantas por pessoa-dia', D.pessoas_dia_total ? num(D.plantas_regadas_total / D.pessoas_dia_total) : '—', 'produtividade média') +
@@ -401,8 +403,8 @@ function desenhar() {
         e.min_por_campo != null ? num(e.min_por_campo) : '—', e.espera_agua_min != null ? num(e.espera_agua_min) : '—'];
     }));
 
-  tabela('#t-agua', [['Data'], ['Equipa'], ['Comunidade'], ['Início do trabalho'], ['1.ª água'], ['Chegadas da água'], ['Campos', 1], ['Espera média (min)', 1]],
-    (D.chegadas_agua || []).map((a) => [fmtData(a.data), esc(a.equipa), esc(a.comunidade || ''), a.inicio_trabalho || '—', a.primeira_agua || '<span style="color:var(--crit)">sem registo</span>',
+  tabela('#t-agua', [['Data'], ['Equipa'], ['Comunidade'], ['Chegada ao 1.º campo'], ['Atraso (min)', 1], ['1.ª água'], ['Chegadas da água'], ['Campos', 1], ['Espera média (min)', 1]],
+    (D.chegadas_agua || []).map((a) => [fmtData(a.data), esc(a.equipa), esc(a.comunidade || ''), a.inicio_trabalho || '—', a.atraso_min != null ? (a.atraso_min > 0 ? `<b style="color:var(--crit)">${num(a.atraso_min)}</b>` : '0') : '—', a.primeira_agua || '<span style="color:var(--crit)">sem registo</span>',
       esc(a.horas || '—'), num(a.campos), a.espera_media_min != null ? num(a.espera_media_min) : '—']));
 
   const ct = Object.entries(D.constrangimentos || {}).map(([k, n]) => ({ k, n })).sort((a, b) => b.n - a.n);
@@ -696,7 +698,7 @@ function desenharMonitoria() {
 
 // ---------- dados e sessão ----------
 // último painel visto fica no telefone: aparece logo e é actualizado quando chega a resposta do servidor
-const CHAVE_CACHE = () => 'rega.painel.cache.' + new Date().toLocaleDateString('sv-SE') + JSON.stringify(P);
+const CHAVE_CACHE = (p = P) => 'rega.painel.cache.' + new Date().toLocaleDateString('sv-SE') + JSON.stringify(p);
 // sem rede e sem painel de hoje: usa o último guardado para o mesmo período (14/10/2026, Nuro)
 function lerCache() {
   try {
@@ -719,8 +721,37 @@ function semRedeSemPainel() {
   let el = $('#aviso-rede'); if (!el) { el = document.createElement('div'); el.id = 'aviso-rede'; el.className = 'card'; $('#painel').prepend(el); }
   el.textContent = 'Sem rede. O painel aparece quando houver rede; depois fica guardado no telefone.';
 }
-async function carregar() {
-  const c = !D && lerCache();
+// Períodos sem rede (v112, 26/10/2026, Valdo: "ver o painel por período não está activo… permitir também funcionar offline"):
+// mudar de período sem rede mostra o painel desse período guardado no telefone. Com rede, a app guarda também os outros
+// períodos (Tudo, Hoje, Ontem, 7 dias, 30 dias), no máximo uma vez por hora, para estarem prontos sem rede.
+const PERIODOS_FIXOS = ['tudo', 'hoje', 'ontem', '7', '30'].map((t) => ({ tipo: t, de: null, ate: null }));
+async function buscarPeriodo(p) {
+  const [de, ate] = datasDe(p);
+  const [r, mon, pde, tem, zon, chu, tp, mn, md] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate }), sb.rpc('painel_testes', { p_de: de, p_ate: ate }), sb.rpc('painel_manutencao', { p_de: de, p_ate: ate }), sb.rpc('painel_medicoes', { p_de: de, p_ate: ate })]);
+  if (r.error) return null;
+  return { D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, em: Date.now() };
+}
+let aGuardar = false;
+async function guardarOutrosPeriodos() {
+  if (aGuardar || !navigator.onLine) return;
+  try { if (Date.now() - (+localStorage.getItem('rega.painel.outrosEm') || 0) < 3600e3) return; } catch {}
+  aGuardar = true;
+  try {
+    for (const p of PERIODOS_FIXOS) {
+      if (JSON.stringify(p) === JSON.stringify(P)) continue;
+      const v = await buscarPeriodo(p); if (!v) break;
+      try { localStorage.setItem(CHAVE_CACHE(p), JSON.stringify(v)); } catch { break; }
+    }
+    try { localStorage.setItem('rega.painel.outrosEm', String(Date.now())); } catch {}
+  } finally { aGuardar = false; }
+}
+function semPeriodoGuardado() {
+  let el = $('#aviso-rede'); if (!el) { el = document.createElement('div'); el.id = 'aviso-rede'; el.className = 'card'; el.style.cssText = 'margin-bottom:12px;border-left:4px solid var(--warn,#b26b00)'; $('#painel').prepend(el); }
+  el.textContent = 'Sem rede: este período ainda não está guardado no telefone. O painel abaixo é de outro período. Com rede, a app guarda os períodos Tudo, Hoje, Ontem, 7 dias e 30 dias para poderem ser vistos sem rede.';
+}
+async function carregar(mudou = false) {
+  const c = (!D || mudou) && lerCache();
+  if (mudou && !c && !navigator.onLine) { semPeriodoGuardado(); return; }
   if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
@@ -743,7 +774,13 @@ async function carregar() {
   if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
   D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria();
-  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && !k.startsWith('rega.painel.cache.' + new Date().toLocaleDateString('sv-SE'))).forEach((k) => localStorage.removeItem(k)); localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, em: Date.now() })); } catch {}
+  try {   // fica um painel por período: o de hoje, ou o mais recente de outro dia (para ver sem rede)
+    const hoje = new Date().toLocaleDateString('sv-SE'), suf = JSON.stringify(P);
+    Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && k.endsWith(suf) && !k.startsWith('rega.painel.cache.' + hoje)).forEach((k) => localStorage.removeItem(k));
+    Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && k.slice(18, 28) < new Date(Date.now() - 14 * 864e5).toLocaleDateString('sv-SE')).forEach((k) => localStorage.removeItem(k));
+    localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, em: Date.now() }));
+  } catch {}
+  setTimeout(() => guardarOutrosPeriodos().catch(() => {}), 1500);
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
 function mostrarLogin(msg = '') { $('#painel').style.display = 'none'; $('#login').style.display = ''; $('#l-msg').innerHTML = msg ? `<div class="erro">${esc(msg)}</div>` : ''; }
