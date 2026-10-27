@@ -230,6 +230,12 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Fotografia opcional (v117, 26/10/2026, Valdo: "Sim"): no formulário (câmara ou galeria), guardada no telefone (IndexedDB `dsr-<id>`) até haver rede → `rega-fotos/<perfil>/dsr-<id>.jpg` → RPC `gravar_dia_sem_rega2(…, p_foto)` (coluna `dias_sem_rega.foto_path`); 📷 no cartão do Hoje e na tabela do painel (`verFotoBalde`).
 - Teste: `rega-test/teste_dia_sem_rega.py` (LING=en / sw); painel em `teste_painel_v112.py`.
 
+## Coqueiros congelados (27/10/2026, Valdo)
+- Valdo (26/10): "O levantamento de coqueiros é um projecto piloto… A aplicacao foi feita para a rega, esse é o objectivo." 27/10: "Congela isto, voltamos a isto mais tarde."
+- Nada de novo nos coqueiros dentro da app de rega. Fica o que existe (gestor e director; 63 pontos a 26/10, todos com o login do Dalmar). Se o levantamento crescer (Dalmar fala em 200 000), fazer numa app separada (mesmo servidor e acessos): a app descarrega todos os pontos para o telefone e as fotografias dos coqueiros têm em média 319 KB (200 000 × 3 ≈ 190 GB, acima dos 100 GB do plano).
+- Propostas do Dalmar de 24–25/10 em espera (extracção em `_extracoes_20261026/Dalmar` no Mac): botão Gravar no topo; faixa vermelha a não empurrar «Marcar»; várias fotografias da galeria; total por baixo do botão 🥥; lista de coqueiros ao tocar no total; botão "Deslocar"; corrigir local/observação e validar; produção por pessoa (precisa de um login por pessoa); informação gravada na fotografia; fitossanidade (falta a lista de pragas); tamanho P/M/G (falta o critério); registo guiado; "precisa de tratamento" já marcado; gémeos; zoom na câmara; cores para o sol; caminhada de quem marca; diário do projecto; IA para classificar coqueiros.
+- Também por decidir (perguntado ao Valdo a 26/10): o mesmo critério para a manutenção, o mapa das plantas e as medições com a vara.
+
 ## Coqueiros v111 (24/10/2026, áudios do Dalmar, aprovados pelo Valdo)
 - Estado "Retirado" (o coqueiro já não existe; o ponto fica guardado a vermelho e vazio, não conta nos coqueiros existentes). Restrição `coqueiros_estado_check` alargada.
 - Círculo de 2,5 m (`RAIO_COQ`) à volta de cada coqueiro; ao entrar nele o telefone vibra e aparece "⚠️ Coqueiro nº N já marcado aqui" (`#cq-perto`, em `coqLeitura`); ao marcar dentro do raio pede confirmação (média e última leitura).
