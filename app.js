@@ -128,6 +128,29 @@ function lerGPS() {
   });
 }
 
+// Entrada e saída (v118, 27/10/2026, Carimo: "o ponteiro… por vezes diz que estou no oceano… e não aceita dar entrada"): o GPS do
+// telefone às vezes dá leituras de ±100 m ou mais. Em vez de usar a primeira leitura, espera até 20 s por uma de ±25 m ou melhor
+// (mostra a precisão ao vivo) e fica com a melhor que tiver.
+function lerGPSBom(alvo = 25, maxMs = 20000, basta = null) {   // basta(coords): já serve (ex.: dentro do campo), não espera mais
+  return new Promise((ok, falha) => {
+    if (!navigator.geolocation) return falha(new Error('Este telefone não tem GPS disponível no navegador.'));
+    if (S.fix && Date.now() - S.fix.t < 15000 && (S.fix.coords.accuracy <= alvo || basta?.(S.fix.coords))) return ok(S.fix.coords);
+    let melhor = S.fix && Date.now() - S.fix.t < 15000 ? S.fix.coords : null, fim = false, w = null;
+    const acabar = () => { if (fim) return; fim = true; if (w != null) navigator.geolocation.clearWatch(w); clearTimeout(t);
+      if (melhor) ok(melhor); else lerGPS().then(ok, falha); };
+    const mostra = () => { const el = $('#gps-prec'); if (el && melhor) el.textContent = `±${Math.round(melhor.accuracy)} m`; };
+    const t = setTimeout(acabar, maxMs); mostra();
+    w = navigator.geolocation.watchPosition((p) => {
+      S.pos = [p.coords.latitude, p.coords.longitude]; S.fix = { coords: p.coords, t: Date.now() };
+      if (!melhor || p.coords.accuracy <= melhor.accuracy) melhor = p.coords;
+      mostra(); if (melhor.accuracy <= alvo || basta?.(p.coords)) { melhor = basta?.(p.coords) ? p.coords : melhor; acabar(); }
+    }, (e) => { if (e.code === 1) { fim = true; clearTimeout(t); if (w != null) navigator.geolocation.clearWatch(w); lerGPS().then(ok, falha); } },
+    { enableHighAccuracy: true, timeout: maxMs, maximumAge: 0 });
+  });
+}
+const FOLHA_GPS = (txt) => `<h2>A ler o GPS…</h2><p class="pequeno">${txt}</p><p style="font-size:28px;font-weight:700;text-align:center;margin:12px 0" id="gps-prec">…</p><p class="pequeno">Fique em céu aberto, longe de árvores grandes e casas. Pode levar até 20 segundos.</p>`;
+const dicaGpsFraco = (g) => g.precisao > 50 ? `<div class="pequeno" style="margin-top:6px">O GPS está fraco (±${g.precisao} m): a posição pode estar errada. Vá para céu aberto, espere uns segundos e tente de novo.</div>` : '';
+
 // ---------- estado das áreas e rondas ----------
 // registos válidos da minha equipa: os que o servidor já tem + os que estão na fila do telefone
 function meusRegistos() {
@@ -2348,7 +2371,8 @@ function abrirFicha(id, nota = '') {
       ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>`
       : `<button class="btn sec" onclick="marcarAgua(false)">💧 Chegou a água (tuk-tuk) agora</button>
          <button class="btn sec" onclick="marcarAgua(true)">A água já estava no campo quando chegámos</button>`) +
-    `<button class="btn aviso" onclick="ecraSaida()">Terminei — marcar saída</button>`;
+    `<button class="btn aviso" onclick="ecraSaida()">Terminei — marcar saída</button>
+     <button class="btn sec" onclick="ecraNaoRegou()">🚫 Não houve rega neste campo</button>`;
   else if (emCurso) acc = `<div class="msg info">Tem a rega de outro campo em curso. Termine-a primeiro.</div><button class="btn sec" onclick="abrirFicha('${esc(emCurso.area_id)}')">Abrir o campo em curso</button>`;
   else if (podeRegar && meuCampo(a)) acc = (porEquipa(a) ? `<div class="msg info">📵 <span>${esc(nomeAct(a.activista_id))} não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele.</span></div>` : '') + `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`;
   const alheio = !meuCampo(a); S.soVer = alheio;
@@ -2375,7 +2399,8 @@ function abrirFicha(id, nota = '') {
 
 // ---------- entrada ----------
 async function validarPosicao(a) {
-  const c = await lerGPS();
+  const margem = temPoligono(a) ? CFG.margemPoligono : CFG.margemGPS, temSitio = a.latitude != null || temPoligono(a);
+  const c = await lerGPSBom(25, 20000, temSitio ? (k) => distCampo(a, [k.latitude, k.longitude]) <= margem + Math.min(k.accuracy, 50) : () => true);
   const precisao = Math.round(c.accuracy);
   if (a.latitude == null && !temPoligono(a)) return { lat: c.latitude, lon: c.longitude, precisao, dist: null, valido: null };
   const dist = Math.round(distCampo(a, [c.latitude, c.longitude]));
@@ -2414,9 +2439,9 @@ async function marcarEntrada(id, motivoIt = null) {
   if (souActivista() && S.perfil.activista_id && !jornadaHoje()) return ecraJornada(id);
   const it = minha ? itinerarioHoje() : null;               // plano da equipa aprovado (23/10/2026, Valdo): sugestão; fora dele, diz porquê
   if (it && !it.campos.includes(id) && motivoIt == null) return ecraMotivoItinerario(id, it);
-  folha('<h2>A ler o GPS…</h2><p class="pequeno">Pode levar até 30 segundos. Fique em céu aberto.</p>');
+  folha(FOLHA_GPS('A confirmar que está no campo.'));
   let g; try { g = await validarPosicao(a); } catch (e) { return abrirFicha(id, `<div class="msg erro">${esc(e.message)}</div>`); }
-  if (g.valido === false) return abrirFicha(id, `<div class="msg erro">Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Só pode marcar a entrada até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'} do campo.</div>`);
+  if (g.valido === false) return abrirFicha(id, `<div class="msg erro">Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Só pode marcar a entrada até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'} do campo.${dicaGpsFraco(g)}</div>`);
   const ent = { area_id: id, entrada_em: new Date().toISOString(), entrada_lat: g.lat, entrada_lon: g.lon, gps_precisao_m: g.precisao, distancia_area_m: g.dist, gps_valido: g.valido };
   if (it) { ent.plano_id = it.plano.id; ent.plano_dia = it.dia.n; ent.fora_itinerario = !it.campos.includes(id); ent.motivo_itinerario = ent.fora_itinerario ? motivoIt : null; }
   const sug = LS.get('sugestao');
@@ -2482,9 +2507,9 @@ function ecraFotoRega(tipo, nota = '', r = null) {
 
 // ---------- saída ----------
 const TIPOS = [['falta_agua', 'Falta de água'], ['mudas_secas', 'Mudas secas'], ['acesso_dificil', 'Acesso difícil'], ['avaria', 'Avaria'], ['outro', 'Outro']];
-function ecraSaida() {
+function ecraSaida(msg = '') {
   const ent = LS.get('emCurso'), a = S.areas.find((x) => x.id === ent.area_id);
-  folha(`<h2>${esc(a.produtor)}</h2><p class="pequeno">Entrada às ${fmtHora(ent.entrada_em)}</p>
+  folha(`${msg}<h2>${esc(a.produtor)}</h2><p class="pequeno">Entrada às ${fmtHora(ent.entrada_em)}</p>
    <label>Plantas regadas neste campo<input id="s-plantas" type="number" inputmode="numeric" min="0" value="${ent.plantas_escritas ?? ''}"></label>
    <p class="pequeno">Na base: ${plantasTxt(a)}. Escreva o número de plantas que regou.</p>
    <label>Pessoas que regaram este campo<input id="s-pessoas" type="number" inputmode="numeric" min="1" max="30" value="${jornadaHoje()?.pessoas ?? ''}"></label>
@@ -2497,6 +2522,9 @@ function ecraSaida() {
    <button class="btn" onclick="marcarSaida()">Marcar saída e guardar</button>
    <button class="btn sec" onclick="abrirFicha('${esc(a.id)}')">Voltar</button>`);
   document.querySelectorAll('#s-chips .chip').forEach((b) => b.onclick = () => b.classList.toggle('on'));
+  const rs = ent.rascSaida;
+  if (rs) { if (rs.pessoas) $('#s-pessoas').value = rs.pessoas; if (rs.obs) $('#s-obs').value = rs.obs; if (rs.agua && $('#s-agua')) $('#s-agua').value = rs.agua;
+    document.querySelectorAll('#s-chips .chip').forEach((b) => b.classList.toggle('on', (rs.tipos || []).includes(b.dataset.k))); }
   rascGuardar('rascFotoRega', { perfil: S.perfil?.id, tipo: 'saida', camara: false });
   // o número vem vazio (v85, 20/10/2026, Valdo): o activista escreve-o; fica guardado se o Android fechar o Chrome na fotografia
   $('#s-plantas').oninput = (e) => { const x = LS.get('emCurso'); if (x) { x.plantas_escritas = e.target.value; LS.set('emCurso', x); } };
@@ -2518,9 +2546,11 @@ async function marcarSaida() {
   if (hAgua) { const t = new Date(); const [hh, mm] = hAgua.split(':'); t.setHours(+hh, +mm, 0, 0); ent.agua_em = t.toISOString(); }
   const j = jornadaHoje(); if (j && j.pessoas !== pessoas) { j.pessoas = pessoas; LS.set('jornada', j); }
   const tipos = [...document.querySelectorAll('#s-chips .chip.on')].map((b) => b.dataset.k), obs = $('#s-obs').value.trim();
-  folha('<h2>A ler o GPS…</h2><p class="pequeno">A confirmar que ainda está no campo.</p>');
-  let g; try { g = await validarPosicao(a); } catch (e) { ecraSaida(); return aviso(e.message, 'erro'); }
-  if (g.valido === false) { ecraSaida(); return aviso(`Está a ${g.dist} m do campo. Marque a saída ainda no campo (até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'}).`, 'erro'); }
+  ent.plantas_escritas = String(plantas); ent.rascSaida = { pessoas, tipos, obs, agua: hAgua || '' }; LS.set('emCurso', ent);   // se o GPS falhar, o ecrã volta preenchido
+  folha(FOLHA_GPS('A confirmar que ainda está no campo.'));
+  // v118 (Razaque: "quando tento gravar volta para a página anterior"): a razão fica escrita no ecrã, não num aviso que desaparece
+  let g; try { g = await validarPosicao(a); } catch (e) { return ecraSaida(`<div class="msg erro"><div><b>A saída não foi gravada.</b></div><div>${esc(e.message)}</div></div>`); }
+  if (g.valido === false) return ecraSaida(`<div class="msg erro"><div><b>A saída não foi gravada.</b></div><div>Está a ${g.dist} m do campo. Marque a saída ainda no campo (até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'}).</div><div class="pequeno">Precisão do GPS: ±${g.precisao} m.</div><div class="pequeno">O que escreveu e as fotografias ficam guardados.</div>${dicaGpsFraco(g)}</div>`);
   const actId = S.perfil.activista_id || a.activista_id;
   const antes = actId ? rondaInfo(actId) : null;
   const reg = {
@@ -3021,8 +3051,8 @@ function problemaApp(tipo, mensagem, detalhe = null) {
     LS.set('problemas', l);
   } catch {}
 }
-window.addEventListener('error', (e) => { if (e?.message) problemaApp('erro', e.message, { ficheiro: (e.filename || '').split('/').pop(), linha: e.lineno, coluna: e.colno }); });
-window.addEventListener('unhandledrejection', (e) => { const m = e?.reason?.message || String(e?.reason || ''); if (m && !/Failed to fetch|NetworkError|Load failed/i.test(m)) problemaApp('erro', m); });
+window.addEventListener('error', (e) => { if (e?.message) problemaApp('erro', e.message, { ficheiro: (e.filename || '').split('/').pop(), linha: e.lineno, coluna: e.colno, pilha: String(e.error?.stack || '').slice(0, 600) }); });
+window.addEventListener('unhandledrejection', (e) => { const m = e?.reason?.message || String(e?.reason || ''); if (m && !/Failed to fetch|NetworkError|Load failed/i.test(m)) problemaApp('erro', m, { pilha: String(e?.reason?.stack || '').slice(0, 600) }); });
 // Estado da app junto da sugestão (v112, 26/10/2026): para perceber casos como "o polígono não aparece no meu telefone"
 // sem ter de pedir mais informação a quem enviou.
 function diagApp() {
@@ -3420,7 +3450,7 @@ async function desenharHoje() {
         o.prod.add((S.areas.find((a) => a.id === x.area_id) || {}).produtor || x.area_id); if (x.agua_em && (!o.agua || x.agua_em < o.agua)) o.agua = x.agua_em;
         if (x.pessoas > o.pessoas) o.pessoas = x.pessoas;
         if (!o.ini || x.entrada_em < o.ini) o.ini = x.entrada_em; if (!o.fim || x.saida_em > o.fim) o.fim = x.saida_em; }
-      let eqHtml = `<div class="lin"><span>Registos recebidos</span><b>${r.data.length}</b></div><button class="btn sec" onclick="mudar('painel')">Abrir painel geral</button></div>
+      let eqHtml = `<div class="lin"><span>Regas de hoje recebidas</span><b>${r.data.length}</b></div><button class="btn sec" onclick="mudar('painel')">Abrir painel geral</button></div>
         <div style="overflow-x:auto"><table><tr><th>Activista</th><th>Equipa</th><th class="n">Produtores</th><th class="n">Campos</th><th class="n">Plantas</th><th class="n">% meta</th><th>Tuk-tuk</th><th>Início</th><th>Fim</th><th class="n">Desloc.</th><th class="n">Alertas</th></tr>` +
         Object.entries(g).map(([k, o]) => { const tam = tamanhoEquipa(k), d = deslocacao(o.regs);
           const eq = o.pessoas ? textoEquipa(o.pessoas, tam) : '—';
@@ -3531,18 +3561,20 @@ function equipasDsr() {
 function cartaoDiaSemRega() {
   if (!PODE_REGAR.includes(S.perfil?.papel) || !equipasDsr().length) return '';
   const h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
-  const L = (LS.get('diasSemRega', []) || []).filter((x) => x.data === h || x.data === ontem);
+  const L = (LS.get('diasSemRega', []) || []).filter((x) => diasRecentes(7).includes(x.data));
   return `<div class="cartao" style="border-left:4px solid var(--warn,#b26b00)"><h2 style="margin-top:0">⚠️ <span>Dia sem rega</span></h2>
     <p class="pequeno">O tuk-tuk não chegou, não havia água ou a equipa não pôde regar? Registe aqui o motivo.</p>
-    ${L.map((x) => `<div class="lin" style="display:block"><div><b class="sem-trad">${esc(x.activista || nomeAct(x.activista_id))}</b> · ${x.data === h ? '<span>hoje</span>' : '<span>ontem</span>'}: <span>${nomeMotivoDsr(x.motivo)}</span>${x.todo_dia === false ? ' <span>(parte do dia)</span>' : ''}${x.pendente ? ' · <span>por enviar</span>' : ''}</div>
+    ${L.map((x) => `<div class="lin" style="display:block"><div><b class="sem-trad">${esc(x.activista || nomeAct(x.activista_id))}</b> · ${x.data === h ? '<span>hoje</span>' : x.data === ontem ? '<span>ontem</span>' : fmtData(x.data)}${x.produtor ? ` · <span class="sem-trad">${esc(x.produtor)}</span>` : ''}: <span>${nomeMotivoDsr(x.motivo)}</span>${x.todo_dia === false ? ' <span>(parte do dia)</span>' : ''}${x.pendente ? ' · <span>por enviar</span>' : ''}</div>
       ${x.descricao ? `<div class="pequeno sem-trad">${esc(x.descricao)}</div>` : ''}${x.foto_path ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(x.foto_path)}', '${esc(x.activista || '')}')">📷 Fotografia</button>` : x.foto && x.pendente ? ' <span class="pequeno">📷</span>' : ''}${x.meu !== false ? `<button class="chip" onclick="removerDiaSemRega('${esc(x.id)}')">Remover (engano)</button>` : ''}</div>`).join('')}
     <button class="btn sec" onclick="ecraDiaSemRega()">⚠️ Registar dia sem rega</button></div>`;
 }
+const diasRecentes = (n) => Array.from({ length: n }, (_, i) => new Date(Date.now() - i * 864e5).toLocaleDateString('sv-SE'));
 function ecraDiaSemRega() {
-  const eq = equipasDsr(), h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
+  const eq = equipasDsr();
   folha(`<h2>⚠️ <span>Dia sem rega</span></h2>
     ${eq.length > 1 ? `<label>Equipa (activista)<select id="dsr-act" class="sem-trad"><option value="">—</option>${eq.map((t) => `<option value="${t.id}">${esc(t.nome)}</option>`).join('')}</select></label>` : `<p><b class="sem-trad">${esc(eq[0].nome)}</b></p><input type="hidden" id="dsr-act" value="${eq[0].id}">`}
-    <label>Dia<select id="dsr-dia"><option value="${h}">Hoje</option><option value="${ontem}">Ontem</option></select></label>
+    <label>Dia<select id="dsr-dia">${diasRecentes(7).map((d, i) => `<option value="${d}">${i === 0 ? 'Hoje' : i === 1 ? 'Ontem' : fmtData(d)}</option>`).join('')}</select></label>
+    <p class="pequeno">Pode registar até 7 dias depois.</p>
     <label>Porque não houve rega?</label>
     <div id="dsr-mot">${MOTIVOS_DSR.map(([k, t]) => `<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="radio" name="dsr-m" value="${k}" style="width:auto"> <span>${t}</span></label>`).join('')}</div>
     <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="dsr-todo" checked style="width:auto"> <span>Não houve rega o dia todo</span></label>
@@ -3558,7 +3590,8 @@ async function enviarDiaSemRega(d) {
   let foto = null, caminho = null;
   if (d.foto) { try { foto = await FOTOS.ler('dsr-' + d.id); } catch {} foto = foto || S.fotosMem?.['dsr-' + d.id] || null; }
   if (foto) { caminho = `${S.perfil.id}/dsr-${d.id}.jpg`; const up = await sb.storage.from('rega-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return { error: { message: up.error.message } }; }
-  const r = await sb.rpc('gravar_dia_sem_rega2', { p_id: d.id, p_activista: d.activista_id, p_data: d.data, p_motivo: d.motivo, p_todo_dia: d.todo_dia, p_descricao: d.descricao, p_lat: d.lat, p_lon: d.lon, p_foto: caminho });
+  const r = await sb.rpc('gravar_dia_sem_rega3', { p_id: d.id, p_activista: d.activista_id, p_data: d.data, p_motivo: d.motivo, p_todo_dia: d.todo_dia, p_descricao: d.descricao, p_lat: d.lat, p_lon: d.lon, p_foto: caminho,
+    p_area: d.area_id || null, p_entrada: d.entrada_em || null });
   if (!r.error && foto) { try { await FOTOS.apagar('dsr-' + d.id); } catch {} }
   return r;
 }
@@ -3574,6 +3607,50 @@ async function gravarDiaSemRega() {
   LS.set('diasSemRega', [{ ...d, pendente: true, meu: true }, ...(LS.get('diasSemRega', []) || [])]);
   fecharFolha(); actSync(); sincronizar(true); aviso('Guardado. É enviado quando houver rede.', 'ok');
   if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
+}
+// Entrada marcada mas não houve rega (v118, 27/10/2026, Tec. Shella pelo telefone do Eduardo: "a água não chega no campo e o activista fez
+// foto de entrada logo cedo à espera de material… como registar que não regou?"): a entrada sai de curso e fica um "dia sem rega"
+// ligado a este campo (com a hora da entrada e a fotografia da entrada). Nas regas de teste só se anula a entrada.
+function ecraNaoRegou() {
+  const ent = LS.get('emCurso'); if (!ent) return;
+  const a = S.areas.find((x) => x.id === ent.area_id) || { id: ent.area_id };
+  const conta = souActivista() || porEquipa(a);
+  if (!conta) {
+    if (!confirm('Anular esta entrada (rega de teste)? Não fica nenhum registo.')) return;
+    return anularEntrada(ent, `<div class="msg ok">Entrada anulada.</div>`);
+  }
+  folha(`<h2>🚫 <span>Não houve rega neste campo</span></h2>
+    <p class="pequeno"><span class="sem-trad">${esc(a.produtor || '')} · ${esc(a.pr || a.id)}</span> · <span>Entrada às</span> ${fmtHora(ent.entrada_em)}</p>
+    <label>Porque não houve rega?</label>
+    <div id="nr-mot">${MOTIVOS_DSR.filter(([k]) => k !== 'chuva').map(([k, t]) => `<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="radio" name="nr-m" value="${k}" style="width:auto"> <span>${t}</span></label>`).join('')}</div>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="nr-todo" style="width:auto"> <span>A equipa não vai regar mais nenhum campo hoje</span></label>
+    <label>Observação (obrigatória em «Outro motivo»)<textarea id="nr-obs" rows="2" placeholder="Ex.: esperámos pelo tuk-tuk até às 10:00"></textarea></label>
+    <p class="pequeno"><span>A entrada deixa de estar em curso e fica registado que este campo não foi regado.</span> ${ent.fotos?.entrada ? '<span>A fotografia da entrada fica junta.</span>' : ''}</p>
+    <button class="btn aviso" onclick="gravarNaoRegou()">Guardar: não houve rega</button><button class="btn sec" onclick="abrirFicha('${esc(a.id)}')">Voltar</button>`);
+}
+async function gravarNaoRegou() {
+  const ent = LS.get('emCurso'); if (!ent) return fecharFolha();
+  const a = S.areas.find((x) => x.id === ent.area_id) || { id: ent.area_id };
+  const mot = document.querySelector('input[name="nr-m"]:checked')?.value, obs = $('#nr-obs').value.trim();
+  if (!mot) return alert('Escolha o motivo.');
+  if (mot === 'outro' && obs.length < 3) return alert('Escreva o motivo.');
+  const act = S.perfil.activista_id || a.activista_id;
+  const d = { id: crypto.randomUUID(), activista_id: act, activista: nomeAct(act), data: hojeISO(), motivo: mot, todo_dia: $('#nr-todo').checked, descricao: obs || null,
+    lat: ent.entrada_lat ?? null, lon: ent.entrada_lon ?? null, area_id: a.id, produtor: a.produtor || null, entrada_em: ent.entrada_em, foto: false };
+  if (ent.fotos?.entrada && ent.reg_id) {                  // a fotografia da entrada passa a ser a fotografia deste registo
+    const k = `${ent.reg_id}-entrada`; let b = null;
+    try { b = await FOTOS.ler(k); } catch {} b = b || S.fotosMem?.[k] || null;
+    if (b) { try { await FOTOS.guardar('dsr-' + d.id, b); } catch { (S.fotosMem ||= {})['dsr-' + d.id] = b; } d.foto = true; }
+  }
+  const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), tipo: 'dia_sem_rega', d }); LS.set('filaAlt', f);
+  LS.set('diasSemRega', [{ ...d, pendente: true, meu: true }, ...(LS.get('diasSemRega', []) || [])]);
+  await anularEntrada(ent, `<div class="msg ok">Registado: não houve rega neste campo. É enviado quando houver rede.</div>`);
+  sincronizar(true);
+}
+async function anularEntrada(ent, nota) {
+  for (const t of ['entrada', 'rega', 'saida']) { try { await FOTOS.apagar(`${ent.reg_id}-${t}`); } catch {} }
+  LS.del('emCurso'); LS.del('rascFotoRega'); actSync(); desenharMapa(); desenharLista();
+  abrirFicha(ent.area_id, nota);
 }
 function removerDiaSemRega(id) {
   if (!confirm('Remover este registo (foi um engano)?')) return;

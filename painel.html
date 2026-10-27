@@ -88,6 +88,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .filtro input[type=date]{font:inherit;font-size:13px;color:var(--ink);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px 6px;margin-left:4px}
 .filtro .datas button{border-radius:8px}
 .filtro .legenda{flex-basis:100%;color:var(--ink);font-size:13px;font-weight:600}
+.per-tag{font-size:12px;color:var(--muted);margin:-4px 0 8px}
 </style>
 </head>
 <body>
@@ -130,7 +131,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
   <section class="card sec"><h2>Equipas — rondas</h2>
     <p class="desc">Cada equipa rega toda a sua lista antes de repetir um campo. A duração de cada ronda concluída é o ciclo provisório da comunidade.</p>
     <p class="desc">A produtividade por equipa está na secção <a href="#s-meta">Meta: 140 plantas por pessoa por dia</a>, mais abaixo.</p>
-    <p class="desc" id="d-equipa" hidden>Ronda, progresso e rondas concluídas mostram o estado actual; as restantes colunas referem-se ao período escolhido.</p>
+    <p class="desc" id="d-equipa" hidden><b>Atenção:</b> Ronda, Progresso da ronda e Rondas concluídas mostram o estado de hoje (todas as regas até agora). Dias trab., Plantas, Plantas/pessoa-dia, Min/campo e Espera água contam só o período escolhido.</p>
     <h3 style="font-size:14px;margin:4px 0">Progresso da ronda actual</h3><div id="g-eq-ronda" style="margin-bottom:12px"></div>
     <details><summary>Ver tabela</summary><div class="tabela" id="t-equipa" style="max-height:none"></div></details></section>
 
@@ -140,7 +141,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <details><summary>Ver tabela por dia</summary><div class="tabela" id="t-pde" style="max-height:none"></div></details></section>
 
   <section class="card sec" id="s-meta"><h2>Meta: 140 plantas por pessoa por dia</h2>
-    <p class="desc">% da meta = plantas regadas ÷ (140 × pessoas presentes).</p>
+    <p class="desc">% da meta = plantas regadas ÷ (140 × pessoas presentes). Cada equipa é comparada com a sua própria meta, que depende das pessoas que estiveram presentes em cada dia: uma equipa de 3 pessoas tem meta de 420 plantas por dia, uma de 6 tem 840.</p>
     <div class="grelha dois" style="margin-bottom:12px">
       <div><h3 style="font-size:14px;margin:4px 0">% da meta por dia (todas as equipas)</h3><div id="g-meta-dia"></div></div>
       <div><h3 style="font-size:14px;margin:4px 0">% da meta por equipa no período</h3><div id="g-meta-eq"></div></div>
@@ -199,7 +200,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <div class="tabela" id="t-man-dia" style="max-height:none"></div></section>
 
   <section class="grelha dois sec">
-    <div class="card"><h2>Constrangimentos registados</h2><p class="desc">Número de registos com cada constrangimento.</p><div id="g-constr"></div></div>
+    <div class="card"><h2>Constrangimentos registados</h2><p class="desc">Número de registos com cada constrangimento (marcados pela equipa ao sair de cada campo).</p><div id="g-constr"></div>
+      <details><summary>Ver por campo: comunidade, produtor e equipa</summary><div class="tabela" id="t-constr" style="max-height:none"></div></details></div>
     <div class="card"><h2>Qualidade dos registos</h2><p class="desc">Controlo dos dados recebidos.</p><div id="qualidade"></div></div>
   </section>
 
@@ -217,8 +219,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=117"></script>
-<script src="i18n.js?v=117"></script>
+<script src="i18n-sw.js?v=118"></script>
+<script src="i18n.js?v=118"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -360,6 +362,14 @@ function desenhar() {
     : per.de && per.de === per.ate ? `Dia: ${fmtData(per.de)}`
     : `Período: ${per.de ? fmtData(per.de) : 'início'} a ${per.ate ? fmtData(per.ate) : 'hoje'}`;
   $('#d-equipa').hidden = !filtrado;
+  // v118 (27/10/2026, Valdo: "Aqui não diz a que se refere o período"): cada secção diz o período por baixo do título
+  const txtPer = $('#f-legenda').textContent;
+  document.querySelectorAll('#painel section h2').forEach((h) => {
+    if (h.closest('#s-pl')) return;
+    let t = h.parentElement.querySelector(':scope > .per-tag');
+    if (!t) { t = document.createElement('div'); t.className = 'per-tag'; t.innerHTML = '📅 <span></span>'; h.after(t); }
+    t.querySelector('span').textContent = txtPer;
+  });
   const hc = D.chegada_equipa?.hora_combinada || '06:00';
   $('#d-agua').textContent = `${filtrado ? 'No período escolhido.' : 'Últimos 14 dias.'} Espera = minutos entre a chegada da equipa ao campo e a chegada do tuk-tuk (água). As equipas devem chegar ao campo às ${hc}; atraso = minutos depois das ${hc} na chegada ao 1.º campo do dia.`;
   const pA = pct(D.areas_regadas, u.areas), pV = pct(D.vivas_regadas, u.vivas);
@@ -399,7 +409,7 @@ function desenhar() {
   const ag = eq.filter((e) => e.espera_agua_min != null).sort((a, b) => b.espera_agua_min - a.espera_agua_min);
   barras('#g-agua', ag, { valor: (e) => +e.espera_agua_min, rotulo: (e) => e.nome, texto: (e) => num(e.espera_agua_min) + ' min',
     dicaDe: (e) => [[num(e.espera_agua_min) + ' min', 'de espera média'], [`${e.nome} · ${e.comunidade || ''}`]] });
-  tabela('#t-equipa', [['Equipa (activista)'], ['Comunidade'], ['Ronda'], ['Progresso da ronda'], ['Rondas concluídas (dias)'], ['Dias trab.', 1], ['Plantas', 1], ['Plantas/pessoa-dia', 1], ['Min/campo', 1], ['Espera água (min)', 1]],
+  tabela('#t-equipa', [['Equipa (activista)'], ['Comunidade'], ['Ronda'], ['Progresso da ronda (hoje)'], ['Rondas concluídas (dias)'], ['Dias trab.', 1], ['Plantas', 1], ['Plantas/pessoa-dia', 1], ['Min/campo', 1], ['Espera água (min)', 1]],
     eq.map((e) => {
       const p = pct(e.regadas_ronda, e.lista);
       const conc = (e.rondas_concluidas || []).map((r) => `<span class="chip">R${r.ronda}: ${r.dias} d</span>`).join('') || '<span style="color:var(--muted)">—</span>';
@@ -414,6 +424,13 @@ function desenhar() {
 
   const ct = Object.entries(D.constrangimentos || {}).map(([k, n]) => ({ k, n })).sort((a, b) => b.n - a.n);
   barras('#g-constr', ct, { valor: (c) => c.n, rotulo: (c) => TIPOS[c.k] || c.k, texto: (c) => num(c.n), dicaDe: (c) => [[num(c.n), 'registos'], [TIPOS[c.k] || c.k]] });
+  // v118 (27/10/2026, Valdo: "refere-se a que comunidades? Quem foram os produtores?")
+  const LC = Array.isArray(DCT) ? DCT : [];
+  $('#t-constr').innerHTML = '';
+  if (LC.length) tabela('#t-constr', [['Data'], ['Constrangimento'], ['Comunidade'], ['Produtor'], ['Campo'], ['Equipa (activista)'], ['Plantas regadas', 1], ['Plantas do campo', 1], ['Observação']],
+    LC.map((x) => [fmtData(x.data), TIPOS[x.tipo] || esc(x.tipo), esc(x.comunidade || '') + (x.zona ? ' › ' + esc(x.zona) : ''), `<span class="sem-trad">${esc(x.produtor || '')}</span>`, esc(x.area_id || ''),
+      esc(x.activista || ''), num(x.plantas_regadas || 0), x.plantas_campo != null ? num(x.plantas_campo) : '—', `<span class="sem-trad">${esc(x.descricao || '')}</span>`]));
+  else $('#t-constr').innerHTML = '<div class="vazio">Sem constrangimentos no período.</div>';
 
   $('#qualidade').innerHTML = `<table><tbody>
     <tr><td>Regas de campo recebidas</td><td class="n">${num(D.registos)}</td></tr>
@@ -595,7 +612,7 @@ function desenharPlantasMarcadas() {
 }
 // ---------- testes por pessoa (v91, 21/10/2026, Valdo: ver quem já testou e quem ainda não) ----------
 // Ao cliente o servidor devolve null e a secção fica escondida.
-let DTP = null, DMN = null, DSR = null;
+let DTP = null, DMN = null, DSR = null, DCT = null;
 // medições com a vara (v106, 23/10/2026, Valdo): só gestor, director e M&E (o servidor devolve null aos outros)
 let DMD = null;
 const cmTxt = (v) => (v == null ? '—' : v >= 100 ? `${(v / 100).toLocaleString(LOC, { maximumFractionDigits: 2 })} m` : `${Math.round(v)} cm`);
@@ -667,8 +684,8 @@ function desenharDiasSemRega() {
   $('#k-dsr').innerHTML = kpi('Dias de equipa sem rega', num(L.filter((x) => x.todo_dia !== false).length), `${num(L.filter((x) => x.todo_dia === false).length)} com a rega parada a meio do dia`) +
     ord.slice(0, 3).map(([m, n]) => kpi(MOT_DSR[m] || m, num(n), 'registos')).join('');
   if (!L.length) { $('#t-dsr').innerHTML = '<div class="vazio">Nenhum dia sem rega registado no período.</div>'; return; }
-  tabela('#t-dsr', [['Data'], ['Equipa (activista)'], ['Comunidade'], ['Motivo'], ['Dia todo?'], ['Observação'], ['Regas no dia', 1], ['Registado por'], ['Fotografia']],
-    L.map((x) => [fmtData(x.data), esc(x.activista || ''), esc(x.comunidade || ''), MOT_DSR[x.motivo] || esc(x.motivo), x.todo_dia === false ? 'Parte do dia' : 'Dia todo',
+  tabela('#t-dsr', [['Data'], ['Equipa (activista)'], ['Comunidade'], ['Produtor'], ['Motivo'], ['Dia todo?'], ['Observação'], ['Regas no dia', 1], ['Registado por'], ['Fotografia']],
+    L.map((x) => [fmtData(x.data), esc(x.activista || ''), esc(x.comunidade || ''), x.produtor ? `<span class="sem-trad">${esc(x.produtor)}</span> · ${esc(x.area_id || '')}${x.entrada_em ? ` <span style="color:var(--muted)">(${new Date(x.entrada_em).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })})</span>` : ''}` : '—', MOT_DSR[x.motivo] || esc(x.motivo), x.todo_dia === false ? 'Parte do dia' : 'Dia todo',
       `<span class="sem-trad">${esc(x.descricao || '')}</span>`, num(x.regas || 0), esc(x.quem || ''), x.foto_path ? `<button class="foto-btn" type="button" onclick="verFotoBalde('rega-fotos', '${esc(x.foto_path)}')">📷</button>` : '—']));
 }
 async function verFotoBalde(balde, caminho) {
@@ -756,7 +773,8 @@ async function buscarPeriodo(p) {
   const [de, ate] = datasDe(p);
   const [r, mon, pde, tem, zon, chu, tp, mn, md, dsr] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate }), sb.rpc('painel_testes', { p_de: de, p_ate: ate }), sb.rpc('painel_manutencao', { p_de: de, p_ate: ate }), sb.rpc('painel_medicoes', { p_de: de, p_ate: ate }), sb.rpc('dias_sem_rega_lista', { p_de: de, p_ate: ate })]);
   if (r.error) return null;
-  return { D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
+  const ct = await sb.rpc('painel_constrangimentos', { p_de: de, p_ate: ate });
+  return { DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
 }
 let aGuardar = false;
 async function guardarOutrosPeriodos() {
@@ -779,7 +797,7 @@ function semPeriodoGuardado() {
 async function carregar(mudou = false) {
   const c = (!D || mudou) && lerCache();
   if (mudou && !c && !navigator.onLine) { semPeriodoGuardado(); return; }
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
@@ -789,6 +807,7 @@ async function carregar(mudou = false) {
   const pMn = sb.rpc('painel_manutencao', { p_de: de, p_ate: ate });
   const pMd = sb.rpc('painel_medicoes', { p_de: de, p_ate: ate });
   const pDsr = sb.rpc('dias_sem_rega_lista', { p_de: de, p_ate: ate });
+  const pCt = sb.rpc('painel_constrangimentos', { p_de: de, p_ate: ate });
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   const rec = await pRec; DR = rec.error ? null : rec.data;
   const pl = await pPl; DPL = pl.error ? null : pl.data;
@@ -796,6 +815,7 @@ async function carregar(mudou = false) {
   const mn = await pMn; DMN = mn.error ? null : mn.data;
   const md = await pMd; DMD = md.error ? null : md.data;
   const ds = await pDsr; DSR = ds.error ? null : ds.data;
+  const ct = await pCt; DCT = ct.error ? null : ct.data;
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
@@ -807,7 +827,7 @@ async function carregar(mudou = false) {
     const hoje = new Date().toLocaleDateString('sv-SE'), suf = JSON.stringify(P);
     Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && k.endsWith(suf) && !k.startsWith('rega.painel.cache.' + hoje)).forEach((k) => localStorage.removeItem(k));
     Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && k.slice(18, 28) < new Date(Date.now() - 14 * 864e5).toLocaleDateString('sv-SE')).forEach((k) => localStorage.removeItem(k));
-    localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, em: Date.now() }));
+    localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, em: Date.now() }));
   } catch {}
   setTimeout(() => guardarOutrosPeriodos().catch(() => {}), 1500);
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
