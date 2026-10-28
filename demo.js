@@ -279,6 +279,14 @@
     painel_tempos_equipa: (a) => DB.activistas.map((t) => { const l = reais().filter((r) => r.activista_id === t.id && naData(r.data, a.p_de, a.p_ate)).sort((x, y) => x.entrada_em.localeCompare(y.entrada_em)); if (!l.length) return null;
       const d = []; for (let i = 1; i < l.length; i++) if (l[i].data === l[i - 1].data) d.push(mins(l[i - 1].saida_em, l[i].entrada_em));
       return { equipa: t.nome, rega_min: media(l.map((r) => mins(r.entrada_em, r.saida_em))), deslocacao_min: media(d), deslocacoes: d.length }; }).filter(Boolean),
+    painel_tempos_equipa2: (a) => { const regas = [], eqs = [], med = (v) => { const l = v.filter((x) => x != null).sort((x, y) => x - y); return l.length ? (l.length % 2 ? l[(l.length - 1) / 2] : (l[l.length / 2 - 1] + l[l.length / 2]) / 2) : null; };
+      DB.activistas.forEach((t) => { const l = reais().filter((r) => r.activista_id === t.id && naData(r.data, a.p_de, a.p_ate)).sort((x, y) => x.entrada_em.localeCompare(y.entrada_em)); if (!l.length) return;
+        const rs = l.map((r, i) => { const ar = area(r.area_id), ok = r.agua_em && r.agua_em > r.entrada_em && r.agua_em <= r.saida_em, esp = ok ? mins(r.entrada_em, r.agua_em) : 0, rg = mins(ok ? r.agua_em : r.entrada_em, r.saida_em), ant = i && l[i - 1].data === r.data ? l[i - 1] : null;
+          return { id: r.id, data: r.data, equipa: t.nome, area_id: r.area_id, produtor: ar.produtor, comunidade: ar.comunidade, vivas: ar.vivas, instaladas: ar.instaladas, area_m2: null, plantas: r.plantas_regadas, pessoas: r.pessoas, entrada_em: r.entrada_em, agua_em: r.agua_em, saida_em: r.saida_em,
+            espera_min: esp, rega_min: rg, ritmo: r.pessoas > 0 && rg > 0 ? Math.round(r.plantas_regadas / (r.pessoas * rg / 60)) : null, desloc_min: ant ? mins(ant.saida_em, r.entrada_em) : null, dist_m: null }; });
+        regas.push(...rs); const d = rs.filter((r) => r.desloc_min != null && r.desloc_min <= 60);
+        eqs.push({ equipa: t.nome, regas: rs.length, plantas: rs.reduce((s2, r) => s2 + r.plantas, 0), plantas_campo: Math.round(rs.reduce((s2, r) => s2 + r.plantas, 0) / rs.length), espera_med: med(rs.map((r) => r.espera_min)), rega_med: med(rs.map((r) => r.rega_min)), ritmo_med: med(rs.map((r) => r.ritmo)), desloc_med: med(d.map((r) => r.desloc_min)), desloc_n: d.length, dist_med: null, pausas: rs.filter((r) => r.desloc_min > 60).length }); });
+      return { equipas: eqs, regas }; },
     painel_zonas: () => [],
     painel_chuva: (a) => DB.chuva.filter((c) => naData(c.data, a.p_de, a.p_ate)).map((c) => ({ data: c.data, comunidade: c.comunidade, zona: c.zona, mm: c.mm, registos: 1, fotos: papel === 'cliente' ? undefined : [{ path: c.foto, mm: c.mm, lida_em: c.lida_em, activista: c.activista }] })),
     painel_constrangimentos: (a) => DB.constr.map((c) => { const r = DB.registos.find((x) => x.id === c.registo_id); if (!r || r.teste || !naData(r.data, a.p_de, a.p_ate)) return null; const ar = area(r.area_id);

@@ -161,9 +161,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <div class="tabela" id="t-meta" style="max-height:none"></div></section>
 
   <section class="card sec"><h2>Tempo por campo e deslocação entre campos</h2>
-    <p class="desc">Médias por equipa no período. Rega = da entrada à saída do campo. Deslocação = da saída de um campo à entrada no seguinte, no mesmo dia.</p>
-    <h3 style="font-size:14px;margin:4px 0">Deslocação média entre campos (min)</h3><div id="g-tempos"></div>
-    <details><summary>Ver tabela</summary><div class="tabela" id="t-tempos"></div></details></section>
+    <p class="desc">Por equipa no período (valor do meio de cada equipa, a mediana, para um dia fora do normal não estragar o valor). Espera = da entrada no campo à chegada da água. Rega = da chegada da água à saída (sem a espera). Plantas por pessoa por hora = plantas regadas ÷ (pessoas × horas de rega). Deslocação = da saída de um campo à entrada no seguinte, no mesmo dia; mais de 60 min conta como pausa e fica de fora.</p>
+    <h3 style="font-size:14px;margin:4px 0">Plantas regadas por pessoa por hora</h3><div id="g-tempos"></div>
+    <details><summary>Ver tabela</summary><div class="tabela" id="t-tempos"></div></details>
+    <details><summary>Ver por campo</summary><p class="desc" style="margin-top:8px">⚠️ a vermelho: regou mais plantas do que as que o campo tem na base, ou ritmo 3 vezes acima ou abaixo do habitual da própria equipa. Área calculada do limite do campo.</p><div class="tabela" id="t-tempos-c"></div></details></section>
 
   <section class="card sec"><h2>Chegada da água (tuk-tuk) por equipa</h2>
     <p class="desc" id="d-agua">Últimos 14 dias. Espera = minutos entre a entrada no campo e a chegada da água.</p>
@@ -232,10 +233,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=130"></script>
-<script src="i18n.js?v=130"></script>
+<script src="i18n-sw.js?v=131"></script>
+<script src="i18n.js?v=131"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=130"></script>
+<script src="demo.js?v=131"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -571,13 +572,27 @@ function desenharMeta() {
 }
 function desenharTempos() {
   if (!$('#t-tempos')) return;
-  const L = Array.isArray(DT) ? DT : [];
-  if (!L.length) { $('#t-tempos').innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
-  const lt = L.filter((t) => t.deslocacao_min != null).sort((a, b) => b.deslocacao_min - a.deslocacao_min);
-  barras('#g-tempos', lt, { valor: (t) => +t.deslocacao_min, rotulo: (t) => t.equipa, texto: (t) => num(t.deslocacao_min) + ' min',
-    dicaDe: (t) => [[num(t.deslocacao_min) + ' min', 'de deslocação média'], [t.equipa], [`Rega por campo: ${t.rega_min != null ? num(t.rega_min) + ' min' : '—'}`], [`${num(t.deslocacoes)} deslocações medidas`]] });
-  tabela('#t-tempos', [['Equipa'], ['Rega por campo (min)', 1], ['Deslocação entre campos (min)', 1], ['Deslocações medidas', 1]],
-    L.map((t) => [esc(t.equipa), t.rega_min != null ? num(t.rega_min) : '—', t.deslocacao_min != null ? num(t.deslocacao_min) : '—', num(t.deslocacoes)]));
+  // v131 (28/10/2026, Valdo: "Olhando para esses números não faz sentido"): espera e rega separadas, plantas por pessoa por hora, medianas, pausas à parte e cada rega por campo
+  const T = DT && !Array.isArray(DT) ? DT : null, L = T ? T.equipas || [] : [];
+  if (!L.length) { $('#t-tempos').innerHTML = $('#t-tempos-c').innerHTML = '<div class="vazio">Ainda sem registos.</div>'; $('#g-tempos').innerHTML = ''; return; }
+  const n1 = (v) => (v == null ? '—' : num(v));
+  const lr = L.filter((t) => t.ritmo_med != null).sort((a, b) => b.ritmo_med - a.ritmo_med);
+  barras('#g-tempos', lr, { valor: (t) => +t.ritmo_med, rotulo: (t) => t.equipa, texto: (t) => num(t.ritmo_med),
+    dicaDe: (t) => [[num(t.ritmo_med), 'plantas por pessoa por hora'], [t.equipa], [`${num(t.regas)} regas · ${num(t.plantas_campo)} plantas por campo`]] });
+  tabela('#t-tempos', [['Equipa'], ['Regas', 1], ['Plantas por campo', 1], ['Espera pela água (min)', 1], ['Rega (min)', 1], ['Plantas por pessoa por hora', 1], ['Deslocação (min)', 1], ['Distância entre campos (m)', 1], ['Deslocações medidas', 1], ['Pausas de mais de 60 min', 1]],
+    L.map((t) => [esc(t.equipa), num(t.regas), n1(t.plantas_campo), n1(t.espera_med), n1(t.rega_med), n1(t.ritmo_med), n1(t.desloc_med), n1(t.dist_med), num(t.desloc_n), num(t.pausas)]));
+  const med = Object.fromEntries(L.map((t) => [t.equipa, t.ritmo_med])), hm = (x) => (x ? new Date(x).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Maputo' }) : '');
+  const vermelho = (t) => `<span style="color:var(--erro,#c62828);font-weight:600">${t}</span>`;
+  tabela('#t-tempos-c', [['Data'], ['Equipa'], ['Entrada – saída'], ['Campo'], ['Área (ha)', 1], ['Plantas na base', 1], ['Plantas regadas', 1], ['Pessoas', 1], ['Espera (min)', 1], ['Rega (min)', 1], ['Plantas por pessoa por hora', 1], ['Deslocação antes (min · m)', 1]],
+    (T.regas || []).map((r) => {
+      const base = (r.vivas > 0 ? r.vivas : r.instaladas) || 0, m = med[r.equipa];
+      const mais = base > 0 && r.plantas > base, ritmoFora = r.ritmo != null && m > 0 && (r.ritmo > 3 * m || r.ritmo < m / 3);
+      return [fmtData(r.data), esc(r.equipa), `${hm(r.entrada_em)} – ${hm(r.saida_em)}`, `<span class="sem-trad">${esc(r.produtor || '')}</span> · ${esc(r.area_id)}`,
+        r.area_m2 ? (r.area_m2 / 10000).toLocaleString(LOC, { maximumFractionDigits: 2 }) : '—', num(base),
+        mais ? vermelho(`⚠️ ${num(r.plantas)}`) : num(r.plantas), r.pessoas != null ? num(r.pessoas) : '—', n1(r.espera_min), n1(r.rega_min),
+        r.ritmo == null ? '—' : ritmoFora ? vermelho(`⚠️ ${num(r.ritmo)}`) : num(r.ritmo),
+        r.desloc_min == null ? '—' : `${r.desloc_min > 60 ? vermelho(num(r.desloc_min)) : num(r.desloc_min)}${r.dist_m != null ? ' · ' + num(r.dist_m) : ''}`];
+    }));
 }
 
 // ---------- fotografia do pluviómetro: só se descarrega quando se toca (não atrasa o painel) ----------
@@ -852,7 +867,7 @@ function semRedeSemPainel() {
 const PERIODOS_FIXOS = ['tudo', 'hoje', 'ontem', '7', '30'].map((t) => ({ tipo: t, de: null, ate: null }));
 async function buscarPeriodo(p) {
   const [de, ate] = datasDe(p);
-  const [r, mon, pde, tem, zon, chu, tp, mn, md, dsr] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate }), sb.rpc('painel_testes', { p_de: de, p_ate: ate }), sb.rpc('painel_manutencao', { p_de: de, p_ate: ate }), sb.rpc('painel_medicoes', { p_de: de, p_ate: ate }), sb.rpc('dias_sem_rega_lista', { p_de: de, p_ate: ate })]);
+  const [r, mon, pde, tem, zon, chu, tp, mn, md, dsr] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa2', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate }), sb.rpc('painel_testes', { p_de: de, p_ate: ate }), sb.rpc('painel_manutencao', { p_de: de, p_ate: ate }), sb.rpc('painel_medicoes', { p_de: de, p_ate: ate }), sb.rpc('dias_sem_rega_lista', { p_de: de, p_ate: ate })]);
   if (r.error) return null;
   const ct = await sb.rpc('painel_constrangimentos', { p_de: de, p_ate: ate });
   const mc = await sb.rpc('painel_monitoria_campos', { p_de: de, p_ate: ate });
@@ -891,7 +906,7 @@ async function carregar(mudou = false) {
   const pDsr = sb.rpc('dias_sem_rega_lista', { p_de: de, p_ate: ate });
   const pCt = sb.rpc('painel_constrangimentos', { p_de: de, p_ate: ate });
   const pMc = sb.rpc('painel_monitoria_campos', { p_de: de, p_ate: ate });
-  const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
+  const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa2', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   const rec = await pRec; DR = rec.error ? null : rec.data;
   const pl = await pPl; DPL = pl.error ? null : pl.data;
   const tp = await pTp; DTP = tp.error ? null : tp.data;
