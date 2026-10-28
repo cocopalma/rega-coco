@@ -219,8 +219,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=121"></script>
-<script src="i18n.js?v=121"></script>
+<script src="i18n-sw.js?v=122"></script>
+<script src="i18n.js?v=122"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 'use strict';
@@ -566,11 +566,13 @@ function desenharRecontagens() {
     kpi('Plantas vivas nos campos validados', val.length ? num(depois) : '—', val.length ? `antes: ${num(antes)} · diferença: ${depois - antes > 0 ? '+' : ''}${num(depois - antes)} · mortas contadas: ${num(mortas)}` : 'sem recontagens validadas');
   const fb = (c, t) => (c ? `<button class="foto-btn" onclick="verFotoRec('${esc(c).replace(/'/g, '&#39;')}')" title="${t}">📷 ${t}</button>` : '');
   const foto = (r) => fb(r.foto_campo_path, 'Campo') + (r.foto_campo_path && r.foto_path ? ' ' : '') + fb(r.foto_path, 'Declaração');
-  tabela('#t-rec', [['Campo'], ['Produtor'], ['Comunidade'], ['Motivo'], ['Pedida'], ['Oficial'], ['Estado'], ['Vivas antes', 1], ['Vivas contadas', 1], ['Mortas contadas', 1], ['Validada'], ['Fotografias']],
+  tabela('#t-rec', [['Campo'], ['Produtor'], ['Comunidade'], ['Motivo'], ['Pedida'], ['Oficial'], ['Estado'], ['Vivas antes', 1], ['Vivas contadas', 1], ['Mortas contadas', 1], ['NAVUNA'], ['Validada'], ['Fotografias']],
     L.map((r) => [esc(r.area_id), esc(r.produtor || ''), esc(r.comunidade || ''), esc(r.motivo || ''), fmtData(diaDe(r.pedido_em)), esc(r.oficial || '—'), ESTADO_REC[r.estado] || esc(r.estado),
-      r.vivas_antes != null ? num(r.vivas_antes) : (r.estado === 'validada' ? '—' : num(r.vivas_campo)), r.vivas != null ? num(r.vivas) : '—', r.mortas != null ? num(r.mortas) : '—',
+      r.vivas_antes != null ? num(r.vivas_antes) : (r.estado === 'validada' ? '—' : num(r.vivas_campo)), r.vivas != null ? num(r.vivas) : '—', r.mortas != null ? num(r.mortas) : '—', navunaRec(r),
       r.validada_em ? fmtData(diaDe(r.validada_em)) : '—', foto(r)]));
 }
+// v122: o oficial marca «Já registei no NAVUNA» ao registar a contagem na app
+const navunaRec = (r) => (!['enviada', 'validada'].includes(r.estado) ? '—' : r.navuna ? '✓ Registada' : 'Não marcada');
 async function verFotoRec(caminho) {
   const m = document.createElement('div');
   m.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px;color:#fff;text-align:center';
@@ -581,12 +583,12 @@ async function verFotoRec(caminho) {
 // tabela para o Excel: separador ";" e BOM, para o Excel em português abrir com as colunas e os acentos certos
 function descarregarRec() {
   const L = linhasRec(), cel = (v) => { const t = String(v ?? ''); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
-  const cab = ['Campo', 'PR', 'Produtor', 'Comunidade', 'Motivo', 'Pedida em', 'Oficial', 'Estado', 'Plantas instaladas', 'Vivas antes', 'Vivas contadas', 'Mortas contadas', 'Contada em', 'Validada em', 'Motivo da recusa', 'Latitude', 'Longitude', 'Fotografia no campo (produtor e oficial)', 'Fotografia da declaração'];
+  const cab = ['Campo', 'PR', 'Produtor', 'Comunidade', 'Motivo', 'Pedida em', 'Oficial', 'Estado', 'Plantas instaladas', 'Vivas antes', 'Vivas contadas', 'Mortas contadas', 'Registada no NAVUNA', 'Contada em', 'Validada em', 'Motivo da recusa', 'Latitude', 'Longitude', 'Fotografia no campo (produtor e oficial)', 'Fotografia da declaração'];
   const dt = (t) => (t ? new Date(t).toLocaleString('pt-PT', { timeZone: 'Africa/Maputo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '') : '');
   const T = (x) => (window.trEN ? window.trEN(x) : x);   // cabeçalhos e estados na língua escolhida
   const linhas = L.map((r) => [r.area_id, r.pr, r.produtor, r.comunidade, r.motivo, dt(r.pedido_em), r.oficial, ESTADO_REC[r.estado] || r.estado, r.instaladas,
-    r.vivas_antes ?? (r.estado === 'validada' ? '' : r.vivas_campo), r.vivas, r.mortas, dt(r.contada_em), dt(r.validada_em), r.recusa_motivo, r.lat, r.lon, r.foto_campo_path ? 'sim' : 'não', r.foto_path ? 'sim' : 'não']);
-  const csv = '\ufeff' + [cab.map(T), ...linhas.map((l) => { l[7] = T(l[7]); l[17] = T(l[17]); l[18] = T(l[18]); return l; })].map((l) => l.map(cel).join(';')).join('\r\n');
+    r.vivas_antes ?? (r.estado === 'validada' ? '' : r.vivas_campo), r.vivas, r.mortas, ['enviada', 'validada'].includes(r.estado) ? (r.navuna ? 'sim' : 'não') : '', dt(r.contada_em), dt(r.validada_em), r.recusa_motivo, r.lat, r.lon, r.foto_campo_path ? 'sim' : 'não', r.foto_path ? 'sim' : 'não']);
+  const csv = '\ufeff' + [cab.map(T), ...linhas.map((l) => { l[7] = T(l[7]); l[12] = T(l[12]); l[18] = T(l[18]); l[19] = T(l[19]); return l; })].map((l) => l.map(cel).join(';')).join('\r\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = `Rega_Coco_recontagens_${diaMaputo().replace(/-/g, '')}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }

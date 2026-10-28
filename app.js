@@ -2750,6 +2750,7 @@ function cartaoRecontagem(a) {
   if (['encaminhada', 'recusada'].includes(r.estado) && r.oficial_entrou === false) h += `<div class="msg info">⚠️ ${oficial} ainda não entrou na app. O pedido só chega dentro da app: avise-o por WhatsApp ou chamada.</div>`;
   else if (r.estado === 'recusada') h += `<div class="lin"><span>Estado</span><b>Recusada pelo M&E: à espera de nova contagem de ${oficial}</b></div>${papel === 'me' ? `<p class="pequeno">Motivo da recusa: ${esc(r.recusa_motivo || '')}</p>` : ''}`;
   else if (r.estado === 'enviada' && papel === 'me') h += `<div class="lin"><span>Contada por</span><b>${oficial} a ${dataCurta(r.contada_em)}</b></div>${nums}
+      <div class="lin"><span>NAVUNA</span><b>${r.navuna ? '✓ Registada' : 'Não marcada'}</b></div>
       ${a.vivas != null ? `<div class="lin"><span>Plantas vivas na base</span><b>${num(a.vivas)}</b></div>` : ''}
       <div class="lin"><span>Local da contagem</span><b>${localContagem(r, a)}</b></div>
       <div class="chips">${foto || '<span class="pequeno">Sem fotografias.</span>'}</div>
@@ -2896,14 +2897,16 @@ function ecraRecontar(rid, rasc) {
     <img id="ro-${t}-prev" alt="" style="display:none;width:100%;max-height:200px;object-fit:contain;border-radius:10px;margin-top:8px">`;
   folha(`<h2>📋 Recontagem das plantas</h2>${rasc?.camara ? AVISO_CAMARA : ''}<p class="pequeno">${esc(a.produtor || r.produtor || '')} · ${esc(a.pr || r.pr || '')} · ${esc(a.comunidade || r.comunidade || '')}</p>
     <div class="cartao"><div class="lin"><span>Motivo</span><b>${esc(r.motivo)}</b></div>${r.estado === 'recusada' ? `<div class="msg erro">Recusada pelo M&E: ${esc(r.recusa_motivo || '')}</div>` : ''}</div>
+    <div class="msg info">Registe primeiro a contagem no NAVUNA. Depois registe aqui os mesmos números.</div>
     <label>Plantas vivas contadas<input id="ro-vivas" type="number" inputmode="numeric" min="0" value="${ant?.vivas ?? ''}"></label>
     <label>Plantas mortas contadas<input id="ro-mortas" type="number" inputmode="numeric" min="0" value="${ant?.mortas ?? ''}"></label>
     ${bloco('campo')}${bloco('decl')}
     <p class="pequeno">A app guarda também o local (GPS) onde regista. Funciona sem rede: é enviada quando houver rede.</p>
+    <label style="display:flex;gap:8px;align-items:flex-start"><input id="ro-navuna" type="checkbox" style="width:auto" ${ant?.navuna ? 'checked' : ''}> <span>Já registei esta contagem no NAVUNA (obrigatório)</span></label>
     <div id="ro-msg"></div><button class="btn" id="ro-ok">Guardar</button><button class="btn sec" onclick="LS.del('rascRec');abrirFicha('${esc(r.area_id)}')">Cancelar</button>`);
-  if (rasc) { if (rasc.vivas != null) $('#ro-vivas').value = rasc.vivas; if (rasc.mortas != null) $('#ro-mortas').value = rasc.mortas; }
-  const guardar = () => rascGuardar('rascRec', { perfil: S.perfil?.id, rid, camara: false, vivas: $('#ro-vivas').value, mortas: $('#ro-mortas').value, fotos: { ...S.recFotos } });
-  ['#ro-vivas', '#ro-mortas'].forEach((q) => $(q).addEventListener('input', guardar)); guardar();
+  if (rasc) { if (rasc.vivas != null) $('#ro-vivas').value = rasc.vivas; if (rasc.mortas != null) $('#ro-mortas').value = rasc.mortas; if (rasc.navuna) $('#ro-navuna').checked = true; }
+  const guardar = () => rascGuardar('rascRec', { perfil: S.perfil?.id, rid, camara: false, vivas: $('#ro-vivas').value, mortas: $('#ro-mortas').value, navuna: $('#ro-navuna').checked, fotos: { ...S.recFotos } });
+  ['#ro-vivas', '#ro-mortas', '#ro-navuna'].forEach((q) => $(q).addEventListener('input', guardar)); $('#ro-navuna').addEventListener('change', guardar); guardar();
   const mostrar = (t, f) => { const img = $(`#ro-${t}-prev`); if (!img) return; if (f) { img.src = URL.createObjectURL(f); img.style.display = ''; $(`#ro-${t}-ok`).textContent = ''; } else img.style.display = 'none'; };
   for (const t of ['campo', 'decl']) {
     if (S.recFotos[t]) lerFotoRec(recKey(rid, t, true)).then((f) => { if (f) mostrar(t, f); else { S.recFotos[t] = false; guardar(); } });
@@ -2918,6 +2921,8 @@ async function gravarRecontagem(rid) {
   if (m === '' || !(+m >= 0) || !Number.isInteger(+m)) return erro('Escreva quantas plantas mortas contou (0 se nenhuma).');
   if (!S.recFotos.campo && !S.recFotosAnt.campo) return erro('Tire a fotografia no campo, com o produtor e o oficial de M&E.');
   if (!S.recFotos.decl && !S.recFotosAnt.decl) return erro('Tire a fotografia da declaração de contagem.');
+  // v122 (28/10/2026, Valdo): primeiro no NAVUNA, depois na app
+  if (!$('#ro-navuna').checked) return erro('Registe primeiro a contagem no NAVUNA e marque «Já registei esta contagem no NAVUNA».');
   $('#ro-ok').disabled = true; $('#ro-msg').innerHTML = '<div class="msg info">A ler o GPS…</div>';
   let g = null; try { g = await lerGPS(); } catch {}
   for (const t of ['campo', 'decl']) if (S.recFotos[t]) {                       // do rascunho para a fotografia da contagem
@@ -2925,7 +2930,7 @@ async function gravarRecontagem(rid) {
     if (!f) { $('#ro-ok').disabled = false; return erro(t === 'campo' ? 'A fotografia no campo perdeu-se no telefone. Tire-a de novo.' : 'A fotografia da declaração perdeu-se no telefone. Tire-a de novo.'); }
     await guardarFotoRec(recKey(rid, t, false), f); FOTOS.apagar(recKey(rid, t, true)).catch(() => {});
   }
-  const x = { id: rid, area_id: r.area_id, vivas: +v, mortas: +m, em: new Date().toISOString(), foto: true, fotoCampo: true,
+  const x = { id: rid, area_id: r.area_id, vivas: +v, mortas: +m, em: new Date().toISOString(), foto: true, fotoCampo: true, navuna: true,
     lat: g ? g.latitude : null, lon: g ? g.longitude : null, precisao: g && g.accuracy != null ? Math.round(g.accuracy) : null };
   LS.set('filaRec', [...filaRec().filter((y) => y.id !== rid), x]); LS.del('rascRec');
   actSync(); sincronizar(true);
@@ -2942,7 +2947,9 @@ async function enviarRecontagens() {
     }
     const cd = `${S.perfil.id}/${x.id}.jpg`, cc = `${S.perfil.id}/${x.id}-campo.jpg`;
     for (const [c, f] of [[cc, fc], [cd, fd]]) { const up = await sb.storage.from('recontagem-fotos').upload(c, f, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
-    const r = await sb.rpc('enviar_recontagem2', { p_id: x.id, p_vivas: x.vivas, p_mortas: x.mortas, p_foto: cd, p_foto_campo: cc, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao, p_em: x.em });
+    // contagens guardadas por versões anteriores (sem a marca do NAVUNA) continuam pela enviar_recontagem2
+    const r = x.navuna ? await sb.rpc('enviar_recontagem3', { p_id: x.id, p_vivas: x.vivas, p_mortas: x.mortas, p_foto: cd, p_foto_campo: cc, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao, p_em: x.em, p_navuna: true })
+      : await sb.rpc('enviar_recontagem2', { p_id: x.id, p_vivas: x.vivas, p_mortas: x.mortas, p_foto: cd, p_foto_campo: cc, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao, p_em: x.em });
     if (r.error && !r.error.code) return r.error.message;
     if (r.error) aviso(`Recontagem não gravada: ${r.error.message}`, 'erro');
     LS.set('filaRec', filaRec().filter((y) => y.id !== x.id));
