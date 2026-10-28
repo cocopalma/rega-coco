@@ -2800,7 +2800,8 @@ async function oficiais() {
 const nomeOficial = (id) => ((S.oficiais || LS.get('oficiais', []) || []).find((o) => o.id === id) || {}).nome || null;
 async function opcoesOficiais(sel, comVazio) {
   const l = await oficiais();
-  return (comVazio ? '<option value="">(encaminhar depois)</option>' : '') + (l.length ? l.map((o) => `<option value="${o.id}" ${o.id === sel ? 'selected' : ''}>${esc(o.nome)}${o.entrou === false ? ' — ainda não entrou na app' : ''}</option>`).join('')
+  // v132 (28/10/2026, Valdo: "Permita também que eu possa enviar para a Kathleen/Edilson, para eles enviarem para os oficiais"): o gestor vê claro que pode deixar o pedido com o M&E
+  return (comVazio ? `<option value="">${S.perfil?.papel === 'me' ? '(encaminhar depois)' : 'Enviar ao M&E, que o encaminha a um oficial'}</option>` : '') + (l.length ? l.map((o) => `<option value="${o.id}" ${o.id === sel ? 'selected' : ''}>${esc(o.nome)}${o.entrou === false ? ' — ainda não entrou na app' : ''}</option>`).join('')
     : (comVazio ? '' : `<option value="">${navigator.onLine ? 'Ainda não há oficiais de M&E com acesso' : 'Sem a lista dos oficiais no telefone: abra com rede uma vez'}</option>`));
 }
 const notaFila = () => (navigator.onLine ? '' : '<br><span class="pequeno">Guardado no telefone: é enviado quando houver rede.</span>');
@@ -2815,7 +2816,7 @@ async function ecraPedirRecontagem(id) {
     if (recontagemDe(id) && recontagemDe(id).estado !== 'validada') { $('#pr-msg').innerHTML = '<div class="msg erro">Já há uma recontagem em curso neste campo</div>'; return; }
     const of = $('#pr-of')?.value || null;
     porNaFilaRecG({ op: 'pedir', id: crypto.randomUUID(), area_id: id, motivo: m, oficial: of, oficial_nome: of ? nomeOficial(of) : null });
-    abrirFicha(id, `<div class="msg ok">${of ? 'Recontagem pedida e encaminhada.' : 'Recontagem pedida.'}${notaFila()}</div>`); actHoje();
+    abrirFicha(id, `<div class="msg ok">${of ? 'Recontagem pedida e encaminhada.' : S.perfil.papel === 'me' ? 'Recontagem pedida.' : 'Recontagem pedida. Fica com o M&E para encaminhar a um oficial.'}${notaFila()}</div>`); actHoje();
   };
 }
 // pedir várias recontagens de uma vez, sem abrir a ficha de cada campo (18/10/2026, Valdo)

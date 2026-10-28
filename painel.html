@@ -44,6 +44,7 @@ h1{margin:2px 0 0;font-size:26px;letter-spacing:-.01em}
 #kpis .kpi .sub{font-size:11.5px;line-height:1.3}
 #kpis .barra{margin-top:6px}
 @media (max-width:900px){#kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#kpis .card{padding:8px 10px}#kpis .kpi .val{font-size:20px}#kpis .kpi .rot{font-size:11.5px}#kpis .kpi .sub{font-size:11px}}
+.meta-det{font-size:10.5px;color:var(--muted);font-weight:400;white-space:nowrap;margin-top:1px}
 .barra{height:6px;border-radius:3px;background:var(--track);margin-top:10px;overflow:hidden}
 .barra i{display:block;height:100%;background:var(--s1);border-radius:3px}
 .card h2{font-size:16px;margin:0}
@@ -233,10 +234,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=131"></script>
-<script src="i18n.js?v=131"></script>
+<script src="i18n-sw.js?v=132"></script>
+<script src="i18n.js?v=132"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=131"></script>
+<script src="demo.js?v=132"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -560,13 +561,15 @@ function desenharMeta() {
       h += lin(com, soma(eqs.map((e) => ac[com + '|' + e + '|p'])), true); for (const e of eqs) h += lin(e, ac[com + '|' + e + '|p'] || soma([]), false); }
   } else {
     const rot = (c) => (VM === 'semana' ? 'Sem. ' + ddmm(c) : ddmm(c));
+    // v132 (28/10/2026, Valdo: "só aparecem os outros indicadores … na opção período; na opção semana e hoje, não aparecem"): plantas, pessoas-dia e faltas em cada célula
+    const det = (o) => `<div class="meta-det">🌱 ${num(o.plantas)} · 👥 ${num(o.pessoas)}${o.faltas ? ` · <span class="falta">${num(o.faltas)}F</span>` : ''}</div>`;
     h = `<table><thead><tr><th>Equipa</th>${cols.map((c) => `<th class="n">${rot(c)}</th>`).join('')}<th class="n">Total</th></tr></thead><tbody>`;
     for (const com of Object.keys(grupos).sort()) { const eqs = [...grupos[com]].sort();
-      h += `<tr class="grupo"><td><b>${esc(com)}</b></td>${cols.map((c) => `<td class="n"><b>${pc(soma(eqs.map((e) => ac[com + '|' + e + '|' + c])))}</b></td>`).join('')}<td class="n"><b>${pc(soma(cols.flatMap((c) => eqs.map((e) => ac[com + '|' + e + '|' + c]))))}</b></td></tr>`;
+      h += `<tr class="grupo"><td><b>${esc(com)}</b></td>${cols.map((c) => { const o = soma(eqs.map((e) => ac[com + '|' + e + '|' + c])); return `<td class="n"><b>${pc(o)}</b>${o.dias ? det(o) : ''}</td>`; }).join('')}<td class="n"><b>${pc(soma(cols.flatMap((c) => eqs.map((e) => ac[com + '|' + e + '|' + c]))))}</b>${det(soma(cols.flatMap((c) => eqs.map((e) => ac[com + '|' + e + '|' + c]))))}</td></tr>`;
       for (const e of eqs) { const k = com + '|' + e + '|';
-        h += `<tr><td style="padding-left:18px">${esc(e)}</td>${cols.map((c) => { const o = ac[k + c]; return `<td class="n" title="${o ? `${num(o.plantas)} plantas · ${num(o.pessoas)} pessoas-dia${o.faltas ? ` · ${num(o.faltas)} faltas` : ''}` : ''}">${o ? pc(o) + (o.faltas ? ` <span class="falta">·${o.faltas}F</span>` : '') : '<span style="color:var(--muted)">—</span>'}</td>`; }).join('')}<td class="n">${pc(soma(cols.map((c) => ac[k + c])))}</td></tr>`; }
+        h += `<tr><td style="padding-left:18px">${esc(e)}</td>${cols.map((c) => { const o = ac[k + c]; return `<td class="n">${o ? pc(o) + det(o) : '<span style="color:var(--muted)">—</span>'}</td>`; }).join('')}<td class="n">${pc(soma(cols.map((c) => ac[k + c])))}${det(soma(cols.map((c) => ac[k + c])))}</td></tr>`; }
     }
-    h += '</tbody></table><p class="desc" style="margin-top:8px">F = faltas nesse dia ou semana. Passe o dedo ou o rato sobre a célula para ver plantas e pessoas.</p>';
+    h += '</tbody></table><p class="desc" style="margin-top:8px">Em cada célula: % da meta; 🌱 plantas regadas; 👥 pessoas-dia (soma das pessoas presentes em cada dia); F = faltas nesse dia ou semana.</p>';
   }
   $('#t-meta').innerHTML = h + (VM === 'periodo' ? '</tbody></table>' : '');
 }
