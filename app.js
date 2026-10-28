@@ -2509,7 +2509,17 @@ function ecraFotoRega(tipo, nota = '', r = null) {
 }
 
 // ---------- saída ----------
-const TIPOS = [['falta_agua', 'Falta de água'], ['mudas_secas', 'Mudas secas'], ['acesso_dificil', 'Acesso difícil'], ['avaria', 'Avaria'], ['outro', 'Outro']];
+// v123 (28/10/2026, Valdo): "Falta de água" era usado para coisas diferentes (fonte seca, água que acabou, tuk-tuk atrasado,
+// "o campo está limpo"). Opções separadas, cada uma com uma frase; o antigo 'falta_agua' fica só nos registos anteriores.
+const TIPOS = [
+  ['sem_agua_fonte', 'Não havia água na fonte', 'O poço, o furo ou a fonte estava seco ou não deu água para o tuk-tuk.'],
+  ['agua_acabou', 'A água acabou antes de regar todas as plantas', 'A água que chegou não deu para todas as plantas do campo.'],
+  ['agua_atrasada', 'Esperámos pela água', 'O tuk-tuk chegou tarde e a equipa ficou à espera.'],
+  ['mudas_secas', 'Mudas secas ou mortas', 'No campo há menos plantas vivas do que diz a base: secas, mortas ou que já não existem.'],
+  ['acesso_dificil', 'Acesso difícil', 'Caminho mau, campo longe ou o tuk-tuk não conseguiu chegar.'],
+  ['avaria', 'Avaria', 'Avaria do tuk-tuk, da bomba ou do material de rega.'],
+  ['outro', 'Outro', 'Escreva o que aconteceu na caixa de baixo (obrigatório).'],
+];
 function ecraSaida(msg = '') {
   const ent = LS.get('emCurso'), a = S.areas.find((x) => x.id === ent.area_id);
   folha(`${msg}<h2>${esc(a.produtor)}</h2><p class="pequeno">Entrada às ${fmtHora(ent.entrada_em)}</p>
@@ -2518,23 +2528,32 @@ function ecraSaida(msg = '') {
    <label>Pessoas que regaram este campo<input id="s-pessoas" type="number" inputmode="numeric" min="1" max="30" value="${jornadaHoje()?.pessoas ?? ''}"></label>
    ${ent.agua_em ? `<p class="pequeno">Água no campo às ${fmtHora(ent.agua_em)}.</p>`
      : `<label>Hora a que chegou a água (tuk-tuk)<input id="s-agua" type="time"></label><p class="pequeno">Deixe vazio se não chegou água.</p>`}
-   <label>Constrangimentos</label><div class="chips" id="s-chips">${TIPOS.map(([k, t]) => `<button class="chip" data-k="${k}">${t}</button>`).join('')}</div>
-   <textarea id="s-obs" rows="2" placeholder="Explique (opcional)"></textarea>
+   <label>O que dificultou a rega neste campo?</label><p class="pequeno">Pode escolher mais do que um. Se nada dificultou, não escolha nenhum.</p>
+   <div id="s-falta"></div>
+   <div class="chips" id="s-chips">${TIPOS.map(([k, t, d]) => `<button class="chip op" data-k="${k}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
+   <textarea id="s-obs" rows="2" placeholder="Explique (obrigatório se escolheu «Outro»)"></textarea>
    ${campoFoto('s-foto', 'Fotografia da saída (obrigatória)')}
    <p class="pequeno" id="s-foto-ok">${ent.fotos?.saida ? `<span style="color:var(--ok,#2e7d32)">✓ Fotografia da saída às ${fmtHora(ent.fotos.saida)}</span>` : ''}</p>
    <button class="btn" onclick="marcarSaida()">Marcar saída e guardar</button>
    <button class="btn sec" onclick="abrirFicha('${esc(a.id)}')">Voltar</button>`);
-  document.querySelectorAll('#s-chips .chip').forEach((b) => b.onclick = () => b.classList.toggle('on'));
+  document.querySelectorAll('#s-chips .chip').forEach((b) => b.onclick = () => { b.classList.toggle('on'); avisoFalta(a); });
   const rs = ent.rascSaida;
   if (rs) { if (rs.pessoas) $('#s-pessoas').value = rs.pessoas; if (rs.obs) $('#s-obs').value = rs.obs; if (rs.agua && $('#s-agua')) $('#s-agua').value = rs.agua;
     document.querySelectorAll('#s-chips .chip').forEach((b) => b.classList.toggle('on', (rs.tipos || []).includes(b.dataset.k))); }
   rascGuardar('rascFotoRega', { perfil: S.perfil?.id, tipo: 'saida', camara: false });
   // o número vem vazio (v85, 20/10/2026, Valdo): o activista escreve-o; fica guardado se o Android fechar o Chrome na fotografia
-  $('#s-plantas').oninput = (e) => { const x = LS.get('emCurso'); if (x) { x.plantas_escritas = e.target.value; LS.set('emCurso', x); } };
+  $('#s-plantas').oninput = (e) => { const x = LS.get('emCurso'); if (x) { x.plantas_escritas = e.target.value; LS.set('emCurso', x); } avisoFalta(a); };
+  avisoFalta(a);
   ligarFoto('s-foto', 'rascFotoRega', async (foto) => {
     if (!foto || !(await guardarFotoRega('saida', foto))) return;
     $('#s-foto-ok').innerHTML = `<span style="color:var(--ok,#2e7d32)">✓ Fotografia da saída às ${fmtHora(LS.get('emCurso').fotos.saida)}</span>`;
   });
+}
+// v123 (28/10/2026, Valdo): regou menos plantas do que a base → tem de dizer porquê
+function avisoFalta(a) {
+  const el = $('#s-falta'); if (!el) return;
+  const p = parseInt($('#s-plantas').value, 10), base = plantasN(a), escolheu = !!document.querySelector('#s-chips .chip.on');
+  el.innerHTML = base > 0 && p >= 0 && p < base ? `<div class="msg ${escolheu ? 'info' : 'erro'}">Regou ${p} de ${base} plantas. Escolha porque não regou ${base - p} plantas (obrigatório).</div>` : '';
 }
 async function marcarSaida() {
   const ent = LS.get('emCurso'), a = S.areas.find((x) => x.id === ent.area_id);
@@ -2549,6 +2568,9 @@ async function marcarSaida() {
   if (hAgua) { const t = new Date(); const [hh, mm] = hAgua.split(':'); t.setHours(+hh, +mm, 0, 0); ent.agua_em = t.toISOString(); }
   const j = jornadaHoje(); if (j && j.pessoas !== pessoas) { j.pessoas = pessoas; LS.set('jornada', j); }
   const tipos = [...document.querySelectorAll('#s-chips .chip.on')].map((b) => b.dataset.k), obs = $('#s-obs').value.trim();
+  const base = plantasN(a);
+  if (base > 0 && plantas < base && !tipos.length) { avisoFalta(a); alert(`Regou ${plantas} de ${base} plantas. Escolha porque não regou ${base - plantas} plantas (obrigatório).`); return; }
+  if (tipos.includes('outro') && obs.length < 3) { alert('Escolheu «Outro»: escreva o que aconteceu.'); $('#s-obs').focus(); return; }
   ent.plantas_escritas = String(plantas); ent.rascSaida = { pessoas, tipos, obs, agua: hAgua || '' }; LS.set('emCurso', ent);   // se o GPS falhar, o ecrã volta preenchido
   folha(FOLHA_GPS('A confirmar que ainda está no campo.'));
   // v118 (Razaque: "quando tento gravar volta para a página anterior"): a razão fica escrita no ecrã, não num aviso que desaparece
