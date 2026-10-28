@@ -280,6 +280,10 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Painel › "✅ Cumprimento dos técnicos e supervisores" (`#s-cump`, `DCU`; RPC `painel_cumprimento(p_de, p_ate)`: gestor, director e M&E; null aos outros e a secção fica escondida): desde `config.activistas_inicio` até ontem (hoje depois das 18:00); por pessoa (técnicos e supervisores sem `ve_tudo` nem `so_teste`, com equipas por `privado.equipas_de` = nome em `activistas.tecnico`/`supervisor`, sem coberturas): equipas, dias fechados a tempo / dias, fechados depois das 18:00, monitoria no prazo (feitos / sorteados com prazo no período), regas com ⚠️ confirmadas / alertas, equipas-dia sem motivo. Vermelho o que falta.
 - Testes: `rega-test/teste_meu_dia.py` (LING=en / sw); painel com `painel_cumprimento` no teste de cartões. `demo.js`: `meu_dia` (null), `fechar_dia`, `confirmar_rega`, `monitoria_falhas`, `painel_cumprimento` (null).
 
+## Cumprimento a partir de 29/10 (v134, 28/10/2026, Valdo: "1 sim")
+- `config.cumprimento_inicio` = "2026-10-29": `painel_cumprimento` conta a partir dessa data (sem ela, `activistas_inicio`), porque "O meu dia" e "Fechar o dia" só existem desde 28/10. Devolve `inicio`; sem dias para avaliar devolve `pessoas: []` e o painel diz "O cumprimento conta a partir de dd/mm/aaaa".
+- Relatório das 19:55 (Valdo: "2 sim"): também enviado por Gmail para o email da JFS do Valdo.
+
 ## Modo apresentação (v124, 28/10/2026, Valdo)
 - Valdo: "posso ter de apresentar o aplicativo a diferentes pessoas… se eu estiver a apresentar apenas na ótica de gestor, há muitas coisas que eu não consigo ver"; escolheu "Modo apresentação".
 - Gestão › "🎬 Modo apresentação" (qualquer gestor; `cartaoDemo` em `#gestao-demo`): "Ver como" Activista, Técnico, Supervisor, Oficial de M&E, M&E, Director, Cliente (`DEMO_FUNCOES`). `entrarDemo(papel)` grava `sessionStorage rega.demo` {papel, lat, lon = posição do gestor (senão centro de Palma), desde} e recarrega. Faixa roxa `#demo-faixa` "🎬 Apresentação · função" com "Mudar" (`ecraDemo`: outra função, "Recomeçar com os dados iniciais", "Terminar") e "Terminar"; "Sair" também abre `ecraDemo`.

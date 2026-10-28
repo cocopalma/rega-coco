@@ -368,6 +368,7 @@ window.I18N_SW_D = {
 "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Mvua inasajiliwa tu mahali pa kipimo cha mvua: programu inatumia GPS kujua jamii.",
 "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "Hakuna mashamba yenye kuratibu kwenye simu. Sajili mvua karibu na kipimo cha mvua, katika jamii.",
 "Pelo GPS está em": "Kwa GPS uko",
+"O cumprimento conta a partir de": "Utekelezaji unahesabiwa kuanzia",
 "Sem equipas na sua lista.": "Hakuna timu kwenye orodha yako.",
 "Verifique cada campo no dia seguinte à rega. O que ficar por verificar nesse dia conta como falha na sua avaliação.": "Kagua kila shamba siku inayofuata baada ya kumwagilia. Lisilokaguliwa siku hiyo linahesabiwa kama kushindwa katika tathmini yako.",
 "Verificar hoje": "Kagua leo",
