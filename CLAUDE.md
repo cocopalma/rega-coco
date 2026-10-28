@@ -261,6 +261,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 
 ## Cartões do topo do painel (v128, 28/10/2026, Valdo)
 - Valdo: "o cartão campos regados mostra 4% e 30 de 745 campos… a percentagem deveria refletir a hoje"; escolheu "Separar em dois". "Campos regados" e "Plantas vivas em campos regados" mostram só o número do período (com o total na rega por baixo, sem %). Cartão novo "Progresso da ronda (hoje)": soma de `por_equipa[].regadas_ronda` ÷ soma de `por_equipa[].lista` (estado de hoje, não muda com o período), com "Campos sem equipa" = `universo.areas` − soma das listas. Teste: `teste_painel_v123.py` com `por_equipa`.
+- Cartões compactos (v129, 28/10/2026, Valdo: "nem todos os cartões aparecem no ecrã" para a captura): `#kpis` com 5 colunas (2 no telefone), menos espaço, números de 24 px (20 px no telefone); o texto do progresso encurtado. Em ecrã de computador (1000 px ou mais) os 10 cartões cabem.
 
 ## Modo apresentação (v124, 28/10/2026, Valdo)
 - Valdo: "posso ter de apresentar o aplicativo a diferentes pessoas… se eu estiver a apresentar apenas na ótica de gestor, há muitas coisas que eu não consigo ver"; escolheu "Modo apresentação".
