@@ -501,6 +501,7 @@ async function entrar() {
   mostrarApp();
 }
 async function sair() {
+  if (window.DEMO) return ecraDemo();                     // modo apresentação: "Sair" termina a apresentação
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
@@ -3957,6 +3958,7 @@ async function chamarGestor(corpo) {
 }
 const sugerirUtilizador = (nome) => nome.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/\s+/)[0].replace(/[^a-z0-9]/g, '');
 async function desenharGestao(msg = '') {
+  $('#gestao-demo').innerHTML = cartaoDemo();
   const guardado = LS.get('gestaoListar');
   if (guardado) montarGestao(guardado, msg); else $('#gestao').innerHTML = '<p>A carregar…</p>';
   let d; try { d = await chamarGestor({ accao: 'listar' }); } catch (e) { if (!guardado) $('#gestao').innerHTML = `<div class="msg erro">${esc(e.message)}</div>`; return; }
@@ -4163,6 +4165,7 @@ function avisoNavegador() {
 }
 function mostrarApp() {
   const papel = S.perfil.papel;
+  faixaDemo();
   $('#login').style.display = 'none'; $('#app').style.display = 'flex'; avisoNavegador(); avisoSemMotivo(false);
   $('#h-nome').textContent = `${S.perfil.nome}${['activista', 'cliente'].includes(papel) ? '' : ' · ' + (S.perfil.titulo || (papel === 'gestor' ? 'Gestor' : FUNCOES[papel]?.nome || papel))}`;
   $('#h-nome').title = S.perfil.papel === 'activista' ? 'Mudar o meu PIN' : 'Mudar a minha senha';
@@ -4224,6 +4227,46 @@ function retomarRascunhos() {
     const rc = rascLer('rascChuva');
     if (rc && rc.perfil === S.perfil?.id && (rc.camara || rc.mm !== '')) { mudar('hoje'); return ecraChuva(rc); }
   } catch {}
+}
+// ---------- modo apresentação (v124, 28/10/2026, Valdo) ----------
+// O gestor mostra o que cada função vê, com dados de exemplo. Tudo é respondido no próprio telefone (demo.js): nada chega ao servidor
+// e a sessão verdadeira do gestor fica como estava.
+const DEMO_FUNCOES = [
+  ['activista', 'Activista', 'Os seus campos, a ronda, registar a rega (entrada, 3 fotografias, saída), chuva e dias sem rega.'],
+  ['tecnico', 'Técnico', 'Campos das suas equipas, Hoje com as equipas, monitoria por amostragem, pedir recontagens, painel.'],
+  ['supervisor', 'Supervisor', 'O mesmo que o técnico, para todas as equipas que supervisiona; atribuir campos.'],
+  ['oficial_me', 'Oficial de M&E', 'Só as recontagens que lhe foram encaminhadas: contar, fotografias e declaração.'],
+  ['me', 'M&E', 'Encaminhar recontagens aos oficiais e validá-las; ver tudo; painel.'],
+  ['director', 'Director', 'Vê todos os campos, a rega do dia, os percursos e o painel; não regista.'],
+  ['cliente', 'Cliente / administração', 'Mapa, fichas dos campos (só leitura) e painel.'],
+];
+const nomeFuncaoDemo = (p) => (DEMO_FUNCOES.find((f) => f[0] === p) || [p, p])[1];
+function cartaoDemo() {
+  if (S.perfil?.papel !== 'gestor' || window.DEMO) return '';
+  return `<div class="cartao" style="border-left:4px solid #6a1b9a"><h2>🎬 Modo apresentação</h2>
+    <p class="pequeno">Para mostrar a app a outras pessoas: escolha uma função e a app passa a mostrar o que essa pessoa vê, com dados de exemplo. Nada do que fizer é gravado no servidor. Os campos de exemplo ficam à volta de onde está agora, para poder registar uma rega ao vivo.</p>
+    ${DEMO_FUNCOES.map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">Ver como ${n}</div><div class="sub">${d}</div></div></div>`).join('')}</div>`;
+}
+function entrarDemo(papel) {
+  const ant = window.DEMO, pos = S.pos || (S.fix ? [S.fix.coords.latitude, S.fix.coords.longitude] : null);
+  const cfg = { papel, lat: ant ? ant.lat : pos ? pos[0] : -10.7353, lon: ant ? ant.lon : pos ? pos[1] : 40.4684, desde: ant ? ant.desde : new Date().toISOString() };
+  try { sessionStorage.setItem('rega.demo', JSON.stringify(cfg)); } catch { return aviso('Este navegador não deixa abrir o modo apresentação.', 'erro'); }
+  if (ant) ant.limparTelefone();                          // outra função: começa limpa no telefone; a base de exemplo continua (o que se fez noutra função aparece)
+  location.reload();
+}
+function faixaDemo() {
+  const f = $('#demo-faixa'); if (!f) return;
+  if (!window.DEMO) { f.style.display = 'none'; return; }
+  f.style.display = 'flex';
+  f.innerHTML = `<span style="flex:1">🎬 <b>Apresentação</b> · ${esc(nomeFuncaoDemo(DEMO.papel))}</span><button onclick="ecraDemo()">Mudar</button><button onclick="DEMO.terminar()">Terminar</button>`;
+}
+function ecraDemo() {
+  folha(`<h2>🎬 Modo apresentação</h2><p class="pequeno">Está a ver a app como ${esc(nomeFuncaoDemo(DEMO.papel))}, com dados de exemplo. Nada é gravado no servidor.</p>
+    <h3>Ver como outra função</h3>
+    ${DEMO_FUNCOES.filter(([k]) => k !== DEMO.papel).map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">${n}</div><div class="sub">${d}</div></div></div>`).join('')}
+    <p class="pequeno">O que fizer numa função aparece nas outras (por exemplo: o oficial conta, o M&E valida).</p>
+    <button class="btn sec" onclick="if (confirm('Apagar o que fez na apresentação e voltar aos dados de exemplo iniciais?')) DEMO.recomecar()">Recomeçar com os dados iniciais</button>
+    <button class="btn" onclick="DEMO.terminar()">Terminar a apresentação</button>`);
 }
 // sessão do Supabase guardada no telefone (sem pedir nada à rede)
 function sessaoGuardada() {
