@@ -2745,6 +2745,13 @@ function localContagem(r, a) {
   const d = a ? distCampo(a, [r.lat, r.lon]) : null, p = r.precisao_m != null ? ` (±${Math.round(r.precisao_m)} m)` : '';
   return d == null ? 'campo sem coordenada' + p : d === 0 ? 'dentro do campo' + p : (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') + ' do campo' + p;
 }
+// v126 (28/10/2026, sugestão do Edilson): telefone do produtor (só o M&E e o oficial a quem foi encaminhada o recebem do servidor)
+function linhaTelefone(r) {
+  if (!r.telefone && !['me', 'oficial_me'].includes(S.perfil?.papel)) return '';
+  if (!r.telefone) return '<div class="lin"><span>Telefone do produtor</span><b>não temos</b></div>';
+  const lig = (t) => `<a class="chip" href="tel:+258${esc(t)}" style="text-decoration:none">📞 ${esc(t)}</a>`;
+  return `<div class="lin"><span>Telefone do produtor</span><b class="sem-trad">${lig(r.telefone)}${r.telefone2 ? ' ' + lig(r.telefone2) : ''}</b></div>${r.telefone_confirmar ? '<p class="pequeno">Número a confirmar com o produtor.</p>' : ''}`;
+}
 function cartaoRecontagem(a) {
   const r = recontagemDe(a.id), papel = S.perfil?.papel;
   const pedir = podePedirRec() ? `<button class="btn sec" onclick="ecraPedirRecontagem('${esc(a.id)}')">📋 Pedir recontagem das plantas</button>` : '';
@@ -2754,6 +2761,7 @@ function cartaoRecontagem(a) {
   const nums = `<div class="lin"><span>Plantas vivas · mortas</span><b>${num(r.vivas)} · ${num(r.mortas)}</b></div>`;
   let h = `<div class="cartao" style="border-left:4px solid #6d4c41;margin:8px 0"><h3 style="margin:0 0 6px;font-size:15px">📋 Recontagem das plantas</h3>
     <div class="lin"><span>Motivo</span><b>${esc(r.motivo)}</b></div><div class="lin"><span>Pedida a</span><b>${dataCurta(r.pedido_em)}</b></div>
+    ${r.estado !== 'validada' ? linhaTelefone(r) : ''}
     ${r.localG && !souOficial() ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : ''}`;
   if (r.estado === 'validada') {
     h += `<div class="msg ok">✓ Validada pelo M&E a ${dataCurta(r.validada_em)}.</div>${nums}${r.vivas_antes != null ? `<div class="lin"><span>Plantas vivas antes</span><b>${num(r.vivas_antes)}</b></div>` : ''}<div class="chips">${foto}</div></div>${pedir}`;
@@ -2919,7 +2927,7 @@ function ecraRecontar(rid, rasc) {
     <p class="pequeno" id="ro-${t}-ok">${S.recFotosAnt[t] && !S.recFotos[t] ? '✓ Fotografia guardada no telefone.' : ''}</p>
     <img id="ro-${t}-prev" alt="" style="display:none;width:100%;max-height:200px;object-fit:contain;border-radius:10px;margin-top:8px">`;
   folha(`<h2>📋 Recontagem das plantas</h2>${rasc?.camara ? AVISO_CAMARA : ''}<p class="pequeno">${esc(a.produtor || r.produtor || '')} · ${esc(a.pr || r.pr || '')} · ${esc(a.comunidade || r.comunidade || '')}</p>
-    <div class="cartao"><div class="lin"><span>Motivo</span><b>${esc(r.motivo)}</b></div>${r.estado === 'recusada' ? `<div class="msg erro">Recusada pelo M&E: ${esc(r.recusa_motivo || '')}</div>` : ''}</div>
+    <div class="cartao"><div class="lin"><span>Motivo</span><b>${esc(r.motivo)}</b></div>${linhaTelefone(r)}${r.estado === 'recusada' ? `<div class="msg erro">Recusada pelo M&E: ${esc(r.recusa_motivo || '')}</div>` : ''}</div>
     <div class="msg info">Registe primeiro a contagem no NAVUNA. Depois registe aqui os mesmos números.</div>
     <label>Plantas vivas contadas<input id="ro-vivas" type="number" inputmode="numeric" min="0" value="${ant?.vivas ?? ''}"></label>
     <label>Plantas mortas contadas<input id="ro-mortas" type="number" inputmode="numeric" min="0" value="${ant?.mortas ?? ''}"></label>

@@ -185,7 +185,7 @@
         return { id: r.id, area_id: r.area_id, pr: a.pr, produtor: a.produtor, comunidade: a.comunidade, instaladas: a.instaladas, vivas_campo: a.vivas, queimada_id: r.queimada_id || null, queimada_data: q?.data || null,
           plantas_afectadas: q?.plantas_afectadas ?? null, queimada_mortas: q?.plantas_mortas ?? null, motivo: r.motivo, estado: r.estado, pedido_em: r.pedido_em, pedido_por_nome: nomeU(r.pedido_por),
           encaminhada_em: r.encaminhada_em || null, enviada_em: r.enviada_em || null, validada_em: r.validada_em || null, oficial_id: r.oficial_id || null, oficial: r.oficial_id ? NOMES.oficial_me : null,
-          recusa_motivo: r.recusa_motivo || null, recusada_em: r.recusada_em || null, vivas_antes: r.vivas_antes ?? null, navuna: r.navuna ?? null, oficial_entrou: ['me', 'gestor', 'director'].includes(papel) && r.oficial_id ? true : null,
+          recusa_motivo: r.recusa_motivo || null, recusada_em: r.recusada_em || null, telefone: perto ? '840000000' : null, telefone2: null, telefone_confirmar: perto ? false : null, vivas_antes: r.vivas_antes ?? null, navuna: r.navuna ?? null, oficial_entrou: ['me', 'gestor', 'director'].includes(papel) && r.oficial_id ? true : null,
           vivas: ve ? r.vivas ?? null : null, mortas: ve ? r.mortas ?? null : null, foto_path: ve ? r.foto_path || null : null, foto_campo_path: ve ? r.foto_campo_path || null : null,
           lat: perto ? r.lat ?? null : null, lon: perto ? r.lon ?? null : null, precisao_m: perto ? r.precisao_m ?? null : null, contada_em: ve ? r.contada_em || null : null };
       });
