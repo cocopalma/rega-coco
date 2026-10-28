@@ -222,10 +222,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=127"></script>
-<script src="i18n.js?v=127"></script>
+<script src="i18n-sw.js?v=128"></script>
+<script src="i18n.js?v=128"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=127"></script>
+<script src="demo.js?v=128"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -379,11 +379,13 @@ function desenhar() {
   });
   const hc = D.chegada_equipa?.hora_combinada || '06:00';
   $('#d-agua').textContent = `${filtrado ? 'No período escolhido.' : 'Últimos 14 dias.'} Espera = minutos entre a chegada da equipa ao campo e a chegada do tuk-tuk (água). As equipas devem chegar ao campo às ${hc}; atraso = minutos depois das ${hc} na chegada ao 1.º campo do dia.`;
-  const pA = pct(D.areas_regadas, u.areas), pV = pct(D.vivas_regadas, u.vivas);
+  const eqR = D.por_equipa || [], rLista = eqR.reduce((t, e) => t + (e.lista || 0), 0), rReg = eqR.reduce((t, e) => t + (e.regadas_ronda || 0), 0), pR = pct(rReg, rLista);
   const kpi = (rot, val, sub, barra) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${val}</div><div class="sub">${sub}</div>${barra != null ? `<div class="barra"><i style="width:${Math.min(100, barra)}%"></i></div>` : ''}</div>`;
   $('#kpis').innerHTML =
-    kpi('Plantas vivas em campos regados', fmtPct(pV), `${num(D.vivas_regadas)} de ${num(u.vivas)} plantas vivas`, pV) +
-    kpi('Campos regados', fmtPct(pA), `${num(D.areas_regadas)} de ${num(u.areas)} campos`, pA) +
+    // v128 (28/10/2026, Valdo): dividir os campos regados num dia por todos os campos não dizia nada; o número é do período e a % passa para o progresso da ronda (estado de hoje)
+    kpi('Campos regados', num(D.areas_regadas), `<span>com pelo menos uma rega no período</span><br><span>Campos na rega:</span> ${num(u.areas)}`) +
+    kpi('Progresso da ronda (hoje)', fmtPct(pR), `${num(rReg)} / ${num(rLista)} <span>campos com equipa já regados na ronda actual de cada equipa</span>${u.areas > rLista ? `<br><span>Campos sem equipa:</span> ${num(u.areas - rLista)}` : ''}<br><span>Estado de hoje: não muda com o período.</span>`, pR) +
+    kpi('Plantas vivas em campos regados', num(D.vivas_regadas), `<span>nos campos regados no período</span><br><span>Plantas vivas na rega:</span> ${num(u.vivas)}`) +
     kpi('Frequência média', D.dias_medios_entre_regas != null ? `${Number(D.dias_medios_entre_regas).toLocaleString(LOC)} dias` : '—', 'entre duas regas do mesmo campo') +
     kpi('Espera pela água', D.espera_agua_min != null ? `${num(D.espera_agua_min)} min` : '—', 'média, da chegada da equipa ao campo à chegada do tuk-tuk') +
     kpi('Chegada da equipa ao 1.º campo', D.chegada_equipa?.hora_media || '—', D.chegada_equipa ? `média; devia ser às ${D.chegada_equipa.hora_combinada}. ${num(D.chegada_equipa.depois_hora)} de ${num(D.chegada_equipa.dias)} dias de equipa depois dessa hora (atraso médio ${num(D.chegada_equipa.atraso_min)} min)` : 'sem dados');

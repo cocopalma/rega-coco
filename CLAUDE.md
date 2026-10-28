@@ -259,6 +259,9 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Técnico e supervisor na ficha (v127, 28/10/2026, Valdo)
 - Ficha do campo: por baixo de "Activista" aparecem "Técnico" e "Supervisor" (de `activistas.tecnico/supervisor`, `tecDe`/`supDe`) para todos os papéis, quando o campo tem activista (antes o supervisor só aparecia ao técnico/supervisor).
 
+## Cartões do topo do painel (v128, 28/10/2026, Valdo)
+- Valdo: "o cartão campos regados mostra 4% e 30 de 745 campos… a percentagem deveria refletir a hoje"; escolheu "Separar em dois". "Campos regados" e "Plantas vivas em campos regados" mostram só o número do período (com o total na rega por baixo, sem %). Cartão novo "Progresso da ronda (hoje)": soma de `por_equipa[].regadas_ronda` ÷ soma de `por_equipa[].lista` (estado de hoje, não muda com o período), com "Campos sem equipa" = `universo.areas` − soma das listas. Teste: `teste_painel_v123.py` com `por_equipa`.
+
 ## Modo apresentação (v124, 28/10/2026, Valdo)
 - Valdo: "posso ter de apresentar o aplicativo a diferentes pessoas… se eu estiver a apresentar apenas na ótica de gestor, há muitas coisas que eu não consigo ver"; escolheu "Modo apresentação".
 - Gestão › "🎬 Modo apresentação" (qualquer gestor; `cartaoDemo` em `#gestao-demo`): "Ver como" Activista, Técnico, Supervisor, Oficial de M&E, M&E, Director, Cliente (`DEMO_FUNCOES`). `entrarDemo(papel)` grava `sessionStorage rega.demo` {papel, lat, lon = posição do gestor (senão centro de Palma), desde} e recarrega. Faixa roxa `#demo-faixa` "🎬 Apresentação · função" com "Mudar" (`ecraDemo`: outra função, "Recomeçar com os dados iniciais", "Terminar") e "Terminar"; "Sair" também abre `ecraDemo`.
