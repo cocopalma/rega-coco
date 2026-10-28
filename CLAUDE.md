@@ -114,7 +114,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - O activista também mede (15/10/2026, Valdo): só campos da sua lista sem limite; fica em `areas.poligono_proposto` / `area_m2_proposta` / `proposta_em` / `proposta_por` (não muda o limite nem a regra dos 50 m). Técnico, supervisor ou gestor aprovam/recusam na ficha (cartão "Área medida pelo activista — por aprovar", RPC `aprovar_poligono`; fila `filaAlt` tipo 'aprovar'); aviso "N medições de área por aprovar" na lista. Eles próprios podem medir directamente.
 
 ## Pendentes pedidos pelo Valdo
-- Documento do RH com o tamanho das 12 equipas "por definir" (o Valdo vai pedir).
+- Tamanho das equipas (28/10/2026): actualizado com o ficheiro do RH `Divisao de Comunidades por Activistas e Sazonal-23.10.2026.xlsx` (Downloads do Mac; tamanho = activista + sazonais de rega, sem os 40 sazonais da manutenção de Quiwia e Farol contratados para 02/11): 16 activistas mudados (histórico em `alteracoes_activistas`, campo 'equipa_tamanho'). Oliveira (3) e Sitambur (4) ficaram como estavam: o RH diz "não tem sazonais", mas a app regista 2–3 pessoas. O outro ficheiro do mesmo dia (`Activistas_Sazonais_Comunidades-23.10.26.xlsx`) não tem os sazonais contratados a 13/10.
 - Lista de todos os campos a regar com coordenadas (e polígonos), pedida pelo Valdo ao Dalmar a 13/10/2026: quando chegar, voltar a casar os polígonos e resolver as 69 áreas sem polígono e as 30 com polígono do PR a > 100 m.
 - Guia de uma página para os activistas (entrar, registar rega e chuva, sem rede): fica para mais tarde (Valdo, 13/10/2026).
 - Nomes dos membros de cada equipa (o Valdo envia) para registar quem trabalhou.
