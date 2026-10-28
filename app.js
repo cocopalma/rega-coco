@@ -348,7 +348,7 @@ function actSync() {
 // todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
   const [p, ac, ar, zs, est, lc, pc, qm, po, rc] = await Promise.all([
-    sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos,trocar_senha,marca_coqueiros,so_teste').eq('id', S.user.id).maybeSingle(),
+    sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos,trocar_senha,marca_coqueiros,so_teste,ve_tudo').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho,sem_telefone').order('nome'),
     sb.from('areas').select(COLS_AREAS).eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
@@ -506,7 +506,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -3496,7 +3496,7 @@ async function desenharHoje() {
       <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div></div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
-    if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarMonitoria(); html = cartaoMonitoria() + html; }
+    if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await Promise.all([carregarMonitoria(), carregarMeuDia()]); html = cartaoMeuDia() + cartaoMonitoria() + html; }
     const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
     if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste') + (percursoActivo() || pontosPercursoHoje() ? linhaPercurso() : '');
     // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
@@ -3609,7 +3609,7 @@ const textoAviso = (v) => `${v.sem_rega} de ${v.plantas_obs} plantas sem solo h�
 // ---------- dia sem rega: constrangimento da equipa (v116, 26/10/2026, Valdo: "É preciso ter um campo de constrangimentos para
 // casos de não haver rega para uma equipa, não chegar o tuk tuk") ----------
 // O activista regista a sua equipa; técnico, supervisor e gestor as equipas que vêem. Funciona sem rede (fila 'dia_sem_rega').
-const MOTIVOS_DSR = [['tuk_tuk', 'O tuk-tuk não chegou'], ['avaria_tuk_tuk', 'Tuk-tuk avariado ou sem combustível'], ['sem_agua', 'Sem água na fonte ou no poço'],
+const MOTIVOS_DSR = [['tuk_tuk', 'O tuk-tuk não chegou'], ['avaria_tuk_tuk', 'Tuk-tuk avariado ou sem combustível'], ['avaria_camiao', 'Camião avariado'], ['sem_agua', 'Sem água na fonte ou no poço'],
   ['chuva', 'Choveu: não foi preciso regar'], ['material', 'Falta de material (bidões, regadores)'], ['equipa', 'A equipa não compareceu'], ['outro', 'Outro motivo']];
 const nomeMotivoDsr = (m) => (MOTIVOS_DSR.find((x) => x[0] === m) || [m, m])[1];
 async function carregarDiasSemRega() {
@@ -3634,8 +3634,9 @@ function cartaoDiaSemRega() {
     <button class="btn sec" onclick="ecraDiaSemRega()">⚠️ Registar dia sem rega</button></div>`;
 }
 const diasRecentes = (n) => Array.from({ length: n }, (_, i) => new Date(Date.now() - i * 864e5).toLocaleDateString('sv-SE'));
-function ecraDiaSemRega() {
-  const eq = equipasDsr();
+function ecraDiaSemRega(pre) {
+  const eq = equipasDsr(); if (pre && !eq.some((t) => t.id === pre)) { const t = (S.activistas || []).find((x) => x.id === pre); if (t) eq.push(t); }
+  if (!eq.length) return aviso('Sem equipas na sua lista.', 'erro');
   folha(`<h2>⚠️ <span>Dia sem rega</span></h2>
     ${eq.length > 1 ? `<label>Equipa (activista)<select id="dsr-act" class="sem-trad"><option value="">—</option>${eq.map((t) => `<option value="${t.id}">${esc(t.nome)}</option>`).join('')}</select></label>` : `<p><b class="sem-trad">${esc(eq[0].nome)}</b></p><input type="hidden" id="dsr-act" value="${eq[0].id}">`}
     <label>Dia<select id="dsr-dia">${diasRecentes(7).map((d, i) => `<option value="${d}">${i === 0 ? 'Hoje' : i === 1 ? 'Ontem' : fmtData(d)}</option>`).join('')}</select></label>
@@ -3647,7 +3648,7 @@ function ecraDiaSemRega() {
     <label>Observação (obrigatória em «Outro motivo»)<textarea id="dsr-obs" rows="2" placeholder="Ex.: esperámos pelo tuk-tuk até às 10:00"></textarea></label>
     ${campoFoto('dsr-foto', 'Fotografia (opcional): a fonte sem água, a equipa à espera…')}<p class="pequeno" id="dsr-foto-ok"></p>
     <button class="btn" onclick="gravarDiaSemRega()">Guardar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
-  S.dsrFoto = null;
+  S.dsrFoto = null; if (pre && $('#dsr-act') && $('#dsr-act').tagName === 'SELECT') $('#dsr-act').value = pre;
   ligarFoto('dsr-foto', null, async (foto) => { S.dsrFoto = foto; $('#dsr-foto-ok').innerHTML = foto ? '<span style="color:var(--ok,#2e7d32)">✓ Fotografia junta</span>' : ''; });
 }
 // fotografia opcional (v117, 26/10/2026, Valdo: "Sim"): fica no telefone (IndexedDB dsr-<id>) até haver rede; rega-fotos/<perfil>/dsr-<id>.jpg
@@ -3830,15 +3831,73 @@ async function carregarMonitoria() {
   if (!r.error && Array.isArray(r.data)) { S.mon = r.data; LS.set('mon', S.mon); }
 }
 const monFeita = (m) => m.feita || LS.get('filaMon', []).some((x) => x.amostra_id === m.amostra_id) || (LS.get('monFeitas', [])).includes(m.amostra_id);
+// v133 (28/10/2026, Valdo: "só fazem sentido no dia seguinte após a rega… o número de dias de atraso não pode acumular"):
+// cada campo sorteado verifica-se no dia seguinte à rega; o que não for feito nesse dia conta como falha e sai da lista.
 function cartaoMonitoria() {
-  const lista = Array.isArray(S.mon) ? S.mon : [];
-  if (!lista.length) return '<div class="cartao"><h2>Monitoria</h2><p class="pequeno">Sem campos para verificar. A lista sai a partir das 18:00, com campos regados nesse dia.</p></div>';
-  const feitas = lista.filter(monFeita).length;
-  return `<div class="cartao"><h2>Monitoria · regas de ${fmtData(lista[0].data_rega)}</h2><p class="pequeno">${feitas} de ${lista.length} campos verificados.</p>` +
-    lista.map((m) => { const a = S.areas.find((x) => x.id === m.area_id) || { produtor: m.area_id };
-      const d = S.pos ? distCampo(a, S.pos) : null;
-      return `<div class="item" onclick="abrirFicha('${esc(m.area_id)}')"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr || '')} · ${esc(a.comunidade || '')} · ${esc(nomeAct(m.activista_id))}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div></div>
-        ${monFeita(m) ? '<span class="tag t-feita">Verificado</span>' : '<span class="tag t-por">Por verificar</span>'}</div>`; }).join('') + '</div>';
+  const lista = Array.isArray(S.mon) ? S.mon : [], hoje = hojeISO();
+  const regra = '<p class="pequeno">Verifique cada campo no dia seguinte à rega. O que ficar por verificar nesse dia conta como falha na sua avaliação.</p>';
+  if (!lista.length) return `<div class="cartao"><h2>Monitoria</h2><p class="pequeno">Sem campos para verificar. A lista sai a partir das 18:00, com campos regados nesse dia.</p>${regra}</div>`;
+  const grupos = [...new Set(lista.map((m) => m.data_rega))].sort();
+  return `<div class="cartao"><h2>Monitoria</h2>${regra}` + grupos.map((d) => {
+    const l = lista.filter((m) => m.data_rega === d), feitas = l.filter(monFeita).length, hojeVerif = somaDias(d, 1) === hoje;
+    return `<h3 style="font-size:14px;margin:10px 0 4px">${hojeVerif ? 'Verificar hoje' : 'Verificar amanhã'} · <span>regas de</span> ${fmtData(d)} (${feitas}/${l.length})</h3>` +
+      l.map((m) => { const a = S.areas.find((x) => x.id === m.area_id) || { produtor: m.area_id };
+        const dd = S.pos ? distCampo(a, S.pos) : null;
+        return `<div class="item" onclick="abrirFicha('${esc(m.area_id)}')"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr || '')} · ${esc(a.comunidade || '')} · ${esc(nomeAct(m.activista_id))}${dd != null ? ' · ' + (dd < 1000 ? Math.round(dd) + ' m' : (dd / 1000).toFixed(1) + ' km') : ''}</div></div>
+          ${monFeita(m) ? '<span class="tag t-feita">Verificado</span>' : '<span class="tag t-por">Por verificar</span>'}</div>`; }).join('');
+  }).join('') + '</div>';
+}
+const somaDias = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+
+// ---------- "O meu dia" e "Fechar o dia" (v134, 28/10/2026, Valdo: "temos de pensar em como delegar trabalho para os supervisores e técnicos") ----------
+// Cada técnico e supervisor vê o que falta nas suas equipas; fecha o dia quando todas têm rega ou motivo. Conta no cumprimento (painel).
+const MEU_DIA = () => ['tecnico', 'supervisor'].includes(S.perfil?.papel) && !S.perfil?.ve_tudo;
+async function carregarMeuDia() {
+  if (!MEU_DIA() || !navigator.onLine) return;
+  const r = await sb.rpc('meu_dia'); if (!r.error) LS.set('meuDia', { em: new Date().toISOString(), d: r.data || null, dia: hojeISO() });
+}
+function cartaoMeuDia() {
+  if (!MEU_DIA()) return '';
+  const c = LS.get('meuDia'); if (c && c.d === null && c.dia === hojeISO()) return '';
+  if (!c || !c.d || c.d.data !== hojeISO()) return '<div class="cartao" id="meu-dia"><h2>📋 O meu dia</h2><p class="pequeno">Aparece quando houver rede.</p></div>';
+  const d = c.d, eqs = d.equipas || [], falta = eqs.filter((e) => !e.regas && !e.sem_rega), al = d.alertas || [];
+  const nomeMot = (m) => String(m || '').split(', ').map(nomeMotivoDsr).join(', ');
+  let h = `<div class="cartao" id="meu-dia"><h2>📋 <span>O meu dia</span> · ${fmtData(d.data)}</h2>
+    ${d.fechado_em ? `<div class="msg ok">✓ <span>Dia fechado às</span> ${fmtHora(d.fechado_em)}</div>` : ''}
+    <h3 style="font-size:14px;margin:8px 0 4px">1. <span>Equipas</span>: ${eqs.length - falta.length} / ${eqs.length} <span>com rega ou motivo</span></h3>` +
+    eqs.map((e) => `<div class="lin"><span class="sem-trad">${esc(e.nome)}</span><b>${e.regas ? `✓ ${num(e.regas)} <span>campos</span> · ${num(e.plantas)} <span>plantas</span>` : e.sem_rega ? `<span>Sem rega</span>: ${esc(nomeMot(e.sem_rega))}` :
+      `<span style="color:var(--erro,#c62828)">Sem rega e sem motivo</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`}</b></div>`).join('') +
+    `<h3 style="font-size:14px;margin:12px 0 4px">2. <span>Monitoria</span></h3>
+     <p class="pequeno">${d.monitoria_hoje ? `${num(d.monitoria_hoje)} <span>campos para verificar hoje.</span>` : 'Nenhum campo por verificar hoje.'}</p>
+     ${d.monitoria_falhas_ontem ? `<div class="msg erro">❌ ${num(d.monitoria_falhas_ontem)} <span>campos sorteados ficaram por verificar ontem. Contam como falha na sua avaliação.</span></div>` : ''}
+    <h3 style="font-size:14px;margin:12px 0 4px">3. <span>Regas com ⚠️ por confirmar</span> (${al.length})</h3>` +
+    (al.length ? al.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
+      <div class="sub"><span class="sem-trad">${esc(x.equipa)}</span> · ${fmtData(x.data)} · ${x.tipo === 'mais_que_base' ? `${num(x.plantas)} <span>plantas regadas</span>, ${num(x.base)} <span>na base</span>` : `<span>ritmo</span> ${num(x.ritmo)} <span>plantas por pessoa por hora</span>, <span>habitual</span> ${num(x.mediana)}`}</div>
+      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e corrigir</button><button class="chip" onclick="ecraConfirmarRega('${x.registo_id}')">✓ Está certo</button></div></div>`).join('')
+      : '<p class="pequeno">Nenhuma.</p>') +
+    `<h3 style="font-size:14px;margin:12px 0 4px">4. <span>Campos sem equipa</span>: ${num(d.sem_equipa || 0)}</h3>${d.sem_equipa ? '<button class="chip" onclick="irPorAtribuir()">Atribuir os campos</button>' : ''}`;
+  h += d.fechado_em ? '' : falta.length ? `<p class="pequeno" style="margin-top:12px"><span>Para fechar o dia, todas as equipas têm de ter rega ou motivo. Faltam:</span> ${falta.length}</p>`
+    : `<button class="btn" style="margin-top:12px" onclick="fecharDia()">🔒 Fechar o dia</button>`;
+  h += `<p class="pequeno">Feche o dia até às 18:00. Os dias fechados a tempo, a monitoria no prazo, as regas com ⚠️ confirmadas e as equipas sem motivo contam no cumprimento de cada técnico e supervisor (painel).</p>${c.em && !navigator.onLine ? `<p class="pequeno"><span>Sem rede: dados de</span> ${fmtHora(c.em)}</p>` : ''}</div>`;
+  return h;
+}
+async function fecharDia() {
+  if (!navigator.onLine) return aviso('Fechar o dia precisa de rede.', 'erro');
+  const r = await sb.rpc('fechar_dia', { p_data: hojeISO() });
+  if (r.error) return aviso(r.error.message, 'erro');
+  aviso('Dia fechado.', 'ok'); await carregarMeuDia(); actHoje();
+}
+function ecraConfirmarRega(id) {
+  folha(`<h2>✓ Esta rega está certa</h2><p class="pequeno">Explique porque o número está certo (ex.: o produtor plantou mais mudas; contámos no campo).</p>
+    <textarea id="cr-nota" rows="3"></textarea><div id="cr-msg"></div>
+    <button class="btn" id="cr-ok">Confirmar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  $('#cr-ok').onclick = async () => {
+    const t = $('#cr-nota').value.trim(); if (t.length < 3) { $('#cr-msg').innerHTML = '<div class="msg erro">Escreva porque está certo.</div>'; return; }
+    if (!navigator.onLine) { $('#cr-msg').innerHTML = '<div class="msg erro">Precisa de rede.</div>'; return; }
+    const r = await sb.rpc('confirmar_rega', { p_id: id, p_nota: t });
+    if (r.error) { $('#cr-msg').innerHTML = `<div class="msg erro">${esc(r.error.message)}</div>`; return; }
+    fecharFolha(); aviso('Confirmado.', 'ok'); await carregarMeuDia(); actHoje();
+  };
 }
 function botaoMonitoria(a) {
   const m = (Array.isArray(S.mon) ? S.mon : []).find((x) => x.area_id === a.id);

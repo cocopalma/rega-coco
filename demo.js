@@ -287,6 +287,7 @@
         regas.push(...rs); const d = rs.filter((r) => r.desloc_min != null && r.desloc_min <= 60);
         eqs.push({ equipa: t.nome, regas: rs.length, plantas: rs.reduce((s2, r) => s2 + r.plantas, 0), plantas_campo: Math.round(rs.reduce((s2, r) => s2 + r.plantas, 0) / rs.length), espera_med: med(rs.map((r) => r.espera_min)), rega_med: med(rs.map((r) => r.rega_min)), ritmo_med: med(rs.map((r) => r.ritmo)), desloc_med: med(d.map((r) => r.desloc_min)), desloc_n: d.length, dist_med: null, pausas: rs.filter((r) => r.desloc_min > 60).length }); });
       return { equipas: eqs, regas }; },
+    meu_dia: () => null, fechar_dia: () => null, confirmar_rega: () => null, monitoria_falhas: () => [], painel_cumprimento: () => null,
     painel_zonas: () => [],
     painel_chuva: (a) => DB.chuva.filter((c) => naData(c.data, a.p_de, a.p_ate)).map((c) => ({ data: c.data, comunidade: c.comunidade, zona: c.zona, mm: c.mm, registos: 1, fotos: papel === 'cliente' ? undefined : [{ path: c.foto, mm: c.mm, lida_em: c.lida_em, activista: c.activista }] })),
     painel_constrangimentos: (a) => DB.constr.map((c) => { const r = DB.registos.find((x) => x.id === c.registo_id); if (!r || r.teste || !naData(r.data, a.p_de, a.p_ate)) return null; const ar = area(r.area_id);

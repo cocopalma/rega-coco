@@ -134,6 +134,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 
   <section class="grelha kpis" id="kpis"></section>
 
+  <section class="card sec" id="s-cump" hidden><h2>✅ Cumprimento dos técnicos e supervisores</h2>
+    <p class="desc">Do início do trabalho dos activistas (24/10) até ontem, ou até hoje depois das 18:00, dentro do período escolhido. Dia fechado a tempo = «Fechar o dia» na app até às 18:00. Monitoria no prazo = campo sorteado verificado no dia seguinte à rega. Regas com ⚠️ confirmadas = corrigidas ou confirmadas como certas. Equipas sem motivo = dias em que uma equipa não regou e ninguém registou o motivo. As equipas são as actuais de cada técnico e supervisor. A vermelho o que falta.</p>
+    <div class="tabela" id="t-cump"></div></section>
+
   <section class="grelha dois sec">
     <div class="card"><h2>Plantas regadas por dia</h2><p class="desc">Registos da app com plantas regadas (exclui testes).</p><div id="g-dia"></div><details><summary>Ver tabela</summary><div class="tabela" id="t-dia"></div></details></div>
     <div class="card"><h2>Plantas vivas regadas por comunidade</h2><p class="desc">% das plantas vivas da comunidade em campos já regados pela app. Em Palma, por zona (bairro onde fica o campo).</p><div id="g-com"></div><details><summary>Ver tabela</summary><div class="tabela" id="t-com"></div></details></div>
@@ -234,10 +238,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=132"></script>
-<script src="i18n.js?v=132"></script>
+<script src="i18n-sw.js?v=133"></script>
+<script src="i18n.js?v=133"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=132"></script>
+<script src="demo.js?v=133"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -256,6 +260,7 @@ const ddmm = (d) => d.slice(8, 10) + '/' + d.slice(5, 7);
 const TIPOS = { sem_agua_fonte: 'Não havia água na fonte', agua_acabou: 'A água acabou antes de regar todas as plantas', agua_atrasada: 'Esperámos pela água',
   mudas_secas: 'Mudas secas ou mortas', acesso_dificil: 'Acesso difícil', avaria: 'Avaria', outro: 'Outro', falta_agua: 'Falta de água (registo antigo)' };
 let DMC = null;   // v123: campos sorteados na monitoria, por pessoa
+let DCU = null;   // v134: cumprimento por técnico e supervisor
 let D = null, DM = null, DP = null, DT = null, DZ = null, DC = null, DR = null;   // DR = recontagens; DM = monitoria; DP = plantas por dia e equipa; DT = tempos
 const META = 140;   // plantas por pessoa por dia (Valdo, 11/10/2026)
 let VM = 'dia'; try { VM = localStorage.getItem('rega.painel.meta') || 'dia'; } catch {}
@@ -761,7 +766,7 @@ function desenharManut() {
     [...D2].reverse().map((d) => [fmtData(d.data), num(d.campos), num(d.cavaroda), num(d.mulching), d.pessoas != null ? num(d.pessoas) : '—']));
 }
 // Dias sem rega (v116, 26/10/2026, Valdo: "um campo de constrangimentos para casos de não haver rega para uma equipa, não chegar o tuk tuk")
-const MOT_DSR = { tuk_tuk: 'O tuk-tuk não chegou', avaria_tuk_tuk: 'Tuk-tuk avariado ou sem combustível', sem_agua: 'Sem água na fonte ou no poço', chuva: 'Choveu: não foi preciso regar', material: 'Falta de material (bidões, regadores)', equipa: 'A equipa não compareceu', outro: 'Outro motivo' };
+const MOT_DSR = { tuk_tuk: 'O tuk-tuk não chegou', avaria_tuk_tuk: 'Tuk-tuk avariado ou sem combustível', avaria_camiao: 'Camião avariado', sem_agua: 'Sem água na fonte ou no poço', chuva: 'Choveu: não foi preciso regar', material: 'Falta de material (bidões, regadores)', equipa: 'A equipa não compareceu', outro: 'Outro motivo' };
 function desenharDiasSemRega() {
   const el = $('#s-dsr'); if (!el) return;
   const L = Array.isArray(DSR) ? DSR : null; el.hidden = !L; if (!L) return;
@@ -798,6 +803,17 @@ function desenharTestes() {
       x.regas ? (x.fotos3 < x.regas ? `<b style="color:var(--warn,#b26b00)">${num(x.fotos3)}</b>` : num(x.fotos3)) : '—', num(x.plantas), num(x.chuva),
       x.ultima ? fmtData(x.ultima) : '<span style="color:var(--crit)">Ainda não testou</span>']));
 }
+// v134 (28/10/2026, Valdo: "temos de pensar em como delegar trabalho … para que não seja eu constantemente a andar atrás deles")
+function desenharCumprimento() {
+  const sec = $('#s-cump'); if (!sec) return;
+  const L = DCU && Array.isArray(DCU.pessoas) ? DCU.pessoas : null;
+  sec.hidden = !L; if (!L) return;
+  if (!L.length) { $('#t-cump').innerHTML = '<div class="vazio">Sem dias para avaliar neste período.</div>'; return; }
+  const ver = (t) => `<b style="color:var(--crit)">${t}</b>`, fr = (a, b) => (a < b ? ver(`${num(a)} / ${num(b)}`) : `${num(a)} / ${num(b)}`);
+  tabela('#t-cump', [['Pessoa'], ['Função'], ['Equipas', 1], ['Dias fechados a tempo', 1], ['Fechados depois das 18:00', 1], ['Monitoria no prazo', 1], ['Regas com ⚠️ confirmadas', 1], ['Equipas sem motivo (dias)', 1]],
+    L.map((p) => [esc(p.nome), p.papel === 'supervisor' ? 'Supervisor' : 'Técnico', num(p.equipas), fr(p.fechados_a_tempo, p.dias), num(p.fechados_tarde),
+      fr(p.mon_feitos, p.mon_sorteados), fr(p.alertas_tratados, p.alertas), p.sem_motivo ? ver(num(p.sem_motivo)) : '0']));
+}
 function desenharMonitoria() {
   const M = DM; if (!$('#s-mon')) return;
   if (!M) { $('#s-mon').hidden = true; return; }
@@ -823,9 +839,13 @@ function desenharMonitoria() {
   tabela('#t-mon-eq', [['Equipa (activista)'], ['Comunidade'], ['Verificados', 1], ['Nota média', 1], ['Campos não regados', 1], ['Plantas com solo húmido', 1], ['Plantas secas ou mortas', 1]],
     (M.por_equipa || []).map((e) => [esc(e.nome), esc(e.comunidade || ''), num(e.verificados), e.nota_media != null ? Number(e.nota_media).toLocaleString(LOC) : '—',
       e.sem_sinais_rega ? `<b style="color:var(--crit)">${num(e.sem_sinais_rega)}</b>` : '0', e.plantas_obs ? fmtPct(pct(e.plantas_humidas, e.plantas_obs)) : '—', num(e.mudas_secas_mortas)]));
-  tabela('#t-mon-ver', [['Pessoa'], ['Função'], ['Sorteados', 1], ['Verificados', 1], ['Por verificar', 1], ['Nota média dada', 1]],
-    (M.por_verificador || []).map((v) => [esc(v.nome), v.papel === 'supervisor' ? 'Supervisor' : 'Técnico', num(v.amostrados), num(v.verificados),
-      v.amostrados - v.verificados ? `<b style="color:var(--crit)">${num(v.amostrados - v.verificados)}</b>` : '0', v.nota_media != null ? Number(v.nota_media).toLocaleString(LOC) : '—']));
+  // v133 (28/10/2026, Valdo): verifica-se no dia seguinte à rega; o que não foi feito nesse dia é falha (não acumula dias de atraso)
+  const hojeM = diaMaputo(), prazoDe = (d) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); };
+  const LC = Array.isArray(DMC) ? DMC : [], porNome = (n, f) => LC.filter((c) => c.verificador === n && f(c)).length;
+  tabela('#t-mon-ver', [['Pessoa'], ['Função'], ['Sorteados', 1], ['Verificados', 1], ['Não verificados no prazo (falhas)', 1], ['Por verificar (no prazo)', 1], ['Nota média dada', 1]],
+    (M.por_verificador || []).map((v) => { const falhas = porNome(v.nome, (c) => !c.verificado_em && prazoDe(c.data_rega) < hojeM), prazo = porNome(v.nome, (c) => !c.verificado_em && prazoDe(c.data_rega) >= hojeM);
+      return [esc(v.nome), v.papel === 'supervisor' ? 'Supervisor' : 'Técnico', num(v.amostrados), num(v.verificados),
+      falhas ? `<b style="color:var(--crit)">${num(falhas)}</b>` : '0', num(prazo), v.nota_media != null ? Number(v.nota_media).toLocaleString(LOC) : '—']; }));
   // v123 (28/10/2026, Valdo): que campos foram sorteados a cada pessoa, para o seguimento
   const L = Array.isArray(DMC) ? DMC : [];
   $('#d-mon-campos').hidden = !L.length;
@@ -833,7 +853,7 @@ function desenharMonitoria() {
   const estado = (c) => {
     if (c.verificado_em) return `<span style="color:var(--good)">✓ Verificado</span> · ${fmtData(new Date(c.verificado_em).toLocaleDateString('en-CA', { timeZone: 'Africa/Maputo' }))}${c.nota != null ? ' · nota ' + Number(c.nota).toLocaleString(LOC) : ''}`;
     const atraso = dias(c.data_rega, hoje) - 1;
-    return atraso > 0 ? `<b style="color:var(--crit)">Por verificar · ${atraso} ${atraso === 1 ? 'dia' : 'dias'} de atraso</b>` : atraso === 0 ? 'Por verificar (hoje)' : 'Por verificar (amanhã)';
+    return atraso > 0 ? `<b style="color:var(--crit)">❌ Não verificado no prazo (${fmtData(prazoDe(c.data_rega))})</b>` : atraso === 0 ? 'Por verificar (hoje)' : 'Por verificar (amanhã)';
   };
   if (L.length) tabela('#t-mon-campos', [['Pessoa'], ['Rega de'], ['Campo'], ['Produtor'], ['Comunidade'], ['Equipa'], ['Situação']],
     L.map((c) => [esc(c.verificador || ''), fmtData(c.data_rega), esc(c.area_id), esc(c.produtor || ''), esc(c.comunidade || '') + (c.zona ? ' › ' + esc(c.zona) : ''), esc(c.activista || ''), estado(c)]));
@@ -874,7 +894,8 @@ async function buscarPeriodo(p) {
   if (r.error) return null;
   const ct = await sb.rpc('painel_constrangimentos', { p_de: de, p_ate: ate });
   const mc = await sb.rpc('painel_monitoria_campos', { p_de: de, p_ate: ate });
-  return { DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
+  const cu = await sb.rpc('painel_cumprimento', { p_de: de, p_ate: ate });
+  return { DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
 }
 let aGuardar = false;
 async function guardarOutrosPeriodos() {
@@ -897,7 +918,7 @@ function semPeriodoGuardado() {
 async function carregar(mudou = false) {
   const c = (!D || mudou) && lerCache();
   if (mudou && !c && !navigator.onLine) { semPeriodoGuardado(); return; }
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
@@ -909,6 +930,7 @@ async function carregar(mudou = false) {
   const pDsr = sb.rpc('dias_sem_rega_lista', { p_de: de, p_ate: ate });
   const pCt = sb.rpc('painel_constrangimentos', { p_de: de, p_ate: ate });
   const pMc = sb.rpc('painel_monitoria_campos', { p_de: de, p_ate: ate });
+  const pCu = sb.rpc('painel_cumprimento', { p_de: de, p_ate: ate });
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa2', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   const rec = await pRec; DR = rec.error ? null : rec.data;
   const pl = await pPl; DPL = pl.error ? null : pl.data;
@@ -918,18 +940,19 @@ async function carregar(mudou = false) {
   const ds = await pDsr; DSR = ds.error ? null : ds.data;
   const ct = await pCt; DCT = ct.error ? null : ct.data;
   const mc = await pMc; DMC = mc.error ? null : mc.data;
+  const cu = await pCu; DCU = cu.error ? null : cu.data;
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) { if (erroDeRede(error)) avisoRede(c || { antigo: null }); return; }   // sem rede: fica o último painel guardado
   if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria();
+  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento();
   try {   // fica um painel por período: o de hoje, ou o mais recente de outro dia (para ver sem rede)
     const hoje = new Date().toLocaleDateString('sv-SE'), suf = JSON.stringify(P);
     Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && k.endsWith(suf) && !k.startsWith('rega.painel.cache.' + hoje)).forEach((k) => localStorage.removeItem(k));
     Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && k.slice(18, 28) < new Date(Date.now() - 14 * 864e5).toLocaleDateString('sv-SE')).forEach((k) => localStorage.removeItem(k));
-    localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, em: Date.now() }));
+    localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, em: Date.now() }));
   } catch {}
   setTimeout(() => guardarOutrosPeriodos().catch(() => {}), 1500);
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
