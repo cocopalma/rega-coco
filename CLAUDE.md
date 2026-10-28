@@ -243,6 +243,13 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Entrada no campo errado (v119, 28/10/2026, sugestão do Essumaila pelo 💡)
 - Ficha com rega em curso › "↩️ Marquei a entrada no campo errado" (`entradaEngano`): só na 1.ª hora depois da entrada e antes da fotografia da rega. Anula a entrada sem registo de rega; o servidor recebe `problemas_app` tipo `entrada_anulada` (área, hora da entrada e da anulação) para acompanhar quem anula. Teste em `rega-test/teste_v118.py` (passo 1b).
 
+## Conta só de testes (v120, 28/10/2026, Valdo: Abdala Bernardo, IT da SAN, em Cuamba)
+- Valdo: "Podes colocar como gestor, para poder testar, mas ele so testa mesmo. tudo que fizer entra como teste."
+- `perfis.so_teste`; `privado.so_teste()`; gatilho `guarda_so_teste` (BEFORE INSERT/UPDATE/DELETE, `privado.guarda_so_teste`) em todas as tabelas públicas menos perfis, sugestoes, problemas_app, sugestoes_proximo e visitas_painel: com `so_teste` só passam registos_rega, jornadas, chuva e percursos com `teste = true` e constrangimentos de regas de teste; o resto dá erro "Conta de testes: esta acção não é gravada…". Testado a 28/10 (com rollback).
+- App: `porEquipa` false com `so_teste` (não regista por activistas sem telemóvel); aviso ao entrar "🧪 Conta de testes…".
+- Criação: `pessoas_acesso` tem "Abdala Bernardo" (entidade SAN, papel director) para o Valdo criar em Gestão › Outros acessos; depois, por SQL: `papel = 'gestor'`, `gere_acessos = false`, `so_teste = true`, `titulo`.
+- Limite: as regas de teste exigem estar no campo (GPS); de Cuamba não consegue registar regas.
+
 ## Coqueiros congelados (27/10/2026, Valdo)
 - Valdo (26/10): "O levantamento de coqueiros é um projecto piloto… A aplicacao foi feita para a rega, esse é o objectivo." 27/10: "Congela isto, voltamos a isto mais tarde."
 - Nada de novo nos coqueiros dentro da app de rega. Fica o que existe (gestor e director; 63 pontos a 26/10, todos com o login do Dalmar). Se o levantamento crescer (Dalmar fala em 200 000), fazer numa app separada (mesmo servidor e acessos): a app descarrega todos os pontos para o telefone e as fotografias dos coqueiros têm em média 319 KB (200 000 × 3 ≈ 190 GB, acima dos 100 GB do plano).

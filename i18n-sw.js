@@ -379,7 +379,7 @@ window.I18N_SW_D = {
 "A fotografia da entrada fica junta.": "Picha ya kuingia imeambatishwa.",
 "Guardar: não houve rega": "Hifadhi: hakuna umwagiliaji",
 "Anular esta entrada (rega de teste)? Não fica nenhum registo.": "Futa kuingia huku (umwagiliaji wa majaribio)? Hakuna kinachorekodiwa.",
-"Entrada anulada.": "Kuingia kumefutwa.",
+"🧪 Conta de testes: só ficam gravadas as regas, a chuva e os percursos de teste. O resto o servidor não grava.": "🧪 Akaunti ya majaribio: ni umwagiliaji, mvua na njia za majaribio tu zinazohifadhiwa. Seva haihifadhi kingine chochote.", "Entrada anulada.": "Kuingia kumefutwa.",
 "Registado: não houve rega neste campo. É enviado quando houver rede.": "Imerekodiwa: hakuna umwagiliaji katika shamba hili. Itatumwa kukiwa na mtandao.",
 "A confirmar que está no campo.": "Inathibitisha kwamba uko shambani.",
 "Fique em céu aberto, longe de árvores grandes e casas. Pode levar até 20 segundos.": "Kaa mahali wazi, mbali na miti mikubwa na nyumba. Inaweza kuchukua hadi sekunde 20.",

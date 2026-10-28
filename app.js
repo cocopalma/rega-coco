@@ -184,7 +184,7 @@ const souActivista = () => S.perfil?.papel === 'activista';
 // activista sem telemóvel (24/10/2026, Raul/Valdo: Azizi e Mariano): o técnico, o supervisor ou o gestor registam por ele
 // nos campos da lista dele e a rega conta a sério para essa equipa (no servidor: privado.regista_por).
 const semTelefone = (id) => !!(id && (S.activistas || []).find((t) => t.id === id)?.sem_telefone);
-const porEquipa = (a) => !!(a && !souActivista() && ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) && semTelefone(a.activista_id) && meuCampo(a));
+const porEquipa = (a) => !!(a && !souActivista() && !S.perfil?.so_teste && ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) && semTelefone(a.activista_id) && meuCampo(a));
 // o que cada função pode fazer na app
 const FUNCOES = {
   tecnico: { nome: 'Técnico', desc: 'vê os campos e a rega das equipas dos seus activistas (e das que cobre) e o painel geral; grava coordenadas, atribui campos e pode fazer regas de teste.' },
@@ -348,7 +348,7 @@ function actSync() {
 // todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
   const [p, ac, ar, zs, est, lc, pc, qm, po, rc] = await Promise.all([
-    sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos,trocar_senha,marca_coqueiros').eq('id', S.user.id).maybeSingle(),
+    sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos,trocar_senha,marca_coqueiros,so_teste').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho,sem_telefone').order('nome'),
     sb.from('areas').select(COLS_AREAS).eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
@@ -375,6 +375,8 @@ async function carregarTudo() {
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
   // senha/PIN provisório dado pelo gestor: a pessoa escolhe outro (18/10/2026, Valdo)
   if (S.perfil.trocar_senha && !S.trocaAberta) setTimeout(() => ecraTrocarSenha(true), 400);
+  // conta só de testes (28/10/2026, Valdo: Abdala Bernardo, IT da SAN): no servidor só ficam regas, chuva e percursos de teste
+  if (S.perfil.so_teste && !S.avisouSoTeste) { S.avisouSoTeste = true; setTimeout(() => aviso('🧪 Conta de testes: só ficam gravadas as regas, a chuva e os percursos de teste. O resto o servidor não grava.', 'info'), 2500); }
   // aviso ao entrar: ao M&E, recontagens por encaminhar e por validar; ao oficial, recontagens para fazer
   if (['me', 'oficial_me'].includes(S.perfil.papel) && !S.avisouRecontagem) {
     S.avisouRecontagem = true;
