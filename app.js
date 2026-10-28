@@ -2746,6 +2746,8 @@ function cartaoRecontagem(a) {
   const oficial = r.oficial ? esc(r.oficial) : '—';
   if (r.estado === 'por_encaminhar') h += `<div class="lin"><span>Estado</span><b>Por encaminhar a um oficial</b></div>`;
   else if (r.estado === 'encaminhada') h += `<div class="lin"><span>Estado</span><b>Encaminhada a ${oficial} (${dataCurta(r.encaminhada_em)})</b></div>`;
+  // o pedido só chega dentro da app (v121, 28/10/2026, Valdo)
+  if (['encaminhada', 'recusada'].includes(r.estado) && r.oficial_entrou === false) h += `<div class="msg info">⚠️ ${oficial} ainda não entrou na app. O pedido só chega dentro da app: avise-o por WhatsApp ou chamada.</div>`;
   else if (r.estado === 'recusada') h += `<div class="lin"><span>Estado</span><b>Recusada pelo M&E: à espera de nova contagem de ${oficial}</b></div>${papel === 'me' ? `<p class="pequeno">Motivo da recusa: ${esc(r.recusa_motivo || '')}</p>` : ''}`;
   else if (r.estado === 'enviada' && papel === 'me') h += `<div class="lin"><span>Contada por</span><b>${oficial} a ${dataCurta(r.contada_em)}</b></div>${nums}
       ${a.vivas != null ? `<div class="lin"><span>Plantas vivas na base</span><b>${num(a.vivas)}</b></div>` : ''}
@@ -2765,7 +2767,7 @@ async function oficiais() {
 const nomeOficial = (id) => ((S.oficiais || LS.get('oficiais', []) || []).find((o) => o.id === id) || {}).nome || null;
 async function opcoesOficiais(sel, comVazio) {
   const l = await oficiais();
-  return (comVazio ? '<option value="">(encaminhar depois)</option>' : '') + (l.length ? l.map((o) => `<option value="${o.id}" ${o.id === sel ? 'selected' : ''}>${esc(o.nome)}</option>`).join('')
+  return (comVazio ? '<option value="">(encaminhar depois)</option>' : '') + (l.length ? l.map((o) => `<option value="${o.id}" ${o.id === sel ? 'selected' : ''}>${esc(o.nome)}${o.entrou === false ? ' — ainda não entrou na app' : ''}</option>`).join('')
     : (comVazio ? '' : `<option value="">${navigator.onLine ? 'Ainda não há oficiais de M&E com acesso' : 'Sem a lista dos oficiais no telefone: abra com rede uma vez'}</option>`));
 }
 const notaFila = () => (navigator.onLine ? '' : '<br><span class="pequeno">Guardado no telefone: é enviado quando houver rede.</span>');
@@ -2830,11 +2832,12 @@ async function ecraEncaminhar(rid) {
   const a = S.areas.find((x) => x.id === r.area_id) || {};
   folha(`<h2>Encaminhar a recontagem</h2><p class="pequeno">${esc(a.produtor || r.produtor || '')} · ${esc(r.pr || a.pr || '')} · ${esc(r.motivo)}</p>
     <label>Oficial de M&E<select id="en-of">${await opcoesOficiais(r.oficial_id, false)}</select></label>
+    <p class="pequeno">O oficial recebe o pedido só dentro da app (não há SMS nem WhatsApp). Depois de encaminhar, avise-o por WhatsApp ou chamada.</p>
     <div id="en-msg"></div><button class="btn" id="en-ok">Encaminhar</button><button class="btn sec" onclick="abrirFicha('${esc(r.area_id)}')">Cancelar</button>`);
   $('#en-ok').onclick = () => {
     const of = $('#en-of').value; if (!of) return;
     porNaFilaRecG({ op: 'encaminhar', id: rid, oficial: of, oficial_nome: nomeOficial(of) });
-    abrirFicha(r.area_id, `<div class="msg ok">Recontagem encaminhada.${notaFila()}</div>`); actHoje();
+    abrirFicha(r.area_id, `<div class="msg ok">Recontagem encaminhada. Avise o oficial por WhatsApp ou chamada para abrir a app.${notaFila()}</div>`); actHoje();
   };
 }
 function cancelarRecontagem(rid) {
@@ -2970,7 +2973,7 @@ function cartaoRecontagensHoje() {
   return `<div class="cartao" style="border-left:4px solid #6d4c41"><h2>📋 Recontagens das plantas</h2>
     ${!por.length && !val.length && !curso.length ? '<p>Sem recontagens em curso.</p>' : ''}
     ${sec(gereRecont() ? 'Por encaminhar a um oficial' : 'À espera do M&E (por encaminhar)', por, pedido)}
-    ${sec('Com o oficial', curso, (r) => ' · ' + esc(r.oficial || ''))}
+    ${sec('Com o oficial', curso, (r) => ' · ' + esc(r.oficial || '') + (r.oficial_entrou === false ? ' · ⚠️ ainda não entrou na app' : ''))}
     ${S.perfil.papel === 'me' ? sec('Por validar', val, (r) => ' · ' + esc(r.oficial || '')) : sec('Feitas, em validação pelo M&E', val)}
     ${sec('Validadas nos últimos 30 dias', feitas, (r) => ` · ${num(r.vivas)} vivas`)}
     ${ajuda}${botao}</div>`;
