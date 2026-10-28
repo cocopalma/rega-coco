@@ -240,6 +240,9 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Factos de 27/10: monitoria sem nenhuma verificação desde 24/10 (21 campos sorteados a 6 técnicos/supervisores; o sorteio funciona); Kathleen e Edilson (M&E) nunca entraram na app e não há acessos de oficiais de M&E — as recontagens pedidas ficam "por encaminhar". Quionga: Carimo 18 campos, Marijane 30 (pedido do Carimo de ver todos recusado pela regra de 26/10).
 - Teste: `rega-test/teste_v118.py` (LING=en / sw); painel em `teste_painel_v112.py`. `teste.py`: espera até 35 s pela recusa de entrada longe do campo (o GPS agora espera até 20 s por uma leitura melhor).
 
+## Entrada no campo errado (v119, 28/10/2026, sugestão do Essumaila pelo 💡)
+- Ficha com rega em curso › "↩️ Marquei a entrada no campo errado" (`entradaEngano`): só na 1.ª hora depois da entrada e antes da fotografia da rega. Anula a entrada sem registo de rega; o servidor recebe `problemas_app` tipo `entrada_anulada` (área, hora da entrada e da anulação) para acompanhar quem anula. Teste em `rega-test/teste_v118.py` (passo 1b).
+
 ## Coqueiros congelados (27/10/2026, Valdo)
 - Valdo (26/10): "O levantamento de coqueiros é um projecto piloto… A aplicacao foi feita para a rega, esse é o objectivo." 27/10: "Congela isto, voltamos a isto mais tarde."
 - Nada de novo nos coqueiros dentro da app de rega. Fica o que existe (gestor e director; 63 pontos a 26/10, todos com o login do Dalmar). Se o levantamento crescer (Dalmar fala em 200 000), fazer numa app separada (mesmo servidor e acessos): a app descarrega todos os pontos para o telefone e as fotografias dos coqueiros têm em média 319 KB (200 000 × 3 ≈ 190 GB, acima dos 100 GB do plano).

@@ -368,6 +368,8 @@ window.I18N_SW_D = {
 "A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.": "Mvua inasajiliwa tu mahali pa kipimo cha mvua: programu inatumia GPS kujua jamii.",
 "Não há campos com coordenada no telefone. Registe a chuva junto ao pluviómetro, na comunidade.": "Hakuna mashamba yenye kuratibu kwenye simu. Sajili mvua karibu na kipimo cha mvua, katika jamii.",
 "Pelo GPS está em": "Kwa GPS uko",
+"↩️ Marquei a entrada no campo errado": "↩️ Nimeweka kuingia katika shamba lisilo sahihi",
+"Entrada anulada. Marque a entrada no campo certo.": "Kuingia kumefutwa. Weka kuingia katika shamba sahihi.",
 "Pode registar até 7 dias depois.": "Unaweza kurekodi hadi siku 7 baadaye.",
 "🚫 Não houve rega neste campo": "🚫 Hakuna umwagiliaji katika shamba hili",
 "Não houve rega neste campo": "Hakuna umwagiliaji katika shamba hili",
@@ -1549,4 +1551,5 @@ window.I18N_SW_R = (tr) => [
     [/^(\S+) com a rega parada a meio do dia$/, '$1 umwagiliaji ulisimama katikati'],
     [/^O GPS está fraco \(±(\d+) m\): a posição pode estar errada\. Vá para céu aberto, espere uns segundos e tente de novo\.$/, 'GPS ni dhaifu (±$1 m): mahali panaweza kuwa si sahihi. Nenda mahali wazi, subiri sekunde chache na ujaribu tena.'],
     [/^Precisão do GPS: ±(\d+) m\.$/, 'Usahihi wa GPS: ±$1 m.'],
+    [/^Anular a entrada em (.+) \((\d\d:\d\d)\)\? Não fica nenhuma rega neste campo\. Depois marque a entrada no campo certo\.$/, 'Futa kuingia katika $1 ($2)? Hakuna umwagiliaji unaorekodiwa katika shamba hili. Kisha weka kuingia katika shamba sahihi.'],
   ];

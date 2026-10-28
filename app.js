@@ -2372,7 +2372,8 @@ function abrirFicha(id, nota = '') {
       : `<button class="btn sec" onclick="marcarAgua(false)">💧 Chegou a água (tuk-tuk) agora</button>
          <button class="btn sec" onclick="marcarAgua(true)">A água já estava no campo quando chegámos</button>`) +
     `<button class="btn aviso" onclick="ecraSaida()">Terminei — marcar saída</button>
-     <button class="btn sec" onclick="ecraNaoRegou()">🚫 Não houve rega neste campo</button>`;
+     <button class="btn sec" onclick="ecraNaoRegou()">🚫 Não houve rega neste campo</button>` +
+    (!emCurso.fotos?.rega && Date.now() - new Date(emCurso.entrada_em) < 3600e3 ? `<button class="btn sec" onclick="entradaEngano()">↩️ Marquei a entrada no campo errado</button>` : '');
   else if (emCurso) acc = `<div class="msg info">Tem a rega de outro campo em curso. Termine-a primeiro.</div><button class="btn sec" onclick="abrirFicha('${esc(emCurso.area_id)}')">Abrir o campo em curso</button>`;
   else if (podeRegar && meuCampo(a)) acc = (porEquipa(a) ? `<div class="msg info">📵 <span>${esc(nomeAct(a.activista_id))} não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele.</span></div>` : '') + `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`;
   const alheio = !meuCampo(a); S.soVer = alheio;
@@ -3646,6 +3647,16 @@ async function gravarNaoRegou() {
   LS.set('diasSemRega', [{ ...d, pendente: true, meu: true }, ...(LS.get('diasSemRega', []) || [])]);
   await anularEntrada(ent, `<div class="msg ok">Registado: não houve rega neste campo. É enviado quando houver rede.</div>`);
   sincronizar(true);
+}
+// Entrada no campo errado (v119, 28/10/2026, Essumaila: "devia ter opção de voltar ou cancelar… o activista por falha clica no
+// produtor que não estava previsto"): só na 1.ª hora e antes da fotografia da rega. Não fica rega; o servidor recebe o aviso
+// em problemas_app (tipo 'entrada_anulada') para se poder acompanhar quem anula entradas.
+function entradaEngano() {
+  const ent = LS.get('emCurso'); if (!ent) return;
+  const a = S.areas.find((x) => x.id === ent.area_id) || { id: ent.area_id };
+  if (!confirm(`Anular a entrada em ${a.produtor || a.id} (${fmtHora(ent.entrada_em)})? Não fica nenhuma rega neste campo. Depois marque a entrada no campo certo.`)) return;
+  problemaApp('entrada_anulada', `Entrada anulada: ${a.id}`, { area: a.id, entrada_em: ent.entrada_em, anulada_em: new Date().toISOString() });
+  anularEntrada(ent, '<div class="msg ok">Entrada anulada. Marque a entrada no campo certo.</div>');
 }
 async function anularEntrada(ent, nota) {
   for (const t of ['entrada', 'rega', 'saida']) { try { await FOTOS.apagar(`${ent.reg_id}-${t}`); } catch {} }
