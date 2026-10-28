@@ -325,6 +325,36 @@
   }
   const resp = (b, st = 200, h = {}) => new Response(st === 204 || b === undefined ? null : JSON.stringify(b), { status: st, headers: { 'Content-Type': 'application/json', ...h } });
   const fotosMem = {};
+  // sugestões (💡) feitas durante a apresentação vão para o servidor verdadeiro, com a conta verdadeira do gestor
+  // (28/10/2026: as sugestões do Valdo feitas no modo apresentação v124 perderam-se). Só estas duas chamadas saem.
+  const CHAVE_SESSAO = `sb-${REF}-auth-token`;
+  async function tokenReal(apikey) {
+    let s0 = null; try { s0 = JSON.parse(real.get.call(localStorage, CHAVE_SESSAO) || 'null'); } catch {}
+    if (!s0 || !s0.access_token) return null;
+    if ((s0.expires_at || 0) * 1000 > Date.now() + 60e3) return s0;
+    try {
+      const r = await fetchReal(`https://${REF}.supabase.co/auth/v1/token?grant_type=refresh_token`, { method: 'POST', headers: { apikey, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: s0.refresh_token }) });
+      if (!r.ok) return null;
+      const n = await r.json(); if (!n.expires_at && n.expires_in) n.expires_at = Math.floor(Date.now() / 1000) + n.expires_in;
+      real.set.call(localStorage, CHAVE_SESSAO, JSON.stringify(n)); return n;
+    } catch { return null; }
+  }
+  async function sugestaoReal(c, metodo, h, corpo) {
+    const apikey = h.get('apikey') || '', sr = await tokenReal(apikey);
+    if (!sr) return resp({ message: 'Para enviar a sugestão, termine a apresentação e envie de novo.' }, 401);
+    const eu = sr.user?.id, hd = { apikey, Authorization: 'Bearer ' + sr.access_token };
+    if (c.startsWith('/storage/v1/')) {
+      const p = decodeURIComponent(c.split('/object/sugestoes-fotos/')[1] || '').split('/').slice(1).join('/');
+      for (const k2 of ['content-type', 'x-upsert', 'cache-control']) if (h.get(k2)) hd[k2] = h.get(k2);
+      return fetchReal(`https://${REF}.supabase.co/storage/v1/object/sugestoes-fotos/${eu}/${p}`, { method: metodo, headers: hd, body: corpo });
+    }
+    let a = {}; try { a = JSON.parse(corpo || '{}'); } catch {}
+    if (a.p_foto) a.p_foto = `${eu}/${String(a.p_foto).split('/').slice(1).join('/')}`;
+    const FUN = { activista: 'Activista', tecnico: 'Técnico', supervisor: 'Supervisor', oficial_me: 'Oficial de M&E', me: 'M&E', director: 'Director', cliente: 'Cliente' };
+    a.p_ecra = `Apresentação (${FUN[papel] || papel}) › ${a.p_ecra || ''}`;
+    a.p_diag = { ...(a.p_diag || {}), apresentacao: papel };
+    return fetchReal(`https://${REF}.supabase.co/rest/v1/rpc/enviar_sugestao2`, { method: 'POST', headers: { ...hd, 'Content-Type': 'application/json' }, body: JSON.stringify(a) });
+  }
   async function demoFetch(entrada, init = {}) {
     const url = new URL(typeof entrada === 'string' ? entrada : entrada.url), metodo = (init.method || (entrada.method) || 'GET').toUpperCase();
     const h = new Headers(init.headers || (typeof entrada === 'string' ? {} : entrada.headers));
@@ -333,6 +363,7 @@
     const c = url.pathname;
     try {
       if (c.startsWith('/auth/v1/')) { if (c.endsWith('/logout')) return resp(undefined, 204); return c.endsWith('/token') ? resp(SESSAO) : resp(USER); }
+      if ((c.startsWith('/storage/v1/object/sugestoes-fotos/') && metodo !== 'GET') || c === '/rest/v1/rpc/enviar_sugestao2') return sugestaoReal(c, metodo, h, corpo);
       if (c.startsWith('/storage/v1/')) {
         if (metodo === 'POST' || metodo === 'PUT') {
           const p = decodeURIComponent(c.split('/object/')[1] || ''), blob = corpo instanceof Blob ? corpo : corpo instanceof FormData ? [...corpo.values()].find((v) => v instanceof Blob) : null;

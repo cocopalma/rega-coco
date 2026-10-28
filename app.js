@@ -4244,7 +4244,7 @@ const nomeFuncaoDemo = (p) => (DEMO_FUNCOES.find((f) => f[0] === p) || [p, p])[1
 function cartaoDemo() {
   if (S.perfil?.papel !== 'gestor' || window.DEMO) return '';
   return `<div class="cartao" style="border-left:4px solid #6a1b9a"><h2>🎬 Modo apresentação</h2>
-    <p class="pequeno">Para mostrar a app a outras pessoas: escolha uma função e a app passa a mostrar o que essa pessoa vê, com dados de exemplo. Nada do que fizer é gravado no servidor. Os campos de exemplo ficam à volta de onde está agora, para poder registar uma rega ao vivo.</p>
+    <p class="pequeno">Para mostrar a app a outras pessoas: escolha uma função e a app passa a mostrar o que essa pessoa vê, com dados de exemplo. Nada do que fizer é gravado no servidor, excepto as sugestões (💡), que chegam à Gestão. Os campos de exemplo ficam à volta de onde está agora, para poder registar uma rega ao vivo.</p>
     ${DEMO_FUNCOES.map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">Ver como ${n}</div><div class="sub">${d}</div></div></div>`).join('')}</div>`;
 }
 function entrarDemo(papel) {
@@ -4265,6 +4265,7 @@ function ecraDemo() {
     <h3>Ver como outra função</h3>
     ${DEMO_FUNCOES.filter(([k]) => k !== DEMO.papel).map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">${n}</div><div class="sub">${d}</div></div></div>`).join('')}
     <p class="pequeno">O que fizer numa função aparece nas outras (por exemplo: o oficial conta, o M&E valida).</p>
+    <p class="pequeno">As sugestões (💡) feitas na apresentação são enviadas a sério, com a sua conta, e aparecem na Gestão.</p>
     <button class="btn sec" onclick="if (confirm('Apagar o que fez na apresentação e voltar aos dados de exemplo iniciais?')) DEMO.recomecar()">Recomeçar com os dados iniciais</button>
     <button class="btn" onclick="DEMO.terminar()">Terminar a apresentação</button>`);
 }
