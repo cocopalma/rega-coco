@@ -256,6 +256,9 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Testes por pessoa (Valdo: "comprimisses… ocupa um espaço grande"): indicadores e tabela dentro de "Ver quem já testou" (fechado; abre e fecha ao tocar).
 - Teste do painel: `rega-test/teste_painel_v123.py` (LING=en / sw).
 
+## Técnico e supervisor na ficha (v127, 28/10/2026, Valdo)
+- Ficha do campo: por baixo de "Activista" aparecem "Técnico" e "Supervisor" (de `activistas.tecnico/supervisor`, `tecDe`/`supDe`) para todos os papéis, quando o campo tem activista (antes o supervisor só aparecia ao técnico/supervisor).
+
 ## Modo apresentação (v124, 28/10/2026, Valdo)
 - Valdo: "posso ter de apresentar o aplicativo a diferentes pessoas… se eu estiver a apresentar apenas na ótica de gestor, há muitas coisas que eu não consigo ver"; escolheu "Modo apresentação".
 - Gestão › "🎬 Modo apresentação" (qualquer gestor; `cartaoDemo` em `#gestao-demo`): "Ver como" Activista, Técnico, Supervisor, Oficial de M&E, M&E, Director, Cliente (`DEMO_FUNCOES`). `entrarDemo(papel)` grava `sessionStorage rega.demo` {papel, lat, lon = posição do gestor (senão centro de Palma), desde} e recarrega. Faixa roxa `#demo-faixa` "🎬 Apresentação · função" com "Mudar" (`ecraDemo`: outra função, "Recomeçar com os dados iniciais", "Terminar") e "Terminar"; "Sair" também abre `ecraDemo`.

@@ -2310,6 +2310,7 @@ function activistasProximos(a) {
 }
 // nome do supervisor do activista do campo, e texto curto da equipa de um campo fora da lista
 const supDe = (a) => (S.activistas.find((t) => t.id === a.activista_id) || {}).supervisor || '';
+const tecDe = (a) => (S.activistas.find((t) => t.id === a.activista_id) || {}).tecnico || '';
 const equipaDe = (a) => (a.activista_id ? `equipa de ${nomeAct(a.activista_id)}${supDe(a) ? ' · ' + supDe(a) : ''}` : 'sem activista, fora das comunidades da sua equipa');
 function botaoPassar(a) {
   return podeAtribuir(a) ? `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">➡️ Passar para a minha equipa</button>` : '';
@@ -2386,7 +2387,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Comunidade</span><b>${esc(a.comunidade)}</b></div>
     ${zonasDe(a.comunidade).length ? `<div class="lin"><span>Zona</span><b>${a.zona ? esc(a.zona) : '<span class="pequeno">por definir</span>'}</b></div>` : ''}
     <div class="lin"><span>Activista</span><b>${esc(nomeAct(a.activista_id))}</b></div>
-    ${listaPropria() && a.activista_id ? `<div class="lin"><span>Supervisor</span><b>${esc(supDe(a) || '—')}</b></div>` : ''}
+    ${a.activista_id ? `<div class="lin"><span>Técnico</span><b class="sem-trad">${esc(tecDe(a) || '—')}</b></div><div class="lin"><span>Supervisor</span><b class="sem-trad">${esc(supDe(a) || '—')}</b></div>` : ''}
     ${a.instaladas != null ? `<div class="lin"><span>Plantas instaladas</span><b>${num(a.instaladas)}</b></div>` : ''}<div class="lin"><span>Plantas vivas</span><b>${a.vivas != null ? num(a.vivas) : '—'}</b></div>${a.instaladas != null && a.vivas != null && a.instaladas >= a.vivas ? `<div class="lin"><span>Plantas mortas</span><b>${num(a.instaladas - a.vivas)}</b></div>` : ''}
     <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div>
     ${linhasRegasCampo(a)}
