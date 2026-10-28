@@ -3109,31 +3109,50 @@ function diagApp() {
       instalada: matchMedia('(display-mode: standalone)').matches, online: navigator.onLine, sinc: LS.get('ultimaSync'), dados: LS.get('estadoEm') };
   } catch (e) { return { erro: String(e?.message || e) }; }
 }
+// Até 3 fotografias por sugestão (v130, 28/10/2026, Valdo: "A sugestão deve permitir enviar mais de 1 foto e 3 no máximo")
+const MAX_FOTOS_SUG = 3;
 function ecraSugestao() {
-  S.sugCtx = { ecra: ecraActual(), area: S.fichaAberta && $('#folha')?.classList.contains('on') ? S.fichaAberta : null, diag: diagApp() }; S.sugFoto = null;
-  folha(`<h2>💡 Sugerir uma melhoria</h2><p class="pequeno">Escreva o que pode melhorar na app ou o problema que encontrou no campo. Pode juntar uma fotografia ou uma captura do ecrã.</p>
+  S.sugCtx = { ecra: ecraActual(), area: S.fichaAberta && $('#folha')?.classList.contains('on') ? S.fichaAberta : null, diag: diagApp() }; S.sugFotos = [];
+  folha(`<h2>💡 Sugerir uma melhoria</h2><p class="pequeno">Escreva o que pode melhorar na app ou o problema que encontrou no campo. Pode juntar até 3 fotografias ou capturas do ecrã.</p>
     <textarea id="sg-txt" rows="4" placeholder="Ex.: o que aconteceu, onde, e o que devia acontecer"></textarea>
-    ${campoFoto('sg-foto', 'Fotografia ou captura do ecrã (opcional)')}<p class="pequeno" id="sg-foto-ok"></p>
+    <div id="sg-fotos"></div><div id="sg-add">${campoFoto('sg-foto', 'Fotografias ou capturas do ecrã (opcional, até 3)')}</div>
     <button class="btn" onclick="gravarSugestao()">Enviar a sugestão</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
-  ligarFoto('sg-foto', null, async (foto) => { S.sugFoto = foto; $('#sg-foto-ok').innerHTML = foto ? '<span style="color:var(--ok,#2e7d32)">✓ Fotografia junta</span>' : ''; });
+  ligarFoto('sg-foto', null, async (foto) => { if (foto && S.sugFotos.length < MAX_FOTOS_SUG) S.sugFotos.push(foto); mostrarFotosSug(); });
+  mostrarFotosSug();
 }
+function mostrarFotosSug() {
+  const el = $('#sg-fotos'); if (!el) return; const n = S.sugFotos.length;
+  if (S.sugUrls) S.sugUrls.forEach((u) => URL.revokeObjectURL(u));
+  S.sugUrls = S.sugFotos.map((b) => URL.createObjectURL(b));
+  el.innerHTML = n ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0">${S.sugUrls.map((u, i) => `<div style="position:relative"><img src="${u}" alt="" style="width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--linha,#ddd)">
+      <button type="button" class="chip" style="position:absolute;top:2px;right:2px;padding:0 7px" onclick="tirarFotoSug(${i})" aria-label="Tirar">✕</button></div>`).join('')}</div>
+    <p class="pequeno" style="color:var(--ok,#2e7d32)">✓ ${n} / ${MAX_FOTOS_SUG}</p>` : '';
+  const add = $('#sg-add'); if (add) add.hidden = n >= MAX_FOTOS_SUG;
+}
+function tirarFotoSug(i) { S.sugFotos.splice(i, 1); mostrarFotosSug(); }
 async function gravarSugestao() {
   const t = $('#sg-txt').value.trim(); if (t.length < 3) return alert('Escreva a sugestão.');
-  const id = crypto.randomUUID();
-  if (S.sugFoto) { try { await FOTOS.guardar('sug-' + id, S.sugFoto); } catch { (S.fotosMem ||= {})['sug-' + id] = S.sugFoto; } }
-  const f = LS.get('filaSug', []); f.push({ id, texto: t, foto: !!S.sugFoto, ecra: S.sugCtx?.ecra || '', area_id: S.sugCtx?.area || null, versao: versaoApp(), telefone: navigator.userAgent, lingua: LS.get('lingua', 'pt'), em: new Date().toISOString(), diag: S.sugCtx?.diag || null });
-  LS.set('filaSug', f); S.sugFoto = null; fecharFolha(); actSync(); aviso('Obrigado! A sugestão foi guardada.', 'ok'); sincronizar(true);
+  const id = crypto.randomUUID(), fotos = (S.sugFotos || []).slice(0, MAX_FOTOS_SUG);
+  for (let i = 0; i < fotos.length; i++) { const k = 'sug-' + id + (i ? '-' + (i + 1) : ''); try { await FOTOS.guardar(k, fotos[i]); } catch { (S.fotosMem ||= {})[k] = fotos[i]; } }
+  const f = LS.get('filaSug', []); f.push({ id, texto: t, foto: fotos.length > 0, nfotos: fotos.length, ecra: S.sugCtx?.ecra || '', area_id: S.sugCtx?.area || null, versao: versaoApp(), telefone: navigator.userAgent, lingua: LS.get('lingua', 'pt'), em: new Date().toISOString(), diag: S.sugCtx?.diag || null });
+  LS.set('filaSug', f); S.sugFotos = []; fecharFolha(); actSync(); aviso('Obrigado! A sugestão foi guardada.', 'ok'); sincronizar(true);
 }
 async function enviarSugestoes() {
   for (const g of LS.get('filaSug', [])) {
-    let foto = null, caminho = null;
-    if (g.foto) { try { foto = await FOTOS.ler('sug-' + g.id); } catch {} foto = foto || S.fotosMem?.['sug-' + g.id] || null; }
-    if (foto) { caminho = `${S.perfil.id}/${g.id}.jpg`; const up = await sb.storage.from('sugestoes-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
-    const r = await sb.rpc('enviar_sugestao2', { p_id: g.id, p_texto: g.texto, p_foto: caminho, p_ecra: g.ecra, p_area: g.area_id, p_versao: g.versao, p_telefone: g.telefone, p_lingua: g.lingua, p_em: g.em, p_diag: g.diag || null });
+    const caminhos = [], nf = g.nfotos ?? (g.foto ? 1 : 0);
+    for (let i = 0; i < nf; i++) {
+      const k = 'sug-' + g.id + (i ? '-' + (i + 1) : ''); let foto = null;
+      try { foto = await FOTOS.ler(k); } catch {} foto = foto || S.fotosMem?.[k] || null; if (!foto) continue;
+      const cam = `${S.perfil.id}/${g.id}${i ? '-' + (i + 1) : ''}.jpg`;
+      const up = await sb.storage.from('sugestoes-fotos').upload(cam, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message;
+      caminhos.push(cam);
+    }
+    const args = { p_id: g.id, p_texto: g.texto, p_foto: caminhos[0] || null, p_ecra: g.ecra, p_area: g.area_id, p_versao: g.versao, p_telefone: g.telefone, p_lingua: g.lingua, p_em: g.em, p_diag: g.diag || null };
+    const r = caminhos.length > 1 ? await sb.rpc('enviar_sugestao3', { ...args, p_fotos_extra: caminhos.slice(1) }) : await sb.rpc('enviar_sugestao2', args);
     if (r.error && !r.error.code) return r.error.message;
     if (r.error) aviso(`Sugestão não enviada: ${r.error.message}`, 'erro');
     LS.set('filaSug', LS.get('filaSug', []).filter((y) => y.id !== g.id));
-    try { await FOTOS.apagar('sug-' + g.id); } catch {}
+    for (let i = 0; i < MAX_FOTOS_SUG; i++) { const k = 'sug-' + g.id + (i ? '-' + (i + 1) : ''); try { await FOTOS.apagar(k); } catch {} if (S.fotosMem) delete S.fotosMem[k]; }
   }
   const sp = LS.get('filaSugProx', []);                 // registo das sugestões do próximo campo (v100)
   if (sp.length) { const r = await sb.rpc('registar_sugestoes_proximo', { p_lista: sp }); if (!r.error) LS.set('filaSugProx', LS.get('filaSugProx', []).filter((x) => !sp.some((y) => y.id === x.id))); }
@@ -3169,7 +3188,7 @@ function desenharSugestoes(filtro = S.sugFiltro || 'nova') {
       <div style="white-space:pre-wrap;margin:4px 0" class="sem-trad">${esc(x.texto)}</div>
       ${x.nota ? `<div class="pequeno"><span>Resposta</span>: <span class="sem-trad" style="white-space:pre-wrap">${esc(x.nota)}</span>${x.pendente ? ' · <span>por enviar</span>' : ''}</div>` : x.pendente ? '<div class="pequeno">Por enviar.</div>' : ''}
       ${x.diag ? `<details class="pequeno"><summary>Estado da app</summary><pre style="white-space:pre-wrap;font-size:11px" class="sem-trad">${esc(JSON.stringify(x.diag, null, 1))}</pre></details>` : ''}
-      <div class="chips">${x.foto_path ? `<button class="chip" onclick="verFoto('sugestoes-fotos', '${esc(x.foto_path)}', '${esc(x.quem || '')}')">📷 Fotografia</button>` : ''}
+      <div class="chips">${[x.foto_path, ...(x.fotos_extra || [])].filter(Boolean).map((fp, i, l) => `<button class="chip" onclick="verFoto('sugestoes-fotos', '${esc(fp)}', '${esc(x.quem || '')}')">📷 ${l.length > 1 ? i + 1 : 'Fotografia'}</button>`).join('')}
         ${['aprovada', 'recusada', 'feita', 'nova'].filter((e) => e !== x.estado).map((e) => `<button class="chip" onclick="avaliarSugestao('${x.id}','${e}')">${ESTADOS_SUG[e]}</button>`).join('')}</div></div>`).join('') || '<p class="pequeno">Nenhuma.</p>'}
     <h3 style="font-size:14px;margin:14px 0 4px">Problemas técnicos registados pela app (30 dias)</h3>
     ${S.sug.problemas.map((p) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)"><div><b>${esc(p.tipo)}</b> · ${esc(p.mensagem || '')}</div>
@@ -3316,7 +3335,7 @@ function ligarFoto(id, rasc, aoLer) {
     if (!ok) doSistema();                                         // sem câmara na página: câmara do sistema
   };
   for (const i of [$(`#${id}-cam`), $(`#${id}`)]) i.onchange = async (e) => {
-    const f = e.target.files[0]; if (!f) return;
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;   // limpar: deixa escolher a mesma imagem outra vez
     if (rasc) rascGuardar(rasc, { camara: false });
     try { await aoLer(await reduzirFoto(f)); } catch { aoLer(null); aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); }
   };

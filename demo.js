@@ -350,10 +350,11 @@
     }
     let a = {}; try { a = JSON.parse(corpo || '{}'); } catch {}
     if (a.p_foto) a.p_foto = `${eu}/${String(a.p_foto).split('/').slice(1).join('/')}`;
+    if (Array.isArray(a.p_fotos_extra)) a.p_fotos_extra = a.p_fotos_extra.map((f) => `${eu}/${String(f).split('/').slice(1).join('/')}`);
     const FUN = { activista: 'Activista', tecnico: 'Técnico', supervisor: 'Supervisor', oficial_me: 'Oficial de M&E', me: 'M&E', director: 'Director', cliente: 'Cliente' };
     a.p_ecra = `Apresentação (${FUN[papel] || papel}) › ${a.p_ecra || ''}`;
     a.p_diag = { ...(a.p_diag || {}), apresentacao: papel };
-    return fetchReal(`https://${REF}.supabase.co/rest/v1/rpc/enviar_sugestao2`, { method: 'POST', headers: { ...hd, 'Content-Type': 'application/json' }, body: JSON.stringify(a) });
+    return fetchReal(`https://${REF}.supabase.co${c}`, { method: 'POST', headers: { ...hd, 'Content-Type': 'application/json' }, body: JSON.stringify(a) });
   }
   async function demoFetch(entrada, init = {}) {
     const url = new URL(typeof entrada === 'string' ? entrada : entrada.url), metodo = (init.method || (entrada.method) || 'GET').toUpperCase();
@@ -363,7 +364,7 @@
     const c = url.pathname;
     try {
       if (c.startsWith('/auth/v1/')) { if (c.endsWith('/logout')) return resp(undefined, 204); return c.endsWith('/token') ? resp(SESSAO) : resp(USER); }
-      if ((c.startsWith('/storage/v1/object/sugestoes-fotos/') && metodo !== 'GET') || c === '/rest/v1/rpc/enviar_sugestao2') return sugestaoReal(c, metodo, h, corpo);
+      if ((c.startsWith('/storage/v1/object/sugestoes-fotos/') && metodo !== 'GET') || c === '/rest/v1/rpc/enviar_sugestao2' || c === '/rest/v1/rpc/enviar_sugestao3') return sugestaoReal(c, metodo, h, corpo);
       if (c.startsWith('/storage/v1/')) {
         if (metodo === 'POST' || metodo === 'PUT') {
           const p = decodeURIComponent(c.split('/object/')[1] || ''), blob = corpo instanceof Blob ? corpo : corpo instanceof FormData ? [...corpo.values()].find((v) => v instanceof Blob) : null;

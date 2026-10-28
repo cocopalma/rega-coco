@@ -91,6 +91,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .filtro .opcoes{display:flex;flex-wrap:wrap;gap:6px}
 .filtro button{font:inherit;font-size:13px;color:var(--ink2);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:5px 12px;cursor:pointer}
 .filtro button[aria-pressed="true"]{background:var(--marca);border-color:var(--marca);color:var(--page);font-weight:600}
+.filtro .b-img{margin-left:auto}
 .filtro .datas{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:13px;color:var(--ink2)}
 .filtro .datas[hidden]{display:none}
 .filtro input[type=date]{font:inherit;font-size:13px;color:var(--ink);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px 6px;margin-left:4px}
@@ -127,6 +128,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
       <label>De<input type="date" id="f-de"></label><label>Até<input type="date" id="f-ate"></label><button id="f-aplicar">Aplicar</button>
     </div>
     <div class="legenda" id="f-legenda"></div>
+    <button id="b-img" class="b-img" onclick="imagemIndicadores()">📷 Guardar imagem dos indicadores</button>
   </section>
 
   <section class="grelha kpis" id="kpis"></section>
@@ -230,10 +232,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=129"></script>
-<script src="i18n.js?v=129"></script>
+<script src="i18n-sw.js?v=130"></script>
+<script src="i18n.js?v=130"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=129"></script>
+<script src="demo.js?v=130"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -365,6 +367,54 @@ function barras(alvo, dados, { valor, rotulo, texto, dicaDe, max, ref, refTxt })
 function tabela(alvo, cab, linhas) {
   $(alvo).innerHTML = linhas.length ? `<table><thead><tr>${cab.map(([t, n]) => `<th${n ? ' class="n"' : ''}>${esc(t)}</th>`).join('')}</tr></thead><tbody>` +
     linhas.map((l) => `<tr>${l.map((c, i) => `<td${cab[i][1] ? ' class="n"' : ''}>${c}</td>`).join('')}</tr>`).join('') + '</tbody></table>' : '<div class="vazio">Ainda sem registos.</div>';
+}
+
+// ---------- imagem dos indicadores (v130, 28/10/2026, Valdo: guardar a imagem dos cartões com o dia, ou o período) ----------
+async function imagemIndicadores() {
+  const cartoes = [...document.querySelectorAll('#kpis .kpi')]; if (!cartoes.length) return;
+  const esc2 = 2, L = 1200, M = 28, G = 12, COLS = 5, cw = (L - 2 * M - G * (COLS - 1)) / COLS, P = 14;
+  const fam = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
+  const cv = document.createElement('canvas'), cx = cv.getContext('2d');
+  const linhas = (t, f, max) => { cx.font = f; const out = []; String(t).split('\n').forEach((par) => { let l = ''; par.split(/\s+/).filter(Boolean).forEach((w) => { const x = l ? l + ' ' + w : w; if (cx.measureText(x).width > max && l) { out.push(l); l = w; } else l = x; }); if (l) out.push(l); }); return out; };
+  const FR = `500 13px ${fam}`, FV = `700 30px ${fam}`, FS = `400 12px ${fam}`;
+  const dados = cartoes.map((k) => {
+    const rot = k.querySelector('.rot')?.innerText || '', val = k.querySelector('.val')?.innerText || '', sub = k.querySelector('.sub')?.innerText || '';
+    const bar = k.querySelector('.barra i'); const pb = bar ? parseFloat(bar.style.width) || 0 : null;
+    const lr = linhas(rot, FR, cw - 2 * P), ls = linhas(sub, FS, cw - 2 * P);
+    return { lr, val, ls, pb, h: P + lr.length * 17 + 40 + ls.length * 16 + (pb != null ? 14 : 0) + P };
+  });
+  const filas = []; for (let i = 0; i < dados.length; i += COLS) filas.push(dados.slice(i, i + COLS));
+  const alt = filas.map((f) => Math.max(...f.map((d) => d.h)));
+  const topo = 112, H = topo + alt.reduce((a, b) => a + b, 0) + G * (filas.length - 1) + M + 22;
+  cv.width = L * esc2; cv.height = H * esc2; cx.scale(esc2, esc2);
+  cx.fillStyle = '#f6f5f1'; cx.fillRect(0, 0, L, H);
+  cx.textBaseline = 'top';
+  cx.fillStyle = '#2e6b30'; cx.font = `700 12px ${fam}`; cx.fillText((document.querySelector('header.topo .marca')?.innerText || 'Projecto Coco · Palma').toUpperCase(), M, M);
+  cx.fillStyle = '#111'; cx.font = `700 24px ${fam}`; cx.fillText(document.querySelector('header.topo h1')?.innerText || 'Rega de emergência', M, M + 18);
+  cx.fillStyle = '#111'; cx.font = `700 16px ${fam}`; cx.fillText($('#f-legenda').innerText || '', M, M + 52);
+  cx.fillStyle = '#777'; cx.font = `400 12px ${fam}`; const ger = $('#gerado').innerText || ''; cx.fillText(ger, L - M - cx.measureText(ger).width, M + 4);
+  const ret = (x, y, w, h, r) => { cx.beginPath(); cx.moveTo(x + r, y); cx.arcTo(x + w, y, x + w, y + h, r); cx.arcTo(x + w, y + h, x, y + h, r); cx.arcTo(x, y + h, x, y, r); cx.arcTo(x, y, x + w, y, r); cx.closePath(); };
+  let y = topo;
+  filas.forEach((f, fi) => {
+    f.forEach((d, i) => {
+      const x = M + i * (cw + G); ret(x, y, cw, alt[fi], 12); cx.fillStyle = '#fff'; cx.fill(); cx.strokeStyle = '#e2e0d8'; cx.lineWidth = 1; cx.stroke();
+      let yy = y + P; cx.fillStyle = '#444'; cx.font = FR; d.lr.forEach((l) => { cx.fillText(l, x + P, yy); yy += 17; });
+      cx.fillStyle = '#111'; cx.font = FV; cx.fillText(d.val, x + P, yy + 2); yy += 40;
+      cx.fillStyle = '#777'; cx.font = FS; d.ls.forEach((l) => { cx.fillText(l, x + P, yy); yy += 16; });
+      if (d.pb != null) { ret(x + P, yy + 6, cw - 2 * P, 6, 3); cx.fillStyle = '#ece9e0'; cx.fill(); if (d.pb > 0) { ret(x + P, yy + 6, Math.max(6, (cw - 2 * P) * Math.min(100, d.pb) / 100), 6, 3); cx.fillStyle = '#3b6fd1'; cx.fill(); } }
+    });
+    y += alt[fi] + G;
+  });
+  cx.fillStyle = '#999'; cx.font = `400 11px ${fam}`; cx.fillText('Rega Coco · cocopalma.github.io/rega-coco', M, H - M);
+  const per = (D && D.periodo) || {}, d8 = (t) => String(t || '').replaceAll('-', '');
+  const sufixo = per.de && per.de === per.ate ? d8(per.de) : (per.de || per.ate) ? `${d8(per.de) || 'inicio'}_a_${d8(per.ate) || 'hoje'}` : `tudo_${d8(D?.inicio)}_a_${d8(D?.fim || D?.inicio)}`;
+  const nome = `Rega_Coco_indicadores_${sufixo}.png`;
+  const blob = await new Promise((r) => cv.toBlob(r, 'image/png')); if (!blob) return;
+  const fich = new File([blob], nome, { type: 'image/png' });
+  try {
+    if (matchMedia('(pointer:coarse)').matches && navigator.canShare && navigator.canShare({ files: [fich] })) { await navigator.share({ files: [fich], title: nome }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 // ---------- desenhar ----------
