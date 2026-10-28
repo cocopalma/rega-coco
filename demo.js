@@ -143,6 +143,11 @@
   try { localStorage.setItem(`sb-${REF}-auth-token`, JSON.stringify(SESSAO)); } catch {}
 
   // ---------- 4. o que cada função vê ----------
+  // pessoas de cada equipa de exemplo (v135): tamanho − 1 nomes inventados, criados na primeira vez
+  function membros() {
+    if (!DB.membros) { DB.membros = []; DB.activistas.forEach((t, k) => { for (let i = 1; i < (t.equipa_tamanho || 1); i++) DB.membros.push({ id: ID(9900 + k * 20 + i), activista_id: t.id, equipa_rh: t.id, nome: `Sazonal ${['A', 'B', 'C'][k] || k}${i} Exemplo`, contrato: 'Certo', inicio: dia(30), fim: null, activo: true }); }); guardarDB(); }
+    return DB.membros;
+  }
   const act = () => (papel === 'activista' ? A1 : null);
   const vis = () => (papel === 'tecnico' ? [A1, A2] : papel === 'supervisor' ? [A1, A2, A3] : null);
   const areasDoOficial = () => new Set(DB.recontagens.filter((r) => r.oficial_id === U.oficial_me && ['encaminhada', 'recusada', 'enviada', 'validada'].includes(r.estado)).map((r) => r.area_id));
@@ -287,6 +292,16 @@
         regas.push(...rs); const d = rs.filter((r) => r.desloc_min != null && r.desloc_min <= 60);
         eqs.push({ equipa: t.nome, regas: rs.length, plantas: rs.reduce((s2, r) => s2 + r.plantas, 0), plantas_campo: Math.round(rs.reduce((s2, r) => s2 + r.plantas, 0) / rs.length), espera_med: med(rs.map((r) => r.espera_min)), rega_med: med(rs.map((r) => r.rega_min)), ritmo_med: med(rs.map((r) => r.ritmo)), desloc_med: med(d.map((r) => r.desloc_min)), desloc_n: d.length, dist_med: null, pausas: rs.filter((r) => r.desloc_min > 60).length }); });
       return { equipas: eqs, regas }; },
+    membros_lista: () => (['activista', 'tecnico', 'supervisor', 'gestor', 'director', 'me'].includes(papel) ? membros().filter((m) => m.activo && (act() ? m.activista_id === A1 : !vis() || vis().includes(m.activista_id))).map((m) => {
+      const p = (DB.presencas || []).find((x) => x.activista_id === m.activista_id && x.data === dia(0)); return { ...m, presente_hoje: p ? p.presentes.includes(m.id) : null }; }) : null),
+    gravar_membro: (a) => { const l = membros(); let m = l.find((x) => x.id === a.p_id); const antes = m ? m.activista_id : null;
+      if (!m) { m = { id: a.p_id, activista_id: a.p_activista, equipa_rh: a.p_activista, nome: a.p_nome, contrato: null, inicio: null, fim: null, activo: true }; l.push(m); }
+      Object.assign(m, { activista_id: a.p_activista, nome: a.p_nome, activo: a.p_activo !== false });
+      [antes, a.p_activista].filter(Boolean).forEach((id) => { const t = DB.activistas.find((x) => x.id === id); if (t) t.equipa_tamanho = 1 + l.filter((x) => x.activo && x.activista_id === id).length; });
+      guardarDB(); return { id: m.id }; },
+    gravar_presencas: (a) => { DB.presencas ||= []; DB.presencas = DB.presencas.filter((x) => !(x.activista_id === a.p_activista && x.data === a.p_data));
+      const ok = (a.p_presentes || []).filter((id) => membros().some((m) => m.id === id && m.activista_id === a.p_activista));
+      DB.presencas.push({ id: a.p_id, activista_id: a.p_activista, data: a.p_data, presentes: ok, outros: a.p_outros || 0 }); guardarDB(); return { pessoas: 1 + ok.length + (a.p_outros || 0) }; },
     meu_dia: () => null, fechar_dia: () => null, confirmar_rega: () => null, monitoria_falhas: () => [], painel_cumprimento: () => null,
     painel_zonas: () => [],
     painel_chuva: (a) => DB.chuva.filter((c) => naData(c.data, a.p_de, a.p_ate)).map((c) => ({ data: c.data, comunidade: c.comunidade, zona: c.zona, mm: c.mm, registos: 1, fotos: papel === 'cliente' ? undefined : [{ path: c.foto, mm: c.mm, lida_em: c.lida_em, activista: c.activista }] })),

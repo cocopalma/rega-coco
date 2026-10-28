@@ -303,13 +303,15 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'plantas_rega' ? await sb.rpc('corrigir_plantas_rega', { p_id: x.registo_id, p_plantas: x.plantas, p_motivo: x.motivo, p_em: x.em })
         : x.tipo === 'aval_sug' ? await sb.rpc('avaliar_sugestao', { p_id: x.sug_id, p_estado: x.estado, p_nota: x.nota })
         : x.tipo === 'com_act' ? await sb.rpc('definir_comunidade_activista', { p_activista: x.activista_id, p_comunidade: x.comunidade })
+        : x.tipo === 'membro' ? await sb.rpc('gravar_membro', { p_id: x.membro_id, p_activista: x.activista_id, p_nome: x.nome, p_activo: x.activo, p_motivo: x.motivo || null })
+        : x.tipo === 'presencas' ? await sb.rpc('gravar_presencas', { p_id: x.pres_id, p_activista: x.activista_id, p_data: x.data, p_presentes: x.presentes, p_outros: x.outros || 0 })
         : x.tipo === 'justif' ? await sb.rpc('justificar_rega', { p_id: x.registo_id, p_motivo: x.motivo })
         : x.tipo === 'dia_sem_rega' ? await enviarDiaSemRega(x.d)
         : x.tipo === 'dia_sem_rega_rem' ? await sb.rpc('remover_dia_sem_rega', { p_id: x.dsr_id })
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
       if (r4.error) aviso(`Não foi gravado (${x.area_id || x.sug_id || x.activista_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
-      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem'].includes(x.tipo)) alteradas++;
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'membro', 'presencas'].includes(x.tipo)) alteradas++;
     }
   }
   if (!erro) erro = await enviarPercurso();
@@ -398,6 +400,9 @@ async function carregarEstado(pronto) {
   S.estado = {}; for (const e of data) S.estado[e.area_id] = { u: e.ultima_rega, ronda: e.ronda_actual, feita: e.regada_na_ronda, n: e.regas_app || 0, pl: e.plantas_app || 0 };
   LS.set('estado', S.estado); LS.set('estadoEm', new Date().toISOString());
   if (!['cliente', 'oficial_me'].includes(S.perfil?.papel)) { const q = await sb.rpc('planos_lista'); if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data); }
+  if (VER_MEMBROS.includes(S.perfil?.papel)) {           // nomes das pessoas de cada equipa (v135, lista do RH de 23/10/2026)
+    const q = await sb.rpc('membros_lista'); if (!q.error && Array.isArray(q.data)) { S.membros = q.data; aplicarMembrosPendentes(); LS.set('membros', S.membros); }
+  }
   if (souActivista() && S.perfil.activista_id) {        // registos da minha equipa (para a ronda funcionar sem rede)
     const r = await sb.from('registos_rega').select('id,area_id,activista_id,data,ronda,plantas_regadas,teste')
       .eq('activista_id', S.perfil.activista_id).eq('teste', false).gt('plantas_regadas', 0).range(0, 9999);
@@ -419,7 +424,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega');
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []);
   return !!(S.perfil && S.areas.length);
 }
 
@@ -506,7 +511,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -1548,7 +1553,16 @@ function setModo(m) {
   S.modo = m; LS.set('modo', m); mostrarModo();
   desenharMapa(true); desenharLista();
 }
+// número e % de campos em cada situação na legenda (v135, 28/10/2026, Valdo)
+function legendaManut() {
+  const l = camposManut(), n = l.length, c = { por: 0, curso: 0, completo: 0, feito: 0 };
+  for (const x of l) c[estadoMan(x)]++;
+  for (const k of Object.keys(c)) { const e = $('#lm-' + k); if (e) e.textContent = n ? `${num(c[k])} (${Math.round(100 * c[k] / n)}%)` : ''; }
+  const sc = l.filter((x) => x.latitude == null).length, t = $('#lm-total');
+  if (t) t.innerHTML = n ? `<span>Total:</span> <span class="sem-trad">${num(n)}</span> <span>campos</span>` + (sc ? ` · <span class="sem-trad">${num(sc)}</span> <span>sem coordenada (só na lista)</span>` : '') : '';
+}
 function desenharMapaManut(enquadrar) {
+  legendaManut();
   const pts = [];
   for (const c of camposManut()) {
     if (c.latitude == null) continue;
@@ -2414,22 +2428,61 @@ async function validarPosicao(a) {
 }
 // ---------- início do dia: pessoas presentes na equipa ----------
 const jornadaHoje = () => { const j = LS.get('jornada'); return j && j.data === hojeISO() ? j : null; };
+// Pessoas da equipa por nome (v135, 28/10/2026, Valdo: lista do RH com os sazonais de cada activista). O activista marca quem
+// veio; as faltas passam a ter nome. Sem lista de nomes, continua o número. Pessoas = activista + marcados + outras pessoas.
+const VER_MEMBROS = ['activista', 'tecnico', 'supervisor', 'gestor', 'director', 'me'];
+const membrosDe = (act) => (S.membros || []).filter((m) => m.activista_id === act);
+function faltaramHoje(act) {                              // nomes de quem não veio hoje (do telefone ou do servidor)
+  const l = membrosDe(act); if (!l.length) return null;
+  const j = souActivista() && act === S.perfil?.activista_id ? jornadaHoje() : null;
+  if (j && Array.isArray(j.presentes)) return l.filter((m) => !j.presentes.includes(m.id)).map((m) => m.nome);
+  if (!l.some((m) => m.presente_hoje != null)) return null;
+  return l.filter((m) => m.presente_hoje === false).map((m) => m.nome);
+}
+const linhaFaltaram = (act) => { const f = faltaramHoje(act);
+  return f && f.length ? `<div class="pequeno" style="color:var(--crit,#b42318)"><span>Faltou:</span> <span class="sem-trad">${f.map(esc).join(', ')}</span></div>` : ''; };
 function ecraJornada(depois = '') {
-  const j = jornadaHoje();
-  folha(`<h2>${j ? 'Alterar pessoas presentes' : 'Início do dia'}</h2>
+  const j = jornadaHoje(), l = membrosDe(S.perfil.activista_id), dep = JSON.stringify(depois).replace(/"/g, '&quot;');
+  if (!l.length) return folha(`<h2>${j ? 'Alterar pessoas presentes' : 'Início do dia'}</h2>
     <label>Quantas pessoas estão hoje na rega com a equipa (incluindo o activista)?
       <input id="j-pessoas" type="number" inputmode="numeric" min="1" max="30" value="${j ? j.pessoas : ''}"></label>
-    <button class="btn" onclick="guardarJornada(${JSON.stringify(depois).replace(/"/g, '&quot;')})">Guardar</button>`);
+    <button class="btn" onclick="guardarJornada(${dep})">Guardar</button>`);
+  const pres = j && Array.isArray(j.presentes) ? j.presentes : [];
+  folha(`<h2>${j ? 'Alterar pessoas presentes' : 'Início do dia'}</h2>
+    <p>Quem veio hoje trabalhar na rega? Toque no nome de cada pessoa que está presente.</p>
+    <div id="j-lista">${l.map((m) => `<label class="sem-trad" style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--linha,#ddd);font-size:17px"><input type="checkbox" value="${esc(m.id)}" style="width:24px;height:24px" ${pres.includes(m.id) ? 'checked' : ''} onchange="contaJornada()"> ${esc(m.nome)}</label>`).join('')}</div>
+    <label>Outras pessoas que vieram e não estão na lista<input id="j-outros" type="number" inputmode="numeric" min="0" max="30" value="${j ? j.outros || 0 : 0}" oninput="contaJornada()"></label>
+    <div class="msg info" id="j-total"></div>
+    <p class="pequeno">Se a lista estiver errada (pessoa que saiu ou mudou de equipa), diga ao técnico ou ao supervisor: eles corrigem na app.</p>
+    <button class="btn" onclick="guardarJornada(${dep})">Guardar</button>`);
+  contaJornada();
+}
+function contaJornada() {
+  const n = 1 + document.querySelectorAll('#j-lista input:checked').length + (parseInt($('#j-outros')?.value, 10) || 0), e = $('#j-total');
+  if (e) e.innerHTML = `<span>Pessoas hoje (com o activista):</span> <b>${n}</b>`;
 }
 function guardarJornada(depois) {
-  const n = parseInt($('#j-pessoas').value, 10);
+  const comLista = !!$('#j-lista');
+  const presentes = comLista ? [...document.querySelectorAll('#j-lista input:checked')].map((x) => x.value) : null;
+  const outros = comLista ? (parseInt($('#j-outros').value, 10) || 0) : 0;
+  if (comLista && (outros < 0 || outros > 30)) { alert('Escreva um número entre 0 e 30.'); return; }
+  const n = comLista ? 1 + presentes.length + outros : parseInt($('#j-pessoas').value, 10);
   if (!(n >= 1 && n <= 30)) { alert('Escreva um número entre 1 e 30.'); return; }
-  const j = jornadaHoje();
-  if (j) { j.pessoas = n; LS.set('jornada', j); }                 // vale para os próximos campos de hoje
+  if (comLista && n === 1 && !confirm('Ninguém da lista veio hoje? Só o activista está a trabalhar?')) return;
+  let j = jornadaHoje();
+  if (j) { j.pessoas = n; if (comLista) { j.presentes = presentes; j.outros = outros; } LS.set('jornada', j); }   // vale para os próximos campos de hoje
   else {
-    const nova = { id: crypto.randomUUID(), activista_id: S.perfil.activista_id, data: hojeISO(), pessoas: n, inicio_em: new Date().toISOString(), teste: !souActivista() };
-    LS.set('jornada', nova); const f = LS.get('filaJ', []); f.push(nova); LS.set('filaJ', f); actSync(); sincronizar(true);
+    j = { id: crypto.randomUUID(), activista_id: S.perfil.activista_id, data: hojeISO(), pessoas: n, inicio_em: new Date().toISOString(), teste: !souActivista() };
+    const f = LS.get('filaJ', []); f.push({ ...j }); LS.set('filaJ', f);
+    if (comLista) { j.presentes = presentes; j.outros = outros; }
+    LS.set('jornada', j);
   }
+  if (comLista && souActivista()) {                       // quem veio, por nome: vai pela fila (funciona sem rede)
+    j.presId ||= crypto.randomUUID(); LS.set('jornada', j);
+    const f = LS.get('filaAlt', []).filter((y) => !(y.tipo === 'presencas' && y.activista_id === j.activista_id && y.data === j.data));
+    f.push({ id: crypto.randomUUID(), tipo: 'presencas', pres_id: j.presId, activista_id: j.activista_id, data: j.data, presentes, outros }); LS.set('filaAlt', f);
+  }
+  actSync(); sincronizar(true);
   if (depois) marcarEntrada(depois); else { fecharFolha(); if ($('#e-hoje').classList.contains('on')) desenharHoje(); }
 }
 
@@ -3423,29 +3476,72 @@ function opcoesComunidade(actual) {
   return l.map((c) => `<option value="${esc(c)}"${c === actual ? ' selected' : ''}>${esc(c)}</option>`).join('');
 }
 function ecraTamanho(id) {
-  const act = S.activistas.find((t) => t.id === id) || {};
+  const act = S.activistas.find((t) => t.id === id) || {}, l = membrosDe(id);
+  const lista = l.length ? `<h3>Pessoas da equipa</h3>
+    ${l.map((m) => `<div class="lin"><span><span class="sem-trad">${esc(m.nome)}</span>${m.fim ? `<br><span class="pequeno"><span>Contrato até</span> ${fmtData(m.fim)}</span>` : ''}</span><button class="chip" onclick="ecraMembro('${esc(id)}','${esc(m.id)}')">Mudar</button></div>`).join('')}
+    <p class="pequeno"><span>Tamanho da equipa:</span> <b>${1 + l.length}</b> <span>(o activista e as pessoas da lista). Muda sozinho quando acrescenta, retira ou passa uma pessoa para outra equipa.</span></p>`
+    : `<label>Quantas pessoas tem esta equipa (incluindo o activista)?<input id="t-n" type="number" inputmode="numeric" min="1" max="30" value="${tamanhoEquipa(id) ?? ''}"></label>
+    <p class="pequeno">Serve para mostrar as faltas: pessoas presentes no dia comparadas com este número. Também pode escrever os nomes das pessoas: o tamanho passa a contar-se sozinho.</p>`;
   folha(`<h2>${esc(nomeAct(id))}</h2>
     <label>Comunidade do activista<select id="t-com" class="sem-trad">${opcoesComunidade(act.comunidade_principal)}</select></label>
     <p class="pequeno">Para passar campos para este activista: Campos › abrir o campo › Atribuir.</p>
-    <label>Quantas pessoas tem esta equipa (incluindo o activista)?<input id="t-n" type="number" inputmode="numeric" min="1" max="30" value="${tamanhoEquipa(id) ?? ''}"></label>
-    <p class="pequeno">Serve para mostrar as faltas: pessoas presentes no dia comparadas com este número.</p>
+    ${lista}
+    <button class="btn sec" onclick="ecraMembro('${esc(id)}')">➕ Acrescentar uma pessoa</button>
     <label style="display:flex;gap:8px;align-items:flex-start"><input id="t-semtel" type="checkbox" style="width:auto" ${semTelefone(id) ? 'checked' : ''}> <span>Este activista não tem telemóvel: o técnico ou o supervisor registam as regas por ele.</span></label>
     <button class="btn" onclick="gravarTamanho('${esc(id)}')">Guardar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
 }
 async function gravarTamanho(id) {
-  const v = $('#t-n').value.trim(), n = parseInt(v, 10), t = S.activistas.find((x) => x.id === id), com = $('#t-com')?.value, st = $('#t-semtel').checked;
-  if (v && !(n >= 1 && n <= 30)) { alert('Escreva um número entre 1 e 30.'); return; }
-  if (!v && tamanhoEquipa(id)) { alert('Escreva um número entre 1 e 30.'); return; }
+  const v = $('#t-n') ? $('#t-n').value.trim() : '', n = parseInt(v, 10), t = S.activistas.find((x) => x.id === id), com = $('#t-com')?.value, st = $('#t-semtel').checked;
+  if ($('#t-n')) {
+    if (v && !(n >= 1 && n <= 30)) { alert('Escreva um número entre 1 e 30.'); return; }
+    if (!v && tamanhoEquipa(id)) { alert('Escreva um número entre 1 e 30.'); return; }
+  }
   if (t && com && com !== t.comunidade_principal) {           // vai pela fila: funciona sem rede (v112)
     const f = LS.get('filaAlt', []).filter((y) => !(y.tipo === 'com_act' && y.activista_id === id));
     f.push({ id: crypto.randomUUID(), tipo: 'com_act', activista_id: id, comunidade: com }); LS.set('filaAlt', f);
     t.comunidade_principal = com; LS.set('activistas', S.activistas); actSync(); sincronizar(true);
   }
-  if (v && n !== tamanhoEquipa(id)) { const r = await sb.rpc('definir_equipa_tamanho', { p_activista: id, p_n: n }); if (r.error) return aviso(r.error.message, 'erro'); if (t) t.equipa_tamanho = n; }
+  if ($('#t-n') && v && n !== tamanhoEquipa(id)) { const r = await sb.rpc('definir_equipa_tamanho', { p_activista: id, p_n: n }); if (r.error) return aviso(r.error.message, 'erro'); if (t) t.equipa_tamanho = n; }
   if (st !== semTelefone(id)) { const r2 = await sb.rpc('definir_sem_telefone', { p_activista: id, p_valor: st }); if (r2.error) return aviso(r2.error.message, 'erro'); if (t) t.sem_telefone = st; }
   LS.set('activistas', S.activistas);
   fecharFolha(); desenharHoje();
 }
+// Mudar uma pessoa de equipa, corrigir o nome, retirar ou acrescentar (v135). Caso de Olumbe (28/10/2026, Valdo): só 2 activistas
+// têm material e as pessoas dos outros trabalham com esses 2; quando mudar, o técnico passa-as de volta. Funciona sem rede.
+function equipasGeriveis() {
+  const p = S.perfil?.papel;
+  return (S.activistas || []).filter((t) => t.activo !== false && (p === 'gestor' || (S.visiveis || []).includes(t.id))).sort((x, y) => x.nome.localeCompare(y.nome));
+}
+function ecraMembro(act, mid) {
+  const m = mid ? (S.membros || []).find((x) => x.id === mid) : null;
+  folha(`<h2>${m ? 'Mudar pessoa da equipa' : 'Acrescentar uma pessoa'}</h2>
+    <label>Nome<input id="m-nome" class="sem-trad" value="${m ? esc(m.nome) : ''}" placeholder="Nome completo"></label>
+    <label>Equipa (activista)<select id="m-act" class="sem-trad">${equipasGeriveis().map((t) => `<option value="${esc(t.id)}"${t.id === act ? ' selected' : ''}>${esc(t.nome)} · ${esc(t.comunidade_principal || '')}</option>`).join('')}</select></label>
+    ${m ? '<label>Motivo (obrigatório para mudar de equipa ou retirar)<textarea id="m-motivo" rows="2" placeholder="Ex.: o activista dele não tem material para regar"></textarea></label>' : ''}
+    <button class="btn" onclick="gravarMembro('${esc(act)}','${m ? esc(m.id) : ''}')">Guardar</button>
+    ${m ? `<button class="btn aviso" onclick="gravarMembro('${esc(act)}','${esc(m.id)}',true)">Retirar da equipa (já não trabalha na rega)</button>` : ''}
+    <button class="btn sec" onclick="ecraTamanho('${esc(act)}')">Voltar</button>`);
+}
+function gravarMembro(act, mid, retirar = false) {
+  const nome = $('#m-nome').value.trim().replace(/\s+/g, ' '), novo = $('#m-act').value, motivo = ($('#m-motivo')?.value || '').trim();
+  const m = mid ? (S.membros || []).find((x) => x.id === mid) : null;
+  if (nome.length < 3) { alert('Escreva o nome da pessoa.'); return; }
+  if (m && (retirar || novo !== m.activista_id) && motivo.length < 3) { alert('Escreva o motivo.'); return; }
+  const id = m ? m.id : crypto.randomUUID();
+  const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), tipo: 'membro', membro_id: id, activista_id: novo, nome, activo: !retirar, motivo: motivo || null }); LS.set('filaAlt', f);
+  aplicarMembro({ membro_id: id, activista_id: novo, nome, activo: !retirar });
+  LS.set('membros', S.membros); LS.set('activistas', S.activistas); actSync(); sincronizar(true);
+  aviso(retirar ? `${nome}: retirado da equipa.` : novo !== act ? `${nome} passou para a equipa de ${nomeAct(novo)}.` : 'Guardado.', 'ok');
+  ecraTamanho(act);
+}
+function aplicarMembro(x) {                               // muda já no telefone (lista e tamanho das equipas)
+  S.membros ||= [];
+  const velho = S.membros.find((m) => m.id === x.membro_id) || {}, antes = velho.activista_id;
+  S.membros = S.membros.filter((m) => m.id !== x.membro_id);
+  if (x.activo) S.membros.push({ ...velho, id: x.membro_id, activista_id: x.activista_id, nome: x.nome, presente_hoje: antes === x.activista_id ? velho.presente_hoje ?? null : null });
+  for (const a of new Set([antes, x.activista_id].filter(Boolean))) { const t = S.activistas.find((y) => y.id === a); if (t) t.equipa_tamanho = 1 + membrosDe(a).length; }
+}
+function aplicarMembrosPendentes() { for (const x of LS.get('filaAlt', [])) if (x.tipo === 'membro') aplicarMembro(x); }
 // Os botões "Rega hoje" / "Recontagens das plantas" mudam logo (18/10/2026, Valdo: demorava ~3 s): mostram o que está
 // no telefone e actualizam com o servidor por trás.
 const abasHoje = (vista) => { const n = contaRecHoje();
@@ -3491,7 +3587,7 @@ async function desenharHoje() {
     const tot = todos.reduce((s, x) => s + (x.plantas_regadas || 0), 0);
     const j = jornadaHoje();
     html += `<div class="lin"><span>Ronda</span><b>${textoRonda()}</b></div>
-      <div class="lin"><span>Pessoas hoje</span><b>${j ? textoEquipa(j.pessoas, tamanhoEquipa(S.perfil.activista_id)) : '—'} <button class="chip" onclick="ecraJornada()">${j ? 'Alterar' : 'Registar'}</button></b></div>
+      <div class="lin"><span>Pessoas hoje</span><b>${j ? textoEquipa(j.pessoas, tamanhoEquipa(S.perfil.activista_id)) : '—'} <button class="chip" onclick="ecraJornada()">${j ? 'Alterar' : 'Registar'}</button></b></div>${j ? linhaFaltaram(S.perfil.activista_id) : ''}
       ${linhaChuva('Chuva (pluviómetro)')}
       <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div></div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
@@ -3520,7 +3616,7 @@ async function desenharHoje() {
         Object.entries(g).map(([k, o]) => { const tam = tamanhoEquipa(k), d = deslocacao(o.regs);
           const eq = o.pessoas ? textoEquipa(o.pessoas, tam) : '—';
           return `<tr><td>${esc(nomeAct(k))}${o.teste ? ' <span class="pequeno">(teste)</span>' : ''}</td>
-          <td>${podeMudar && S.activistas.some((t) => t.id === k) ? `<button class="chip" onclick="ecraTamanho('${esc(k)}')">${eq}</button>` : eq}</td>
+          <td>${podeMudar && S.activistas.some((t) => t.id === k) ? `<button class="chip" onclick="ecraTamanho('${esc(k)}')">${eq}</button>` : eq}${linhaFaltaram(k)}</td>
           <td class="n">${o.prod.size}</td><td class="n">${o.campos}</td><td class="n">${num(o.plantas)}</td><td class="n">${o.pessoas ? Math.round(100 * o.plantas / (CFG.metaPlantas * o.pessoas)) + '%' : '—'}</td>
           <td>${fmtHora(o.agua)}</td><td>${fmtHora(o.ini)}</td><td>${fmtHora(o.fim)}</td><td class="n">${d != null ? d + ' min' : '—'}</td><td class="n">${o.alertas}</td></tr>`; }).join('') + '</table></div>' +
         `<p class="pequeno">Equipa = pessoas presentes / pessoas da equipa (faltas a vermelho)${podeMudar ? '; toque para mudar o número de pessoas da equipa' : ''}. Produtores = produtores com campos regados hoje. % meta = plantas regadas ÷ (${CFG.metaPlantas} × pessoas presentes). Tuk-tuk = hora da 1.ª chegada da água. Início = entrada no 1.º campo; Fim = saída do último. Desloc. = tempo médio entre a saída de um campo e a entrada no seguinte. Alertas = regas fora da lista da equipa.</p>`;
@@ -3750,7 +3846,7 @@ function cartaoEquipas() {
   if (!L.length) return '';
   const nC = (id) => S.areas.filter((a) => a.activista_id === id).length;
   return `<div class="cartao"><details><summary><b>👥 <span>As minhas equipas</span> (${L.length})</b></summary>
-    <p class="pequeno">Toque num activista para mudar a comunidade, o número de pessoas da equipa ou marcar que não tem telemóvel.</p>
+    <p class="pequeno">Toque num activista para mudar a comunidade, as pessoas da equipa ou marcar que não tem telemóvel.</p>
     ${L.map((t) => `<div class="lin"><span><span class="sem-trad">${esc(t.nome)}</span><br><span class="pequeno"><span class="sem-trad">${esc(t.comunidade_principal || '—')}</span> · ${nC(t.id)} <span>${nC(t.id) === 1 ? 'campo' : 'campos'}</span> · ${t.equipa_tamanho ? t.equipa_tamanho + ' <span>pessoas</span>' : '<span>equipa por definir</span>'}${t.sem_telefone ? ' · 📵' : ''}</span></span><button class="chip" onclick="ecraTamanho('${t.id}')">Alterar</button></div>`).join('')}</details></div>`;
 }
 function verCamposDe(id) {

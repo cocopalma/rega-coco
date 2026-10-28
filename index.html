@@ -223,10 +223,11 @@ td.n,th.n{text-align:right}
         <button id="leg-fechar" title="Fechar">✕</button>
         <div id="leg-man" style="display:none">
         <div><b>Manutenção (cava-roda e mulching)</b></div>
-        <div><i style="background:#9e9e9e"></i>Por fazer</div>
-        <div><i style="background:#f9a825"></i>Em curso</div>
-        <div><i style="background:#8d6e63"></i>Completo, por confirmar</div>
-        <div><i style="background:#4e342e"></i>Feito (confirmado pelo supervisor)</div>
+        <div><i style="background:#9e9e9e"></i><span>Por fazer</span> <b class="lm-n sem-trad" id="lm-por"></b></div>
+        <div><i style="background:#f9a825"></i><span>Em curso</span> <b class="lm-n sem-trad" id="lm-curso"></b></div>
+        <div><i style="background:#8d6e63"></i><span>Completo, por confirmar</span> <b class="lm-n sem-trad" id="lm-completo"></b></div>
+        <div><i style="background:#4e342e"></i><span>Feito (confirmado pelo supervisor)</span> <b class="lm-n sem-trad" id="lm-feito"></b></div>
+        <div class="pequeno" id="lm-total"></div>
         <div>Etiquetas: CR = cava-roda, M = mulching</div>
         </div>
         <div id="leg-rega">
@@ -262,12 +263,12 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=134"></script>
-<script src="i18n.js?v=134"></script>
+<script src="i18n-sw.js?v=135"></script>
+<script src="i18n.js?v=135"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=134"></script>
-<script src="app.js?v=134"></script>
+<script src="demo.js?v=135"></script>
+<script src="app.js?v=135"></script>
 </body>
 </html>
