@@ -4206,20 +4206,22 @@ async function montarGestao(d, msg = '') {
   const sem = d.activistas.filter((a) => !a.tem_login && a.activo !== false), com = d.activistas.filter((a) => a.tem_login);
   const gere = S.perfil?.gere_acessos !== false;   // false: gestor que não cria acessos nem muda senhas/PIN (15/10/2026)
   $('#gestao').innerHTML = `${msg}${gere ? '<div class="cartao" id="g-sug"><h2>💡 Sugestões e problemas</h2><p class="pequeno">A carregar…</p></div>' : ''}${gere ? `<div class="cartao"><h2>Criar login de activista</h2>
-    <label>Activista<select id="g-act">${sem.map((a) => `<option value="${a.id}" data-u="${sugerirUtilizador(a.nome)}">${esc(a.nome)} — ${esc(a.comunidade_principal || '')}</option>`).join('')}</select></label>
+    ${sem.length ? '' : '<div class="msg info">Todos os activistas activos já têm login.</div>'}
+    <label>Activista<select id="g-act" ${sem.length ? '' : 'disabled'}><option value="">— Escolha o activista —</option>${sem.map((a) => `<option value="${a.id}" data-u="${sugerirUtilizador(a.nome)}">${esc(a.nome)} — ${esc(a.comunidade_principal || '')}</option>`).join('')}</select></label>
     <label>Utilizador<input id="g-user" autocapitalize="none"></label>
     <label>PIN provisório (6 dígitos)<input id="g-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"></label><p class="pequeno">Ao entrar pela primeira vez, o activista escolhe um PIN só dele.</p>
     <p class="pequeno">Anote o PIN e entregue-o ao activista. A app não volta a mostrá-lo.</p>
-    <button class="btn" id="g-criar" ${sem.length ? '' : 'disabled'}>Criar login</button></div>` : '<div class="msg info">Criar acessos e mudar senhas ou PIN é só com o gestor principal.</div>'}
+    <button class="btn" id="g-criar" disabled>Criar login</button></div>` : '<div class="msg info">Criar acessos e mudar senhas ou PIN é só com o gestor principal.</div>'}
     <div class="cartao"><h2>Activistas com login (${com.length} de ${d.activistas.length})</h2>
     ${com.map((a) => `<div class="item"><div><div class="nome">${esc(a.nome)}</div><div class="sub">utilizador: <b>${esc(a.utilizador || '')}</b></div></div>${gere ? `<button class="chip" onclick="reporPin('${a.id}','${esc(a.nome)}')">Novo PIN</button>` : ''}</div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>
     ${gere ? `<div class="cartao"><h2>Outros acessos</h2>
     <p class="pequeno">${Object.entries(FUNCOES).map(([k, f]) => `<b>${f.nome}</b>: ${f.desc}`).join('<br>')}</p>
-    <label>Função<select id="c-papel">${Object.entries(FUNCOES).map(([k, f]) => `<option value="${k}">${f.nome}</option>`).join('')}</select></label>
+    <div id="c-nada"></div>
+    <label>Função<select id="c-papel"><option value="">— Escolha a função —</option>${Object.entries(FUNCOES).map(([k, f]) => `<option value="${k}">${f.nome}</option>`).join('')}</select></label>
     <label>Nome<span id="c-nome-caixa"></span></label>
     <label>Utilizador<input id="c-user" autocapitalize="none"></label>
     <label>Senha provisória (8 ou mais caracteres)<input id="c-senha" type="password" autocomplete="new-password"></label><p class="pequeno">Ao entrar pela primeira vez, a pessoa escolhe uma senha só dela.</p>
-    <button class="btn" id="c-criar">Criar acesso</button></div>` : ''}
+    <button class="btn" id="c-criar" disabled>Criar acesso</button></div>` : ''}
     <div class="cartao"><h2>Coberturas (ausências)</h2>
     <p class="pequeno">Quando um técnico ou supervisor está ausente, um colega passa a ver e gerir as equipas dele durante o período indicado.</p>
     <label>Quem cobre<select id="k-quem">${(d.utilizadores || []).filter((u) => u.papel === 'tecnico' || u.papel === 'supervisor').map((u) => `<option value="${u.id}" data-p="${u.papel}" data-n="${esc(u.nome)}">${esc(u.nome)} — ${esc(FUNCOES[u.papel].nome)}</option>`).join('')}</select></label>
@@ -4248,23 +4250,37 @@ async function montarGestao(d, msg = '') {
   // lista de pessoas por função (tabela pessoas_acesso, vinda do Excel de logins); quem já tem acesso aparece desactivado
   const rp = await sb.from('pessoas_acesso').select('nome,entidade,papel,utilizador').order('nome');
   const pessoas = Array.isArray(rp.data) ? rp.data : [];
-  const caixaNome = () => {
-    const papel = $('#c-papel').value, fixo = ['tecnico', 'supervisor'].includes(papel);
+  // v141 (29/10/2026, sugestão do Valdo pelo 💡: "desativar a função de acessos quando não tiver nenhum acesso por criar. E deixar
+  // sempre predefinido um campo vazio, sem nome"): função e nome começam vazios; as funções sem ninguém por criar ficam desactivadas
+  // (com o nº por criar ao lado das outras); o botão só fica activo com um nome escolhido.
+  const listaDe = (papel) => {
     let lista = pessoas.filter((x) => x.papel === papel);
-    if (fixo) {                                               // técnico/supervisor: o nome tem de ser igual ao da lista de activistas
+    if (['tecnico', 'supervisor'].includes(papel)) {          // técnico/supervisor: o nome tem de ser igual ao da lista de activistas
       const validos = (d.nomes || {})[papel] || [];
       lista = validos.map((n) => lista.find((x) => x.nome === n) || { nome: n, utilizador: null });
     }
-    $('#c-nome-caixa').innerHTML = `<select id="c-nome">${lista.map((x) => `<option value="${esc(x.nome)}" data-u="${esc((x.utilizador || '').toLowerCase())}" ${comLogin.has(papel + '|' + x.nome) ? 'disabled' : ''}>${esc(x.nome)}${x.entidade ? ' — ' + esc(x.entidade) : ''}${comLogin.has(papel + '|' + x.nome) ? ' (já tem acesso)' : ''}</option>`).join('')}
+    return lista;
+  };
+  const porCriar = (papel) => listaDe(papel).filter((x) => !comLogin.has(papel + '|' + x.nome)).length;
+  [...$('#c-papel').options].forEach((o) => { if (!o.value) return; const n = porCriar(o.value);
+    o.disabled = !n; o.textContent = `${FUNCOES[o.value].nome} (${n ? n + ' por criar' : 'todos com acesso'})`; });
+  if (![...$('#c-papel').options].some((o) => o.value && !o.disabled)) {
+    $('#c-nada').innerHTML = '<div class="msg info">Não há acessos por criar: todas as pessoas da lista já têm acesso. Para uma pessoa nova, acrescente-a primeiro à lista do Excel de logins (aba OUTROS_ACESSOS).</div>';
+    $('#c-papel').disabled = true;
+  }
+  const podeCriar = () => { const v = $('#c-nome')?.value; $('#c-criar').disabled = !v || (v === '__outro' && $('#c-nome-outro').value.trim().length < 3); };
+  const caixaNome = () => {
+    const papel = $('#c-papel').value, fixo = ['tecnico', 'supervisor'].includes(papel);
+    if (!papel) { $('#c-nome-caixa').innerHTML = '<select id="c-nome" disabled><option value="">— Escolha primeiro a função —</option></select>'; $('#c-user').value = ''; podeCriar(); return; }
+    const lista = listaDe(papel);
+    $('#c-nome-caixa').innerHTML = `<select id="c-nome"><option value="">— Escolha o nome —</option>${lista.map((x) => `<option value="${esc(x.nome)}" data-u="${esc((x.utilizador || '').toLowerCase())}" ${comLogin.has(papel + '|' + x.nome) ? 'disabled' : ''}>${esc(x.nome)}${x.entidade ? ' — ' + esc(x.entidade) : ''}${comLogin.has(papel + '|' + x.nome) ? ' (já tem acesso)' : ''}</option>`).join('')}
       ${fixo ? '' : '<option value="__outro">Outra pessoa (escrever o nome)…</option>'}</select><input id="c-nome-outro" placeholder="Nome completo" style="display:none">`;
     const sel = $('#c-nome'), outro = $('#c-nome-outro');
-    const livre = [...sel.options].find((o) => !o.disabled && o.value !== '__outro');
-    if (livre) sel.value = livre.value;
-    else if (lista.length) outro.insertAdjacentHTML('afterend', '<div class="msg info" id="c-todos">Todas as pessoas desta função na lista já têm acesso (ver "Acessos criados" abaixo).</div>');
     const sug = () => {
       const o = sel.selectedOptions[0], escrever = sel.value === '__outro';
       outro.style.display = escrever ? '' : 'none';
-      $('#c-user').value = escrever ? sugerirUtilizador(outro.value || ' ') : (o?.dataset.u || sugerirUtilizador(sel.value || ' '));
+      $('#c-user').value = !sel.value ? '' : escrever ? sugerirUtilizador(outro.value || ' ') : (o?.dataset.u || sugerirUtilizador(sel.value || ' '));
+      podeCriar();
     };
     sel.onchange = sug; outro.oninput = sug; sug();
   };
@@ -4276,7 +4292,7 @@ async function montarGestao(d, msg = '') {
     catch (e) { aviso(e.message, 'erro'); }
   };
   const sel = $('#g-act'), user = $('#g-user');
-  if (sel) { const pre = () => user.value = sel.selectedOptions[0]?.dataset.u || ''; sel.onchange = pre; pre(); }
+  if (sel) { const pre = () => { user.value = sel.selectedOptions[0]?.dataset.u || ''; $('#g-criar').disabled = !sel.value; }; sel.onchange = pre; pre(); }
   $('#g-criar').onclick = async () => {
     const corpo = { accao: 'criar', activista_id: sel.value, utilizador: user.value.trim().toLowerCase(), pin: $('#g-pin').value.trim() };
     try { const r = await chamarGestor(corpo); desenharGestao(`<div class="msg ok">Login criado: ${esc(r.activista)} → utilizador <b>${esc(r.utilizador)}</b>.</div>`); }
