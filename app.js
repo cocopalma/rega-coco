@@ -1035,14 +1035,20 @@ function abrirCoq() {
   if (!camadaCoq) camadaCoq = L.layerGroup(); camadaCoq.addTo(mapa);
   $('#b-coq').classList.add('on'); $('#coq').style.display = ''; $('.legenda').style.display = 'none';
   $('#cq-marcar').style.display = escreveCoq() ? '' : 'none';
-  desenharCoq(); mostrarSugFixa();
+  desenharCoq(); mostrarSugFixa(); mapa.on('click', cliqueCoqPerto);
   carregarCoq();
   const l = coqLista(); if (l.length && !S.pos) mapa.fitBounds(l.map((c) => [c.lat, c.lon]), { padding: [40, 40], maxZoom: 18 });
 }
 function fecharCoq() {
-  S.coq = null; if (camadaCoq) { camadaCoq.clearLayers(); mapa.removeLayer(camadaCoq); }
+  S.coq = null; mapa.off('click', cliqueCoqPerto); if (camadaCoq) { camadaCoq.clearLayers(); mapa.removeLayer(camadaCoq); }
   $('#b-coq').classList.remove('on'); $('#coq').style.display = 'none'; $('.legenda').style.display = '';
   mostrarSugFixa();
+}
+function cliqueCoqPerto(e) {                             // clique no mapa ao lado do ponto: abre o coqueiro a menos de 16 px
+  if (!S.coq || S.regua) return;
+  let m = null, dm = 16;
+  for (const c of coqLista()) { const d = mapa.latLngToContainerPoint([c.lat, c.lon]).distanceTo(e.containerPoint); if (d < dm) { dm = d; m = c; } }
+  if (m) verCoq(m.id);
 }
 function coqLeitura(c) {                                 // leituras do GPS do mapa (sem ligar outro GPS)
   const P = S.coq; if (!P) return;
@@ -1063,8 +1069,11 @@ function desenharCoq() {
     v[c.estado] = (v[c.estado] || 0) + 1;
     L.circle([c.lat, c.lon], { radius: RAIO_COQ, color: '#c62828', weight: 1, fillColor: '#c62828', fillOpacity: 0.12, interactive: false }).addTo(camadaCoq);
     const ret = c.estado === 'retirado';
-    L.circleMarker([c.lat, c.lon], { radius: 7, color: ret ? '#c62828' : '#fff', weight: ret ? 3 : 2, fillColor: COR_COQ[c.estado] || '#777', fillOpacity: ret ? 0 : 1 })
-      .on('click', () => verCoq(c.id)).addTo(camadaCoq);
+    // v143 (29/10/2026, Valdo: no computador (Safari) tocar no ponto não abria a ficha; no telemóvel abria): o ponto é um elemento
+    // da página (divIcon) em vez de um desenho no canvas, para o clique funcionar em todos os navegadores.
+    L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'coq-pt', iconSize: [22, 22], iconAnchor: [11, 11],
+      html: `<span style="background:${ret ? 'transparent' : (COR_COQ[c.estado] || '#777')};border:${ret ? '3px solid #c62828' : '2px solid #fff'}"></span>` }), keyboard: false })
+      .on('click', (e) => { L.DomEvent.stop(e); verCoq(c.id); }).addTo(camadaCoq);
   }
   const exist = l.filter((c) => c.estado !== 'retirado'), trat = exist.filter((c) => c.tratamento).length, prod = exist.filter((c) => c.cachos || c.cocos).length;
   $('#cq-total').innerHTML = `🥥 <span>Coqueiros fora de campo:</span> <b>${num(exist.length)}</b> <span class="pequeno">(${num(v.viva)} <span>vivos</span> · ${num(v.seca)} <span>secos</span> · ${num(v.morta)} <span>mortos</span>)</span>` +

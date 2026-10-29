@@ -328,6 +328,10 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Propostas do Dalmar de 24–25/10 em espera (extracção em `_extracoes_20261026/Dalmar` no Mac): botão Gravar no topo; faixa vermelha a não empurrar «Marcar»; várias fotografias da galeria; total por baixo do botão 🥥; lista de coqueiros ao tocar no total; botão "Deslocar"; corrigir local/observação e validar; produção por pessoa (precisa de um login por pessoa); informação gravada na fotografia; fitossanidade (falta a lista de pragas); tamanho P/M/G (falta o critério); registo guiado; "precisa de tratamento" já marcado; gémeos; zoom na câmara; cores para o sol; caminhada de quem marca; diário do projecto; IA para classificar coqueiros.
 - Também por decidir (perguntado ao Valdo a 26/10): o mesmo critério para a manutenção, o mapa das plantas e as medições com a vara.
 
+## Ficha do coqueiro no computador (v143, 29/10/2026, Valdo: "Não se abre a ficha do coqueiro marcado. Só aqui no computador, mas no celular aceita")
+- O computador do Valdo usa o Safari do Mac (user agent das sugestões). Não consegui reproduzir no Chromium (computador, telemóvel, ecrã Retina); aqui não há WebKit para testar. Causa por confirmar.
+- Mudança: os pontos dos coqueiros deixaram de ser desenhados no canvas (`circleMarker`) e passaram a elementos da página (`L.marker` com `divIcon`, classe `.coq-pt`); e, no modo 🥥, um clique no mapa a menos de 16 px de um coqueiro abre a ficha (`cliqueCoqPerto`, ligado em `abrirCoq`, desligado em `fecharCoq`). Teste: `rega-test/teste_v143.py`.
+
 ## Coqueiros v111 (24/10/2026, áudios do Dalmar, aprovados pelo Valdo)
 - Estado "Retirado" (o coqueiro já não existe; o ponto fica guardado a vermelho e vazio, não conta nos coqueiros existentes). Restrição `coqueiros_estado_check` alargada.
 - Círculo de 2,5 m (`RAIO_COQ`) à volta de cada coqueiro; ao entrar nele o telefone vibra e aparece "⚠️ Coqueiro nº N já marcado aqui" (`#cq-perto`, em `coqLeitura`); ao marcar dentro do raio pede confirmação (média e última leitura).
