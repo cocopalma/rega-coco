@@ -2408,7 +2408,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
 }
 
 function abrirFicha(id, nota = '') {
-  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  const a = S.areas.find((x) => x.id === id); if (!a) return fichaEmCursoFora(id, nota);
   S.fichaAberta = id;
   const s = situacao(a), emCurso = LS.get('emCurso');
   const d = S.pos ? distCampo(a, S.pos) : null;
@@ -2529,7 +2529,7 @@ async function marcarEntrada(id, motivoIt = null) {
   folha(FOLHA_GPS('A confirmar que está no campo.'));
   let g; try { g = await validarPosicao(a); } catch (e) { return abrirFicha(id, `<div class="msg erro">${esc(e.message)}</div>`); }
   if (g.valido === false) return abrirFicha(id, `<div class="msg erro">Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Só pode marcar a entrada até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'} do campo.${dicaGpsFraco(g)}</div>`);
-  const ent = { area_id: id, entrada_em: new Date().toISOString(), entrada_lat: g.lat, entrada_lon: g.lon, gps_precisao_m: g.precisao, distancia_area_m: g.dist, gps_valido: g.valido };
+  const ent = { area_id: id, produtor: (S.areas.find((x) => x.id === id) || {}).produtor || null, entrada_em: new Date().toISOString(), entrada_lat: g.lat, entrada_lon: g.lon, gps_precisao_m: g.precisao, distancia_area_m: g.dist, gps_valido: g.valido };
   if (it) { ent.plano_id = it.plano.id; ent.plano_dia = it.dia.n; ent.fora_itinerario = !it.campos.includes(id); ent.motivo_itinerario = ent.fora_itinerario ? motivoIt : null; }
   const sug = LS.get('sugestao');
   if (sug) { ent.area_sugerida_id = sug.area_id; ent.seguiu_sugestao = sug.area_id === id; LS.del('sugestao'); mostrarSugFixa(); }
@@ -3802,6 +3802,24 @@ async function gravarDiaSemRega() {
 // Entrada marcada mas não houve rega (v118, 27/10/2026, Tec. Shella pelo telefone do Eduardo: "a água não chega no campo e o activista fez
 // foto de entrada logo cedo à espera de material… como registar que não regou?"): a entrada sai de curso e fica um "dia sem rega"
 // ligado a este campo (com a hora da entrada e a fotografia da entrada). Nas regas de teste só se anula a entrada.
+// v140 (29/10/2026, sugestão do Rotina Carlos pelo 💡: "diz que devo concluir o campo em curso. Mas quando clico em voltar no campo
+// em curso não aceita"): a entrada em curso era de um campo que saiu da lista do activista (passou para outra equipa ou saiu da rega);
+// a ficha não abria e a app ficava presa. Agora explica e deixa anular essa entrada.
+function fichaEmCursoFora(id, nota = '') {
+  const ent = LS.get('emCurso'); if (!ent || ent.area_id !== id) return;
+  S.fichaAberta = id;
+  folha(`${nota}<h2 style="margin-top:0">${esc(ent.produtor || id)}</h2><p class="pequeno sem-trad">${esc(id)}</p>
+    <div class="msg erro"><span>Tem uma entrada marcada às</span> ${fmtHora(ent.entrada_em)} (${fmtData(String(ent.entrada_em).slice(0, 10))}) <span>neste campo, mas o campo já não está na sua lista (passou para outra equipa ou saiu da rega). Não dá para continuar esta rega.</span></div>
+    <p class="pequeno">Anule a entrada para poder marcar a entrada noutro campo. Se regou este campo, diga ao técnico ou ao supervisor.</p>
+    <button class="btn" onclick="anularEntradaFora()">↩️ Anular esta entrada</button>
+    <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
+function anularEntradaFora() {
+  const ent = LS.get('emCurso'); if (!ent) return fecharFolha();
+  if (!confirm('Anular esta entrada? Não fica nenhuma rega neste campo.')) return;
+  problemaApp('entrada_anulada', `Entrada anulada (campo fora da lista): ${ent.area_id}`, { area: ent.area_id, entrada_em: ent.entrada_em, anulada_em: new Date().toISOString(), fora_da_lista: true });
+  anularEntrada(ent, '').then(() => { fecharFolha(); aviso('Entrada anulada. Já pode marcar a entrada noutro campo.', 'ok'); });
+}
 function ecraNaoRegou() {
   const ent = LS.get('emCurso'); if (!ent) return;
   const a = S.areas.find((x) => x.id === ent.area_id) || { id: ent.area_id };

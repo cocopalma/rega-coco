@@ -248,6 +248,10 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Entrada no campo errado (v119, 28/10/2026, sugestão do Essumaila pelo 💡)
 - Ficha com rega em curso › "↩️ Marquei a entrada no campo errado" (`entradaEngano`): só na 1.ª hora depois da entrada e antes da fotografia da rega. Anula a entrada sem registo de rega; o servidor recebe `problemas_app` tipo `entrada_anulada` (área, hora da entrada e da anulação) para acompanhar quem anula. Teste em `rega-test/teste_v118.py` (passo 1b).
 
+## Entrada em curso num campo que saiu da lista (v140, 29/10/2026, sugestão do Rotina Carlos pelo 💡 às 09:23)
+- Rotina: "diz que devo concluir o campo em curso. Mas quando clico em voltar no campo em curso não aceita". Causa provável (não confirmada no telefone): entrada marcada num campo que depois saiu da lista dele (PR228223-1 passou para outra equipa a 27/10 11:34, pelo Essumaila); `abrirFicha` saía sem fazer nada porque o campo já não está em `S.areas`, e a app ficava presa.
+- Agora `abrirFicha` chama `fichaEmCursoFora(id)` quando o campo da entrada em curso não está na lista: explica (hora e data da entrada) e "↩️ Anular esta entrada" (`anularEntradaFora`, confirma; `problemas_app` tipo `entrada_anulada` com `fora_da_lista`). A entrada passa a guardar `produtor`. Teste: `rega-test/teste_v140.py` (LING=en / sw).
+
 ## Conta só de testes (v120, 28/10/2026, Valdo: Abdala Bernardo, IT da SAN, em Cuamba)
 - Valdo: "Podes colocar como gestor, para poder testar, mas ele so testa mesmo. tudo que fizer entra como teste."
 - `perfis.so_teste`; `privado.so_teste()`; gatilho `guarda_so_teste` (BEFORE INSERT/UPDATE/DELETE, `privado.guarda_so_teste`) em todas as tabelas públicas menos perfis, sugestoes, problemas_app, sugestoes_proximo e visitas_painel: com `so_teste` só passam registos_rega, jornadas, chuva e percursos com `teste = true` e constrangimentos de regas de teste; o resto dá erro "Conta de testes: esta acção não é gravada…". Testado a 28/10 (com rollback).
