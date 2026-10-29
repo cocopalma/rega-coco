@@ -3970,8 +3970,40 @@ function avisoCampo(id) {
 // A partir das 18:00 o servidor sorteia campos regados nesse dia; cada pessoa recebe a sua lista (sem campos repetidos entre pessoas).
 // A verificação faz-se no campo (GPS), com nota de 0 a 10 e uma fotografia reduzida no telefone (~150 KB). Funciona sem rede.
 async function carregarMonitoria() {
-  const r = await sb.rpc('monitoria_lista');
+  const [r, e] = await Promise.all([sb.rpc('monitoria_lista'), sb.rpc('monitoria_escala_ver')]);
   if (!r.error && Array.isArray(r.data)) { S.mon = r.data; LS.set('mon', S.mon); }
+  if (!e.error && e.data) LS.set('escalaMon', e.data);
+}
+// v142 (29/10/2026, Valdo, a partir da sugestão do Gelson: "monitoria… organizada por escala… para nos restantes dias… recolha de dados das
+// armadilhas"): cada técnico/supervisor escolhe os seus dias de monitoria (3 × 3 campos); cada dia de segunda a sábado tem de ficar com
+// pelo menos uma pessoa (o servidor recusa a escolha que deixe um dia sem ninguém). Sem escolha, continua como antes (todos os dias).
+const DIAS_SEM = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+const nomesDias = (l) => (l || []).map((d) => `<span>${DIAS_SEM[d - 1]}</span>`).join(', ');
+const msgEscala = (m) => { const x = /^Sem verificação: (.+?)\. (.*)$/.exec(m || ''); return x ? `<span>Sem verificação:</span> ${x[1].split(', ').map((d) => `<span>${esc(d)}</span>`).join(', ')}. <span>${esc(x[2])}</span>` : esc(m); };
+function linhaEscala() {
+  const e = LS.get('escalaMon', null); if (!e || !e.eu_monitor) return '';
+  if (!e.meus) return `<div class="msg info"><b>📅 Escolha os seus ${e.n_dias} dias de monitoria.</b> <span>Nesses dias verifica ${e.campos} campos regados na véspera. Nos outros dias fica livre para outras actividades (por exemplo, as armadilhas).</span><br><button class="btn" onclick="ecraEscalaMon()">Escolher os dias</button></div>`;
+  return `<p class="pequeno">📅 <b>Os seus dias de monitoria:</b> ${nomesDias(e.meus)} · <span>${e.campos} campos por dia</span> <button class="chip" onclick="ecraEscalaMon()">Mudar</button></p>`;
+}
+function ecraEscalaMon() {
+  const e = LS.get('escalaMon', null); if (!e) return aviso('Precisa de rede para ver a escala.', 'erro');
+  const outros = (e.pessoas || []).filter((p) => !p.eu), quem = (d) => outros.filter((p) => (p.dias || []).includes(d)).map((p) => p.nome.split(' ')[0]);
+  const semEscolha = outros.filter((p) => !p.dias).map((p) => p.nome.split(' ')[0]);
+  folha(`<h2>📅 Os meus dias de monitoria</h2>
+    <p class="pequeno">Escolha ${e.n_dias} dias. Em cada um verifica ${e.campos} campos regados na véspera (na segunda, os de domingo). Cada dia, de segunda a sábado, tem de ficar com pelo menos uma pessoa: a app não grava uma escolha que deixe um dia sem ninguém.</p>
+    <div id="esc-dias">${DIAS_SEM.map((n, i) => { const q = quem(i + 1);
+      return `<div class="item"><div><div class="nome">${n}</div><div class="sub ${q.length ? '' : 'erro-txt'}">${q.length ? '<span>Já escolheram:</span> <span class="sem-trad">' + esc(q.join(', ')) + '</span>' : 'Ninguém ainda'}</div></div><button class="chip ${(e.meus || []).includes(i + 1) ? 'on' : ''}" data-v="${i + 1}">Escolher</button></div>`; }).join('')}</div>
+    ${semEscolha.length ? `<p class="pequeno"><span>Ainda não escolheram:</span> <span class="sem-trad">${esc(semEscolha.join(', '))}</span></p>` : ''}
+    <div id="esc-msg"></div><button class="btn" id="esc-ok">Gravar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  const marcados = () => [...document.querySelectorAll('#esc-dias .chip.on')].map((b) => +b.dataset.v);
+  document.querySelectorAll('#esc-dias .chip').forEach((b) => b.onclick = () => { b.classList.toggle('on'); $('#esc-msg').innerHTML = ''; });
+  $('#esc-ok').onclick = async () => {
+    const d = marcados(); if (d.length !== e.n_dias) { $('#esc-msg').innerHTML = `<div class="msg erro">Escolha ${e.n_dias} dias.</div>`; return; }
+    if (!navigator.onLine) { $('#esc-msg').innerHTML = '<div class="msg erro">Precisa de rede.</div>'; return; }
+    const r = await sb.rpc('gravar_monitoria_escala', { p_dias: d });
+    if (r.error) { $('#esc-msg').innerHTML = `<div class="msg erro">${msgEscala(r.error.message)}</div>`; return; }
+    fecharFolha(); aviso('Dias de monitoria gravados.', 'ok'); await carregarMonitoria(); actHoje();
+  };
 }
 const monFeita = (m) => m.feita || LS.get('filaMon', []).some((x) => x.amostra_id === m.amostra_id) || (LS.get('monFeitas', [])).includes(m.amostra_id);
 // v133 (28/10/2026, Valdo: "só fazem sentido no dia seguinte após a rega… o número de dias de atraso não pode acumular"):
@@ -3979,9 +4011,9 @@ const monFeita = (m) => m.feita || LS.get('filaMon', []).some((x) => x.amostra_i
 function cartaoMonitoria() {
   const lista = Array.isArray(S.mon) ? S.mon : [], hoje = hojeISO();
   const regra = '<p class="pequeno">Verifique cada campo no dia seguinte à rega. O que ficar por verificar nesse dia conta como falha na sua avaliação.</p>';
-  if (!lista.length) return `<div class="cartao"><h2>Monitoria</h2><p class="pequeno">Sem campos para verificar. A lista sai a partir das 18:00, com campos regados nesse dia.</p>${regra}</div>`;
+  if (!lista.length) return `<div class="cartao"><h2>Monitoria</h2>${linhaEscala()}<p class="pequeno">Sem campos para verificar. A lista sai a partir das 18:00, com campos regados nesse dia.</p>${regra}</div>`;
   const grupos = [...new Set(lista.map((m) => m.data_rega))].sort();
-  return `<div class="cartao"><h2>Monitoria</h2>${regra}` + grupos.map((d) => {
+  return `<div class="cartao"><h2>Monitoria</h2>${linhaEscala()}${regra}` + grupos.map((d) => {
     const l = lista.filter((m) => m.data_rega === d), feitas = l.filter(monFeita).length, hojeVerif = somaDias(d, 1) === hoje;
     return `<h3 style="font-size:14px;margin:10px 0 4px">${hojeVerif ? 'Verificar hoje' : 'Verificar amanhã'} · <span>regas de</span> ${fmtData(d)} (${feitas}/${l.length})</h3>` +
       l.map((m) => { const a = S.areas.find((x) => x.id === m.area_id) || { produtor: m.area_id };
@@ -4233,13 +4265,18 @@ async function montarGestao(d, msg = '') {
     <div class="cartao"><h2>Monitoria por amostragem</h2>
     <p class="pequeno">Cada técnico e supervisor recebe, a partir das 18:00, uma lista de campos regados nesse dia para verificar. Listas diferentes para cada pessoa, campos sorteados.</p>
     <label>Campos por dia, por pessoa<input id="m-n" type="number" inputmode="numeric" min="1" max="10"></label>
-    <button class="btn sec" id="m-gravar-n">Gravar</button></div>
+    <button class="btn sec" id="m-gravar-n">Gravar</button><div id="m-escala"></div></div>
     <div class="cartao"><h2>Quem viu o painel</h2><div id="g-visitas"><p class="pequeno">A carregar…</p></div></div>
     <div class="cartao"><h2>Acessos criados (${(d.utilizadores || []).length})</h2>
     ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div>${gere ? `<button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button>` : ''}</div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
   desenharVisitas(); desenharCoberturas(d);
   if (gere) { if (S.sug) desenharSugestoes(); cartaoSugestoes(); }
   sb.from('config').select('valor').eq('chave', 'monitoria_campos_por_dia').maybeSingle().then(({ data }) => { if (data && $('#m-n')) $('#m-n').value = data.valor; });
+  sb.rpc('monitoria_escala_ver').then(({ data: e }) => { if (!e || !$('#m-escala')) return;
+    const por = DIAS_SEM.map((n, i) => [n, (e.pessoas || []).filter((p) => (p.dias || []).includes(i + 1)).map((p) => p.nome.split(' ')[0])]);
+    $('#m-escala').innerHTML = `<h3 style="font-size:14px;margin:12px 0 4px">📅 Dias de monitoria escolhidos</h3><p class="pequeno">Cada técnico e supervisor escolhe ${e.n_dias} dias (${e.campos} campos em cada um). Quem ainda não escolheu recebe campos todos os dias.</p>
+      ${por.map(([n, q]) => `<div class="item"><div class="nome">${n}</div><div class="sub ${q.length ? '' : 'erro-txt'}"><span class="sem-trad">${q.length ? esc(q.join(', ')) : ''}</span>${q.length ? '' : 'Ninguém ainda'}</div></div>`).join('')}
+      ${(e.pessoas || []).some((p) => !p.dias) ? `<p class="pequeno"><span>Ainda não escolheram:</span> <span class="sem-trad">${esc(e.pessoas.filter((p) => !p.dias).map((p) => p.nome).join(', '))}</span></p>` : ''}`; });
   $('#m-gravar-n').onclick = async () => {
     const n = parseInt($('#m-n').value, 10);
     const { error } = await sb.rpc('definir_monitoria_campos', { p_n: n });
