@@ -1756,6 +1756,20 @@ function confirmarProposta(id) {
   porNaFilaAlt({ tipo: 'atrib', area_id: id, activista_id: a.activista_id });
   aviso(`${a.produtor}: atribuído a ${nomeAct(a.activista_id)}.`, 'ok'); desenharMapa(); desenharLista();
 }
+// v137 (29/10/2026, sugestão do Raul pelo 💡: "ver os campos que estão sem coordenadas (GPS) a partir da App… induzirmos as equipas a ir fazer"):
+// técnico, supervisor e gestor vêem quantos campos da sua lista não têm limite (e quantos nem coordenada) e filtram por eles.
+const verLimites = () => PODE_COORD.includes(S.perfil?.papel);
+const semCoord = (a) => a.latitude == null && !temPoligono(a);
+const soPonto = (a) => a.latitude != null && !temPoligono(a);
+function avisoSemLimite(sit) {
+  if (!verLimites() || sit === 'semcoord' || sit === 'semlimite') return '';
+  const base = listaPropria() && $('#f-ambito').value === 'meus' ? meusCampos() : S.areas;
+  const nc = base.filter(semCoord).length, np = base.filter(soPonto).length;
+  if (!nc && !np) return '';
+  return `<div class="msg info"><b>${num(nc + np)}</b> <span>campos sem limite medido</span>: <b>${num(nc)}</b> <span>sem coordenada</span> · <b>${num(np)}</b> <span>só com o ponto</span>.
+    <span>Meça-os no campo: ficha do campo › «📐 Medir a área».</span>
+    <div class="chips">${nc ? `<button class="chip" onclick="$('#f-sit').value='semcoord';desenharLista()">📍 Ver sem coordenada</button>` : ''}${np ? `<button class="chip" onclick="$('#f-sit').value='semlimite';desenharLista()">📐 Ver só com o ponto</button>` : ''}</div></div>`;
+}
 function desenharLista() {
   if (modoManut()) return desenharListaManut();
   const amb = $('#f-ambito').value, com = $('#f-com').value, sit = $('#f-sit').value, txt = $('#f-txt').value.trim().toLowerCase();
@@ -1767,19 +1781,22 @@ function desenharLista() {
   if (sit === 'nunca') linhas = linhas.filter((x) => !jaRegado(x.a));
   else if (sit === 'queimada') linhas = linhas.filter((x) => queimadaDe(x.a.id));
   else if (sit === 'plantas') linhas = linhas.filter((x) => nPlantas(x.a.id));
+  else if (sit === 'semcoord') linhas = linhas.filter((x) => semCoord(x.a));
+  else if (sit === 'semlimite') linhas = linhas.filter((x) => soPonto(x.a));
   else if (sit === 'teste') linhas = linhas.filter((x) => testeEm(x.a.id));
   else if (sit === 'testeq') linhas = linhas.filter((x) => testeEm(x.a.id) || testeEquipa(x.a.id));
   else if (sit) linhas = linhas.filter((x) => x.s.cod === sit);
   linhas.sort((x, y) => (x.s.cod === 'feita') - (y.s.cod === 'feita') || (x.d ?? 1e12) - (y.d ?? 1e12));   // por regar primeiro
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
     (porAprovar().length ? `<div class="msg info">${porAprovar().length} medições de área por aprovar. <button class="chip" onclick="ecraPorAprovar()">Ver</button></div>` : '') +
+    avisoSemLimite(sit) +
     (porAtribuir().length && sit !== 'sem' ? `<div class="msg info">${porAtribuir().length} campos por atribuir. <button class="chip" onclick="$('#f-sit').value='sem';desenharLista()">Ver</button></div>` : '') +
     (sit ? `<div class="msg info">Filtro: ${esc($('#f-sit').selectedOptions[0]?.textContent || '')}. <button class="chip" onclick="$('#f-sit').value='';desenharLista()">← Ver todos os campos</button></div>` : '') +
     (['supervisor', 'gestor', 'tecnico'].includes(S.perfil?.papel) ? `<button class="btn sec" onclick="ecraVoltarRega()">➕ Voltar a pôr um campo na rega</button>` : '') +
     `<p class="pequeno">${linhas.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` +
     linhas.slice(0, 300).map(({ a, s, d }) => `<div class="item" data-id="${esc(a.id)}"><div>
       <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
-      </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}<span class="tag t-${s.cod}">${s.txt}</span>${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
+      </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}<span class="tag t-${s.cod}">${s.txt}</span>${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
 }
 
 // ---------- mapa de plantas (15/10/2026, pedido do Dalmar; teste com gestor/director, supervisores e técnicos) ----------
@@ -4359,6 +4376,7 @@ function mostrarApp() {
   $('#nav-gestao').style.display = papel === 'gestor' ? '' : 'none';
   $('#nav-painel').style.display = VER_PAINEL.includes(papel) ? '' : 'none';
   const opPl = document.querySelector('#f-sit option[value="plantas"]'); if (opPl) opPl.hidden = !PODE_COORD.includes(papel);
+  document.querySelectorAll('#f-sit .op-coord').forEach((o) => { o.hidden = !PODE_COORD.includes(papel); });
   document.querySelectorAll('.leg-plantas').forEach((x) => { x.style.display = PODE_COORD.includes(papel) ? '' : 'none'; });
   const cliente = papel === 'cliente';                     // cliente: Mapa, Campos e Painel, só para ver (15/10/2026, Valdo)
   document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.e === 'hoje') b.style.display = cliente ? 'none' : ''; });
