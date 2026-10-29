@@ -331,6 +331,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Ficha do coqueiro no computador (v143, 29/10/2026, Valdo: "Não se abre a ficha do coqueiro marcado. Só aqui no computador, mas no celular aceita")
 - O computador do Valdo usa o Safari do Mac (user agent das sugestões). Não consegui reproduzir no Chromium (computador, telemóvel, ecrã Retina); aqui não há WebKit para testar. Causa por confirmar.
 - Mudança: os pontos dos coqueiros deixaram de ser desenhados no canvas (`circleMarker`) e passaram a elementos da página (`L.marker` com `divIcon`, classe `.coq-pt`); e, no modo 🥥, um clique no mapa a menos de 16 px de um coqueiro abre a ficha (`cliqueCoqPerto`, ligado em `abrirCoq`, desligado em `fecharCoq`). Teste: `rega-test/teste_v143.py`.
+- Antes da v143, no Safari, o clique num coqueiro abriu a ficha de um campo a ~7 km (PR400069-1, Maganja): no Safari o clique nos desenhos do canvas pode ir para o desenho errado (pode afectar também os campos). Com a v143 carregada, o Valdo confirmou (29/10 15:17): "Já está".
 
 ## Coqueiros v111 (24/10/2026, áudios do Dalmar, aprovados pelo Valdo)
 - Estado "Retirado" (o coqueiro já não existe; o ponto fica guardado a vermelho e vazio, não conta nos coqueiros existentes). Restrição `coqueiros_estado_check` alargada.
