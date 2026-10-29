@@ -3976,6 +3976,7 @@ function cartaoMeuDia() {
   const c = LS.get('meuDia'); if (c && c.d === null && c.dia === hojeISO()) return '';
   if (!c || !c.d || c.d.data !== hojeISO()) return '<div class="cartao" id="meu-dia"><h2>📋 O meu dia</h2><p class="pequeno">Aparece quando houver rede.</p></div>';
   const d = c.d, eqs = d.equipas || [], falta = eqs.filter((e) => !e.regas && !e.sem_rega), al = d.alertas || [];
+  const pa = (d.por_aprovar || []).filter((x) => { const a = S.areas.find((y) => y.id === x.area_id); return !a || a.poligono_proposto; });
   const nomeMot = (m) => String(m || '').split(', ').map(nomeMotivoDsr).join(', ');
   let h = `<div class="cartao" id="meu-dia"><h2>📋 <span>O meu dia</span> · ${fmtData(d.data)}</h2>
     ${d.fechado_em ? `<div class="msg ok">✓ <span>Dia fechado às</span> ${fmtHora(d.fechado_em)}</div>` : ''}
@@ -3990,7 +3991,12 @@ function cartaoMeuDia() {
       <div class="sub"><span class="sem-trad">${esc(x.equipa)}</span> · ${fmtData(x.data)} · ${x.tipo === 'mais_que_base' ? `${num(x.plantas)} <span>plantas regadas</span>, ${num(x.base)} <span>na base</span>` : `<span>ritmo</span> ${num(x.ritmo)} <span>plantas por pessoa por hora</span>, <span>habitual</span> ${num(x.mediana)}`}</div>
       <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e corrigir</button><button class="chip" onclick="ecraConfirmarRega('${x.registo_id}')">✓ Está certo</button></div></div>`).join('')
       : '<p class="pequeno">Nenhuma.</p>') +
-    `<h3 style="font-size:14px;margin:12px 0 4px">4. <span>Campos sem equipa</span>: ${num(d.sem_equipa || 0)}</h3>${d.sem_equipa ? '<button class="chip" onclick="irPorAtribuir()">Atribuir os campos</button>' : ''}`;
+    `<h3 style="font-size:14px;margin:12px 0 4px">4. <span>Campos sem equipa</span>: ${num(d.sem_equipa || 0)}</h3>${d.sem_equipa ? '<button class="chip" onclick="irPorAtribuir()">Atribuir os campos</button>' : ''}` +
+    // v138 (29/10/2026, Valdo): medições de área feitas pelos activistas à espera de aprovação (as já aprovadas no telefone saem da lista)
+    `<h3 style="font-size:14px;margin:12px 0 4px">5. <span>Medições de área por aprovar</span> (${pa.length})</h3>` +
+    (pa.length ? pa.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
+      <div class="sub"><span class="sem-trad">${esc(x.equipa || '')}</span> · ${esc(x.comunidade || '')} · ${x.proposta_em ? fmtData(x.proposta_em) : ''}${x.area_m2 ? ' · ' + textoArea(x.area_m2) : ''}${x.quem ? ` · <span>medida por</span> <span class="sem-trad">${esc(x.quem)}</span>` : ''}</div>
+      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e aprovar</button></div></div>`).join('') : '<p class="pequeno">Nenhuma.</p>');
   h += d.fechado_em ? '' : falta.length ? `<p class="pequeno" style="margin-top:12px"><span>Para fechar o dia, todas as equipas têm de ter rega ou motivo. Faltam:</span> ${falta.length}</p>`
     : `<button class="btn" style="margin-top:12px" onclick="fecharDia()">🔒 Fechar o dia</button>`;
   h += `<p class="pequeno">Feche o dia até às 18:00. Os dias fechados a tempo, a monitoria no prazo, as regas com ⚠️ confirmadas e as equipas sem motivo contam no cumprimento de cada técnico e supervisor (painel).</p>${c.em && !navigator.onLine ? `<p class="pequeno"><span>Sem rede: dados de</span> ${fmtHora(c.em)}</p>` : ''}</div>`;
