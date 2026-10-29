@@ -116,6 +116,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Coordenada e área fechadas depois de gravadas (15/10/2026, Nuro/Valdo)
 - Primeiras medições reais (Nuro, Mondlane, 15/10): PR394688-1 8156 m² (28 pontos) e PR395335-1 9564 m² (45 pontos), GPS ±2 m.
 - Depois de gravadas, a coordenada e a área ficam fechadas para técnico e supervisor (botões escondidos; servidor recusa). Só o gestor corrige, ou carrega em "🔓 Deixar o supervisor/técnico corrigir…" (`areas.limites_abertos`, RPC `abrir_limites`); fecha sozinho depois de gravarem. Vale também para os limites vindos do KMZ.
+- Área proposta a tracejado no mapa (v139, 29/10/2026, Valdo: "Concordo com o tracejado"): `desenharMapa` desenha `poligono_proposto` a tracejado azul (#0b6e8a, `dashArray`) com a etiqueta "📐 por aprovar" (`.ic-prop`), também nos campos sem coordenada (centro do desenho); tocar abre a ficha; linha na legenda "Tracejado: área medida pelo activista, por aprovar". Teste: `rega-test/teste_v139.py` (PAPEL=activista; LING=en / sw).
 - O activista também mede (15/10/2026, Valdo): só campos da sua lista sem limite; fica em `areas.poligono_proposto` / `area_m2_proposta` / `proposta_em` / `proposta_por` (não muda o limite nem a regra dos 50 m). Técnico, supervisor ou gestor aprovam/recusam na ficha (cartão "Área medida pelo activista — por aprovar", RPC `aprovar_poligono`; fila `filaAlt` tipo 'aprovar'); aviso "N medições de área por aprovar" na lista. Eles próprios podem medir directamente.
 
 ## Pendentes pedidos pelo Valdo

@@ -924,7 +924,7 @@ function fecharRegua() {
 }
 function pontoRegua(ll, nome = '') { if (!S.regua) return false; S.regua.push({ ll, nome }); desenharRegua(); return true; }
 function clicarCampo(e, a) {
-  if (S.regua) { L.DomEvent.stopPropagation(e); pontoRegua([a.latitude, a.longitude], a.id); return; }
+  if (S.regua) { L.DomEvent.stopPropagation(e); pontoRegua(a.latitude != null ? [a.latitude, a.longitude] : [e.latlng.lat, e.latlng.lng], a.id); return; }
   abrirFicha(a.id);
 }
 function desenharRegua() {
@@ -948,11 +948,21 @@ function desenharMapa(enquadrar = false) {
   const pts = [];
   const fa = $('#f-act')?.value;
   for (const a of visiveis()) {
-    if (a.latitude == null) continue;
+    // v139 (29/10/2026, Valdo): a área medida pelo activista aparece a tracejado enquanto não é aprovada (também nos campos sem coordenada)
+    const prop = Array.isArray(a.poligono_proposto) && a.poligono_proposto.length >= 3 ? a.poligono_proposto : null;
+    if (a.latitude == null && !prop) continue;
     if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
     const s = situacao(a);
     const borda = bordaAzul(a, s) ? BORDA.regado : BORDA.nunca;
     const esb = !!S.modoPerc;                                // percurso aberto: campos esbatidos
+    if (prop) {
+      const ll = prop.map(([x, y]) => [y, x]), c = [ll.reduce((t, p) => t + p[0], 0) / ll.length, ll.reduce((t, p) => t + p[1], 0) / ll.length];
+      L.polygon(ll, { color: '#0b6e8a', weight: 2, dashArray: '6 6', opacity: esb ? .5 : 1, fillColor: '#0b6e8a', fillOpacity: esb ? .04 : .08 })
+        .on('click', (e) => clicarCampo(e, a)).addTo(camada);
+      L.marker(c, { icon: L.divIcon({ className: '', html: '<span class="ic-prop">📐 <span>por aprovar</span></span>', iconSize: null, iconAnchor: [40, -6] }) })
+        .on('click', (e) => clicarCampo(e, a)).addTo(camada);
+      if (a.latitude == null) { pts.push(c); continue; }
+    }
     if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { color: borda, weight: esb ? 2 : 3, opacity: esb ? .5 : 1, fillColor: COR[s.cod], fillOpacity: esb ? .1 : .25 })
       .on('click', (e) => clicarCampo(e, a)).addTo(camada);
     L.circleMarker([a.latitude, a.longitude], { radius: temPoligono(a) ? 5 : 8, color: temPoligono(a) ? '#fff' : borda, weight: temPoligono(a) ? 2 : 3, opacity: esb ? .5 : 1, fillColor: COR[s.cod], fillOpacity: esb ? .45 : .95 })
