@@ -1775,7 +1775,7 @@ function desenharLista() {
     (porAprovar().length ? `<div class="msg info">${porAprovar().length} medições de área por aprovar. <button class="chip" onclick="ecraPorAprovar()">Ver</button></div>` : '') +
     (porAtribuir().length && sit !== 'sem' ? `<div class="msg info">${porAtribuir().length} campos por atribuir. <button class="chip" onclick="$('#f-sit').value='sem';desenharLista()">Ver</button></div>` : '') +
     (sit ? `<div class="msg info">Filtro: ${esc($('#f-sit').selectedOptions[0]?.textContent || '')}. <button class="chip" onclick="$('#f-sit').value='';desenharLista()">← Ver todos os campos</button></div>` : '') +
-    (['supervisor', 'gestor'].includes(S.perfil?.papel) ? `<button class="btn sec" onclick="ecraVoltarRega()">➕ Voltar a pôr um campo na rega</button>` : '') +
+    (['supervisor', 'gestor', 'tecnico'].includes(S.perfil?.papel) ? `<button class="btn sec" onclick="ecraVoltarRega()">➕ Voltar a pôr um campo na rega</button>` : '') +
     `<p class="pequeno">${linhas.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` +
     linhas.slice(0, 300).map(({ a, s, d }) => `<div class="item" data-id="${esc(a.id)}"><div>
       <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
@@ -2112,7 +2112,7 @@ function gravarMedicao() {
 }
 // ---------- campos fora do plano que voltam à rega (14/10/2026, Nuro / Valdo) ----------
 // O servidor tem as áreas do Controlo_Rega_Areas com REGA = NÃO (e as retiradas a 12/10) com activa = false.
-// Não vêm para o telefone: só se procuram quando o supervisor ou o gestor abre este ecrã (precisa de rede).
+// Não vêm para o telefone: só se procuram quando o supervisor, o gestor ou o técnico (v136) abre este ecrã (precisa de rede).
 const eNovo = (a) => a.reactivada_em && Date.now() - new Date(a.reactivada_em) < 14 * 864e5;
 function ecraVoltarRega() {
   folha(`<h2>Voltar a pôr um campo na rega</h2>
@@ -2148,21 +2148,23 @@ async function procurarForaPlano() {
   S.foraPlano = L;
   const fora = L.length ? `<p class="pequeno" style="margin-top:8px"><b>Fora do plano de rega</b> · ${L.length === 40 ? 'primeiros 40 resultados. Escreva mais letras para afinar.' : L.length === 1 ? '1 campo' : L.length + ' campos'}</p>` + L.map((a, i) => `<div class="cartao" style="margin:6px 0;padding:10px 12px">
     <div class="nome"><b>${esc(a.produtor || '—')}</b></div>
-    <div class="sub pequeno">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${a.vivas != null ? num(a.vivas) + ' vivas' : '—'}${a.instaladas != null ? ' de ' + num(a.instaladas) + ' plantadas' : ''}${a.data_plantio ? ' · plantio ' + fmtData(a.data_plantio) : ''}</div>
+    <div class="sub pequeno">${esc(a.id || a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${a.vivas != null ? num(a.vivas) + ' vivas' : '—'}${a.instaladas != null ? ' de ' + num(a.instaladas) + ' plantadas' : ''}${a.data_plantio ? ' · plantio ' + fmtData(a.data_plantio) : ''}</div>
     <div class="sub pequeno">${a.agua_origem === 'COM' ? 'Na base: tinha água' : a.agua_origem === 'SEM' ? 'Na base: sem água' : ''}${a.n_regas_origem ? ` · ${a.n_regas_origem} regas antes${a.ultima_rega_origem ? ' (última ' + fmtData(a.ultima_rega_origem) + ')' : ''}` : ''}${a.activista_origem ? ' · activista: ' + esc(a.activista_origem) : ''}${a.tem_coord ? '' : ' · <b>sem coordenada</b>'}</div>
     ${a.motivo_saida ? `<div class="sub pequeno">Saiu da rega: ${esc(a.motivo_saida)}</div>` : ''}
-    <button class="chip" style="margin-top:6px" onclick="confirmarVoltaRega(${i})">Voltar a regar</button></div>`).join('') : '';
+    ${a.pode === false ? '<div class="sub pequeno">Não é da comunidade das suas equipas: só o supervisor pode pôr este campo na rega.</div>' : `<button class="chip" style="margin-top:6px" onclick="confirmarVoltaRega(${i})">Voltar a regar</button>`}</div>`).join('') : '';
   el.innerHTML = (!L.length && !N.length) ? '<div class="msg info">Nenhum campo com esse nome ou PR, nem na rega nem fora do plano. Se o campo existe, envie o PR ao gestor.</div>' : naRega(N) + fora;
 }
 function confirmarVoltaRega(i) {
   const a = S.foraPlano[i];
-  folha(`<h2>${esc(a.produtor || a.pr)}</h2><p class="pequeno">${esc(a.pr)} · ${esc(a.comunidade)} · ${a.vivas != null ? num(a.vivas) + ' vivas' : '—'}</p>
+  const tec = S.perfil.papel === 'tecnico';   // v136 (29/10/2026, Valdo): o técnico também põe na rega, com motivo obrigatório
+  folha(`<h2>${esc(a.produtor || a.pr)}</h2><p class="pequeno">${esc(a.id || a.pr)} · ${esc(a.comunidade)} · ${a.vivas != null ? num(a.vivas) + ' vivas' : '—'}${a.instaladas != null ? ' de ' + num(a.instaladas) + ' plantadas' : ''}</p>
     <p>Este campo volta à lista de rega a partir de agora.</p>
-    <label>Motivo (opcional)<textarea id="vr-motivo" rows="2" placeholder="Ex.: o poço secou"></textarea></label>
+    <label>${tec ? 'Motivo (obrigatório)' : 'Motivo (opcional)'}<textarea id="vr-motivo" rows="2" placeholder="Ex.: o poço secou"></textarea></label>
     <button class="btn" id="vr-ok" onclick="voltarRega(${i})">Voltar a regar</button><button class="btn sec" onclick="ecraVoltarRega()">Cancelar</button>`);
 }
 async function voltarRega(i) {
   const a = S.foraPlano[i]; if (!navigator.onLine) return aviso('Sem rede. Tente quando houver rede.', 'erro');
+  if (S.perfil.papel === 'tecnico' && $('#vr-motivo').value.trim().length < 3) return aviso('Escreva o motivo (pelo menos 3 letras).', 'erro');
   $('#vr-ok').disabled = true;
   const r = await sb.rpc('voltar_a_regar', { p_area: a.id, p_motivo: $('#vr-motivo').value.trim() || null });
   if (r.error) { $('#vr-ok').disabled = false; return aviso(r.error.message, 'erro'); }
