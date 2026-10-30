@@ -377,7 +377,7 @@
         return { id: t.id, nome: t.nome, comunidade: t.comunidade_principal, sem_telefone: false, regas: l.length, plantas: l.reduce((x, r) => x + r.plantas_regadas, 0),
           chegada: l.map((r) => r.entrada_em).sort()[0] || null, sem_rega: sr.length ? sr.join(', ') : null }; });
       const base = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
-      const alertas = reais().filter((r) => ids.includes(r.activista_id) && r.data >= dia(2) && !r.alerta_confirmado_em && !r.plantas_corrigidas_em && r.plantas_regadas > base(area(r.area_id)))
+      const alertas = reais().filter((r) => ids.includes(r.activista_id) && !r.alerta_confirmado_em && !r.plantas_corrigidas_em && r.plantas_regadas > base(area(r.area_id)))
         .map((r) => ({ registo_id: r.id, data: r.data, area_id: r.area_id, produtor: area(r.area_id).produtor, equipa: nomeAct(r.activista_id), plantas: r.plantas_regadas, base: base(area(r.area_id)), ritmo: null, mediana: null, tipo: 'mais_que_base' }));
       const comunidades = papel === 'tecnico' ? ['Exemplo Norte'] : ['Exemplo Norte', 'Exemplo Sul'];
       return { data: hoje, hora_chegada: '06:00', fechado_em: (DB.fechos || {})[EU + hoje] || null, equipas: eqs, alertas,
@@ -389,6 +389,14 @@
     fechar_dia: () => { const hoje = dia(0), m = RPC.meu_dia(); const falta = (m?.equipas || []).filter((e) => !e.regas && !e.sem_rega);
       if (falta.length) throw Object.assign(new Error('Ainda sem rega nem motivo: ' + falta.map((e) => e.nome).join(', ')), { erro400: true });
       (DB.fechos ||= {})[EU + hoje] = new Date().toISOString(); return DB.fechos[EU + hoje]; },
+    confirmar_rega2: (a) => { const r = DB.registos.find((x) => x.id === a.p_id); if (!r) return null;
+      const ar = DB.areas.find((x) => x.id === r.area_id) || {}; const base = ar.vivas > 0 ? ar.vivas : (ar.instaladas || 0); const v = a.p_vivas;
+      if (base > 0 && r.plantas_regadas > base && v != null && v < r.plantas_regadas) throw Object.assign(new Error(`Contou ${v} plantas vivas, menos do que as ${r.plantas_regadas} regadas. Corrija as plantas regadas na ficha do campo.`), { erro400: true });
+      Object.assign(r, { alerta_confirmado_em: new Date().toISOString(), alerta_confirmado_nota: a.p_nota, alerta_vivas_contadas: v ?? null });
+      let rc = 'nao';
+      if (v != null && v !== base) { if (DB.recontagens.some((x) => x.area_id === r.area_id && ['por_encaminhar', 'encaminhada', 'enviada', 'recusada'].includes(x.estado))) rc = 'ja_havia';
+        else { DB.recontagens.push({ id: uid(), area_id: r.area_id, motivo: `Rega com ${r.plantas_regadas} plantas regadas: contou ${v} plantas vivas; a base tem ${base}.`, estado: 'por_encaminhar', pedido_em: new Date().toISOString(), pedido_por: EU, oficial_id: null }); rc = 'pedida'; } }
+      return { recontagem: rc }; },
     confirmar_rega: (a) => { const r = DB.registos.find((x) => x.id === a.p_id); if (r) { r.alerta_confirmado_em = new Date().toISOString(); r.alerta_confirmado_nota = a.p_nota; } return null; },
     // v156: medir a área: o activista deixa a área por aprovar; técnico, supervisor e gestor gravam o limite
     gravar_poligono: (a) => { const ar = area(a.p_area); if (!ar.id || !Array.isArray(a.p_pontos)) return null; const m2 = areaM2(a.p_pontos);

@@ -4314,7 +4314,7 @@ function cartaoMeuDia() {
     <h3 style="font-size:14px;margin:12px 0 4px">3. <span>Regas com ⚠️ por confirmar</span> (${al.length})</h3>` +
     (al.length ? al.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
       <div class="sub"><span class="sem-trad">${esc(x.equipa)}</span> · ${fmtData(x.data)} · ${x.tipo === 'mais_que_base' ? `${num(x.plantas)} <span>plantas regadas</span>, ${num(x.base)} <span>na base</span>` : `<span>ritmo</span> ${num(x.ritmo)} <span>plantas por pessoa por hora</span>, <span>habitual</span> ${num(x.mediana)}`}</div>
-      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e corrigir</button><button class="chip" onclick="ecraConfirmarRega('${x.registo_id}')">✓ Está certo</button></div></div>`).join('')
+      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e corrigir</button><button class="chip" onclick="ecraConfirmarRega('${x.registo_id}', '${x.tipo}', ${Number(x.plantas) || 0}, ${Number(x.base) || 0}, '${esc(x.area_id)}')">✓ Está certo</button></div></div>`).join('')
       : '<p class="pequeno">Nenhuma.</p>') +
     `<h3 style="font-size:14px;margin:12px 0 4px">4. <span>Campos sem equipa</span>: ${num(d.sem_equipa || 0)}</h3>${d.sem_equipa ? '<button class="chip" onclick="irPorAtribuir()">Atribuir os campos</button>' : ''}` +
     // v138 (29/10/2026, Valdo): medições de área feitas pelos activistas à espera de aprovação (as já aprovadas no telefone saem da lista)
@@ -4346,16 +4346,32 @@ async function fecharDia() {
   if (r.error) return aviso(r.error.message, 'erro');
   aviso('Dia fechado.', 'ok'); await carregarMeuDia(); actHoje();
 }
-function ecraConfirmarRega(id) {
-  folha(`<h2>✓ Esta rega está certa</h2><p class="pequeno">Explique porque o número está certo (ex.: o produtor plantou mais mudas; contámos no campo).</p>
-    <textarea id="cr-nota" rows="3"></textarea><div id="cr-msg"></div>
+// v159 (31/10/2026, Valdo): numa rega com mais plantas do que a base, «Está certo» exige as plantas vivas contadas.
+// Contadas < regadas → o servidor recusa (corrigir as plantas regadas); contadas ≠ base → pedido de recontagem ao M&E.
+function ecraConfirmarRega(id, tipo, plantas, base, area) {
+  const conta = tipo === 'mais_que_base';
+  folha(`<h2>✓ Esta rega está certa</h2>
+    ${conta ? `<p class="pequeno"><span>Plantas regadas</span>: <b>${num(plantas)}</b> · <span>na base</span>: <b>${num(base)}</b> <span>vivas</span>.</p>
+      <label><span>Plantas vivas que contou no campo</span> <input id="cr-vivas" type="number" min="0" inputmode="numeric"></label>
+      <p class="pequeno">Se o número for diferente da base, a app pede uma recontagem ao M&amp;E.</p>` : ''}
+    <label><span>Porque está certo?</span></label><textarea id="cr-nota" rows="3"></textarea><div id="cr-msg"></div>
     <button class="btn" id="cr-ok">Confirmar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
   $('#cr-ok').onclick = async () => {
-    const t = $('#cr-nota').value.trim(); if (t.length < 3) { $('#cr-msg').innerHTML = '<div class="msg erro">Escreva porque está certo.</div>'; return; }
+    const t = $('#cr-nota').value.trim();
+    let v = null;
+    if (conta) {
+      v = parseInt($('#cr-vivas').value, 10);
+      if (!(v >= 0)) { $('#cr-msg').innerHTML = '<div class="msg erro">Escreva as plantas vivas que contou no campo.</div>'; return; }
+      if (v < plantas) { $('#cr-msg').innerHTML = `<div class="msg erro">Contou ${v} plantas vivas, menos do que as ${plantas} regadas. Corrija as plantas regadas na ficha do campo.</div>
+        <button class="chip" onclick="abrirFicha('${esc(area || '')}')">Abrir a ficha e corrigir</button>`; return; }
+    }
+    if (t.length < 3) { $('#cr-msg').innerHTML = '<div class="msg erro">Escreva porque está certo.</div>'; return; }
     if (!navigator.onLine) { $('#cr-msg').innerHTML = '<div class="msg erro">Precisa de rede.</div>'; return; }
-    const r = await sb.rpc('confirmar_rega', { p_id: id, p_nota: t });
+    const r = conta ? await sb.rpc('confirmar_rega2', { p_id: id, p_nota: t, p_vivas: v }) : await sb.rpc('confirmar_rega', { p_id: id, p_nota: t });
     if (r.error) { $('#cr-msg').innerHTML = `<div class="msg erro">${esc(r.error.message)}</div>`; return; }
-    fecharFolha(); aviso('Confirmado.', 'ok'); await carregarMeuDia(); actHoje();
+    const rc = r.data && r.data.recontagem;
+    fecharFolha(); aviso(rc === 'pedida' ? 'Confirmado. Foi pedida a recontagem ao M&E.' : rc === 'ja_havia' ? 'Confirmado. Já há uma recontagem em curso neste campo.' : 'Confirmado.', 'ok');
+    await carregarMeuDia(); actHoje();
   };
 }
 function botaoMonitoria(a) {
