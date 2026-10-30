@@ -166,7 +166,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <div class="tabela" id="t-meta" style="max-height:none"></div></section>
 
   <section class="card sec"><h2>Tempo por campo e deslocação entre campos</h2>
-    <p class="desc">Por equipa no período (valor do meio de cada equipa, a mediana, para um dia fora do normal não estragar o valor). Espera = da entrada no campo à chegada da água. Rega = da chegada da água à saída (sem a espera). Plantas por pessoa por hora = plantas regadas ÷ (pessoas × horas de rega). Deslocação = da saída de um campo à entrada no seguinte, no mesmo dia; mais de 60 min conta como pausa e fica de fora.</p>
+    <p class="desc">Por equipa no período (valor do meio de cada equipa, a mediana, para um dia fora do normal não estragar o valor). Espera = da entrada no campo à chegada da água. Rega = da chegada da água à saída (sem a espera). Plantas por pessoa por hora = plantas regadas ÷ (pessoas × horas de rega). Deslocação = da saída de um campo à entrada no seguinte, no mesmo dia. Conta como deslocação até 20 min mais 1 min por cada 40 m entre os dois campos (a pé, com equipamento); acima disso é pausa e fica de fora da mediana. Sem coordenadas num dos campos, o limite é 60 min. A primeira rega de cada dia não tem deslocação, por isso as deslocações medidas são sempre menos do que as regas.</p>
     <h3 style="font-size:14px;margin:4px 0">Plantas regadas por pessoa por hora</h3><div id="g-tempos"></div>
     <details><summary>Ver tabela</summary><div class="tabela" id="t-tempos"></div></details>
     <details><summary>Ver por campo</summary><p class="desc" style="margin-top:8px">⚠️ a vermelho: regou mais plantas do que as que o campo tem na base, ou ritmo 3 vezes acima ou abaixo do habitual da própria equipa. Área calculada do limite do campo.</p><div class="tabela" id="t-tempos-c"></div></details></section>
@@ -238,10 +238,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=151"></script>
-<script src="i18n.js?v=151"></script>
+<script src="i18n-sw.js?v=152"></script>
+<script src="i18n.js?v=152"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=151"></script>
+<script src="demo.js?v=152"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -581,14 +581,16 @@ function desenharMeta() {
 function desenharTempos() {
   if (!$('#t-tempos')) return;
   // v131 (28/10/2026, Valdo: "Olhando para esses números não faz sentido"): espera e rega separadas, plantas por pessoa por hora, medianas, pausas à parte e cada rega por campo
+  // v152 (30/10/2026, da v136 do clone do Mac de 29/10, nunca publicada): deslocações medidas e pausas ao lado da deslocação; pausa = acima de
+  // 20 min + 1 min por cada 40 m entre os campos (RPC painel_tempos_equipa2, já no servidor); sem coordenadas, 60 min
   const T = DT && !Array.isArray(DT) ? DT : null, L = T ? T.equipas || [] : [];
   if (!L.length) { $('#t-tempos').innerHTML = $('#t-tempos-c').innerHTML = '<div class="vazio">Ainda sem registos.</div>'; $('#g-tempos').innerHTML = ''; return; }
   const n1 = (v) => (v == null ? '—' : num(v));
   const lr = L.filter((t) => t.ritmo_med != null).sort((a, b) => b.ritmo_med - a.ritmo_med);
   barras('#g-tempos', lr, { valor: (t) => +t.ritmo_med, rotulo: (t) => t.equipa, texto: (t) => num(t.ritmo_med),
     dicaDe: (t) => [[num(t.ritmo_med), 'plantas por pessoa por hora'], [t.equipa], [`${num(t.regas)} regas · ${num(t.plantas_campo)} plantas por campo`]] });
-  tabela('#t-tempos', [['Equipa'], ['Regas', 1], ['Plantas por campo', 1], ['Espera pela água (min)', 1], ['Rega (min)', 1], ['Plantas por pessoa por hora', 1], ['Deslocação (min)', 1], ['Distância entre campos (m)', 1], ['Deslocações medidas', 1], ['Pausas de mais de 60 min', 1]],
-    L.map((t) => [esc(t.equipa), num(t.regas), n1(t.plantas_campo), n1(t.espera_med), n1(t.rega_med), n1(t.ritmo_med), n1(t.desloc_med), n1(t.dist_med), num(t.desloc_n), num(t.pausas)]));
+  tabela('#t-tempos', [['Equipa'], ['Regas', 1], ['Plantas por campo', 1], ['Espera pela água (min)', 1], ['Rega (min)', 1], ['Plantas por pessoa por hora', 1], ['Deslocação (min)', 1], ['Deslocações medidas', 1], ['Pausas', 1], ['Distância entre campos (m)', 1]],
+    L.map((t) => [esc(t.equipa), num(t.regas), n1(t.plantas_campo), n1(t.espera_med), n1(t.rega_med), n1(t.ritmo_med), n1(t.desloc_med), num(t.desloc_n), num(t.pausas), n1(t.dist_med)]));
   const med = Object.fromEntries(L.map((t) => [t.equipa, t.ritmo_med])), hm = (x) => (x ? new Date(x).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Maputo' }) : '');
   const vermelho = (t) => `<span style="color:var(--erro,#c62828);font-weight:600">${t}</span>`;
   tabela('#t-tempos-c', [['Data'], ['Equipa'], ['Entrada – saída'], ['Campo'], ['Área (ha)', 1], ['Plantas na base', 1], ['Plantas regadas', 1], ['Pessoas', 1], ['Espera (min)', 1], ['Rega (min)', 1], ['Plantas por pessoa por hora', 1], ['Deslocação antes (min · m)', 1]],
@@ -599,7 +601,7 @@ function desenharTempos() {
         r.area_m2 ? (r.area_m2 / 10000).toLocaleString(LOC, { maximumFractionDigits: 2 }) : '—', num(base),
         mais ? vermelho(`⚠️ ${num(r.plantas)}`) : num(r.plantas), r.pessoas != null ? num(r.pessoas) : '—', n1(r.espera_min), n1(r.rega_min),
         r.ritmo == null ? '—' : ritmoFora ? vermelho(`⚠️ ${num(r.ritmo)}`) : num(r.ritmo),
-        r.desloc_min == null ? '—' : `${r.desloc_min > 60 ? vermelho(num(r.desloc_min)) : num(r.desloc_min)}${r.dist_m != null ? ' · ' + num(r.dist_m) : ''}`];
+        r.desloc_min == null ? '—' : `${r.pausa ? vermelho(num(r.desloc_min) + ' <span>pausa</span>') : num(r.desloc_min)}${r.dist_m != null ? ' · ' + num(r.dist_m) : ''}`];
     }));
 }
 
