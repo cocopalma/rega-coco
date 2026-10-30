@@ -171,7 +171,7 @@ function rondaInfo(actId) {
   const lista = S.areas.filter((a) => a.activista_id === actId), ids = new Set(lista.map((a) => a.id));
   const porRonda = {};
   for (const r of meusRegistos()) {
-    if (r.activista_id !== actId || !ids.has(r.area_id)) continue;
+    if ((r.activista_id !== actId && r.apoio_para !== actId) || !ids.has(r.area_id)) continue;   // v149: regas de outra equipa em apoio contam
     const n = r.ronda || 1; (porRonda[n] ??= { areas: new Set(), ini: r.data, fim: r.data });
     const o = porRonda[n]; o.areas.add(r.area_id); if (r.data < o.ini) o.ini = r.data; if (r.data > o.fim) o.fim = r.data;
   }
@@ -201,6 +201,8 @@ function situacao(a) {
   if (!a.activista_id) return { cod: 'sem', txt: 'Sem activista', u };
   let feita, n;
   if (souActivista() && a.activista_id === S.perfil.activista_id) { const ri = rondaInfo(a.activista_id); feita = ri.feitas.has(a.id); n = ri.n; }
+  else if (apoioMeu(a.id)) { const e = S.estado[a.id] || {}; n = e.ronda || 1;   // campo em apoio: ronda da equipa dona (+ regas no telefone)
+    feita = !!e.feita || filaRegistos().some((r) => r.area_id === a.id && r.apoio_id && !r.teste && r.plantas_regadas > 0); }
   else { const e = S.estado[a.id] || {}; feita = !!e.feita; n = e.ronda || 1; }
   if (!feita && !souActivista()) { const t = testeEm(a.id); if (t) return { cod: 'teste', txt: `Regado em teste (${fmtData(t).slice(0, 5)})`, u, n };
     const q = testeEquipa(a.id); if (q) return { cod: 'teste', txt: `Regado em teste (${fmtData(q.data).slice(0, 5)} · ${q.quem || ''})`, u, n }; }
@@ -242,7 +244,7 @@ const minhas = () => S.areas.filter((a) => a.activista_id && a.activista_id === 
 const listaPropria = () => ['supervisor', 'tecnico'].includes(S.perfil?.papel) && Array.isArray(S.visiveis);   // técnicos desde 24/10/2026 (Valdo)
 const meuCampo = (a) => !listaPropria() || (a.activista_id ? S.visiveis.includes(a.activista_id) : (S.minhasCom || []).includes(a.comunidade));
 const meusCampos = () => S.areas.filter(meuCampo);
-const visiveis = () => (S.filtro === 'meus' && S.perfil?.papel === 'activista' ? minhas() : S.filtro === 'meus' && listaPropria() ? meusCampos() : S.areas);
+const visiveis = () => (S.filtro === 'meus' && S.perfil?.papel === 'activista' ? [...minhas(), ...S.areas.filter((a) => apoioMeu(a.id))] : S.filtro === 'meus' && listaPropria() ? meusCampos() : S.areas);
 
 // ---------- fila offline ----------
 const filaRegistos = () => LS.get('fila', []);
@@ -405,8 +407,8 @@ async function carregarEstado(pronto) {
     const q = await sb.rpc('membros_lista'); if (!q.error && Array.isArray(q.data)) { S.membros = q.data; aplicarMembrosPendentes(); LS.set('membros', S.membros); }
   }
   if (souActivista() && S.perfil.activista_id) {        // registos da minha equipa (para a ronda funcionar sem rede)
-    const r = await sb.from('registos_rega').select('id,area_id,activista_id,data,ronda,plantas_regadas,teste')
-      .eq('activista_id', S.perfil.activista_id).eq('teste', false).gt('plantas_regadas', 0).range(0, 9999);
+    const r = await sb.from('registos_rega').select('id,area_id,activista_id,apoio_para,data,ronda,plantas_regadas,teste')
+      .or(`activista_id.eq.${S.perfil.activista_id},apoio_para.eq.${S.perfil.activista_id}`).eq('teste', false).gt('plantas_regadas', 0).range(0, 9999);
     if (!r.error) LS.set('meusRegs', r.data);
   } else if (PODE_REGAR.includes(S.perfil?.papel) && S.perfil?.id) {   // as minhas regas de teste dos últimos 14 dias
     const desde = new Date(Date.now() - 14 * 864e5).toLocaleDateString('sv-SE');
@@ -417,7 +419,7 @@ async function carregarEstado(pronto) {
       if (!c.error && c.count != null) LS.set('nTestes', c.count);
     }
   }
-  if (PODE_REGAR.includes(S.perfil?.papel)) { carregarSemMotivo().catch(() => {}); carregarDiasSemRega().catch(() => {}); }
+  if (PODE_REGAR.includes(S.perfil?.papel)) { carregarSemMotivo().catch(() => {}); carregarDiasSemRega().catch(() => {}); await carregarApoios(); }
   if (VER_TESTES_EQ.includes(S.perfil?.papel)) {
     const q = await sb.rpc('testes_equipa');
     if (!q.error && Array.isArray(q.data)) { S.testesEq = Object.fromEntries(q.data.map((x) => [x.area_id, { data: x.data, n: x.n, quem: x.quem }])); LS.set('testesEquipa', S.testesEq); }
@@ -512,7 +514,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -1816,7 +1818,7 @@ function desenharLista() {
     `<p class="pequeno">${linhas.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` +
     linhas.slice(0, 300).map(({ a, s, d }) => `<div class="item" data-id="${esc(a.id)}"><div>
       <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
-      </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}<span class="tag t-${s.cod}">${s.txt}</span>${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
+      </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${apoioDoCampo(a.id) ? `<span class="tag t-outra">🤝 <span>Apoio de</span> <span class="sem-trad">${esc(nomeAct(apoioDoCampo(a.id).ajuda_activista_id))}</span></span>` : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}<span class="tag t-${s.cod}">${s.txt}</span>${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
 }
 
 // ---------- mapa de plantas (15/10/2026, pedido do Dalmar; teste com gestor/director, supervisores e técnicos) ----------
@@ -2451,7 +2453,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
   S.soVer = false;
   if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
 }
@@ -2529,7 +2531,8 @@ function guardarJornada(depois) {
 async function marcarEntrada(id, motivoIt = null) {
   if ((LS.get('semMotivo', []) || []).length) return ecraSemMotivo();   // v115: primeiro o motivo das regas fora da lista
   const a = S.areas.find((x) => x.id === id);
-  const minha = souActivista() && a.activista_id === S.perfil.activista_id;
+  const minha = souActivista() && a.activista_id === S.perfil.activista_id, apoio = apoioMeu(id);
+  if (apoio && situacao(a).cod === 'feita') return abrirFicha(id, `<div class="msg erro">Este campo já foi regado nesta ronda da equipa de ${esc(nomeAct(a.activista_id))}.</div>`);
   if ((souActivista() && minha) || porEquipa(a)) {             // regra da ronda: não repetir antes de acabar a lista
     const ri = rondaInfo(a.activista_id);
     if (ri.feitas.has(id)) return abrirFicha(id, `<div class="msg erro">Este campo já foi regado na ronda ${ri.n}. Só pode voltar a regá-lo depois de regar todos os campos da sua lista (faltam ${ri.total - ri.feitas.size} de ${ri.total}).</div>`);
@@ -2544,7 +2547,8 @@ async function marcarEntrada(id, motivoIt = null) {
   if (it) { ent.plano_id = it.plano.id; ent.plano_dia = it.dia.n; ent.fora_itinerario = !it.campos.includes(id); ent.motivo_itinerario = ent.fora_itinerario ? motivoIt : null; }
   const sug = LS.get('sugestao');
   if (sug) { ent.area_sugerida_id = sug.area_id; ent.seguiu_sugestao = sug.area_id === id; LS.del('sugestao'); mostrarSugFixa(); }
-  if (souActivista() && !minha) {                               // campo de outra equipa ou sem activista
+  if (apoio) ent.apoio_id = apoio.id;                           // v149: campo em apoio (activado pelo técnico/supervisor)
+  if (souActivista() && !minha && !apoio) {                     // campo de outra equipa ou sem activista
     LS.set('pendenteAlerta', ent);
     return folha(`<h2>Atenção: campo fora da sua lista</h2>
       <div class="msg erro">Este campo é de ${esc(nomeAct(a.activista_id))}. Não conta para a sua ronda.</div>
@@ -2679,7 +2683,7 @@ async function marcarSaida() {
     entrada_em: ent.entrada_em, saida_em: new Date().toISOString(), entrada_lat: ent.entrada_lat, entrada_lon: ent.entrada_lon,
     saida_lat: g.lat, saida_lon: g.lon, gps_precisao_m: Math.max(ent.gps_precisao_m || 0, g.precisao),
     distancia_area_m: ent.distancia_area_m, gps_valido: ent.gps_valido, plantas_regadas: plantas,
-    alerta: ent.alerta || null, motivo_alerta: ent.motivo_alerta || null,
+    alerta: ent.alerta || null, motivo_alerta: ent.motivo_alerta || null, apoio_id: ent.apoio_id || null,
     plano_id: ent.plano_id || null, plano_dia: ent.plano_dia ?? null, fora_itinerario: ent.fora_itinerario ?? null, motivo_itinerario: ent.motivo_itinerario || null,
     area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null,
     criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista' && !porEquipa(a), observacao: obs || null,
@@ -2693,6 +2697,99 @@ async function marcarSaida() {
     if (depois.n > antes.n) nota = `<div class="msg ok"><b>Ronda ${antes.n} concluída!</b> Os ${antes.total} campos da lista foram regados de ${fmtData(depois.anterior.ini)} a ${fmtData(depois.anterior.fim)}. A ronda ${depois.n} começa agora.</div>`;
   }
   sugerirProximo(a, nota, reg.id);
+}
+
+// ---------- Apoio entre equipas (v149, 30/10/2026, Valdo) ----------
+// "vamos mover as equipas que terminaram a primeira ronda para ajudar as outras equipas… a limitante… é a distância (bicicletas)":
+// máximo 5 km; quem activa são o supervisor e o técnico (e o gestor); a app sugere. Servidor (v144): tabela apoios, criar_apoio,
+// terminar_apoio, apoios_lista; v149: apoio_sugestoes (equipas com ronda maior → equipas vizinhas), apoio_candidatos (campos por
+// regar na ronda da equipa dona, a ≤ 5 km dos campos da equipa que ajuda, nunca regados primeiro). A equipa que ajuda vê esses
+// campos na sua lista (🤝); a rega leva apoio_id e conta para a ronda da equipa dona (gatilho marca_fora_lista).
+const VER_APOIO = ['tecnico', 'supervisor', 'gestor'];
+const apoiosAct = () => (LS.get('apoios', []) || []).filter((p) => !p.terminado_em);
+const apoioDoCampo = (id) => apoiosAct().find((p) => (p.area_ids || []).includes(id)) || null;
+const apoioMeu = (id) => (souActivista() ? apoiosAct().find((p) => p.ajuda_activista_id === S.perfil.activista_id && (p.area_ids || []).includes(id)) || null : null);
+async function carregarApoios() {
+  if (!navigator.onLine) return;
+  const [a, s] = await Promise.all([sb.rpc('apoios_lista'), VER_APOIO.includes(S.perfil?.papel) ? sb.rpc('apoio_sugestoes') : Promise.resolve({ data: null })]);
+  if (!a.error && Array.isArray(a.data)) LS.set('apoios', a.data);
+  if (!s.error && Array.isArray(s.data)) LS.set('apoioSug', s.data);
+}
+function cartaoApoioCampo(a) {
+  const p = apoioDoCampo(a.id); if (!p) return '';
+  return `<div class="msg info">🤝 <b><span>Apoio:</span> <span class="sem-trad">${esc(p.ajuda_nome)}</span> → <span class="sem-trad">${esc(p.para_nome)}</span></b> · <span>desde</span> ${fmtData(p.inicio)}<div class="pequeno">A rega deste campo conta para a ronda da equipa dona do campo.</div></div>`;
+}
+function cartaoApoioAct() {                                  // activista: a quem ajuda e quem o ajuda
+  if (!souActivista()) return '';
+  const eu = S.perfil.activista_id, l = apoiosAct().filter((p) => p.ajuda_activista_id === eu || p.para_activista_id === eu); if (!l.length) return '';
+  return `<div class="cartao"><h2>🤝 Apoio entre equipas</h2>` + l.map((p) => p.ajuda_activista_id === eu
+    ? `<p><span>Está a ajudar a equipa de</span> <b class="sem-trad">${esc(p.para_nome)}</b>: ${num((p.area_ids || []).length)} <span>campos</span> (${num(p.feitas || 0)} <span>regados</span>). <span>Os campos aparecem na sua lista com 🤝.</span></p>`
+    : `<p><span>A equipa de</span> <b class="sem-trad">${esc(p.ajuda_nome)}</b> <span>está a ajudar a sua equipa:</span> ${num((p.area_ids || []).length)} <span>campos</span> (${num(p.feitas || 0)} <span>regados</span>). <span>Esses campos contam para a sua ronda.</span></p>`).join('') + '</div>';
+}
+function cartaoApoio() {                                     // técnico, supervisor, gestor
+  const l = apoiosAct(), sg = LS.get('apoioSug', []) || [];
+  let h = `<div class="cartao"><h2>🤝 Apoio entre equipas</h2><p class="pequeno">Uma equipa que já fechou a ronda pode ajudar outra equipa a menos de 5 km. Quem activa é o técnico ou o supervisor; a app sugere.</p>`;
+  if (l.length) h += '<h3 style="font-size:14px;margin:8px 0 4px">Em curso</h3>' + l.map((p) => `<div class="item" style="display:block"><div class="nome"><span class="sem-trad">${esc(p.ajuda_nome)}</span> → <span class="sem-trad">${esc(p.para_nome)}</span></div>
+      <div class="sub">${num(p.feitas || 0)} / ${num((p.area_ids || []).length)} <span>campos regados</span> · <span>desde</span> ${fmtData(p.inicio)}${p.criado_por_nome ? ` · <span>activado por</span> <span class="sem-trad">${esc(p.criado_por_nome)}</span>` : ''}</div>
+      <button class="chip" onclick="terminarApoio('${esc(p.id)}')">Terminar o apoio</button></div>`).join('');
+  if (sg.length) h += '<h3 style="font-size:14px;margin:10px 0 4px">💡 Sugestões da app</h3>' + sg.slice(0, 6).map((x) => `<div class="item" style="display:block">
+      <div class="nome"><span class="sem-trad">${esc(x.ajuda_nome)}</span> <span>pode ajudar</span> <span class="sem-trad">${esc(x.para_nome)}</span></div>
+      <div class="sub"><span class="sem-trad">${esc(x.ajuda_nome)}</span> <span>já está na ronda</span> ${num(x.ajuda_ronda)} · <span class="sem-trad">${esc(x.para_nome)}</span> <span>na ronda</span> ${num(x.para_ronda)} (${num(x.para_regadas)}/${num(x.para_lista)}) · ${num(x.campos)} <span>campos a menos de 5 km</span>${x.nunca ? ` (${num(x.nunca)} <span>nunca regados</span>)` : ''} · <span>o mais perto a</span> ${x.dist_min < 1000 ? num(x.dist_min) + ' m' : (x.dist_min / 1000).toFixed(1) + ' km'}</div>
+      <button class="chip" onclick="ecraApoio('${esc(x.ajuda_id)}','${esc(x.para_id)}')">Ver os campos e activar</button></div>`).join('');
+  else if (!l.length) h += '<p class="pequeno">Sem sugestões: nenhuma equipa da sua lista fechou a ronda com outra equipa por perto.</p>';
+  return h + `<button class="btn sec" onclick="ecraApoioEscolher()">➕ Activar outro apoio</button></div>`;
+}
+function ecraApoioEscolher() {
+  if (!navigator.onLine) return aviso('Precisa de rede para activar um apoio.', 'erro');
+  const todos = (S.activistas || []).filter((x) => x.activo !== false), meus = S.perfil.papel === 'gestor' || S.perfil.ve_tudo ? todos : todos.filter((x) => (S.visiveis || []).includes(x.id));
+  const op = (l) => '<option value="">— Escolha —</option>' + l.map((x) => `<option value="${esc(x.id)}">${esc(x.nome)}</option>`).join('');
+  folha(`<h2>🤝 Activar um apoio</h2><p class="pequeno">Uma das equipas tem de ser sua.</p>
+    <label>Equipa que ajuda<select id="ap-aj">${op(todos)}</select></label>
+    <label>Equipa que recebe ajuda<select id="ap-pa">${op(todos)}</select></label>
+    <div id="ap-msg"></div><button class="btn" id="ap-ver">Ver os campos</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  $('#ap-ver').onclick = () => { const aj = $('#ap-aj').value, pa = $('#ap-pa').value;
+    if (!aj || !pa || aj === pa) return ($('#ap-msg').innerHTML = '<div class="msg erro">Escolha duas equipas diferentes.</div>');
+    if (!meus.some((x) => x.id === aj || x.id === pa)) return ($('#ap-msg').innerHTML = '<div class="msg erro">Uma das equipas tem de ser sua.</div>');
+    ecraApoio(aj, pa); };
+}
+async function ecraApoio(aj, pa) {
+  if (!navigator.onLine) return aviso('Precisa de rede para activar um apoio.', 'erro');
+  folha('<p class="pequeno">A procurar os campos…</p>');
+  const r = await sb.rpc('apoio_candidatos', { p_ajuda: aj, p_para: pa });
+  if (r.error) return folha(`<div class="msg erro">${esc(r.error.message)}</div><button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+  const L = r.data || [], nAj = nomeAct(aj), nPa = nomeAct(pa);
+  if (!L.length) return folha(`<h2>🤝 <span class="sem-trad">${esc(nAj)}</span> → <span class="sem-trad">${esc(nPa)}</span></h2><div class="msg info">Não há campos de ${esc(nPa)} por regar nesta ronda a menos de 5 km dos campos de ${esc(nAj)} (só contam campos com coordenada).</div><button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+  folha(`<h2>🤝 <span class="sem-trad">${esc(nAj)}</span> → <span class="sem-trad">${esc(nPa)}</span></h2>
+    <p class="pequeno">Campos de ${esc(nPa)} por regar nesta ronda, a menos de 5 km dos campos de ${esc(nAj)}. Primeiro os nunca regados, depois os mais perto. Escolha os que a equipa de ${esc(nAj)} vai regar.</p>
+    <div class="chips" style="margin:6px 0"><button class="chip" id="ap-todos">Todos os campos</button><button class="chip" id="ap-nunca">Só os nunca regados</button><button class="chip" id="ap-nenhum">Nenhum campo</button></div>
+    <div id="ap-lista">${L.map((c) => `<label class="item" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" value="${esc(c.area_id)}" data-nunca="${c.nunca ? 1 : 0}" checked style="width:auto;margin-top:4px">
+      <span><span class="nome sem-trad">${esc(c.produtor || '')}</span><br><span class="sub"><span class="sem-trad">${esc(c.area_id)} · ${esc(c.comunidade || '')}</span> · ${num(c.plantas)} <span>plantas</span> · ${c.dist_m < 1000 ? num(c.dist_m) + ' m' : (c.dist_m / 1000).toFixed(1) + ' km'}${c.nunca ? ' · <b style="color:#c62828">nunca regado</b>' : ''}</span></span></label>`).join('')}</div>
+    <p class="pequeno" id="ap-conta"></p>
+    <label>Nota (opcional)<textarea id="ap-nota" rows="2" placeholder="Ex.: até a equipa ter material"></textarea></label>
+    <div id="ap-msg"></div><button class="btn" id="ap-ok">Activar o apoio</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  const caixas = () => [...document.querySelectorAll('#ap-lista input')];
+  const conta = () => { const m = caixas().filter((x) => x.checked); $('#ap-conta').textContent = `${m.length} de ${L.length} campos escolhidos · ${num(m.reduce((t, x) => t + (L.find((c) => c.area_id === x.value)?.plantas || 0), 0))} plantas`; };
+  caixas().forEach((x) => x.onchange = conta); conta();
+  $('#ap-todos').onclick = () => { caixas().forEach((x) => x.checked = true); conta(); };
+  $('#ap-nunca').onclick = () => { caixas().forEach((x) => x.checked = x.dataset.nunca === '1'); conta(); };
+  $('#ap-nenhum').onclick = () => { caixas().forEach((x) => x.checked = false); conta(); };
+  $('#ap-ok').onclick = async () => {
+    const ids = caixas().filter((x) => x.checked).map((x) => x.value);
+    if (!ids.length) return ($('#ap-msg').innerHTML = '<div class="msg erro">Escolha pelo menos um campo.</div>');
+    if (!navigator.onLine) return ($('#ap-msg').innerHTML = '<div class="msg erro">Precisa de rede.</div>');
+    $('#ap-ok').disabled = true;
+    const q = await sb.rpc('criar_apoio', { p_ajuda: aj, p_para: pa, p_areas: ids, p_nota: $('#ap-nota').value.trim() || null });
+    if (q.error) { $('#ap-ok').disabled = false; return ($('#ap-msg').innerHTML = `<div class="msg erro">${esc(q.error.message)}</div>`); }
+    fecharFolha(); aviso(`Apoio activado: ${nAj} vai regar ${ids.length} campos de ${nPa}. Avise as duas equipas.`, 'ok');
+    await carregarApoios(); desenharLista(); desenharMapa(); if ($('#e-hoje').classList.contains('on')) desenharHoje();
+  };
+}
+async function terminarApoio(id) {
+  const p = apoiosAct().find((x) => x.id === id); if (!p) return;
+  if (!confirm(`Terminar o apoio de ${p.ajuda_nome} a ${p.para_nome}? Os campos que faltam voltam só para a equipa de ${p.para_nome}.`)) return;
+  if (!navigator.onLine) return aviso('Precisa de rede.', 'erro');
+  const r = await sb.rpc('terminar_apoio', { p_id: id }); if (r.error) return aviso(r.error.message, 'erro');
+  aviso('Apoio terminado.', 'ok'); await carregarApoios(); desenharLista(); desenharMapa(); if ($('#e-hoje').classList.contains('on')) desenharHoje();
 }
 
 // ---------- próximo campo (sugestão opcional) ----------
@@ -3632,7 +3729,9 @@ async function desenharHoje() {
       <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div></div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
-    if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await Promise.all([carregarMonitoria(), carregarMeuDia()]); html = cartaoMeuDia() + cartaoMonitoria() + html; }
+    if (VER_APOIO.includes(S.perfil.papel) && navigator.onLine) await carregarApoios();
+    if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await Promise.all([carregarMonitoria(), carregarMeuDia()]); html = cartaoMeuDia() + cartaoApoio() + cartaoMonitoria() + html; }
+    else if (VER_APOIO.includes(S.perfil.papel)) html = cartaoApoio() + html;
     const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
     if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste') + (percursoActivo() || pontosPercursoHoje() ? linhaPercurso() : '');
     // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
@@ -3663,7 +3762,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoDiaSemRega() + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoApoioAct() + cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoDiaSemRega() + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
