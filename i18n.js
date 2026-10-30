@@ -319,7 +319,7 @@ document.addEventListener('DOMContentLoaded', () => {
     [/^Da base \((.+)\)\. A app calcula a amostra a partir deste número\.$/, (m, a) => `From the database (${tr(a)}). The app calculates the sample from this number.`],
     [/^(.+) campos verificados$/, '$1 fields checked'], [/^(.+) não regados$/, '$1 not watered'], [/^(.+) deslocações medidas$/, '$1 trips measured'], [/^Rega por campo: (.+)$/, 'Watering per field: $1'],
     [/^(.+) pessoas$/, '$1 people'],
-    [/^(.+) de (.+) plantas sem solo húmido$/, '$1 of $2 plants without moist soil'], [/^nota (.+)$/, 'score $1'], [/^Monitoria \(rega de (.+)\):$/, 'Monitoring (watering of $1):'],
+    [/^(.+) de (.+) plantas da amostra sem solo húmido$/, '$1 of $2 sampled plants without moist soil'], [/^(.+) de (.+) plantas sem solo húmido$/, '$1 of $2 plants without moist soil'], [/^nota (.+)$/, 'score $1'], [/^Monitoria \(rega de (.+)\):$/, 'Monitoring (watering of $1):'],
     [/^Observação: (.+)$/, 'Note: $1'],
     [/^(.+) faltas?$/, '$1 absent'], [/^·(\d+)F$/, '·$1A'], [/^Sem\. (.+)$/, 'Wk $1'], [/^(.+) pessoas-dia$/, '$1 person-days'],
     [/^Equipa = pessoas presentes \/ pessoas da equipa \(faltas a vermelho\)(; toque para mudar o número de pessoas da equipa)?\. Produtores = produtores com campos regados hoje\. % meta = plantas regadas ÷ \((\d+) × pessoas presentes\)\. Tuk-tuk = hora da 1\.ª chegada da água\. Início = entrada no 1\.º campo; Fim = saída do último\. Desloc\. = tempo médio entre a saída de um campo e a entrada no seguinte\. Alertas = regas fora da lista da equipa\.$/,

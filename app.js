@@ -3974,7 +3974,7 @@ async function carregarAvisos() {
   if (!r.error && Array.isArray(r.data)) { S.avisos = r.data; LS.set('avisos', S.avisos); }
 }
 const avisos = () => (Array.isArray(S.avisos) ? S.avisos : LS.get('avisos', []) || []);
-const textoAviso = (v) => `${v.sem_rega} de ${v.plantas_obs} plantas sem solo húmido · nota ${Number(v.nota).toLocaleString(LOC)}`;
+const textoAviso = (v) => `${v.sem_rega} de ${v.plantas_obs} plantas da amostra sem solo húmido · nota ${Number(v.nota).toLocaleString(LOC)}`;
 // Aviso a quem ainda não fez nenhuma rega de teste (v92, 21/10/2026, sugestão aceite pelo Valdo): técnico e supervisor.
 // Desaparece logo que haja uma rega de teste (no servidor, na fila do telefone ou em curso).
 // ---------- dia sem rega: constrangimento da equipa (v116, 26/10/2026, Valdo: "É preciso ter um campo de constrangimentos para
@@ -4209,7 +4209,7 @@ function cartaoAvisos() {
 }
 function avisoCampo(id) {
   const v = avisos().find((x) => x.area_id === id); if (!v) return '';
-  return `<div class="msg ${v.solo_regado ? 'info' : 'erro'}"><b>Monitoria (rega de ${fmtData(v.data_rega)}):</b> <span>${v.sem_rega} de ${v.plantas_obs} plantas sem solo húmido</span> · <span>nota ${Number(v.nota).toLocaleString(LOC)}</span>.<span>${v.solo_regado ? ' Campo regado. Na próxima rega, dê atenção às plantas sem água.' : ' Campo considerado não regado (menos de 80% das plantas com solo húmido).'}</span>${v.observacao ? `<br><span>Observação: ${esc(v.observacao)}</span>` : ''}</div>`;
+  return `<div class="msg ${v.solo_regado ? 'info' : 'erro'}"><b>Monitoria (rega de ${fmtData(v.data_rega)}):</b> <span>${v.sem_rega} de ${v.plantas_obs} plantas da amostra sem solo húmido</span> · <span>nota ${Number(v.nota).toLocaleString(LOC)}</span>.<span>${v.solo_regado ? ' Campo regado. Na próxima rega, dê atenção às plantas sem água.' : ' Campo considerado não regado (menos de 80% das plantas com solo húmido).'}</span>${v.observacao ? `<br><span>Observação: ${esc(v.observacao)}</span>` : ''}</div>`;
 }
 
 // ---------- monitoria por amostragem (técnico e supervisor) ----------

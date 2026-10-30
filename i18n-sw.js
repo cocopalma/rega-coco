@@ -1710,7 +1710,7 @@ window.I18N_SW_R = (tr) => [
     [/^Da base \((.+)\)\. A app calcula a amostra a partir deste número\.$/, (m, a) => `Kutoka kwenye kumbukumbu (${tr(a)}). Programu inakokotoa sampuli kutoka namba hii.`],
     [/^(.+) campos verificados$/, 'Mashamba $1 yamekaguliwa'], [/^(.+) não regados$/, '$1 hayajamwagiliwa'], [/^(.+) deslocações medidas$/, 'Safari $1 zimepimwa'], [/^Rega por campo: (.+)$/, 'Umwagiliaji kwa kila shamba: $1'],
     [/^(.+) pessoas$/, 'Watu $1'],
-    [/^(.+) de (.+) plantas sem solo húmido$/, 'Mimea $1 kati ya $2 bila udongo wenye unyevu'], [/^nota (.+)$/, 'alama $1'], [/^Monitoria \(rega de (.+)\):$/, 'Ufuatiliaji (umwagiliaji wa $1):'],
+    [/^(.+) de (.+) plantas da amostra sem solo húmido$/, 'Mimea $1 kati ya $2 ya sampuli bila udongo wenye unyevu'], [/^(.+) de (.+) plantas sem solo húmido$/, 'Mimea $1 kati ya $2 bila udongo wenye unyevu'], [/^nota (.+)$/, 'alama $1'], [/^Monitoria \(rega de (.+)\):$/, 'Ufuatiliaji (umwagiliaji wa $1):'],
     [/^Observação: (.+)$/, 'Maelezo: $1'],
     [/^(.+) faltas?$/, 'Wasiohudhuria $1'], [/^·(\d+)F$/, '·$1W'], [/^Sem\. (.+)$/, 'Wiki $1'], [/^(.+) pessoas-dia$/, 'Siku za watu $1'],
     [/^Equipa = pessoas presentes \/ pessoas da equipa \(faltas a vermelho\)(; toque para mudar o número de pessoas da equipa)?\. Produtores = produtores com campos regados hoje\. % meta = plantas regadas ÷ \((\d+) × pessoas presentes\)\. Tuk-tuk = hora da 1\.ª chegada da água\. Início = entrada no 1\.º campo; Fim = saída do último\. Desloc\. = tempo médio entre a saída de um campo e a entrada no seguinte\. Alertas = regas fora da lista da equipa\.$/,
