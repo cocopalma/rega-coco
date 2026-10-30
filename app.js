@@ -330,6 +330,7 @@ async function sincronizarAgora(silencioso) {
     }
   }
   if (!erro) erro = await enviarQueimadas();
+  if (!erro) erro = await enviarAcomp();
   if (!erro) erro = await enviarSugestoes();
   if (!erro && filaMan().length) erro = await enviarManut();
   if (!erro && filaCoq().length) erro = await enviarCoq();
@@ -341,7 +342,7 @@ async function sincronizarAgora(silencioso) {
   if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length + LS.get('filaCoq', []).length + LS.get('filaMed', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaAcomp', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length + LS.get('filaCoq', []).length + LS.get('filaMed', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   b.textContent = n ? `${n} por enviar` : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0);
 }
@@ -511,7 +512,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -2234,6 +2235,7 @@ function botoesCampo(a) {
     h += `<button class="btn sec" onclick="ecraPlantas('${esc(a.id)}')">🌴 Mapa das plantas${np ? ` (${np})` : ''} · teste</button>`; }
   if (PODE_COORD.includes(S.perfil.papel) && (!temPoligono(a) || aberto))
     h += `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 ${temPoligono(a) ? 'Medir a área de novo (andar à volta)' : 'Medir a área (andar à volta do campo)'}</button>`;
+  if (PODE_ACOMP.includes(S.perfil.papel) && a.activista_id && !S.perfil.so_teste) h += `<button class="btn sec" onclick="ecraAcompanhar('${esc(a.id)}')">👁 Acompanhei a rega neste campo</button>`;
   if (PODE_REGAR.includes(S.perfil.papel)) h += `<button class="btn sec" onclick="ecraQueimada('${esc(a.id)}')">🔥 ${queimadaDe(a.id) ? 'Registar outra queimada' : 'Marcar queimada nesta machamba'}</button>`;
   if (podeAtribuir(a)) h += `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">👤 ${a.activista_id ? 'Mudar o activista deste campo' : 'Atribuir a um activista'}</button>`;
   if (['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel)) h += `<button class="btn sec" onclick="ecraComunidade('${esc(a.id)}')">🏘 Mudar a comunidade</button>`;
@@ -3688,7 +3690,9 @@ async function verFoto(balde, caminho, legenda = '') {
 // Corrigir as plantas regadas (v84, 20/10/2026, Nuro/Valdo): técnico, supervisor e gestor; o activista não ("editar é onde começa a batota").
 const PODE_CORRIGIR_PLANTAS = ['tecnico', 'supervisor', 'gestor'];
 async function regasDoCampo(id) {
-  const r = await sb.rpc('regas_campo', { p_area: id }); const el = $('#f-regas');
+  const [r, ac] = await Promise.all([sb.rpc('regas_campo', { p_area: id }), sb.rpc('acompanhamentos_campo', { p_area: id })]); const el = $('#f-regas');
+  const acs = [...acompLocais(id), ...((!ac.error && Array.isArray(ac.data)) ? ac.data : [])];
+  if (el && acs.length && (r.error || !Array.isArray(r.data) || !r.data.length)) { el.innerHTML = `<div class="cartao" style="margin-top:10px">${blocoAcomp(acs, null)}</div>`; return; }
   if (r.error || !el || !Array.isArray(r.data) || !r.data.length) return;
   for (const x of LS.get('filaAlt', [])) if (x.tipo === 'plantas_rega') { const v = r.data.find((y) => y.id === x.registo_id); if (v) { v.pendente = { era: v.plantas_regadas }; v.plantas_regadas = x.plantas; } }
   (S.regasCampo ||= {})[id] = r.data;
@@ -3700,7 +3704,71 @@ async function regasDoCampo(id) {
       ${v.pendente ? `<div class="pequeno">✏️ <span>Correcção no telefone: é enviada quando houver rede.</span> <span>Antes:</span> <span>${num(v.pendente.era)} plantas</span></div>`
         : v.plantas_corrigidas_em ? `<div class="pequeno">✏️ <span>Corrigido por ${esc(v.corrigido_por || '?')} em ${fmtData(v.plantas_corrigidas_em)}</span> · <span>Antes:</span> <span>${num(v.plantas_originais)} plantas</span>${v.motivo_correccao ? ` · ${esc(v.motivo_correccao)}` : ''}</div>` : ''}
       ${podeCorr && v.saida_em ? `<div style="margin-top:4px"><button class="chip" onclick="ecraCorrigirPlantas('${esc(v.id)}','${esc(id)}')">✏️ Corrigir as plantas regadas</button></div>` : ''}
-      ${['entrada', 'rega', 'saida'].some((t) => fotoVisivel(v['foto_' + t])) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${bt(v, 'entrada', 'Entrada')}${bt(v, 'rega', 'Rega')}${bt(v, 'saida', 'Saída')}</div>` : `<div class="pequeno">${v.foto_entrada || v.foto_rega || v.foto_saida || v.fotos_outro ? 'Fotografias tiradas por outra pessoa.' : 'Sem fotografias.'}</div>`}</div>`).join('') + '</div>';
+      ${['entrada', 'rega', 'saida'].some((t) => fotoVisivel(v['foto_' + t])) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${bt(v, 'entrada', 'Entrada')}${bt(v, 'rega', 'Rega')}${bt(v, 'saida', 'Saída')}</div>` : `<div class="pequeno">${v.foto_entrada || v.foto_rega || v.foto_saida || v.fotos_outro ? 'Fotografias tiradas por outra pessoa.' : 'Sem fotografias.'}</div>`}
+      ${acs.filter((c) => c.data === v.data && !v.teste).map(linhaAcomp).join('')}</div>`).join('') + blocoAcomp(acs, new Set(r.data.filter((v) => !v.teste).map((v) => v.data))) + '</div>';
+}
+// ---------- Acompanhamento da rega (v146, 30/10/2026, Valdo, depois da mensagem do Nuro: "temos realizado muitos acompanhamentos
+// em campo… apoio aos colegas no uso do APP") ----------
+// O técnico/supervisor (ou o gestor), no campo, regista que acompanhou a rega: fotografia obrigatória + GPS (como a entrada).
+// Fica visível na ficha (junto da rega desse dia) e no painel (Cumprimento). Não substitui a monitoria sorteada. Funciona sem rede.
+const PODE_ACOMP = ['tecnico', 'supervisor', 'gestor'];
+const acompLocais = (id) => LS.get('filaAcomp', []).filter((x) => !id || x.area_id === id).map((x) => ({ ...x, quem: S.perfil?.nome, meu: true, local: true }));
+function linhaAcomp(c) {
+  const foto = c.foto_path && fotoVisivel(c.foto_path) ? ` <button class="chip" onclick="verFoto('rega-fotos','${esc(c.foto_path)}','Acompanhamento · ${esc(fmtData(c.data))} ${esc(fmtHora(c.feito_em))} · ${esc(c.quem || '')}')">📷</button>` : '';
+  const rem = c.meu ? ` <button class="chip" onclick="removerAcomp('${esc(c.id)}')">Remover (engano)</button>` : '';
+  return `<div class="pequeno" style="margin-top:4px">👁 <span>Acompanhada por</span> <span class="sem-trad">${esc(c.quem || '?')}</span> <span>às</span> ${fmtHora(c.feito_em)}${c.observacao ? ` · <span class="sem-trad">${esc(c.observacao)}</span>` : ''}${c.local ? ' · <span>no telefone</span>' : ''}${foto}${rem}</div>`;
+}
+function blocoAcomp(acs, diasComRega) {      // acompanhamentos em dias sem rega registada na app (a rega pode ainda não ter sido enviada)
+  const l = acs.filter((c) => !diasComRega || !diasComRega.has(c.data)); if (!l.length) return '';
+  return `<h3 style="font-size:14px;margin:10px 0 4px">👁 Acompanhamentos</h3>` + l.map((c) => `<div style="padding:4px 0;border-bottom:1px solid var(--linha,#e5e5e5)"><div class="pequeno"><b>${fmtData(c.data)}</b> · <span>rega ainda não registada na app</span></div>${linhaAcomp(c)}</div>`).join('');
+}
+function ecraAcompanhar(id, r) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  S.acompFoto = null; if (!r) LS.del('rascAcomp');
+  folha(`<h2>👁 Acompanhei a rega</h2>${r?.camara ? AVISO_CAMARA : ''}<p class="pequeno">${esc(a.produtor)} · ${esc(a.pr)} · ${esc(a.comunidade)} · <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span></p>
+    <p class="pequeno">Registe aqui quando estiver no campo com a equipa durante a rega. Fica visível para a gestão. Tire uma fotografia da equipa a regar. Não substitui a monitoria sorteada.</p>
+    <textarea id="ac-obs" rows="2" placeholder="Observação (opcional): o que viu, apoio dado na app…"></textarea>
+    ${campoFoto('ac-foto', 'Fotografia da equipa a regar (obrigatória)')}
+    <img id="ac-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
+    <div id="ac-msg"></div>
+    <button class="btn" id="ac-gravar" onclick="gravarAcomp('${esc(id)}')">Gravar</button><button class="btn sec" onclick="LS.del('rascAcomp');abrirFicha('${esc(id)}')">Cancelar</button>`);
+  if (r?.obs) $('#ac-obs').value = r.obs;
+  const guardar = () => rascGuardar('rascAcomp', { perfil: S.perfil?.id, area: id, camara: false, obs: $('#ac-obs').value });
+  $('#ac-obs').addEventListener('input', guardar); guardar();
+  ligarFoto('ac-foto', 'rascAcomp', (foto) => { S.acompFoto = foto; const img = $('#ac-prev'); if (foto) { img.src = URL.createObjectURL(foto); img.style.display = ''; } else img.style.display = 'none'; });
+}
+async function gravarAcomp(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  if (!S.acompFoto) { alert('Tire a fotografia da equipa a regar.'); return; }
+  $('#ac-gravar').disabled = true; $('#ac-msg').innerHTML = '<p class="pequeno">A ler o GPS…</p>';
+  let g; try { g = await validarPosicao(a); } catch (e) { $('#ac-gravar').disabled = false; $('#ac-msg').innerHTML = `<div class="msg erro">${esc(e.message)}</div>`; return; }
+  if (g.valido === false) { $('#ac-gravar').disabled = false; $('#ac-msg').innerHTML = `<div class="msg erro">Está a ${g.dist} m do campo. O acompanhamento regista-se no campo (até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'}).${dicaGpsFraco(g)}</div>`; return; }
+  const x = { id: crypto.randomUUID(), area_id: id, data: hojeISO(), feito_em: new Date().toISOString(), lat: g.lat, lon: g.lon, precisao_m: g.precisao, distancia_m: g.dist, observacao: $('#ac-obs').value.trim() || null };
+  try { await FOTOS.guardar('acomp-' + x.id, S.acompFoto); } catch { S.fotosMem = { ...(S.fotosMem || {}), ['acomp-' + x.id]: S.acompFoto }; }
+  const f = LS.get('filaAcomp', []); f.push(x); LS.set('filaAcomp', f); LS.del('rascAcomp');
+  actSync(); aviso('Acompanhamento registado.', 'ok'); abrirFicha(id); sincronizar(true);
+}
+async function removerAcomp(cid) {
+  if (!confirm('Remover este acompanhamento (registo feito por engano)?')) return;
+  const loc = LS.get('filaAcomp', []), x = loc.find((y) => y.id === cid);
+  if (x) { LS.set('filaAcomp', loc.filter((y) => y.id !== cid)); try { await FOTOS.apagar('acomp-' + cid); } catch {} actSync(); return abrirFicha(x.area_id); }
+  if (!navigator.onLine) return aviso('Precisa de rede para remover um acompanhamento já enviado.', 'erro');
+  const r = await sb.rpc('remover_acompanhamento', { p_id: cid }); if (r.error) return aviso(r.error.message, 'erro');
+  aviso('Acompanhamento removido.', 'ok'); if (S.fichaAberta) abrirFicha(S.fichaAberta);
+}
+async function enviarAcomp() {
+  for (const x of LS.get('filaAcomp', [])) {
+    let foto = null; try { foto = await FOTOS.ler('acomp-' + x.id); } catch {} foto = foto || S.fotosMem?.['acomp-' + x.id] || null;
+    if (!foto) { LS.set('filaAcomp', LS.get('filaAcomp', []).filter((y) => y.id !== x.id)); aviso('Um acompanhamento perdeu a fotografia no telefone e não foi gravado. Registe-o de novo.', 'erro'); continue; }
+    const caminho = `${S.perfil.id}/acomp-${x.id}.jpg`;
+    const up = await sb.storage.from('rega-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message;
+    const r = await sb.rpc('gravar_acompanhamento', { p_id: x.id, p_area: x.area_id, p_feito_em: x.feito_em, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao_m, p_distancia: x.distancia_m, p_foto: caminho, p_obs: x.observacao });
+    if (r.error && !r.error.code) return r.error.message;
+    if (r.error) aviso(`Acompanhamento não gravado: ${r.error.message}`, 'erro');
+    LS.set('filaAcomp', LS.get('filaAcomp', []).filter((y) => y.id !== x.id));
+    try { await FOTOS.apagar('acomp-' + x.id); } catch {}
+  }
+  return null;
 }
 function ecraCorrigirPlantas(rid, areaId) {
   const v = (S.regasCampo?.[areaId] || []).find((x) => x.id === rid), a = S.areas.find((x) => x.id === areaId);
@@ -4527,6 +4595,8 @@ function retomarRascunhos() {
       if (rf.tipo === 'saida') { ecraSaida(); $('#folha-c').insertAdjacentHTML('afterbegin', AVISO_CAMARA); return; }
       return ecraFotoRega(rf.tipo, '', rf);
     }
+    const ra = rascLer('rascAcomp');
+    if (ra && ra.camara && ra.perfil === S.perfil?.id && S.areas.some((x) => x.id === ra.area)) return ecraAcompanhar(ra.area, ra);
     const rq = rascLer('rascQueim');
     if (rq && rq.camara && rq.perfil === S.perfil?.id && S.areas.some((x) => x.id === rq.area)) return ecraQueimada(rq.area, rq);
     const rv = rascLer('rascVara');

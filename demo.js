@@ -266,6 +266,7 @@
     oficiais_me: () => [{ id: U.oficial_me, nome: NOMES.oficial_me, entrou: true }],
     meus_activistas: () => vis() || [], minhas_comunidades: () => (papel === 'tecnico' ? ['Exemplo Norte'] : papel === 'supervisor' ? ['Exemplo Norte', 'Exemplo Sul'] : []),
     monitoria_escala_ver: () => (['tecnico', 'supervisor'].includes(papel) ? { n_dias: 1, campos: 2, pausa: false, eu_monitor: true, meus: DB.escala || null, pessoas: [{ id: EU, nome: 'Eu', papel, dias: DB.escala || null, eu: true }, { id: 'x1', nome: 'Técnica Sul', papel: 'tecnico', dias: [1], eu: false }] } : null),
+    acompanhamentos_campo: () => [], gravar_acompanhamento: (a) => ({ id: a.p_id }), remover_acompanhamento: () => null,
     gravar_monitoria_escala: (a) => { DB.escala = (a.p_dias || []).slice().sort(); guardarDB(); return { dias: DB.escala }; },
     monitoria_lista: () => { const l = DB.amostras.filter((m) => m.verificador_id === EU), u = l.map((m) => m.data_rega).sort().pop(); return l.filter((m) => m.data_rega === u).map((m) => ({ amostra_id: m.id, data_rega: m.data_rega, area_id: m.area_id, activista_id: m.activista_id, feita: DB.monitorias.some((x) => x.amostra_id === m.id) })); },
     regas_campo: (a) => DB.registos.filter((r) => r.area_id === a.p_area && !r.teste).sort((x, y) => y.saida_em.localeCompare(x.saida_em)).slice(0, 10).map((r) => ({ id: r.id, data: r.data, quem: nomeAct(r.activista_id), teste: false, pessoas: r.pessoas,
