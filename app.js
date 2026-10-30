@@ -4252,6 +4252,13 @@ function cartaoMeuDia() {
     (pa.length ? pa.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
       <div class="sub"><span class="sem-trad">${esc(x.equipa || '')}</span> · ${esc(x.comunidade || '')} · ${x.proposta_em ? fmtData(x.proposta_em) : ''}${x.area_m2 ? ' · ' + textoArea(x.area_m2) : ''}${x.quem ? ` · <span>medida por</span> <span class="sem-trad">${esc(x.quem)}</span>` : ''}</div>
       <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e aprovar</button></div></div>`).join('') : '<p class="pequeno">Nenhuma.</p>');
+  // v153 (30/10/2026, Valdo): equipas que chegaram ao 1.º campo depois da hora combinada (config.hora_chegada_equipa), para o técnico perguntar porquê
+  const hc = d.hora_chegada || '06:00', hMz = (t) => new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour: '2-digit', minute: '2-digit', hour12: false });
+  const tarde = eqs.filter((e) => e.chegada && hMz(e.chegada) > hc).sort((a, b) => a.chegada < b.chegada ? -1 : 1);
+  const minAtraso = (e) => { const [a, b] = hMz(e.chegada).split(':').map(Number), [x, y] = hc.split(':').map(Number); return (a * 60 + b) - (x * 60 + y); };
+  h += `<h3 style="font-size:14px;margin:12px 0 4px">6. <span>Chegaram ao 1.º campo depois das</span> ${esc(hc)} (${tarde.length})</h3>` +
+    (tarde.length ? '<p class="pequeno">Pergunte a cada equipa porque chegou tarde.</p>' + tarde.map((e) => `<div class="lin"><span class="sem-trad">${esc(e.nome)}</span><b>${hMz(e.chegada)} · +${num(minAtraso(e))} min</b></div>`).join('')
+      : `<p class="pequeno">${eqs.some((e) => e.chegada) ? 'Todas as equipas que regaram chegaram a tempo.' : 'Ainda nenhuma equipa marcou entrada hoje.'}</p>`);
   h += d.fechado_em ? '' : falta.length ? `<p class="pequeno" style="margin-top:12px"><span>Para fechar o dia, todas as equipas têm de ter rega ou motivo. Faltam:</span> ${falta.length}</p>`
     : `<button class="btn" style="margin-top:12px" onclick="fecharDia()">🔒 Fechar o dia</button>`;
   h += `<p class="pequeno">Feche o dia até às 18:00. Os dias fechados a tempo, a monitoria no prazo, as regas com ⚠️ confirmadas e as equipas sem motivo contam no cumprimento de cada técnico e supervisor (painel).</p>${c.em && !navigator.onLine ? `<p class="pequeno"><span>Sem rede: dados de</span> ${fmtHora(c.em)}</p>` : ''}</div>`;
