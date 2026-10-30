@@ -14,7 +14,7 @@ const CFG = {
   precisaoIdeal: 5,    // metros: precisão recomendada
   metaPlantas: 140,    // plantas por pessoa por dia (meta do Valdo, 11/10/2026)
   // monitoria por planta (11/10/2026): amostra de Cochran com correcção para população finita
-  monZ: 1.96, monMargem: 0.10, monP: 0.80,   // 95% de confiança, ±10%, proporção esperada 80%
+  monZ: 1.96, monMargem: 0.15, monP: 0.80,   // 95% de confiança, ±15% (v145, 30/10/2026: antes ±10%), proporção esperada 80%
   monLimiar: 80,       // % mínima de plantas com solo húmido para o campo contar como regado
 };
 /* Regra da fase de aprendizagem (1–2 semanas): cada equipa rega a sua lista em "rondas".
@@ -3991,27 +3991,34 @@ const nomesDias = (l) => (l || []).map((d) => `<span>${DIAS_SEM[d - 1]}</span>`)
 const msgEscala = (m) => { const x = /^Sem verificação: (.+?)\. (.*)$/.exec(m || ''); return x ? `<span>Sem verificação:</span> ${x[1].split(', ').map((d) => `<span>${esc(d)}</span>`).join(', ')}. <span>${esc(x[2])}</span>` : esc(m); };
 function linhaEscala() {
   const e = LS.get('escalaMon', null); if (!e || !e.eu_monitor) return '';
-  if (!e.meus) return `<div class="msg info"><b>📅 Escolha os seus ${e.n_dias} dias de monitoria.</b> <span>Nesses dias verifica ${e.campos} campos regados na véspera. Nos outros dias fica livre para outras actividades (por exemplo, as armadilhas).</span><br><button class="btn" onclick="ecraEscalaMon()">Escolher os dias</button></div>`;
-  return `<p class="pequeno">📅 <b>Os seus dias de monitoria:</b> ${nomesDias(e.meus)} · <span>${e.campos} campos por dia</span> <button class="chip" onclick="ecraEscalaMon()">Mudar</button></p>`;
+  const um = e.n_dias === 1;
+  const pausa = e.pausa ? '<div class="msg info">⏸ <b>O sorteio da monitoria está parado.</b> <span>Não recebe campos para verificar até a gestão avisar.</span></div>' : '';
+  if (!e.meus) return pausa + (um
+    ? `<div class="msg info"><b>📅 Escolha o seu dia de monitoria.</b> <span>Nesse dia verifica ${e.campos} campos regados na véspera. Escolha um dia em que já vai ao campo.</span><br><button class="btn" onclick="ecraEscalaMon()">Escolher o dia</button></div>`
+    : `<div class="msg info"><b>📅 Escolha os seus ${e.n_dias} dias de monitoria.</b> <span>Nesses dias verifica ${e.campos} campos regados na véspera. Nos outros dias fica livre para outras actividades (por exemplo, as armadilhas).</span><br><button class="btn" onclick="ecraEscalaMon()">Escolher os dias</button></div>`);
+  return pausa + `<p class="pequeno">📅 <b>${um ? 'O seu dia de monitoria:' : 'Os seus dias de monitoria:'}</b> ${nomesDias(e.meus)} · <span>${e.campos} campos</span> <button class="chip" onclick="ecraEscalaMon()">Mudar</button></p>`;
 }
 function ecraEscalaMon() {
   const e = LS.get('escalaMon', null); if (!e) return aviso('Precisa de rede para ver a escala.', 'erro');
   const outros = (e.pessoas || []).filter((p) => !p.eu), quem = (d) => outros.filter((p) => (p.dias || []).includes(d)).map((p) => p.nome.split(' ')[0]);
   const semEscolha = outros.filter((p) => !p.dias).map((p) => p.nome.split(' ')[0]);
-  folha(`<h2>📅 Os meus dias de monitoria</h2>
-    <p class="pequeno">Escolha ${e.n_dias} dias. Em cada um verifica ${e.campos} campos regados na véspera (na segunda, os de domingo). Cada dia, de segunda a sábado, tem de ficar com pelo menos uma pessoa: a app não grava uma escolha que deixe um dia sem ninguém.</p>
+  const um = e.n_dias === 1;
+  folha(`<h2>${um ? '📅 O meu dia de monitoria' : '📅 Os meus dias de monitoria'}</h2>
+    <p class="pequeno">${um ? `Escolha 1 dia. Nesse dia verifica ${e.campos} campos regados na véspera (na segunda, os de domingo).` : `Escolha ${e.n_dias} dias. Em cada um verifica ${e.campos} campos regados na véspera (na segunda, os de domingo).`} Cada dia, de segunda a sábado, tem de ficar com pelo menos uma pessoa: a app não grava uma escolha que deixe um dia sem ninguém.</p>
     <div id="esc-dias">${DIAS_SEM.map((n, i) => { const q = quem(i + 1);
       return `<div class="item"><div><div class="nome">${n}</div><div class="sub ${q.length ? '' : 'erro-txt'}">${q.length ? '<span>Já escolheram:</span> <span class="sem-trad">' + esc(q.join(', ')) + '</span>' : 'Ninguém ainda'}</div></div><button class="chip ${(e.meus || []).includes(i + 1) ? 'on' : ''}" data-v="${i + 1}">Escolher</button></div>`; }).join('')}</div>
     ${semEscolha.length ? `<p class="pequeno"><span>Ainda não escolheram:</span> <span class="sem-trad">${esc(semEscolha.join(', '))}</span></p>` : ''}
     <div id="esc-msg"></div><button class="btn" id="esc-ok">Gravar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
   const marcados = () => [...document.querySelectorAll('#esc-dias .chip.on')].map((b) => +b.dataset.v);
-  document.querySelectorAll('#esc-dias .chip').forEach((b) => b.onclick = () => { b.classList.toggle('on'); $('#esc-msg').innerHTML = ''; });
+  document.querySelectorAll('#esc-dias .chip').forEach((b) => b.onclick = () => {
+    if (um) document.querySelectorAll('#esc-dias .chip').forEach((x) => { if (x !== b) x.classList.remove('on'); });
+    b.classList.toggle('on'); $('#esc-msg').innerHTML = ''; });
   $('#esc-ok').onclick = async () => {
-    const d = marcados(); if (d.length !== e.n_dias) { $('#esc-msg').innerHTML = `<div class="msg erro">Escolha ${e.n_dias} dias.</div>`; return; }
+    const d = marcados(); if (d.length !== e.n_dias) { $('#esc-msg').innerHTML = `<div class="msg erro">${um ? 'Escolha 1 dia.' : `Escolha ${e.n_dias} dias.`}</div>`; return; }
     if (!navigator.onLine) { $('#esc-msg').innerHTML = '<div class="msg erro">Precisa de rede.</div>'; return; }
     const r = await sb.rpc('gravar_monitoria_escala', { p_dias: d });
     if (r.error) { $('#esc-msg').innerHTML = `<div class="msg erro">${msgEscala(r.error.message)}</div>`; return; }
-    fecharFolha(); aviso('Dias de monitoria gravados.', 'ok'); await carregarMonitoria(); actHoje();
+    fecharFolha(); aviso(um ? 'Dia de monitoria gravado.' : 'Dias de monitoria gravados.', 'ok'); await carregarMonitoria(); actHoje();
   };
 }
 const monFeita = (m) => m.feita || LS.get('filaMon', []).some((x) => x.amostra_id === m.amostra_id) || (LS.get('monFeitas', [])).includes(m.amostra_id);
@@ -4020,7 +4027,7 @@ const monFeita = (m) => m.feita || LS.get('filaMon', []).some((x) => x.amostra_i
 function cartaoMonitoria() {
   const lista = Array.isArray(S.mon) ? S.mon : [], hoje = hojeISO();
   const regra = '<p class="pequeno">Verifique cada campo no dia seguinte à rega. O que ficar por verificar nesse dia conta como falha na sua avaliação.</p>';
-  if (!lista.length) return `<div class="cartao"><h2>Monitoria</h2>${linhaEscala()}<p class="pequeno">Sem campos para verificar. A lista sai a partir das 18:00, com campos regados nesse dia.</p>${regra}</div>`;
+  if (!lista.length) return `<div class="cartao"><h2>Monitoria</h2>${linhaEscala()}${LS.get('escalaMon', null)?.pausa ? '' : `<p class="pequeno">Sem campos para verificar. A lista sai a partir das 18:00 da véspera do seu dia, com campos regados nesse dia.</p>${regra}`}</div>`;
   const grupos = [...new Set(lista.map((m) => m.data_rega))].sort();
   return `<div class="cartao"><h2>Monitoria</h2>${linhaEscala()}${regra}` + grupos.map((d) => {
     const l = lista.filter((m) => m.data_rega === d), feitas = l.filter(monFeita).length, hojeVerif = somaDias(d, 1) === hoje;
@@ -4098,7 +4105,9 @@ function botaoMonitoria(a) {
 const escolha = (id, ops) => `<div class="chips" id="${id}">${ops.map(([v, t]) => `<button class="chip" data-v="${v}">${t}</button>`).join('')}</div>`;
 // Monitoria por planta (11/10/2026, Valdo): o técnico escolhe o percurso (X, W, Z, diagonal) e regista cada planta observada:
 // solo húmido (rega efectiva) sim/não + viva/seca/morta. Nota = % de plantas com solo húmido ÷ 10. Campo regado se ≥ 80%.
-// Número de plantas a observar: amostra de Cochran (95%, ±10%, p = 80%) com correcção para população finita.
+// Número de plantas a observar: amostra de Cochran (95%, ±15% desde v145 — antes ±10%, p = 80%) com correcção para população finita.
+// v145 (30/10/2026, Valdo, depois da mensagem do Nuro sobre a carga de trabalho): monitoria leve — 1 dia por semana × 2 campos e
+// menos plantas por campo; o servidor pode parar o sorteio (config monitoria_pausa).
 // Nos campos pequenos a amostra aproxima-se do total de plantas (até 6 plantas: todas).
 function tamanhoAmostra(N) {
   if (!(N > 0)) return 0;
@@ -4272,24 +4281,26 @@ async function montarGestao(d, msg = '') {
     <button class="btn" id="k-gravar">Gravar cobertura</button>
     <div id="k-lista"><p class="pequeno">A carregar…</p></div></div>
     <div class="cartao"><h2>Monitoria por amostragem</h2>
-    <p class="pequeno">Cada técnico e supervisor recebe, a partir das 18:00, uma lista de campos regados nesse dia para verificar. Listas diferentes para cada pessoa, campos sorteados.</p>
-    <label>Campos por dia, por pessoa<input id="m-n" type="number" inputmode="numeric" min="1" max="10"></label>
+    <p class="pequeno">Cada técnico e supervisor escolhe o seu dia; na véspera, a partir das 18:00, recebe uma lista de campos regados nesse dia para verificar. Listas diferentes para cada pessoa, campos sorteados.</p>
+    <div id="m-pausa"></div>
+    <label>Campos no dia de monitoria, por pessoa<input id="m-n" type="number" inputmode="numeric" min="1" max="10"></label>
     <button class="btn sec" id="m-gravar-n">Gravar</button><div id="m-escala"></div></div>
     <div class="cartao"><h2>Quem viu o painel</h2><div id="g-visitas"><p class="pequeno">A carregar…</p></div></div>
     <div class="cartao"><h2>Acessos criados (${(d.utilizadores || []).length})</h2>
     ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div>${gere ? `<button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button>` : ''}</div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
   desenharVisitas(); desenharCoberturas(d);
   if (gere) { if (S.sug) desenharSugestoes(); cartaoSugestoes(); }
-  sb.from('config').select('valor').eq('chave', 'monitoria_campos_por_dia').maybeSingle().then(({ data }) => { if (data && $('#m-n')) $('#m-n').value = data.valor; });
+  sb.from('config').select('valor').eq('chave', 'monitoria_campos_escala').maybeSingle().then(({ data }) => { if (data && $('#m-n')) $('#m-n').value = data.valor; });
   sb.rpc('monitoria_escala_ver').then(({ data: e }) => { if (!e || !$('#m-escala')) return;
+    if ($('#m-pausa')) $('#m-pausa').innerHTML = e.pausa ? '<div class="msg info">⏸ <b>O sorteio está parado</b> <span>(decisão de 30/10/2026). Ninguém recebe campos novos.</span></div>' : '';
     const por = DIAS_SEM.map((n, i) => [n, (e.pessoas || []).filter((p) => (p.dias || []).includes(i + 1)).map((p) => p.nome.split(' ')[0])]);
-    $('#m-escala').innerHTML = `<h3 style="font-size:14px;margin:12px 0 4px">📅 Dias de monitoria escolhidos</h3><p class="pequeno">Cada técnico e supervisor escolhe ${e.n_dias} dias (${e.campos} campos em cada um). Quem ainda não escolheu recebe campos todos os dias.</p>
+    $('#m-escala').innerHTML = `<h3 style="font-size:14px;margin:12px 0 4px">📅 Dias de monitoria escolhidos</h3><p class="pequeno">${e.n_dias === 1 ? `Cada técnico e supervisor escolhe 1 dia (${e.campos} campos).` : `Cada técnico e supervisor escolhe ${e.n_dias} dias (${e.campos} campos em cada um).`} Quem ainda não escolheu não recebe campos.</p>
       ${por.map(([n, q]) => `<div class="item"><div class="nome">${n}</div><div class="sub ${q.length ? '' : 'erro-txt'}"><span class="sem-trad">${q.length ? esc(q.join(', ')) : ''}</span>${q.length ? '' : 'Ninguém ainda'}</div></div>`).join('')}
       ${(e.pessoas || []).some((p) => !p.dias) ? `<p class="pequeno"><span>Ainda não escolheram:</span> <span class="sem-trad">${esc(e.pessoas.filter((p) => !p.dias).map((p) => p.nome).join(', '))}</span></p>` : ''}`; });
   $('#m-gravar-n').onclick = async () => {
     const n = parseInt($('#m-n').value, 10);
     const { error } = await sb.rpc('definir_monitoria_campos', { p_n: n });
-    aviso(error ? error.message : `Monitoria: ${n} campos por dia, por pessoa.`, error ? 'erro' : 'ok');
+    aviso(error ? error.message : `Monitoria: ${n} campos no dia de monitoria, por pessoa.`, error ? 'erro' : 'ok');
   };
   if (!gere) return;
   const comLogin = new Set((d.utilizadores || []).map((u) => u.papel + '|' + u.nome));
