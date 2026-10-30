@@ -4049,7 +4049,14 @@ function avisoCampo(id) {
 async function carregarMonitoria() {
   const [r, e] = await Promise.all([sb.rpc('monitoria_lista'), sb.rpc('monitoria_escala_ver')]);
   if (!r.error && Array.isArray(r.data)) { S.mon = r.data; LS.set('mon', S.mon); }
-  if (!e.error && e.data) LS.set('escalaMon', e.data);
+  if (!e.error && e.data) { LS.set('escalaMon', e.data); escalaObrigatoria(); }
+}
+// v147 (30/10/2026, Valdo: "A escolha deve ser obrigatoria"): o técnico/supervisor que faz monitoria e ainda não escolheu o dia
+// vê o ecrã da escolha ao abrir a app e no Hoje, sem ✕ nem Cancelar, até gravar (precisa de rede).
+function escalaObrigatoria() {
+  const e = LS.get('escalaMon', null);
+  if (!e || !e.eu_monitor || e.meus || !navigator.onLine || S.trocaObrig || $('#folha').classList.contains('on')) return;
+  ecraEscalaMon(true);
 }
 // v142 (29/10/2026, Valdo, a partir da sugestão do Gelson: "monitoria… organizada por escala… para nos restantes dias… recolha de dados das
 // armadilhas"): cada técnico/supervisor escolhe os seus dias de monitoria (3 × 3 campos); cada dia de segunda a sábado tem de ficar com
@@ -4066,7 +4073,7 @@ function linhaEscala() {
     : `<div class="msg info"><b>📅 Escolha os seus ${e.n_dias} dias de monitoria.</b> <span>Nesses dias verifica ${e.campos} campos regados na véspera. Nos outros dias fica livre para outras actividades (por exemplo, as armadilhas).</span><br><button class="btn" onclick="ecraEscalaMon()">Escolher os dias</button></div>`);
   return pausa + `<p class="pequeno">📅 <b>${um ? 'O seu dia de monitoria:' : 'Os seus dias de monitoria:'}</b> ${nomesDias(e.meus)} · <span>${e.campos} campos</span> <button class="chip" onclick="ecraEscalaMon()">Mudar</button></p>`;
 }
-function ecraEscalaMon() {
+function ecraEscalaMon(obrig) {
   const e = LS.get('escalaMon', null); if (!e) return aviso('Precisa de rede para ver a escala.', 'erro');
   const outros = (e.pessoas || []).filter((p) => !p.eu), quem = (d) => outros.filter((p) => (p.dias || []).includes(d)).map((p) => p.nome.split(' ')[0]);
   const semEscolha = outros.filter((p) => !p.dias).map((p) => p.nome.split(' ')[0]);
@@ -4076,7 +4083,9 @@ function ecraEscalaMon() {
     <div id="esc-dias">${DIAS_SEM.map((n, i) => { const q = quem(i + 1);
       return `<div class="item"><div><div class="nome">${n}</div><div class="sub ${q.length ? '' : 'erro-txt'}">${q.length ? '<span>Já escolheram:</span> <span class="sem-trad">' + esc(q.join(', ')) + '</span>' : 'Ninguém ainda'}</div></div><button class="chip ${(e.meus || []).includes(i + 1) ? 'on' : ''}" data-v="${i + 1}">Escolher</button></div>`; }).join('')}</div>
     ${semEscolha.length ? `<p class="pequeno"><span>Ainda não escolheram:</span> <span class="sem-trad">${esc(semEscolha.join(', '))}</span></p>` : ''}
-    <div id="esc-msg"></div><button class="btn" id="esc-ok">Gravar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+    ${obrig ? '<div class="msg info"><b>Escolha obrigatória.</b> <span>Para continuar a usar a app, escolha e grave.</span></div>' : ''}
+    <div id="esc-msg"></div><button class="btn" id="esc-ok">Gravar</button>${obrig ? '' : '<button class="btn sec" onclick="fecharFolha()">Cancelar</button>'}`);
+  if (obrig) $('#folha-x').style.display = 'none';                      // obrigatório: sem ✕
   const marcados = () => [...document.querySelectorAll('#esc-dias .chip.on')].map((b) => +b.dataset.v);
   document.querySelectorAll('#esc-dias .chip').forEach((b) => b.onclick = () => {
     if (um) document.querySelectorAll('#esc-dias .chip').forEach((x) => { if (x !== b) x.classList.remove('on'); });
@@ -4086,7 +4095,7 @@ function ecraEscalaMon() {
     if (!navigator.onLine) { $('#esc-msg').innerHTML = '<div class="msg erro">Precisa de rede.</div>'; return; }
     const r = await sb.rpc('gravar_monitoria_escala', { p_dias: d });
     if (r.error) { $('#esc-msg').innerHTML = `<div class="msg erro">${msgEscala(r.error.message)}</div>`; return; }
-    fecharFolha(); aviso(um ? 'Dia de monitoria gravado.' : 'Dias de monitoria gravados.', 'ok'); await carregarMonitoria(); actHoje();
+    $('#folha-x').style.display = ''; fecharFolha(); aviso(um ? 'Dia de monitoria gravado.' : 'Dias de monitoria gravados.', 'ok'); await carregarMonitoria(); actHoje();
   };
 }
 const monFeita = (m) => m.feita || LS.get('filaMon', []).some((x) => x.amostra_id === m.amostra_id) || (LS.get('monFeitas', [])).includes(m.amostra_id);
