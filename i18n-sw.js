@@ -357,6 +357,8 @@ window.I18N_SW_D = {
 "Medições de área por aprovar": "Vipimo vya eneo vinavyosubiri kuidhinishwa",
 "Nada por aprovar.": "Hakuna cha kuidhinisha.",
 "Chegaram ao 1.º campo depois das": "Walifika shamba la 1 baada ya saa",
+"A vermelho: o que falta.": "Kwa rangi nyekundu: kinachokosekana.",
+"📷 Guardar imagem do cumprimento": "📷 Hifadhi picha ya utekelezaji",
 "Campo por terminar: já se regaram": "Shamba la kumaliza: tayari mimea",
 "plantas nesta ronda. Faltam": "imemwagiliwa katika mzunguko huu. Imebaki",
 "Escreva só as plantas que regou agora.": "Andika tu mimea uliyomwagilia sasa.",

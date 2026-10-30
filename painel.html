@@ -93,6 +93,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .filtro button{font:inherit;font-size:13px;color:var(--ink2);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:5px 12px;cursor:pointer}
 .filtro button[aria-pressed="true"]{background:var(--marca);border-color:var(--marca);color:var(--page);font-weight:600}
 .filtro .b-img{margin-left:auto}
+#b-img-cump{font:inherit;font-size:13px;color:var(--ink2);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:5px 12px;cursor:pointer;margin:2px 0 10px}
 .filtro .datas{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:13px;color:var(--ink2)}
 .filtro .datas[hidden]{display:none}
 .filtro input[type=date]{font:inherit;font-size:13px;color:var(--ink);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px 6px;margin-left:4px}
@@ -136,6 +137,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 
   <section class="card sec" id="s-cump" hidden><h2>✅ Cumprimento dos técnicos e supervisores</h2>
     <p class="desc">Do início do trabalho dos activistas (24/10) até ontem, ou até hoje depois das 18:00, dentro do período escolhido. Dia fechado a tempo = «Fechar o dia» na app até às 18:00. Monitoria no prazo = campo sorteado verificado no dia seguinte à rega. Regas com ⚠️ confirmadas = corrigidas ou confirmadas como certas. Equipas sem motivo = dias em que uma equipa não regou e ninguém registou o motivo. As equipas são as actuais de cada técnico e supervisor. A vermelho o que falta. <span>Regas acompanhadas = registos «Acompanhei a rega» feitos no campo, com fotografia (desde 30/10).</span></p>
+    <button class="b-img" id="b-img-cump" onclick="imagemCumprimento()">📷 Guardar imagem do cumprimento</button>
     <div class="tabela" id="t-cump"></div></section>
 
   <section class="grelha dois sec">
@@ -238,10 +240,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=154"></script>
-<script src="i18n.js?v=154"></script>
+<script src="i18n-sw.js?v=155"></script>
+<script src="i18n.js?v=155"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=154"></script>
+<script src="demo.js?v=155"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -416,12 +418,59 @@ async function imagemIndicadores() {
   const per = (D && D.periodo) || {}, d8 = (t) => String(t || '').replaceAll('-', '');
   const sufixo = per.de && per.de === per.ate ? d8(per.de) : (per.de || per.ate) ? `${d8(per.de) || 'inicio'}_a_${d8(per.ate) || 'hoje'}` : `tudo_${d8(D?.inicio)}_a_${d8(D?.fim || D?.inicio)}`;
   const nome = `Rega_Coco_indicadores_${sufixo}.png`;
+  await partilharPNG(cv, nome);
+}
+// no telefone abre a partilha (WhatsApp); no computador descarrega
+async function partilharPNG(cv, nome) {
   const blob = await new Promise((r) => cv.toBlob(r, 'image/png')); if (!blob) return;
   const fich = new File([blob], nome, { type: 'image/png' });
   try {
     if (matchMedia('(pointer:coarse)').matches && navigator.canShare && navigator.canShare({ files: [fich] })) { await navigator.share({ files: [fich], title: nome }); return; }
   } catch (e) { if (e && e.name === 'AbortError') return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+// ---------- imagem do cumprimento (v155, 30/10/2026, Valdo: "um botão para tirar uma foto e partilhar do cumprimento") ----------
+// Desenha a tabela tal como está no ecrã (na língua escolhida), com o período, a hora e o que falta a vermelho.
+async function imagemCumprimento() {
+  const tab = document.querySelector('#t-cump table'); if (!tab) return;
+  const cab = [...tab.querySelectorAll('thead th')].map((th) => ({ t: th.innerText.trim(), n: th.classList.contains('n') }));
+  const fil = [...tab.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((td) => ({ t: td.innerText.trim(), v: !!td.querySelector('b[style*="crit"]') })));
+  const esc2 = 2, M = 28, PX = 10, fam = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
+  const FC = `700 12px ${fam}`, FL = `400 14px ${fam}`, FB = `700 14px ${fam}`;
+  const cv = document.createElement('canvas'), cx = cv.getContext('2d');
+  const larg = (t, f) => { cx.font = f; return cx.measureText(t).width; };
+  const quebra = (t, max) => { cx.font = FC; const out = []; let l = ''; t.split(/\s+/).forEach((w) => { const x = l ? l + ' ' + w : w; if (cx.measureText(x).width > max && l) { out.push(l); l = w; } else l = x; }); if (l) out.push(l); return out; };
+  // largura de cada coluna: o maior valor (até 260 px); o cabeçalho quebra em linhas
+  const W = cab.map((c, i) => Math.min(260, Math.max(84, ...c.t.split(/\s+/).map((w) => larg(w, FC) + 6), ...fil.map((r) => larg(r[i]?.t || '', FB))) + 2 * PX));
+  const linhasCab = cab.map((c, i) => quebra(c.t, W[i] - 2 * PX)), hCab = Math.max(...linhasCab.map((l) => l.length)) * 15 + 2 * PX, hL = 30;
+  const L = Math.max(720, W.reduce((a, b) => a + b, 0) + 2 * M), topo = 104, faltaTxt = (window.trEN || ((t) => t))('A vermelho: o que falta.');
+  const H = topo + hCab + fil.length * hL + 70;
+  cv.width = L * esc2; cv.height = H * esc2; cx.scale(esc2, esc2); cx.textBaseline = 'top';
+  cx.fillStyle = '#f6f5f1'; cx.fillRect(0, 0, L, H);
+  cx.fillStyle = '#2e6b30'; cx.font = `700 12px ${fam}`; cx.fillText((document.querySelector('header.topo .marca')?.innerText || 'Projecto Coco · Palma').toUpperCase(), M, M);
+  cx.fillStyle = '#111'; cx.font = `700 22px ${fam}`; cx.fillText(($('#s-cump h2')?.innerText || '').replace(/^\W+\s*/, ''), M, M + 18);
+  cx.fillStyle = '#111'; cx.font = `700 15px ${fam}`; cx.fillText($('#f-legenda').innerText || '', M, M + 50);
+  cx.fillStyle = '#777'; cx.font = `400 12px ${fam}`; const ger = $('#gerado').innerText || ''; cx.fillText(ger, L - M - cx.measureText(ger).width, M + 4);
+  const x0 = M, tw = W.reduce((a, b) => a + b, 0);
+  cx.fillStyle = '#fff'; cx.fillRect(x0, topo, tw, hCab + fil.length * hL); cx.strokeStyle = '#e2e0d8'; cx.lineWidth = 1; cx.strokeRect(x0, topo, tw, hCab + fil.length * hL);
+  cx.fillStyle = '#ece9e0'; cx.fillRect(x0, topo, tw, hCab);
+  let x = x0; cab.forEach((c, i) => { cx.fillStyle = '#333'; cx.font = FC; linhasCab[i].forEach((l, k) => { const w = cx.measureText(l).width; cx.fillText(l, c.n ? x + W[i] - PX - w : x + PX, topo + PX + k * 15); }); x += W[i]; });
+  fil.forEach((r, j) => {
+    const y = topo + hCab + j * hL;
+    if (j % 2) { cx.fillStyle = '#faf9f6'; cx.fillRect(x0 + 1, y, tw - 2, hL); }
+    cx.strokeStyle = '#eeece6'; cx.beginPath(); cx.moveTo(x0, y); cx.lineTo(x0 + tw, y); cx.stroke();
+    let xx = x0; r.forEach((c, i) => {
+      cx.font = c.v || i === 0 ? FB : FL; cx.fillStyle = c.v ? '#d03b3b' : '#111';
+      let t = c.t; while (t.length > 1 && cx.measureText(t).width > W[i] - 2 * PX) t = t.slice(0, -2) + '…';
+      const w = cx.measureText(t).width; cx.fillText(t, cab[i]?.n ? xx + W[i] - PX - w : xx + PX, y + 8); xx += W[i];
+    });
+  });
+  cx.fillStyle = '#d03b3b'; cx.font = `700 12px ${fam}`; cx.fillText(faltaTxt, M, topo + hCab + fil.length * hL + 14);
+  cx.fillStyle = '#999'; cx.font = `400 11px ${fam}`; cx.fillText('Rega Coco · cocopalma.github.io/rega-coco', M, H - M);
+  const per = (D && D.periodo) || {}, d8 = (t) => String(t || '').replaceAll('-', '');
+  const sufixo = per.de && per.de === per.ate ? d8(per.de) : (per.de || per.ate) ? `${d8(per.de) || 'inicio'}_a_${d8(per.ate) || 'hoje'}` : `tudo_${d8(D?.inicio)}_a_${d8(D?.fim || D?.inicio)}`;
+  await partilharPNG(cv, `Rega_Coco_cumprimento_${sufixo}.png`);
 }
 
 // ---------- desenhar ----------

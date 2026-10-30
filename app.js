@@ -428,28 +428,27 @@ async function carregarEstado(pronto) {
   if (error) return;
   S.estado = {}; for (const e of data) S.estado[e.area_id] = { u: e.ultima_rega, ronda: e.ronda_actual, feita: e.regada_na_ronda, n: e.regas_app || 0, pl: e.plantas_app || 0, pt: !!e.por_terminar, plr: e.plantas_ronda || 0, dp: e.data_parcial || null };
   LS.set('estado', S.estado); LS.set('estadoEm', new Date().toISOString());
-  if (!['cliente', 'oficial_me'].includes(S.perfil?.papel)) { const q = await sb.rpc('planos_lista'); if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data); }
-  if (VER_MEMBROS.includes(S.perfil?.papel)) {           // nomes das pessoas de cada equipa (v135, lista do RH de 23/10/2026)
-    const q = await sb.rpc('membros_lista'); if (!q.error && Array.isArray(q.data)) { S.membros = q.data; aplicarMembrosPendentes(); LS.set('membros', S.membros); }
-  }
+  // v155: os pedidos seguintes saem ao mesmo tempo (antes eram uns atrás dos outros)
+  const papel = S.perfil?.papel, tarefas = [];
+  if (!['cliente', 'oficial_me'].includes(papel)) tarefas.push(sb.rpc('planos_lista').then((q) => { if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data); }));
+  if (VER_MEMBROS.includes(papel))                       // nomes das pessoas de cada equipa (v135, lista do RH de 23/10/2026)
+    tarefas.push(sb.rpc('membros_lista').then((q) => { if (!q.error && Array.isArray(q.data)) { S.membros = q.data; aplicarMembrosPendentes(); LS.set('membros', S.membros); } }));
   if (souActivista() && S.perfil.activista_id) {        // registos da minha equipa (para a ronda funcionar sem rede)
-    const r = await sb.from('registos_rega').select('id,area_id,activista_id,apoio_para,data,ronda,plantas_regadas,teste,campo_fechado')
-      .or(`activista_id.eq.${S.perfil.activista_id},apoio_para.eq.${S.perfil.activista_id}`).eq('teste', false).gt('plantas_regadas', 0).range(0, 9999);
-    if (!r.error) LS.set('meusRegs', r.data);
-  } else if (PODE_REGAR.includes(S.perfil?.papel) && S.perfil?.id) {   // as minhas regas de teste dos últimos 14 dias
+    tarefas.push(sb.from('registos_rega').select('id,area_id,activista_id,apoio_para,data,ronda,plantas_regadas,teste,campo_fechado')
+      .or(`activista_id.eq.${S.perfil.activista_id},apoio_para.eq.${S.perfil.activista_id}`).eq('teste', false).gt('plantas_regadas', 0).range(0, 9999)
+      .then((r) => { if (!r.error) LS.set('meusRegs', r.data); }));
+  } else if (PODE_REGAR.includes(papel) && S.perfil?.id) {   // as minhas regas de teste dos últimos 14 dias
     const desde = new Date(Date.now() - 14 * 864e5).toLocaleDateString('sv-SE');
-    const r = await sb.from('registos_rega').select('area_id,data').eq('teste', true).eq('user_id', S.perfil.id).gte('data', desde).range(0, 999);
-    if (!r.error) { const t = {}; for (const x of r.data) if (!t[x.area_id] || x.data > t[x.area_id]) t[x.area_id] = x.data; LS.set('meusTestes', t); }
-    if (['tecnico', 'supervisor'].includes(S.perfil.papel)) {   // quantas regas de teste já fez (desde sempre), para o aviso no Hoje (v92)
-      const c = await sb.from('registos_rega').select('id', { count: 'exact', head: true }).eq('teste', true).eq('user_id', S.perfil.id);
-      if (!c.error && c.count != null) LS.set('nTestes', c.count);
-    }
+    tarefas.push(sb.from('registos_rega').select('area_id,data').eq('teste', true).eq('user_id', S.perfil.id).gte('data', desde).range(0, 999)
+      .then((r) => { if (!r.error) { const t = {}; for (const x of r.data) if (!t[x.area_id] || x.data > t[x.area_id]) t[x.area_id] = x.data; LS.set('meusTestes', t); } }));
+    if (['tecnico', 'supervisor'].includes(papel))     // quantas regas de teste já fez (desde sempre), para o aviso no Hoje (v92)
+      tarefas.push(sb.from('registos_rega').select('id', { count: 'exact', head: true }).eq('teste', true).eq('user_id', S.perfil.id)
+        .then((c) => { if (!c.error && c.count != null) LS.set('nTestes', c.count); }));
   }
-  if (PODE_REGAR.includes(S.perfil?.papel)) { carregarSemMotivo().catch(() => {}); carregarDiasSemRega().catch(() => {}); await carregarApoios(); }
-  if (VER_TESTES_EQ.includes(S.perfil?.papel)) {
-    const q = await sb.rpc('testes_equipa');
-    if (!q.error && Array.isArray(q.data)) { S.testesEq = Object.fromEntries(q.data.map((x) => [x.area_id, { data: x.data, n: x.n, quem: x.quem }])); LS.set('testesEquipa', S.testesEq); }
-  }
+  if (PODE_REGAR.includes(papel)) { carregarSemMotivo().catch(() => {}); carregarDiasSemRega().catch(() => {}); tarefas.push(carregarApoios()); }
+  if (VER_TESTES_EQ.includes(papel))
+    tarefas.push(sb.rpc('testes_equipa').then((q) => { if (!q.error && Array.isArray(q.data)) { S.testesEq = Object.fromEntries(q.data.map((x) => [x.area_id, { data: x.data, n: x.n, quem: x.quem }])); LS.set('testesEquipa', S.testesEq); } }));
+  await Promise.all(tarefas.map((t) => Promise.resolve(t).catch(() => {})));
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
@@ -4885,6 +4884,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   // (Nuro, 14/10/2026). Espera no máximo 1,5 s (8 s com rede) e, se não responder, usa a sessão guardada no telefone;
   // o token renova-se sozinho quando houver rede.
   const pedidoSessao = sb.auth.getSession().then((r) => r.data.session).catch(() => null);
+  // v155 (30/10/2026, Valdo: "a app está lenta a carregar"): com sessão e dados no telefone abre logo, sem esperar pela
+  // renovação da sessão (podia levar até 8 s com rede fraca); o servidor actualiza por trás.
+  const guardada = sessaoGuardada();
+  if (guardada && carregarDoTelefone() && S.perfil) {
+    S.user = guardada.user; mostrarApp(); retomarRascunhos();
+    pedidoSessao.then((s) => {
+      if (s) S.user = s.user;
+      else if (!sessaoGuardada()) { location.reload(); return; }   // a sessão deixou de valer: volta ao ecrã de entrada
+      if (navigator.onLine) carregarTudo().then(() => { if ($('#e-hoje').classList.contains('on')) desenharHoje(); }).catch(() => {}).finally(() => sincronizar(true));
+    });
+    return;
+  }
   let session = await Promise.race([pedidoSessao, new Promise((ok) => setTimeout(() => ok(undefined), navigator.onLine ? 8000 : 1500))]);
   if (session === undefined) session = sessaoGuardada();
   if (session) {
