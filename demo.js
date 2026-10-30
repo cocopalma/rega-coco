@@ -25,13 +25,20 @@
   try { Object.defineProperty(Navigator.prototype, 'onLine', { get: () => true, configurable: true }); } catch {}
   // GPS simulado (v150, 30/10/2026, Valdo: "no modo de apresentação não importa onde eu vou estar"): a app recebe sempre a
   // posição do centro da base de exemplo (±4 m), venha ou não o GPS do telefone. A entrada no 1.º campo funciona em qualquer sala.
+  // v156 (30/10/2026, Valdo, guião da apresentação de 02/11): a posição pode mudar para outro campo («🎬 Pôr-me neste campo») e,
+  // ao medir a área, «anda» à volta do campo. Fica no separador (sessionStorage rega.demo.pos).
+  let POS = null; try { POS = JSON.parse(sessionStorage.getItem('rega.demo.pos') || 'null'); } catch {}
+  const posAct = () => POS || { lat: cfg.lat, lon: cfg.lon };
+  const vigCb = new Map(); let nv = 0, andar = null;
+  const fixo = () => ({ coords: { latitude: posAct().lat, longitude: posAct().lon, accuracy: 4, altitude: null, altitudeAccuracy: null, heading: null, speed: null }, timestamp: Date.now() });
+  const emitir = () => { const f = fixo(); vigCb.forEach((ok) => { try { ok(f); } catch {} }); };
+  const porPos = (lat, lon) => { POS = { lat, lon }; try { sessionStorage.setItem('rega.demo.pos', JSON.stringify(POS)); } catch {} emitir(); };
   try {
-    const fixo = () => ({ coords: { latitude: cfg.lat, longitude: cfg.lon, accuracy: 4, altitude: null, altitudeAccuracy: null, heading: null, speed: null }, timestamp: Date.now() });
-    const vig = new Map(); let nv = 0;
+    const vig = new Map();
     const geo = {
       getCurrentPosition(ok) { setTimeout(() => ok(fixo()), 200); },
-      watchPosition(ok) { const id = ++nv; setTimeout(() => ok(fixo()), 200); vig.set(id, setInterval(() => ok(fixo()), 3000)); return id; },
-      clearWatch(id) { clearInterval(vig.get(id)); vig.delete(id); },
+      watchPosition(ok) { const id = ++nv; vigCb.set(id, ok); setTimeout(() => ok(fixo()), 200); vig.set(id, setInterval(() => ok(fixo()), 3000)); return id; },
+      clearWatch(id) { clearInterval(vig.get(id)); vig.delete(id); vigCb.delete(id); },
     };
     Object.defineProperty(Navigator.prototype, 'geolocation', { get: () => geo, configurable: true });
   } catch {}
@@ -70,6 +77,7 @@
       C('PR900103-1', 'Carla Exemplo', N, A1, -280, 60, -200, 130, 150, 140),
       C('PR900104-1', 'Daniel Exemplo', N, A1, 60, -300, 120, -240, 90, 85),
       C('PR900104-2', 'Daniel Exemplo', N, A1, 140, -340, 185, -295, 70, 60),
+      C('PR900105-1', 'Olga Exemplo', N, A1, 230, 80, 290, 140, 100, 95, false),   // v156: sem limite, a ~280 m: recusa pela distância e medir a área ao vivo
       C('PR900201-1', 'Elisa Exemplo', N, A2, 620, 490, 690, 560, 200, 180),
       C('PR900202-1', 'Fernando Exemplo', N, A2, 790, 400, 850, 460, 130, 125),
       C('PR900203-1', 'Graça Exemplo', N, A2, 680, 740, 735, 795, 110, 90, false,     // sem limite; v151: área medida pelo activista, por aprovar
@@ -93,7 +101,7 @@
       [3, A1, 'PR900103-1', 7, 25, 55, 140, 6, 1], [3, A1, 'PR900104-1', 9, 5, 40, 80, 6, 1],
       [1, A1, 'PR900102-1', 7, 15, 45, 110, 5, 1], [1, A1, 'PR900104-2', 8, 10, 30, 60, 5, 1],
       [2, A2, 'PR900201-1', 7, 40, 60, 180, 5, 1], [2, A2, 'PR900202-1', 9, 10, 50, 110, 5, 1, ['agua_acabou', 'A água do tuk-tuk acabou antes das últimas plantas.']],
-      [1, A2, 'PR900203-1', 7, 20, 45, 90, 4, 1],
+      [1, A2, 'PR900203-1', 7, 20, 45, 90, 4, 1], [1, A2, 'PR900204-1', 9, 5, 12, 300, 4, 1],   // v156: 300 plantas num campo de 150: rega com ⚠️ para o técnico
       [3, A3, 'PR900301-1', 6, 10, 60, 200, 7, 1], [3, A3, 'PR900302-1', 8, 5, 45, 120, 7, 1],
       [1, A3, 'PR900303-1', 6, 15, 35, 95, 6, 1], [1, A3, 'PR900304-1', 7, 10, 30, 60, 6, 1, ['mudas_secas', 'Parte das plantas morreu na queimada.']],
     ];
@@ -119,11 +127,11 @@
         oficial_id: OF, encaminhada_em: hora(dia(1), 9, 0), vivas: null, mortas: null },
       { id: uid(), area_id: 'PR900103-1', motivo: 'Muitas plantas secas na monitoria', estado: 'enviada', pedido_em: hora(dia(4), 10, 0), pedido_por: U.me, oficial_id: OF, encaminhada_em: hora(dia(3), 8, 0),
         vivas: 132, mortas: 8, navuna: true, contada_em: hora(dia(1), 10, 30), enviada_em: hora(dia(1), 12, 0), foto_path: 'demo/declaracao.jpg', foto_campo_path: 'demo/campo.jpg',
-        lat: areas[2].latitude, lon: areas[2].longitude, precisao_m: 6 },
+        lat: areas.find((x) => x.id === 'PR900103-1').latitude, lon: areas.find((x) => x.id === 'PR900103-1').longitude, precisao_m: 6 },
       { id: uid(), area_id: 'PR900201-1', motivo: 'O produtor diz que há mais plantas mortas', estado: 'por_encaminhar', pedido_em: hora(dia(1), 16, 0), pedido_por: U.tecnico, oficial_id: null },
       { id: uid(), area_id: 'PR900301-1', motivo: 'Confirmar as plantas vivas', estado: 'validada', pedido_em: hora(dia(8), 9, 0), pedido_por: U.me, oficial_id: OF, encaminhada_em: hora(dia(8), 10, 0),
         vivas: 200, mortas: 10, vivas_antes: 210, navuna: true, contada_em: hora(dia(7), 9, 0), enviada_em: hora(dia(7), 11, 0), validada_em: hora(dia(6), 8, 0),
-        foto_path: 'demo/declaracao2.jpg', foto_campo_path: 'demo/campo2.jpg', lat: areas[9].latitude, lon: areas[9].longitude, precisao_m: 4 },
+        foto_path: 'demo/declaracao2.jpg', foto_campo_path: 'demo/campo2.jpg', lat: areas.find((x) => x.id === 'PR900301-1').latitude, lon: areas.find((x) => x.id === 'PR900301-1').longitude, precisao_m: 4 },
     ];
     const amostras = [
       { id: uid(), data_rega: dia(1), verificador_id: U.tecnico, papel: 'tecnico', area_id: 'PR900102-1', activista_id: A1, criado_em: hora(dia(1), 18, 0) },
@@ -140,11 +148,24 @@
       { data: dia(1), comunidade: S, zona: null, mm: 4, activista: 'Activista Três', lida_em: hora(dia(1), 6, 50), foto: 'demo/chuva2.jpg' },
     ];
     const dsr = [{ id: uid(), activista_id: A2, data: dia(4), motivo: 'avaria_tuk_tuk', todo_dia: true, descricao: 'O tuk-tuk avariou de manhã.', quem: 'Técnico Exemplo', user_id: U.tecnico, criado_em: hora(dia(4), 9, 0), foto_path: null, area_id: null, entrada_em: null }];
-    return { v: 1, areas, activistas, registos, constr, jornadas, queimadas, recontagens, amostras, monitorias, chuva, dsr, userAct };
+    // v156: sugestões de exemplo (a Gestão do gestor aprova ou recusa; quem enviou vê a resposta no Hoje)
+    const sugestoes = [
+      { id: uid(), texto: 'No mapa, mostrar com outra cor os campos onde houve queimada.', criada_em: hora(dia(2), 16, 40), estado: 'nova', papel: 'activista', quem: NOMES.activista, perfil_id: U.activista, ecra: 'mapa', versao: '155', area_id: null, foto_path: null, fotos_extra: [], nota: null },
+      { id: uid(), texto: 'Poder registar a chuva do dia anterior quando não houve rede.', criada_em: hora(dia(1), 18, 5), estado: 'nova', papel: 'tecnico', quem: NOMES.tecnico, perfil_id: U.tecnico, ecra: 'hoje', versao: '155', area_id: null, foto_path: null, fotos_extra: [], nota: null },
+    ];
+    // v156: manutenção (cava-roda e mulching) nos campos de Exemplo Sul
+    const manut = [
+      { id: uid(), area_id: 'PR900301-1', data: dia(3), cavaroda: 120, mulching: 80, pessoas: 6, obs: null, foto_path: 'demo/manut1.jpg', feito_por: U.supervisor, feito_em: hora(dia(3), 15, 0) },
+      { id: uid(), area_id: 'PR900301-1', data: dia(1), cavaroda: 200, mulching: 200, pessoas: 6, obs: 'Campo terminado.', foto_path: 'demo/manut2.jpg', feito_por: U.supervisor, feito_em: hora(dia(1), 14, 30) },
+      { id: uid(), area_id: 'PR900302-1', data: dia(1), cavaroda: 90, mulching: 40, pessoas: 5, obs: null, foto_path: 'demo/manut3.jpg', feito_por: U.tecnico, feito_em: hora(dia(1), 16, 0) },
+      { id: uid(), area_id: 'PR900304-1', data: dia(2), cavaroda: 80, mulching: 80, pessoas: 4, obs: null, foto_path: 'demo/manut4.jpg', feito_por: U.supervisor, feito_em: hora(dia(2), 13, 0) },
+    ];
+    const manutFeitos = [{ area_id: 'PR900301-1', feito: true, marcado_em: hora(dia(1), 15, 0), marcado_por: U.supervisor }];
+    return { v: 2, areas, activistas, registos, constr, jornadas, queimadas, recontagens, amostras, monitorias, chuva, dsr, userAct, sugestoes, manut, manutFeitos, fechos: {}, escala: [1] };   // v156: o técnico e o supervisor já escolheram a segunda para a monitoria (sem o ecrã obrigatório)
   }
   let DB = null;
   try { DB = JSON.parse(sessionStorage.getItem('rega.demo.db') || 'null'); } catch {}
-  if (!DB || DB.v !== 1) { DB = construir(); guardarDB(); }
+  if (!DB || DB.v !== 2) { DB = construir(); guardarDB(); try { sessionStorage.removeItem('rega.demo.pos'); } catch {} POS = null; }
   function guardarDB() { try { sessionStorage.setItem('rega.demo.db', JSON.stringify(DB)); } catch {} }
 
   // ---------- 3. sessão de exemplo (não mexe na sessão verdadeira) ----------
@@ -273,6 +294,31 @@
     return { pontos: pts, regas: l.map((r) => ({ area_id: r.area_id, plantas: r.plantas_regadas, entrada_em: r.entrada_em, saida_em: r.saida_em })) };
   }
 
+  // ---------- v156: ajudas para a área medida, sugestões e manutenção ----------
+  function areaM2(pts) {                       // pts = [[lon, lat], ...]; área em m² (projecção local)
+    if (!pts || pts.length < 3) return 0; const la0 = pts[0][1] * Math.PI / 180, kx = 111320 * Math.cos(la0), ky = 110540;
+    let s2 = 0; for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; s2 += (x1 * kx) * (y2 * ky) - (x2 * kx) * (y1 * ky); }
+    return Math.round(Math.abs(s2) / 2);
+  }
+  const centro = (pts) => [pts.reduce((x, p) => x + p[0], 0) / pts.length, pts.reduce((x, p) => x + p[1], 0) / pts.length];
+  function novaSugestao(a) {
+    (DB.sugestoes ||= []).push({ id: a.p_id || uid(), texto: a.p_texto, criada_em: new Date().toISOString(), estado: 'nova', papel, quem: NOMES[papel], perfil_id: EU, ecra: a.p_ecra || null, versao: a.p_versao || null,
+      area_id: a.p_area || null, foto_path: a.p_foto || null, fotos_extra: a.p_fotos_extra || [], nota: null, diag: a.p_diag || null });
+    return a.p_id || null;
+  }
+  const MANUT_COM = ['Exemplo Sul'];
+  function manutCampos() {
+    const acesso = ['gestor', 'supervisor'].includes(papel) ? 'escreve' : papel === 'tecnico' ? 'regista' : ['director', 'me'].includes(papel) ? 'le' : null;
+    if (!acesso) return null;
+    const campos = DB.areas.filter((a) => MANUT_COM.includes(a.comunidade)).map((a) => {
+      const l = (DB.manut || []).filter((x) => x.area_id === a.id && !x.removido).sort((x, y) => y.feito_em.localeCompare(x.feito_em)), u = l[0], f = (DB.manutFeitos || []).find((x) => x.area_id === a.id);
+      return { id: a.id, pr: a.pr, produtor: a.produtor, comunidade: a.comunidade, zona: a.zona, latitude: a.latitude, longitude: a.longitude, poligono: a.poligono, vivas: a.vivas, instaladas: a.instaladas, activa: true,
+        plantas: (a.vivas > 0 ? a.vivas : a.instaladas) || 0, activista: nomeAct(a.activista_id), cavaroda: u ? u.cavaroda : null, mulching: u ? u.mulching : null, ultima: u ? u.data : null, ultima_em: u ? u.feito_em : null, n: l.length,
+        feito: !!f, feito_em: f ? f.marcado_em : null, feito_por: f ? nomeU(f.marcado_por) : null };
+    });
+    return { acesso, inicio: '2026-11-02', teste: false, comunidades: MANUT_COM, campos };
+  }
+
   // ---------- 5. respostas aos pedidos da app ----------
   const RPC = {
     estado_ronda: () => estadoRonda(), estado_ronda2: () => estadoRonda(), estado_ronda3: () => estadoRonda(),
@@ -322,15 +368,60 @@
     gravar_presencas: (a) => { DB.presencas ||= []; DB.presencas = DB.presencas.filter((x) => !(x.activista_id === a.p_activista && x.data === a.p_data));
       const ok = (a.p_presentes || []).filter((id) => membros().some((m) => m.id === id && m.activista_id === a.p_activista));
       DB.presencas.push({ id: a.p_id, activista_id: a.p_activista, data: a.p_data, presentes: ok, outros: a.p_outros || 0 }); guardarDB(); return { pessoas: 1 + ok.length + (a.p_outros || 0) }; },
-    meu_dia: () => null, fechar_dia: () => null, confirmar_rega: () => null, monitoria_falhas: () => [], painel_cumprimento: () => null,
+    // v156: «O meu dia» do técnico e do supervisor de exemplo, «Fechar o dia» e confirmar regas com ⚠️
+    meu_dia: () => {
+      if (!['tecnico', 'supervisor'].includes(papel)) return null;
+      const hoje = dia(0), ids = vis(), est = estadoRonda();
+      const eqs = DB.activistas.filter((t) => ids.includes(t.id) && DB.areas.some((a) => a.activista_id === t.id)).map((t) => {
+        const l = reais().filter((r) => r.activista_id === t.id && r.data === hoje), sr = DB.dsr.filter((d) => !d.removido && d.activista_id === t.id && d.data === hoje).map((d) => d.motivo);
+        return { id: t.id, nome: t.nome, comunidade: t.comunidade_principal, sem_telefone: false, regas: l.length, plantas: l.reduce((x, r) => x + r.plantas_regadas, 0),
+          chegada: l.map((r) => r.entrada_em).sort()[0] || null, sem_rega: sr.length ? sr.join(', ') : null }; });
+      const base = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
+      const alertas = reais().filter((r) => ids.includes(r.activista_id) && r.data >= dia(2) && !r.alerta_confirmado_em && !r.plantas_corrigidas_em && r.plantas_regadas > base(area(r.area_id)))
+        .map((r) => ({ registo_id: r.id, data: r.data, area_id: r.area_id, produtor: area(r.area_id).produtor, equipa: nomeAct(r.activista_id), plantas: r.plantas_regadas, base: base(area(r.area_id)), ritmo: null, mediana: null, tipo: 'mais_que_base' }));
+      const comunidades = papel === 'tecnico' ? ['Exemplo Norte'] : ['Exemplo Norte', 'Exemplo Sul'];
+      return { data: hoje, hora_chegada: '06:00', fechado_em: (DB.fechos || {})[EU + hoje] || null, equipas: eqs, alertas,
+        monitoria_hoje: DB.amostras.filter((m) => m.verificador_id === EU && m.data_rega === dia(1) && !DB.monitorias.some((o) => o.amostra_id === m.id)).length, monitoria_falhas_ontem: 0,
+        sem_equipa: DB.areas.filter((a) => !a.activista_id && comunidades.includes(a.comunidade)).length,
+        por_aprovar: DB.areas.filter((a) => a.poligono_proposto && ids.includes(a.activista_id)).map((a) => ({ area_id: a.id, produtor: a.produtor, comunidade: a.comunidade, equipa: nomeAct(a.activista_id), area_m2: a.area_m2_proposta, proposta_em: a.proposta_em, quem: nomeAct(a.activista_id) })),
+        por_terminar: est.filter((e) => e.por_terminar && ids.includes(area(e.area_id).activista_id)).map((e) => { const a = area(e.area_id); return { area_id: a.id, produtor: a.produtor, equipa: nomeAct(a.activista_id), base: base(a), regadas: e.plantas_ronda, data: e.data_parcial }; }) };
+    },
+    fechar_dia: () => { const hoje = dia(0), m = RPC.meu_dia(); const falta = (m?.equipas || []).filter((e) => !e.regas && !e.sem_rega);
+      if (falta.length) throw Object.assign(new Error('Ainda sem rega nem motivo: ' + falta.map((e) => e.nome).join(', ')), { erro400: true });
+      (DB.fechos ||= {})[EU + hoje] = new Date().toISOString(); return DB.fechos[EU + hoje]; },
+    confirmar_rega: (a) => { const r = DB.registos.find((x) => x.id === a.p_id); if (r) { r.alerta_confirmado_em = new Date().toISOString(); r.alerta_confirmado_nota = a.p_nota; } return null; },
+    // v156: medir a área: o activista deixa a área por aprovar; técnico, supervisor e gestor gravam o limite
+    gravar_poligono: (a) => { const ar = area(a.p_area); if (!ar.id || !Array.isArray(a.p_pontos)) return null; const m2 = areaM2(a.p_pontos);
+      if (papel === 'activista') Object.assign(ar, { poligono_proposto: a.p_pontos, area_m2_proposta: m2, proposta_em: a.p_medido_em || new Date().toISOString() });
+      else { Object.assign(ar, { poligono: a.p_pontos, area_m2: m2, limites_abertos: false }); if (ar.latitude == null) { const c = centro(a.p_pontos); ar.latitude = c[1]; ar.longitude = c[0]; } }
+      return null; },
+    monitoria_falhas: () => [], painel_cumprimento: () => null,
+    // v156: sugestões ficam na base de exemplo (antes iam para o servidor verdadeiro; Valdo, 30/10/2026: o que se faz na apresentação não entra no servidor)
+    enviar_sugestao2: (a) => novaSugestao(a), enviar_sugestao3: (a) => novaSugestao(a),
+    avaliar_sugestao: (a) => { const x = (DB.sugestoes || []).find((y) => y.id === a.p_id); if (x) Object.assign(x, { estado: a.p_estado, nota: a.p_nota ?? x.nota, avaliada_em: new Date().toISOString() }); return null; },
+    // v156: manutenção (cava-roda e mulching) em Exemplo Sul
+    manutencao_campos: () => manutCampos(),
+    manutencao_registos_campo: (a) => (DB.manut || []).filter((x) => x.area_id === a.p_area && !x.removido).sort((x, y) => y.feito_em.localeCompare(x.feito_em)).map((x) => ({ ...x, quem: nomeU(x.feito_por) })),
+    gravar_manutencao: (a) => { (DB.manut ||= []).push({ id: a.p_id, area_id: a.p_area, data: a.p_data, cavaroda: a.p_cavaroda, mulching: a.p_mulching, pessoas: a.p_pessoas ?? null, obs: a.p_obs || null, foto_path: a.p_foto || null, feito_por: EU, feito_em: a.p_em || new Date().toISOString() });
+      const ar = area(a.p_area), pl = (ar.vivas > 0 ? ar.vivas : ar.instaladas) || 0; if (a.p_cavaroda < pl || a.p_mulching < pl) DB.manutFeitos = (DB.manutFeitos || []).filter((f) => f.area_id !== a.p_area); return null; },
+    remover_manutencao: (a) => { const x = (DB.manut || []).find((y) => y.id === a.p_id); if (x) x.removido = true; return null; },
+    marcar_manutencao_feita: (a) => { DB.manutFeitos = (DB.manutFeitos || []).filter((f) => f.area_id !== a.p_area); if (a.p_feito) DB.manutFeitos.push({ area_id: a.p_area, feito: true, marcado_em: a.p_em || new Date().toISOString(), marcado_por: EU }); return null; },
+    painel_manutencao: (a) => { const M = manutCampos(); if (!M) return null; const C = M.campos, pl = (c) => c.plantas || 0;
+      const por_comunidade = [...new Set(C.map((c) => c.comunidade))].map((com) => { const l = C.filter((c) => c.comunidade === com), e = (c) => (c.feito ? 'feito' : c.cavaroda == null ? 'por' : c.cavaroda >= pl(c) && c.mulching >= pl(c) ? 'completo' : 'curso');
+        return { comunidade: com, campos: l.length, feitos: l.filter((c) => e(c) === 'feito').length, completos: l.filter((c) => e(c) === 'completo').length, em_curso: l.filter((c) => e(c) === 'curso').length, por_fazer: l.filter((c) => e(c) === 'por').length,
+          plantas: l.reduce((x, c) => x + pl(c), 0), cavaroda: l.reduce((x, c) => x + Math.min(c.cavaroda || 0, pl(c)), 0), mulching: l.reduce((x, c) => x + Math.min(c.mulching || 0, pl(c)), 0) }; });
+      const dias = {}; (DB.manut || []).filter((x) => !x.removido && naData(x.data, a.p_de, a.p_ate)).forEach((x) => { const d = (dias[x.data] ||= { data: x.data, campos: new Set(), cavaroda: 0, mulching: 0, pessoas: 0 }); d.campos.add(x.area_id); d.cavaroda += x.cavaroda; d.mulching += x.mulching; d.pessoas += x.pessoas || 0; });
+      return { por_comunidade, por_dia: Object.values(dias).sort((x, y) => x.data.localeCompare(y.data)).map((d) => ({ ...d, campos: d.campos.size })) }; },
     painel_zonas: () => [],
     painel_chuva: (a) => DB.chuva.filter((c) => naData(c.data, a.p_de, a.p_ate)).map((c) => ({ data: c.data, comunidade: c.comunidade, zona: c.zona, mm: c.mm, registos: 1, fotos: papel === 'cliente' ? undefined : [{ path: c.foto, mm: c.mm, lida_em: c.lida_em, activista: c.activista }] })),
     painel_constrangimentos: (a) => DB.constr.map((c) => { const r = DB.registos.find((x) => x.id === c.registo_id); if (!r || r.teste || !naData(r.data, a.p_de, a.p_ate)) return null; const ar = area(r.area_id);
       return { data: r.data, tipo: c.tipo, descricao: c.descricao, area_id: r.area_id, produtor: ar.produtor, comunidade: ar.comunidade, zona: null, activista: nomeAct(r.activista_id), plantas_regadas: r.plantas_regadas, plantas_campo: ar.vivas }; }).filter(Boolean),
-    painel_testes: () => null, painel_plantas_marcadas: () => null, painel_manutencao: () => null, painel_medicoes: () => null,
-    manutencao_campos: () => null, coqueiros_lista: () => null, planos_lista: () => [], testes_equipa: () => [], plantas_por_campo: () => [], regas_sem_motivo: () => [],
-    minhas_respostas: () => [], minhas_sugestoes_feitas: () => [], avisos_monitoria: () => [], visitas_painel_resumo: () => [], sugestoes_lista: () => ({ sugestoes: [], problemas: [] }),
-    areas_fora_plano2: () => ({ fora: [], na_rega: [] }), areas_fora_plano: () => [], medicoes_alvo: () => [], manutencao_registos_campo: () => [],
+    painel_testes: () => null, painel_plantas_marcadas: () => null, painel_medicoes: () => null,
+    coqueiros_lista: () => null, planos_lista: () => [], testes_equipa: () => [], plantas_por_campo: () => [], regas_sem_motivo: () => [],
+    minhas_respostas: () => (DB.sugestoes || []).filter((x) => x.perfil_id === EU && ['feita', 'aprovada', 'recusada'].includes(x.estado)).map((x) => ({ id: x.id, texto: x.texto, estado: x.estado, nota: x.nota, avaliada_em: x.avaliada_em })),
+    minhas_sugestoes_feitas: () => [], avisos_monitoria: () => [], visitas_painel_resumo: () => [],
+    sugestoes_lista: () => (papel === 'gestor' ? { sugestoes: [...(DB.sugestoes || [])].sort((x, y) => y.criada_em.localeCompare(x.criada_em)), problemas: [] } : null),
+    areas_fora_plano2: () => ({ fora: [], na_rega: [] }), areas_fora_plano: () => [], medicoes_alvo: () => [],
     // ---- o que muda a base de exemplo ----
     encaminhar_recontagem2: (a) => { const r = DB.recontagens.find((x) => x.id === a.p_id); if (r) Object.assign(r, { estado: 'encaminhada', oficial_id: a.p_oficial, encaminhada_em: a.p_em || new Date().toISOString() }); return null; },
     enviar_recontagem2: (a) => { const r = DB.recontagens.find((x) => x.id === a.p_id); if (r) Object.assign(r, { estado: 'enviada', vivas: a.p_vivas, mortas: a.p_mortas, foto_path: a.p_foto, foto_campo_path: a.p_foto_campo, lat: a.p_lat, lon: a.p_lon, precisao_m: a.p_precisao, contada_em: a.p_em, enviada_em: new Date().toISOString(), navuna: a.p_navuna ?? null }); return null; },
@@ -348,7 +439,7 @@
     corrigir_plantas_rega: (a) => { const r = DB.registos.find((x) => x.id === a.p_id); if (r) { if (r.plantas_originais == null) r.plantas_originais = r.plantas_regadas; r.plantas_regadas = a.p_plantas; r.plantas_corrigidas_em = new Date().toISOString(); } return null; },
   };
   const TABELAS = {
-    perfis: () => [{ id: EU, nome: NOMES[papel], papel, activista_id: act(), titulo: null, gere_acessos: false, trocar_senha: false, marca_coqueiros: false, so_teste: false }],
+    perfis: () => [{ id: EU, nome: NOMES[papel], papel, activista_id: act(), titulo: null, gere_acessos: papel === 'gestor', trocar_senha: false, marca_coqueiros: false, so_teste: false }],
     activistas: () => DB.activistas, areas: () => areasVisiveis(), zonas: () => [], pocos: () => [], coberturas: () => [], pessoas_acesso: () => [], plantas: () => [], config: () => [{ chave: 'monitoria_campos_por_dia', valor: 2 }],
     queimadas: () => DB.queimadas.filter((q) => !q.removida), registos_rega: () => DB.registos.filter((r) => !act() || r.activista_id === A1),
     jornadas: () => DB.jornadas, chuva: () => [], monitorias: () => [], constrangimentos: () => DB.constr,
@@ -370,37 +461,6 @@
   }
   const resp = (b, st = 200, h = {}) => new Response(st === 204 || b === undefined ? null : JSON.stringify(b), { status: st, headers: { 'Content-Type': 'application/json', ...h } });
   const fotosMem = {};
-  // sugestões (💡) feitas durante a apresentação vão para o servidor verdadeiro, com a conta verdadeira do gestor
-  // (28/10/2026: as sugestões do Valdo feitas no modo apresentação v124 perderam-se). Só estas duas chamadas saem.
-  const CHAVE_SESSAO = `sb-${REF}-auth-token`;
-  async function tokenReal(apikey) {
-    let s0 = null; try { s0 = JSON.parse(real.get.call(localStorage, CHAVE_SESSAO) || 'null'); } catch {}
-    if (!s0 || !s0.access_token) return null;
-    if ((s0.expires_at || 0) * 1000 > Date.now() + 60e3) return s0;
-    try {
-      const r = await fetchReal(`https://${REF}.supabase.co/auth/v1/token?grant_type=refresh_token`, { method: 'POST', headers: { apikey, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: s0.refresh_token }) });
-      if (!r.ok) return null;
-      const n = await r.json(); if (!n.expires_at && n.expires_in) n.expires_at = Math.floor(Date.now() / 1000) + n.expires_in;
-      real.set.call(localStorage, CHAVE_SESSAO, JSON.stringify(n)); return n;
-    } catch { return null; }
-  }
-  async function sugestaoReal(c, metodo, h, corpo) {
-    const apikey = h.get('apikey') || '', sr = await tokenReal(apikey);
-    if (!sr) return resp({ message: 'Para enviar a sugestão, termine a apresentação e envie de novo.' }, 401);
-    const eu = sr.user?.id, hd = { apikey, Authorization: 'Bearer ' + sr.access_token };
-    if (c.startsWith('/storage/v1/')) {
-      const p = decodeURIComponent(c.split('/object/sugestoes-fotos/')[1] || '').split('/').slice(1).join('/');
-      for (const k2 of ['content-type', 'x-upsert', 'cache-control']) if (h.get(k2)) hd[k2] = h.get(k2);
-      return fetchReal(`https://${REF}.supabase.co/storage/v1/object/sugestoes-fotos/${eu}/${p}`, { method: metodo, headers: hd, body: corpo });
-    }
-    let a = {}; try { a = JSON.parse(corpo || '{}'); } catch {}
-    if (a.p_foto) a.p_foto = `${eu}/${String(a.p_foto).split('/').slice(1).join('/')}`;
-    if (Array.isArray(a.p_fotos_extra)) a.p_fotos_extra = a.p_fotos_extra.map((f) => `${eu}/${String(f).split('/').slice(1).join('/')}`);
-    const FUN = { activista: 'Activista', tecnico: 'Técnico', supervisor: 'Supervisor', oficial_me: 'Oficial de M&E', me: 'M&E', director: 'Director', cliente: 'Cliente' };
-    a.p_ecra = `Apresentação (${FUN[papel] || papel}) › ${a.p_ecra || ''}`;
-    a.p_diag = { ...(a.p_diag || {}), apresentacao: papel };
-    return fetchReal(`https://${REF}.supabase.co${c}`, { method: 'POST', headers: { ...hd, 'Content-Type': 'application/json' }, body: JSON.stringify(a) });
-  }
   async function demoFetch(entrada, init = {}) {
     const url = new URL(typeof entrada === 'string' ? entrada : entrada.url), metodo = (init.method || (entrada.method) || 'GET').toUpperCase();
     const h = new Headers(init.headers || (typeof entrada === 'string' ? {} : entrada.headers));
@@ -409,7 +469,6 @@
     const c = url.pathname;
     try {
       if (c.startsWith('/auth/v1/')) { if (c.endsWith('/logout')) return resp(undefined, 204); return c.endsWith('/token') ? resp(SESSAO) : resp(USER); }
-      if ((c.startsWith('/storage/v1/object/sugestoes-fotos/') && metodo !== 'GET') || c === '/rest/v1/rpc/enviar_sugestao2' || c === '/rest/v1/rpc/enviar_sugestao3') return sugestaoReal(c, metodo, h, corpo);
       if (c.startsWith('/storage/v1/')) {
         if (metodo === 'POST' || metodo === 'PUT') {
           const p = decodeURIComponent(c.split('/object/')[1] || ''), blob = corpo instanceof Blob ? corpo : corpo instanceof FormData ? [...corpo.values()].find((v) => v instanceof Blob) : null;
@@ -421,7 +480,7 @@
       if (c.startsWith('/functions/v1/')) return resp({ activistas: [], utilizadores: [], clientes: [], nomes: {} });
       if (c.startsWith('/rest/v1/rpc/')) {
         const f = c.slice('/rest/v1/rpc/'.length), a = json();
-        if (RPC[f]) { const r = RPC[f](a); guardarDB(); return resp(r === undefined ? null : r); }
+        if (RPC[f]) { let r; try { r = RPC[f](a); } catch (e) { if (e.erro400) return resp({ code: 'P0001', message: e.message }, 400); throw e; } guardarDB(); return resp(r === undefined ? null : r); }
         return resp(/^(gravar|definir|remover|registar|enviar|aprovar|abrir|justificar|marcar|avaliar|estado_|senha|voltar|validar|encaminhar|pedir|cancelar)/.test(f) ? null : []);
       }
       if (c.startsWith('/rest/v1/')) {
@@ -458,9 +517,24 @@
     } });
   }
 
+  function parar() { if (andar) { clearInterval(andar); andar = null; } }
+  function volta(a) {                       // pontos a cada ~4 m à volta de um rectângulo de 60 × 50 m (sentido dos ponteiros), a fechar no início
+    const ky = 110540, kx = 111320 * Math.cos(a.latitude * Math.PI / 180), cs = [[-30, -25], [-30, 25], [30, 25], [30, -25], [-30, -25]], out = [];
+    for (let j = 0; j < cs.length - 1; j++) { const [x1, y1] = cs[j], [x2, y2] = cs[j + 1], n = Math.round(Math.hypot(x2 - x1, y2 - y1) / 4);
+      for (let t = 0; t < n; t++) { const x = x1 + (x2 - x1) * t / n + (Math.random() - 0.5) * 0.6, y = y1 + (y2 - y1) * t / n + (Math.random() - 0.5) * 0.6; out.push([a.latitude + y / ky, a.longitude + x / kx]); } }
+    out.push([a.latitude + cs[0][1] / ky, a.longitude + cs[0][0] / kx]); return out;
+  }
   window.DEMO = { papel, lat: cfg.lat, lon: cfg.lon, desde: cfg.desde, NOMES,
     limparTelefone,
-    terminar() { limparTelefone(); try { sessionStorage.removeItem('rega.demo'); sessionStorage.removeItem('rega.demo.db'); } catch {} location.reload(); },
-    recomecar() { limparTelefone(); try { sessionStorage.removeItem('rega.demo.db'); } catch {} location.reload(); },
+    // v156: «🎬 Pôr-me neste campo» — a posição passa a ser o centro do campo e a ficha volta a abrir
+    irPara(id) { const a = area(id); if (a.latitude == null) return; parar(); porPos(a.latitude, a.longitude);
+      setTimeout(() => { if (typeof window.abrirFicha === 'function') window.abrirFicha(id, '<div class="msg ok">🎬 Está agora neste campo (apresentação).</div>'); }, 500); },
+    // v156: medir a área ao vivo: vai para um canto do campo (rectângulo de 60 × 50 m à volta do ponto) e, ao «Começar», anda à volta
+    cantoMedir(id) { const a = area(id); if (a.latitude == null) return; parar(); const k = volta(a); porPos(k[0][0], k[0][1]); },
+    andarMedir(id) { const a = area(id); if (a.latitude == null) return; parar(); const k = volta(a); let i = 0;
+      andar = setInterval(() => { i++; if (i >= k.length) { parar(); return; } porPos(k[i][0], k[i][1]); }, 350); },
+    pararAndar: () => parar(),
+    terminar() { limparTelefone(); try { sessionStorage.removeItem('rega.demo'); sessionStorage.removeItem('rega.demo.db'); sessionStorage.removeItem('rega.demo.pos'); } catch {} location.reload(); },
+    recomecar() { limparTelefone(); try { sessionStorage.removeItem('rega.demo.db'); sessionStorage.removeItem('rega.demo.pos'); } catch {} location.reload(); },
   };
 })();

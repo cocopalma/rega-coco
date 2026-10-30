@@ -2108,6 +2108,7 @@ function ecraMedir(id, r) {
   $('#md-desf').onclick = () => { S.medir.pts.pop(); guardarMedicao(); mostrarMedicao(); };
   $('#md-limpar').onclick = () => { if (S.medir.pts.length && !confirm('Apagar os pontos marcados e recomeçar?')) return; S.medir.pts = []; S.medir.melhor = null; guardarMedicao(); mostrarMedicao(); };
   $('#md-fim').onclick = terminarMedicao;
+  if (window.DEMO) DEMO.cantoMedir(id);                    // v156: na apresentação, o GPS vai para um canto do campo e anda à volta ao «Começar»
   mostrarMedicao();
   if (!navigator.geolocation) return aviso('Este telefone não tem GPS disponível no navegador.', 'erro');
   if (continuar) comecarMedicao();
@@ -2125,10 +2126,11 @@ function ecraMedir(id, r) {
 }
 async function comecarMedicao() {
   S.medir.a_andar = true; guardarMedicao(); $('#md-ir').textContent = '⏸ Pausar';
+  if (window.DEMO) DEMO.andarMedir(S.medir.id);
   try { if (navigator.wakeLock) travaEcra = await navigator.wakeLock.request('screen'); } catch {}
   const p = S.medir.pos; if (p && p.prec <= CFG.precisaoCoord && !S.medir.pts.length) juntarPonto(p, true);
 }
-function pausarMedicao() { S.medir.a_andar = false; guardarMedicao(); $('#md-ir').textContent = '▶ Continuar'; if (travaEcra) { travaEcra.release().catch(() => {}); travaEcra = null; } }
+function pausarMedicao() { if (window.DEMO) DEMO.pararAndar(); S.medir.a_andar = false; guardarMedicao(); $('#md-ir').textContent = '▶ Continuar'; if (travaEcra) { travaEcra.release().catch(() => {}); travaEcra = null; } }
 function juntarPonto(p, manual) {
   S.medir.pts.push([+p.lon.toFixed(7), +p.lat.toFixed(7)]);
   S.medir.melhor = Math.max(S.medir.melhor || 0, p.prec);         // pior precisão usada (para registo)
@@ -2480,7 +2482,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (apresentação)</button>` : ''}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
   S.soVer = false;
   if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
 }
@@ -4812,12 +4814,13 @@ const DEMO_FUNCOES = [
   ['me', 'M&E', 'Encaminhar recontagens aos oficiais e validá-las; ver tudo; painel.'],
   ['director', 'Director', 'Vê todos os campos, a rega do dia, os percursos e o painel; não regista.'],
   ['cliente', 'Cliente / administração', 'Mapa, fichas dos campos (só leitura) e painel.'],
+  ['gestor', 'Gestor', 'Tudo o que o gestor vê, com dados de exemplo: Gestão (sugestões: aprovar ou recusar), manutenção, painel.'],   // v156
 ];
 const nomeFuncaoDemo = (p) => (DEMO_FUNCOES.find((f) => f[0] === p) || [p, p])[1];
 function cartaoDemo() {
   if (S.perfil?.papel !== 'gestor' || window.DEMO) return '';
   return `<div class="cartao" style="border-left:4px solid #6a1b9a"><h2>🎬 Modo apresentação</h2>
-    <p class="pequeno">Para mostrar a app a outras pessoas: escolha uma função e a app passa a mostrar o que essa pessoa vê, com dados de exemplo. Nada do que fizer é gravado no servidor, excepto as sugestões (💡), que chegam à Gestão. Os campos de exemplo ficam à volta de onde está agora, para poder registar uma rega ao vivo.</p>
+    <p class="pequeno">Para mostrar a app a outras pessoas: escolha uma função e a app passa a mostrar o que essa pessoa vê, com dados de exemplo. Nada do que fizer é gravado no servidor (nem as sugestões 💡). Os campos de exemplo ficam em Palma; na ficha de cada campo, «🎬 Pôr-me neste campo» leva-o até lá.</p>
     ${DEMO_FUNCOES.map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">Ver como ${n}</div><div class="sub">${d}</div></div></div>`).join('')}</div>`;
 }
 function entrarDemo(papel) {
@@ -4834,11 +4837,11 @@ function faixaDemo() {
   f.innerHTML = `<span style="flex:1">🎬 <b>Apresentação</b> · ${esc(nomeFuncaoDemo(DEMO.papel))}</span><button onclick="ecraDemo()">Mudar</button><button onclick="DEMO.terminar()">Terminar</button>`;
 }
 function ecraDemo() {
-  folha(`<h2>🎬 Modo apresentação</h2><p class="pequeno">Está a ver a app como ${esc(nomeFuncaoDemo(DEMO.papel))}, com dados de exemplo. Nada é gravado no servidor.</p><p class="pequeno">O GPS não é verificado: a app faz de conta que está nos campos de exemplo, em Palma.</p>
+  folha(`<h2>🎬 Modo apresentação</h2><p class="pequeno">Está a ver a app como ${esc(nomeFuncaoDemo(DEMO.papel))}, com dados de exemplo. Nada é gravado no servidor.</p><p class="pequeno">O GPS não é verificado: a app faz de conta que está nos campos de exemplo, em Palma.</p><p class="pequeno">Na ficha de cada campo, «🎬 Pôr-me neste campo» leva-o até lá. Ao medir a área, o GPS anda sozinho à volta do campo.</p>
     <h3>Ver como outra função</h3>
     ${DEMO_FUNCOES.filter(([k]) => k !== DEMO.papel).map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">${n}</div><div class="sub">${d}</div></div></div>`).join('')}
     <p class="pequeno">O que fizer numa função aparece nas outras (por exemplo: o oficial conta, o M&E valida).</p>
-    <p class="pequeno">As sugestões (💡) feitas na apresentação são enviadas a sério, com a sua conta, e aparecem na Gestão.</p>
+    <p class="pequeno">As sugestões (💡) feitas na apresentação ficam só na apresentação (não chegam à Gestão verdadeira).</p>
     <button class="btn sec" onclick="if (confirm('Apagar o que fez na apresentação e voltar aos dados de exemplo iniciais?')) DEMO.recomecar()">Recomeçar com os dados iniciais</button>
     <button class="btn" onclick="DEMO.terminar()">Terminar a apresentação</button>`);
 }
