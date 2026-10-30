@@ -72,7 +72,8 @@
       C('PR900104-2', 'Daniel Exemplo', N, A1, 140, -340, 185, -295, 70, 60),
       C('PR900201-1', 'Elisa Exemplo', N, A2, 620, 490, 690, 560, 200, 180),
       C('PR900202-1', 'Fernando Exemplo', N, A2, 790, 400, 850, 460, 130, 125),
-      C('PR900203-1', 'Graça Exemplo', N, A2, 680, 740, 735, 795, 110, 90, false),
+      C('PR900203-1', 'Graça Exemplo', N, A2, 680, 740, 735, 795, 110, 90, false,     // sem limite; v151: área medida pelo activista, por aprovar
+        { poligono_proposto: rect(676, 736, 739, 801), area_m2_proposta: 63 * 65, proposta_em: hora(dia(1), 11, 20) }),
       C('PR900204-1', 'Hélio Exemplo', N, A2, 950, 620, 1015, 685, 160, 150),
       C('PR900301-1', 'Inês Exemplo', S, A3, -340, -1140, -265, -1065, 220, 200),
       C('PR900302-1', 'João Exemplo', S, A3, -550, -1280, -490, -1220, 140, 120),
@@ -337,6 +338,7 @@
     pedir_recontagem2: (a) => { if (!DB.recontagens.some((x) => x.id === a.p_id)) DB.recontagens.push({ id: a.p_id, area_id: a.p_area, motivo: a.p_motivo, estado: a.p_oficial && ['me', 'gestor'].includes(papel) ? 'encaminhada' : 'por_encaminhar', pedido_em: a.p_em || new Date().toISOString(), pedido_por: EU, oficial_id: ['me', 'gestor'].includes(papel) ? a.p_oficial || null : null }); return null; },
     gravar_queimada2: (a) => { if (!DB.queimadas.some((x) => x.id === a.p_id)) { DB.queimadas.push({ id: a.p_id, area_id: a.p_area, data: a.p_data, observacao: a.p_obs || null, foto_path: a.p_foto || null, registada_por: EU, registada_em: new Date().toISOString(), plantas_afectadas: a.p_afectadas, plantas_mortas: a.p_mortas ?? null });
       DB.recontagens.push({ id: uid(), area_id: a.p_area, queimada_id: a.p_id, motivo: 'Queimada', estado: 'por_encaminhar', pedido_em: new Date().toISOString(), pedido_por: EU, oficial_id: null }); } return null; },
+    aprovar_poligono: (a) => { const ar = area(a.p_area); if (ar.id && ar.poligono_proposto) { if (a.p_aprovar) { ar.poligono = ar.poligono_proposto; ar.area_m2 = ar.area_m2_proposta; ar.limites_abertos = false; } ar.poligono_proposto = null; ar.area_m2_proposta = null; ar.proposta_em = null; } return null; },
     atribuir_area2: (a) => { const ar = area(a.p_area); if (ar.id) ar.activista_id = a.p_activista; return null; },
     gravar_dia_sem_rega3: (a) => { DB.dsr.push({ id: a.p_id, activista_id: a.p_activista, data: a.p_data, motivo: a.p_motivo, todo_dia: a.p_todo_dia, descricao: a.p_descricao || null, quem: NOMES[papel], user_id: EU, criado_em: new Date().toISOString(), foto_path: a.p_foto || null, area_id: a.p_area || null, entrada_em: a.p_entrada || null }); return null; },
     remover_dia_sem_rega: (a) => { const d = DB.dsr.find((x) => x.id === a.p_id); if (d) d.removido = true; return null; },
