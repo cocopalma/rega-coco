@@ -238,10 +238,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=147"></script>
-<script src="i18n.js?v=147"></script>
+<script src="i18n-sw.js?v=148"></script>
+<script src="i18n.js?v=148"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=147"></script>
+<script src="demo.js?v=148"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -841,7 +841,7 @@ function desenharMonitoria() {
     (M.por_equipa || []).map((e) => [esc(e.nome), esc(e.comunidade || ''), num(e.verificados), e.nota_media != null ? Number(e.nota_media).toLocaleString(LOC) : '—',
       e.sem_sinais_rega ? `<b style="color:var(--crit)">${num(e.sem_sinais_rega)}</b>` : '0', e.plantas_obs ? fmtPct(pct(e.plantas_humidas, e.plantas_obs)) : '—', num(e.mudas_secas_mortas)]));
   // v133 (28/10/2026, Valdo): verifica-se no dia seguinte à rega; o que não foi feito nesse dia é falha (não acumula dias de atraso)
-  const hojeM = diaMaputo(), prazoDe = (d) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); };
+  const hojeM = diaMaputo(), prazoDe = (d) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + (x.getUTCDay() === 6 ? 2 : 1)); return x.toISOString().slice(0, 10); };   // sábado → segunda (v148)
   const LC = Array.isArray(DMC) ? DMC : [], porNome = (n, f) => LC.filter((c) => c.verificador === n && f(c)).length;
   tabela('#t-mon-ver', [['Pessoa'], ['Função'], ['Sorteados', 1], ['Verificados', 1], ['Não verificados no prazo (falhas)', 1], ['Por verificar (no prazo)', 1], ['Nota média dada', 1]],
     (M.por_verificador || []).map((v) => { const falhas = porNome(v.nome, (c) => !c.verificado_em && prazoDe(c.data_rega) < hojeM), prazo = porNome(v.nome, (c) => !c.verificado_em && prazoDe(c.data_rega) >= hojeM);
@@ -853,8 +853,8 @@ function desenharMonitoria() {
   const hoje = diaMaputo(), dias = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5);
   const estado = (c) => {
     if (c.verificado_em) return `<span style="color:var(--good)">✓ Verificado</span> · ${fmtData(new Date(c.verificado_em).toLocaleDateString('en-CA', { timeZone: 'Africa/Maputo' }))}${c.nota != null ? ' · nota ' + Number(c.nota).toLocaleString(LOC) : ''}`;
-    const atraso = dias(c.data_rega, hoje) - 1;
-    return atraso > 0 ? `<b style="color:var(--crit)">❌ Não verificado no prazo (${fmtData(prazoDe(c.data_rega))})</b>` : atraso === 0 ? 'Por verificar (hoje)' : 'Por verificar (amanhã)';
+    const atraso = dias(prazoDe(c.data_rega), hoje);
+    return atraso > 0 ? `<b style="color:var(--crit)">❌ Não verificado no prazo (${fmtData(prazoDe(c.data_rega))})</b>` : atraso === 0 ? 'Por verificar (hoje)' : atraso === -1 ? 'Por verificar (amanhã)' : `Por verificar (${fmtData(prazoDe(c.data_rega))})`;
   };
   if (L.length) tabela('#t-mon-campos', [['Pessoa'], ['Rega de'], ['Campo'], ['Produtor'], ['Comunidade'], ['Equipa'], ['Situação']],
     L.map((c) => [esc(c.verificador || ''), fmtData(c.data_rega), esc(c.area_id), esc(c.produtor || ''), esc(c.comunidade || '') + (c.zona ? ' › ' + esc(c.zona) : ''), esc(c.activista || ''), estado(c)]));

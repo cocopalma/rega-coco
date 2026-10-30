@@ -4067,7 +4067,8 @@ const msgEscala = (m) => { const x = /^Sem verificação: (.+?)\. (.*)$/.exec(m 
 function linhaEscala() {
   const e = LS.get('escalaMon', null); if (!e || !e.eu_monitor) return '';
   const um = e.n_dias === 1;
-  const pausa = e.pausa ? '<div class="msg info">⏸ <b>O sorteio da monitoria está parado.</b> <span>Não recebe campos para verificar até a gestão avisar.</span></div>' : '';
+  const pausa = e.pausa ? '<div class="msg info">⏸ <b>O sorteio da monitoria está parado.</b> <span>Não recebe campos para verificar até a gestão avisar.</span></div>'
+    : e.retoma ? `<div class="msg info">📅 <b><span>A monitoria recomeça a</span> ${fmtData(e.retoma)}.</b> <span>Escolha já o seu dia.</span></div>` : '';
   if (!e.meus) return pausa + (um
     ? `<div class="msg info"><b>📅 Escolha o seu dia de monitoria.</b> <span>Nesse dia verifica ${e.campos} campos regados na véspera. Escolha um dia em que já vai ao campo.</span><br><button class="btn" onclick="ecraEscalaMon()">Escolher o dia</button></div>`
     : `<div class="msg info"><b>📅 Escolha os seus ${e.n_dias} dias de monitoria.</b> <span>Nesses dias verifica ${e.campos} campos regados na véspera. Nos outros dias fica livre para outras actividades (por exemplo, as armadilhas).</span><br><button class="btn" onclick="ecraEscalaMon()">Escolher os dias</button></div>`);
@@ -4079,7 +4080,7 @@ function ecraEscalaMon(obrig) {
   const semEscolha = outros.filter((p) => !p.dias).map((p) => p.nome.split(' ')[0]);
   const um = e.n_dias === 1;
   folha(`<h2>${um ? '📅 O meu dia de monitoria' : '📅 Os meus dias de monitoria'}</h2>
-    <p class="pequeno">${um ? `Escolha 1 dia. Nesse dia verifica ${e.campos} campos regados na véspera (na segunda, os de domingo).` : `Escolha ${e.n_dias} dias. Em cada um verifica ${e.campos} campos regados na véspera (na segunda, os de domingo).`} Cada dia, de segunda a sábado, tem de ficar com pelo menos uma pessoa: a app não grava uma escolha que deixe um dia sem ninguém.</p>
+    <p class="pequeno">${um ? `Escolha 1 dia. Nesse dia verifica ${e.campos} campos regados na véspera (na segunda, os de sábado).` : `Escolha ${e.n_dias} dias. Em cada um verifica ${e.campos} campos regados na véspera (na segunda, os de sábado).`} Cada dia, de segunda a sábado, tem de ficar com pelo menos uma pessoa: a app não grava uma escolha que deixe um dia sem ninguém.</p>
     <div id="esc-dias">${DIAS_SEM.map((n, i) => { const q = quem(i + 1);
       return `<div class="item"><div><div class="nome">${n}</div><div class="sub ${q.length ? '' : 'erro-txt'}">${q.length ? '<span>Já escolheram:</span> <span class="sem-trad">' + esc(q.join(', ')) + '</span>' : 'Ninguém ainda'}</div></div><button class="chip ${(e.meus || []).includes(i + 1) ? 'on' : ''}" data-v="${i + 1}">Escolher</button></div>`; }).join('')}</div>
     ${semEscolha.length ? `<p class="pequeno"><span>Ainda não escolheram:</span> <span class="sem-trad">${esc(semEscolha.join(', '))}</span></p>` : ''}
@@ -4103,18 +4104,20 @@ const monFeita = (m) => m.feita || LS.get('filaMon', []).some((x) => x.amostra_i
 // cada campo sorteado verifica-se no dia seguinte à rega; o que não for feito nesse dia conta como falha e sai da lista.
 function cartaoMonitoria() {
   const lista = Array.isArray(S.mon) ? S.mon : [], hoje = hojeISO();
-  const regra = '<p class="pequeno">Verifique cada campo no dia seguinte à rega. O que ficar por verificar nesse dia conta como falha na sua avaliação.</p>';
-  if (!lista.length) return `<div class="cartao"><h2>Monitoria</h2>${linhaEscala()}${LS.get('escalaMon', null)?.pausa ? '' : `<p class="pequeno">Sem campos para verificar. A lista sai a partir das 18:00 da véspera do seu dia, com campos regados nesse dia.</p>${regra}`}</div>`;
+  const regra = '<p class="pequeno">Verifique cada campo no dia seguinte à rega (as regas de sábado, na segunda). O que ficar por verificar nesse dia conta como falha na sua avaliação.</p>';
+  if (!lista.length) return `<div class="cartao"><h2>Monitoria</h2>${linhaEscala()}${LS.get('escalaMon', null)?.pausa ? '' : `<p class="pequeno">Sem campos para verificar. A lista sai a partir das 18:00 do dia da rega (para segunda, no sábado).</p>${regra}`}</div>`;
   const grupos = [...new Set(lista.map((m) => m.data_rega))].sort();
   return `<div class="cartao"><h2>Monitoria</h2>${linhaEscala()}${regra}` + grupos.map((d) => {
-    const l = lista.filter((m) => m.data_rega === d), feitas = l.filter(monFeita).length, hojeVerif = somaDias(d, 1) === hoje;
-    return `<h3 style="font-size:14px;margin:10px 0 4px">${hojeVerif ? 'Verificar hoje' : 'Verificar amanhã'} · <span>regas de</span> ${fmtData(d)} (${feitas}/${l.length})</h3>` +
+    const l = lista.filter((m) => m.data_rega === d), feitas = l.filter(monFeita).length, hojeVerif = diaVerif(d) === hoje, amanhaVerif = diaVerif(d) === somaDias(hoje, 1);
+    return `<h3 style="font-size:14px;margin:10px 0 4px"><span>${hojeVerif ? 'Verificar hoje' : amanhaVerif ? 'Verificar amanhã' : 'Verificar na segunda'}</span> · <span>regas de</span> ${fmtData(d)} (${feitas}/${l.length})</h3>` +
       l.map((m) => { const a = S.areas.find((x) => x.id === m.area_id) || { produtor: m.area_id };
         const dd = S.pos ? distCampo(a, S.pos) : null;
         return `<div class="item" onclick="abrirFicha('${esc(m.area_id)}')"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr || '')} · ${esc(a.comunidade || '')} · ${esc(nomeAct(m.activista_id))}${dd != null ? ' · ' + (dd < 1000 ? Math.round(dd) + ' m' : (dd / 1000).toFixed(1) + ' km') : ''}</div></div>
           ${monFeita(m) ? '<span class="tag t-feita">Verificado</span>' : '<span class="tag t-por">Por verificar</span>'}</div>`; }).join('');
   }).join('') + '</div>';
 }
+// v148 (30/10/2026): não há rega ao domingo; as regas de sábado verificam-se na segunda (como privado.dia_verif no servidor)
+const diaVerif = (d) => somaDias(d, new Date(d + 'T12:00:00Z').getUTCDay() === 6 ? 2 : 1);
 const somaDias = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 
 // ---------- "O meu dia" e "Fechar o dia" (v134, 28/10/2026, Valdo: "temos de pensar em como delegar trabalho para os supervisores e técnicos") ----------
