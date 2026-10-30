@@ -338,6 +338,8 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Ao acrescentar uma RPC nova à app, acrescentar a resposta em `RPC` de `demo.js` (leituras desconhecidas devolvem [], escritas null).
 - Teste: `rega-test/teste_demo.py` (activista faz uma rega, técnico, oficial, M&E valida, cliente; painel; 0 pedidos ao servidor; volta ao gestor com a sessão igual).
 
+- GPS simulado (v150, 30/10/2026, Valdo: "no modo de apresentação não importa onde eu vou estar"): `demo.js` substitui `navigator.geolocation` (posição fixa no centro da base de exemplo, ±4 m, a cada 3 s no `watchPosition`), por isso a entrada no 1.º campo (PR900101-1) funciona em qualquer sala, com ou sem localização. `entrarDemo` põe a base sempre no centro de Palma (-10.7353, 40.4684), já não na posição de quem apresenta. `ecraDemo` diz "O GPS não é verificado…". Teste: `teste_demo.py` com `SEMGPS=1` (em Maputo e sem autorização de localização). Guião da reunião de 15 min com o Francisco: documento "Rega Coco — guião da demonstração" (Claude Docs, 30/10/2026).
+
 ## Coqueiros congelados (27/10/2026, Valdo)
 - Valdo (26/10): "O levantamento de coqueiros é um projecto piloto… A aplicacao foi feita para a rega, esse é o objectivo." 27/10: "Congela isto, voltamos a isto mais tarde."
 - Nada de novo nos coqueiros dentro da app de rega. Fica o que existe (gestor e director; 63 pontos a 26/10, todos com o login do Dalmar). Se o levantamento crescer (Dalmar fala em 200 000), fazer numa app separada (mesmo servidor e acessos): a app descarrega todos os pontos para o telefone e as fotografias dos coqueiros têm em média 319 KB (200 000 × 3 ≈ 190 GB, acima dos 100 GB do plano).

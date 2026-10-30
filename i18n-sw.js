@@ -635,6 +635,7 @@ window.I18N_SW_D = {
 "Terminar a apresentação": "Maliza maonyesho",
 "Este navegador não deixa abrir o modo apresentação.": "Kivinjari hiki hakiruhusu hali ya maonyesho.",
 "Nada é gravado no servidor.": "Hakuna kinachohifadhiwa kwenye seva.",
+"O GPS não é verificado: a app faz de conta que está nos campos de exemplo, em Palma.": "GPS haikaguliwi: programu inajifanya iko kwenye mashamba ya mfano, Palma.",
 "Não havia água na fonte": "Hakukuwa na maji kwenye chanzo",
 "O poço, o furo ou a fonte estava seco ou não deu água para o tuk-tuk.": "Kisima, kisima kirefu au chemchemi kilikuwa kikavu au hakikutoa maji kwa tuk-tuk.",
 "A água acabou antes de regar todas as plantas": "Maji yaliisha kabla ya kumwagilia mimea yote",

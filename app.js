@@ -4740,8 +4740,8 @@ function cartaoDemo() {
     ${DEMO_FUNCOES.map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">Ver como ${n}</div><div class="sub">${d}</div></div></div>`).join('')}</div>`;
 }
 function entrarDemo(papel) {
-  const ant = window.DEMO, pos = S.pos || (S.fix ? [S.fix.coords.latitude, S.fix.coords.longitude] : null);
-  const cfg = { papel, lat: ant ? ant.lat : pos ? pos[0] : -10.7353, lon: ant ? ant.lon : pos ? pos[1] : 40.4684, desde: ant ? ant.desde : new Date().toISOString() };
+  const ant = window.DEMO;                                // v150: os campos de exemplo ficam sempre em Palma (não usa a posição de quem apresenta)
+  const cfg = { papel, lat: ant ? ant.lat : -10.7353, lon: ant ? ant.lon : 40.4684, desde: ant ? ant.desde : new Date().toISOString() };
   try { sessionStorage.setItem('rega.demo', JSON.stringify(cfg)); } catch { return aviso('Este navegador não deixa abrir o modo apresentação.', 'erro'); }
   if (ant) ant.limparTelefone();                          // outra função: começa limpa no telefone; a base de exemplo continua (o que se fez noutra função aparece)
   location.reload();
@@ -4753,7 +4753,7 @@ function faixaDemo() {
   f.innerHTML = `<span style="flex:1">🎬 <b>Apresentação</b> · ${esc(nomeFuncaoDemo(DEMO.papel))}</span><button onclick="ecraDemo()">Mudar</button><button onclick="DEMO.terminar()">Terminar</button>`;
 }
 function ecraDemo() {
-  folha(`<h2>🎬 Modo apresentação</h2><p class="pequeno">Está a ver a app como ${esc(nomeFuncaoDemo(DEMO.papel))}, com dados de exemplo. Nada é gravado no servidor.</p>
+  folha(`<h2>🎬 Modo apresentação</h2><p class="pequeno">Está a ver a app como ${esc(nomeFuncaoDemo(DEMO.papel))}, com dados de exemplo. Nada é gravado no servidor.</p><p class="pequeno">O GPS não é verificado: a app faz de conta que está nos campos de exemplo, em Palma.</p>
     <h3>Ver como outra função</h3>
     ${DEMO_FUNCOES.filter(([k]) => k !== DEMO.papel).map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">${n}</div><div class="sub">${d}</div></div></div>`).join('')}
     <p class="pequeno">O que fizer numa função aparece nas outras (por exemplo: o oficial conta, o M&E valida).</p>

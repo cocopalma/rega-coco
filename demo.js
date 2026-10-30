@@ -23,6 +23,18 @@
   const IDB = 'rega-coco-demo', op = IDBFactory.prototype.open;
   IDBFactory.prototype.open = function (n, v) { return op.call(this, n === 'rega-coco' ? IDB : n, v); };
   try { Object.defineProperty(Navigator.prototype, 'onLine', { get: () => true, configurable: true }); } catch {}
+  // GPS simulado (v150, 30/10/2026, Valdo: "no modo de apresentação não importa onde eu vou estar"): a app recebe sempre a
+  // posição do centro da base de exemplo (±4 m), venha ou não o GPS do telefone. A entrada no 1.º campo funciona em qualquer sala.
+  try {
+    const fixo = () => ({ coords: { latitude: cfg.lat, longitude: cfg.lon, accuracy: 4, altitude: null, altitudeAccuracy: null, heading: null, speed: null }, timestamp: Date.now() });
+    const vig = new Map(); let nv = 0;
+    const geo = {
+      getCurrentPosition(ok) { setTimeout(() => ok(fixo()), 200); },
+      watchPosition(ok) { const id = ++nv; setTimeout(() => ok(fixo()), 200); vig.set(id, setInterval(() => ok(fixo()), 3000)); return id; },
+      clearWatch(id) { clearInterval(vig.get(id)); vig.delete(id); },
+    };
+    Object.defineProperty(Navigator.prototype, 'geolocation', { get: () => geo, configurable: true });
+  } catch {}
 
   function limparTelefone() {
     try { const ks = []; for (let i = 0; i < localStorage.length; i++) { const x = real.key.call(localStorage, i); if (x && x.startsWith(PREF)) ks.push(x); } ks.forEach((x) => real.del.call(localStorage, x)); } catch {}
