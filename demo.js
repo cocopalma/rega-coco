@@ -180,11 +180,11 @@
     for (const t of DB.activistas) {
       const lista = DB.areas.filter((a) => a.activista_id === t.id).map((a) => a.id), regs = reais().filter((r) => r.activista_id === t.id);
       let n = 1; const feitas = [];
-      while (lista.length && lista.every((id) => regs.some((r) => r.area_id === id && r.ronda === n))) {
+      while (lista.length && lista.every((id) => regs.some((r) => r.area_id === id && r.ronda === n && r.campo_fechado !== false))) {
         const rr = regs.filter((r) => r.ronda === n).map((r) => r.data).sort(); feitas.push({ ronda: n, inicio: rr[0], fim: rr[rr.length - 1], dias: Math.round((new Date(rr[rr.length - 1]) - new Date(rr[0])) / 864e5) + 1 }); n++;
       }
       const daRonda = regs.filter((r) => r.ronda === n);
-      out[t.id] = { lista: lista.length, ronda: n, regadas: new Set(daRonda.map((r) => r.area_id)).size, inicio: daRonda.map((r) => r.data).sort()[0] || null, feitas };
+      out[t.id] = { lista: lista.length, ronda: n, regadas: new Set(daRonda.filter((r) => r.campo_fechado !== false).map((r) => r.area_id)).size, inicio: daRonda.map((r) => r.data).sort()[0] || null, feitas };
     }
     return out;
   }
@@ -192,7 +192,10 @@
     const ro = rondas();
     return areasVisiveis().map((a) => {
       const regs = reais().filter((r) => r.area_id === a.id), n = ro[a.activista_id]?.ronda || 1;
-      return { area_id: a.id, ultima_rega: regs.map((r) => r.data).sort().pop() || null, regas_app: regs.length, plantas_app: regs.reduce((s, r) => s + r.plantas_regadas, 0), ronda_actual: n, regada_na_ronda: regs.some((r) => r.ronda === n) };
+      return { area_id: a.id, ultima_rega: regs.map((r) => r.data).sort().pop() || null, regas_app: regs.length, plantas_app: regs.reduce((s, r) => s + r.plantas_regadas, 0), ronda_actual: n, regada_na_ronda: regs.some((r) => r.ronda === n && r.campo_fechado !== false),
+        // v154: rega a meio (campo_fechado = false) deixa o campo por terminar
+        por_terminar: !regs.some((r) => r.ronda === n && r.campo_fechado !== false) && regs.some((r) => r.ronda === n && r.campo_fechado === false),
+        plantas_ronda: regs.filter((r) => r.ronda === n).reduce((s, r) => s + r.plantas_regadas, 0), data_parcial: regs.filter((r) => r.ronda === n && r.campo_fechado === false).map((r) => r.data).sort().pop() || null };
     });
   }
   function recontagensLista() {
@@ -272,7 +275,7 @@
 
   // ---------- 5. respostas aos pedidos da app ----------
   const RPC = {
-    estado_ronda: () => estadoRonda(), estado_ronda2: () => estadoRonda(),
+    estado_ronda: () => estadoRonda(), estado_ronda2: () => estadoRonda(), estado_ronda3: () => estadoRonda(),
     lista_comunidades: () => [...new Set(DB.areas.map((a) => a.comunidade))].sort(),
     pontos_comunidades: () => (papel === 'oficial_me' ? [] : DB.areas.map((a) => ({ comunidade: a.comunidade, zona: a.zona, lat: a.latitude, lon: a.longitude }))),
     recontagens_lista: () => recontagensLista(),

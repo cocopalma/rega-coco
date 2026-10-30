@@ -172,13 +172,36 @@ function rondaInfo(actId) {
   const porRonda = {};
   for (const r of meusRegistos()) {
     if ((r.activista_id !== actId && r.apoio_para !== actId) || !ids.has(r.area_id)) continue;   // v149: regas de outra equipa em apoio contam
-    const n = r.ronda || 1; (porRonda[n] ??= { areas: new Set(), ini: r.data, fim: r.data });
-    const o = porRonda[n]; o.areas.add(r.area_id); if (r.data < o.ini) o.ini = r.data; if (r.data > o.fim) o.fim = r.data;
+    const n = r.ronda || 1; (porRonda[n] ??= { areas: new Set(), parc: {}, ini: r.data, fim: r.data });
+    const o = porRonda[n]; if (r.data < o.ini) o.ini = r.data; if (r.data > o.fim) o.fim = r.data;
+    // v154 (30/10/2026, Valdo): rega a meio por água/avaria (campo_fechado = false) não fecha o campo na ronda
+    if (r.campo_fechado === false) { const q = (o.parc[r.area_id] ??= { pl: 0, data: r.data }); q.pl += r.plantas_regadas || 0; if (r.data > q.data) q.data = r.data; }
+    else o.areas.add(r.area_id);
   }
   const mr = Math.max(1, ...Object.keys(porRonda).map(Number));
-  const cur = porRonda[mr] || { areas: new Set() };
-  if (lista.length && cur.areas.size >= lista.length) return { n: mr + 1, feitas: new Set(), total: lista.length, anterior: { n: mr, ...cur } };
-  return { n: mr, feitas: cur.areas, total: lista.length, ini: cur.ini };
+  const cur = porRonda[mr] || { areas: new Set(), parc: {} };
+  if (lista.length && cur.areas.size >= lista.length) return { n: mr + 1, feitas: new Set(), terminar: new Map(), total: lista.length, anterior: { n: mr, ...cur } };
+  const terminar = new Map(Object.entries(cur.parc || {}).filter(([id]) => !cur.areas.has(id)));
+  return { n: mr, feitas: cur.areas, terminar, total: lista.length, ini: cur.ini };
+}
+// v154 (30/10/2026, Valdo): "se um activista não termina de regar as plantas, no dia seguinte devia começar por esse campo".
+// Só a partir de 31/10. O campo fica por terminar quando faltam plantas por falta de água, porque a água acabou, esperaram pela
+// água, avaria ou outro motivo; fecha quando regaram todas as plantas da base ou quando as que faltam são mudas secas ou mortas.
+const POR_TERMINAR_INICIO = '2026-10-31';
+const FECHA_COM = ['mudas_secas'];
+// plantas já regadas nesta ronda num campo por terminar ({ regadas, falta, data }) ou null
+function infoTerminar(a, ri = null) {
+  if (!a?.activista_id) return null;
+  let t = null;
+  if (souActivista() && a.activista_id === S.perfil.activista_id) t = (ri || rondaInfo(a.activista_id)).terminar.get(a.id) || null;
+  else {
+    const e = S.estado[a.id] || {}; if (e.feita) return null;
+    const f = filaRegistos().filter((r) => r.area_id === a.id && !r.teste && r.plantas_regadas > 0);   // regas no telefone por enviar
+    if (f.some((r) => r.campo_fechado !== false)) return null;
+    if (e.pt || f.length) t = { pl: (e.pt ? e.plr || 0 : 0) + f.reduce((x, r) => x + (r.plantas_regadas || 0), 0), data: [e.pt ? e.dp : null, ...f.map((r) => r.data)].filter(Boolean).sort().pop() || null };
+  }
+  if (!t) return null;
+  return { regadas: t.pl, falta: Math.max(0, plantasN(a) - t.pl), data: t.data };
 }
 const souActivista = () => S.perfil?.papel === 'activista';
 // activista sem telemóvel (24/10/2026, Raul/Valdo: Azizi e Mariano): o técnico, o supervisor ou o gestor registam por ele
@@ -200,10 +223,12 @@ function situacao(a) {
   const u = ultimaRega(a);
   if (!a.activista_id) return { cod: 'sem', txt: 'Sem activista', u };
   let feita, n;
-  if (souActivista() && a.activista_id === S.perfil.activista_id) { const ri = rondaInfo(a.activista_id); feita = ri.feitas.has(a.id); n = ri.n; }
+  let ri = null;
+  if (souActivista() && a.activista_id === S.perfil.activista_id) { ri = rondaInfo(a.activista_id); feita = ri.feitas.has(a.id); n = ri.n; }
   else if (apoioMeu(a.id)) { const e = S.estado[a.id] || {}; n = e.ronda || 1;   // campo em apoio: ronda da equipa dona (+ regas no telefone)
     feita = !!e.feita || filaRegistos().some((r) => r.area_id === a.id && r.apoio_id && !r.teste && r.plantas_regadas > 0); }
   else { const e = S.estado[a.id] || {}; feita = !!e.feita; n = e.ronda || 1; }
+  if (!feita) { const pt = infoTerminar(a, ri); if (pt) return { cod: 'terminar', txt: `Por terminar (faltam ${pt.falta} plantas)`, u, n, pt }; }
   if (!feita && !souActivista()) { const t = testeEm(a.id); if (t) return { cod: 'teste', txt: `Regado em teste (${fmtData(t).slice(0, 5)})`, u, n };
     const q = testeEquipa(a.id); if (q) return { cod: 'teste', txt: `Regado em teste (${fmtData(q.data).slice(0, 5)} · ${q.quem || ''})`, u, n }; }
   return feita ? { cod: 'feita', txt: `Regada na ronda ${n}`, u, n } : { cod: 'por', txt: `Por regar (ronda ${n})`, u, n };
@@ -218,7 +243,7 @@ function testeEm(id) {
 // técnico, supervisor, gestor e director; campos que a pessoa vê. Também a roxo no mapa. Guardado no telefone (rega.testesEquipa).
 const VER_TESTES_EQ = ['tecnico', 'supervisor', 'gestor', 'director'];
 const testeEquipa = (id) => (VER_TESTES_EQ.includes(S.perfil?.papel) ? (S.testesEq || {})[id] || null : null);
-const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a' };
+const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a', terminar: '#f9a825' };
 // borda do campo no mapa (16/10/2026, Dalmar via Valdo): azul = já recebeu rega nesta ronda, vermelho = ainda não (ver bordaAzul)
 const BORDA = { regado: '#1e5bd8', nunca: '#c62828' };
 const COLS_AREAS = 'id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em,n_regas_origem,ultima_rega_origem,datas_rega_origem,plantas_regadas_origem,regas_origem_por_pr';
@@ -274,7 +299,7 @@ async function sincronizarAgora(silencioso) {
       if (r2.error) { erro = r2.error.message; break; }
     }
     // já está no servidor: passa da fila para "meus registos" no mesmo passo (não se perde nem se conta duas vezes)
-    const m = LS.get('meusRegs', []); if (!m.some((x) => x.id === reg.id)) m.push({ id: reg.id, area_id: reg.area_id, activista_id: reg.activista_id, data: reg.data, ronda: reg.ronda, plantas_regadas: reg.plantas_regadas, teste: reg.teste });
+    const m = LS.get('meusRegs', []); if (!m.some((x) => x.id === reg.id)) m.push({ id: reg.id, area_id: reg.area_id, activista_id: reg.activista_id, data: reg.data, ronda: reg.ronda, plantas_regadas: reg.plantas_regadas, teste: reg.teste, campo_fechado: reg.campo_fechado ?? null });
     LS.set('meusRegs', m);
     LS.set('fila', filaRegistos().filter((x) => x.id !== reg.id));
     for (const tipo of Object.keys(fotos || {})) { try { await FOTOS.apagar(`${reg.id}-${tipo}`); } catch {} }
@@ -357,7 +382,7 @@ async function carregarTudo() {
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho,sem_telefone').order('nome'),
     sb.from('areas').select(COLS_AREAS).eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
-    sb.rpc('estado_ronda2'),
+    sb.rpc('estado_ronda3'),
     sb.rpc('lista_comunidades'),
     sb.rpc('pontos_comunidades'),
     sb.from('queimadas').select('id,area_id,data,observacao,foto_path,registada_por,registada_em,plantas_afectadas,plantas_mortas,recontagem_em,vivas_recontadas,recontagem_obs').eq('removida', false).range(0, 9999),
@@ -398,16 +423,17 @@ async function carregarTudo() {
   await carregarEstado(est);
 }
 async function carregarEstado(pronto) {
-  const { data, error } = pronto || await sb.rpc('estado_ronda2');
+  let { data, error } = pronto || await sb.rpc('estado_ronda3');
+  if (error) ({ data, error } = await sb.rpc('estado_ronda2'));   // v154: estado_ronda3 = + campos por terminar
   if (error) return;
-  S.estado = {}; for (const e of data) S.estado[e.area_id] = { u: e.ultima_rega, ronda: e.ronda_actual, feita: e.regada_na_ronda, n: e.regas_app || 0, pl: e.plantas_app || 0 };
+  S.estado = {}; for (const e of data) S.estado[e.area_id] = { u: e.ultima_rega, ronda: e.ronda_actual, feita: e.regada_na_ronda, n: e.regas_app || 0, pl: e.plantas_app || 0, pt: !!e.por_terminar, plr: e.plantas_ronda || 0, dp: e.data_parcial || null };
   LS.set('estado', S.estado); LS.set('estadoEm', new Date().toISOString());
   if (!['cliente', 'oficial_me'].includes(S.perfil?.papel)) { const q = await sb.rpc('planos_lista'); if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data); }
   if (VER_MEMBROS.includes(S.perfil?.papel)) {           // nomes das pessoas de cada equipa (v135, lista do RH de 23/10/2026)
     const q = await sb.rpc('membros_lista'); if (!q.error && Array.isArray(q.data)) { S.membros = q.data; aplicarMembrosPendentes(); LS.set('membros', S.membros); }
   }
   if (souActivista() && S.perfil.activista_id) {        // registos da minha equipa (para a ronda funcionar sem rede)
-    const r = await sb.from('registos_rega').select('id,area_id,activista_id,apoio_para,data,ronda,plantas_regadas,teste')
+    const r = await sb.from('registos_rega').select('id,area_id,activista_id,apoio_para,data,ronda,plantas_regadas,teste,campo_fechado')
       .or(`activista_id.eq.${S.perfil.activista_id},apoio_para.eq.${S.perfil.activista_id}`).eq('teste', false).gt('plantas_regadas', 0).range(0, 9999);
     if (!r.error) LS.set('meusRegs', r.data);
   } else if (PODE_REGAR.includes(S.perfil?.papel) && S.perfil?.id) {   // as minhas regas de teste dos últimos 14 dias
@@ -1808,7 +1834,8 @@ function desenharLista() {
   else if (sit === 'teste') linhas = linhas.filter((x) => testeEm(x.a.id));
   else if (sit === 'testeq') linhas = linhas.filter((x) => testeEm(x.a.id) || testeEquipa(x.a.id));
   else if (sit) linhas = linhas.filter((x) => x.s.cod === sit);
-  linhas.sort((x, y) => (x.s.cod === 'feita') - (y.s.cod === 'feita') || (x.d ?? 1e12) - (y.d ?? 1e12));   // por regar primeiro
+  const ordem = (c) => (c === 'terminar' ? 0 : c === 'feita' ? 2 : 1);   // por terminar primeiro (v154), regados no fim
+  linhas.sort((x, y) => ordem(x.s.cod) - ordem(y.s.cod) || (x.d ?? 1e12) - (y.d ?? 1e12));
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
     (porAprovar().length ? `<div class="msg info">${porAprovar().length} medições de área por aprovar. <button class="chip" onclick="ecraPorAprovar()">Ver</button></div>` : '') +
     avisoSemLimite(sit) +
@@ -2448,6 +2475,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div>
     ${linhasRegasCampo(a)}
     <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
+    ${s.pt ? `<div class="msg info">⏳ <span>Rega a meio nesta ronda: regadas</span> ${num(s.pt.regadas)} <span>de</span> ${num(plantasN(a))} <span>plantas</span>${s.pt.data ? ` (${fmtData(s.pt.data)})` : ''}. <span>O campo só fecha quando regarem as que faltam, ou se as que faltam forem mudas secas ou mortas.</span></div>` : ''}
     ${d != null ? `<div class="lin"><span>Distância${temPoligono(a) ? ' (à borda)' : ''}</span><b>${d === 0 ? 'dentro do campo' : (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') + (a.latitude != null ? ' · ' + rumo(S.pos, [a.latitude, a.longitude]) : '')}</b></div>` : ''}
     ${eNovo(a) ? `<div class="lin"><span>Na rega desde</span><b>${fmtData(a.reactivada_em.slice(0, 10))} <span class="tag t-novo">Novo na rega</span></b></div>` : ''}
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
@@ -2615,15 +2643,22 @@ const TIPOS = [
   ['agua_acabou', 'A água acabou antes de regar todas as plantas', 'A água que chegou não deu para todas as plantas do campo.'],
   ['agua_atrasada', 'Esperámos pela água', 'O tuk-tuk chegou tarde e a equipa ficou à espera.'],
   ['mudas_secas', 'Mudas secas ou mortas', 'No campo há menos plantas vivas do que diz a base: secas, mortas ou que já não existem.'],
-  ['acesso_dificil', 'Acesso difícil', 'Caminho mau, campo longe ou o tuk-tuk não conseguiu chegar.'],
   ['avaria', 'Avaria', 'Avaria do tuk-tuk, da bomba ou do material de rega.'],
   ['outro', 'Outro', 'Escreva o que aconteceu na caixa de baixo (obrigatório).'],
 ];
+// "Acesso difícil" saiu da lista (v154, 30/10/2026, Valdo: "todos os campos com difícil acesso não estão aqui"); fica nos registos antigos.
+// plantas que ainda faltam regar no campo nesta ronda (base menos o que já se regou numa rega a meio) e se a rega conta a sério
+function baseSaida(a) {
+  const base = plantasN(a), pt = infoTerminar(a);
+  return { base, ja: pt ? pt.regadas : 0, resta: Math.max(0, base - (pt ? pt.regadas : 0)) };
+}
+const contaRonda = (a) => (souActivista() || porEquipa(a)) && hojeISO() >= POR_TERMINAR_INICIO;
 function ecraSaida(msg = '') {
   const ent = LS.get('emCurso'), a = S.areas.find((x) => x.id === ent.area_id);
   folha(`${msg}<h2>${esc(a.produtor)}</h2><p class="pequeno">Entrada às ${fmtHora(ent.entrada_em)}</p>
    <label>Plantas regadas neste campo<input id="s-plantas" type="number" inputmode="numeric" min="0" value="${ent.plantas_escritas ?? ''}"></label>
    <p class="pequeno">Na base: ${plantasTxt(a)}. Escreva o número de plantas que regou.</p>
+   ${(() => { const b = baseSaida(a); return b.ja ? `<div class="msg info">⏳ <span>Campo por terminar: já se regaram</span> ${num(b.ja)} <span>plantas nesta ronda. Faltam</span> ${num(b.resta)}. <span>Escreva só as plantas que regou agora.</span></div>` : ''; })()}
    <label>Pessoas que regaram este campo<input id="s-pessoas" type="number" inputmode="numeric" min="1" max="30" value="${jornadaHoje()?.pessoas ?? ''}"></label>
    ${ent.agua_em ? `<p class="pequeno">Água no campo às ${fmtHora(ent.agua_em)}.</p>`
      : `<label>Hora a que chegou a água (tuk-tuk)<input id="s-agua" type="time"></label><p class="pequeno">Deixe vazio se não chegou água.</p>`}
@@ -2651,8 +2686,13 @@ function ecraSaida(msg = '') {
 // v123 (28/10/2026, Valdo): regou menos plantas do que a base → tem de dizer porquê
 function avisoFalta(a) {
   const el = $('#s-falta'); if (!el) return;
-  const p = parseInt($('#s-plantas').value, 10), base = plantasN(a), escolheu = !!document.querySelector('#s-chips .chip.on');
-  el.innerHTML = base > 0 && p >= 0 && p < base ? `<div class="msg ${escolheu ? 'info' : 'erro'}">Regou ${p} de ${base} plantas. Escolha porque não regou ${base - p} plantas (obrigatório).</div>` : '';
+  const p = parseInt($('#s-plantas').value, 10), base = baseSaida(a).resta, tipos = [...document.querySelectorAll('#s-chips .chip.on')].map((b) => b.dataset.k), escolheu = tipos.length > 0;
+  if (!(base > 0 && p >= 0 && p < base)) { el.innerHTML = ''; return; }
+  // v154: diz logo se o campo fica fechado ou por terminar
+  const fica = !escolheu || !contaRonda(a) ? '' : tipos.every((t) => FECHA_COM.includes(t))
+    ? '<div class="pequeno">O campo fica fechado nesta ronda: as plantas que faltam estão secas ou mortas.</div>'
+    : '<div class="pequeno"><b>O campo fica por terminar.</b> <span>No próximo dia de trabalho é o primeiro campo a regar.</span></div>';
+  el.innerHTML = `<div class="msg ${escolheu ? 'info' : 'erro'}">Regou ${p} de ${base} plantas. Escolha porque não regou ${base - p} plantas (obrigatório).${fica}</div>`;
 }
 async function marcarSaida() {
   const ent = LS.get('emCurso'), a = S.areas.find((x) => x.id === ent.area_id);
@@ -2667,7 +2707,7 @@ async function marcarSaida() {
   if (hAgua) { const t = new Date(); const [hh, mm] = hAgua.split(':'); t.setHours(+hh, +mm, 0, 0); ent.agua_em = t.toISOString(); }
   const j = jornadaHoje(); if (j && j.pessoas !== pessoas) { j.pessoas = pessoas; LS.set('jornada', j); }
   const tipos = [...document.querySelectorAll('#s-chips .chip.on')].map((b) => b.dataset.k), obs = $('#s-obs').value.trim();
-  const base = plantasN(a);
+  const base = baseSaida(a).resta;
   if (base > 0 && plantas < base && !tipos.length) { avisoFalta(a); alert(`Regou ${plantas} de ${base} plantas. Escolha porque não regou ${base - plantas} plantas (obrigatório).`); return; }
   if (tipos.includes('outro') && obs.length < 3) { alert('Escolheu «Outro»: escreva o que aconteceu.'); $('#s-obs').focus(); return; }
   ent.plantas_escritas = String(plantas); ent.rascSaida = { pessoas, tipos, obs, agua: hAgua || '' }; LS.set('emCurso', ent);   // se o GPS falhar, o ecrã volta preenchido
@@ -2687,6 +2727,8 @@ async function marcarSaida() {
     plano_id: ent.plano_id || null, plano_dia: ent.plano_dia ?? null, fora_itinerario: ent.fora_itinerario ?? null, motivo_itinerario: ent.motivo_itinerario || null,
     area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null,
     criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista' && !porEquipa(a), observacao: obs || null,
+    // v154: false = rega a meio (faltam plantas e o motivo não é só mudas secas/mortas): o campo continua por terminar na ronda
+    campo_fechado: hojeISO() < POR_TERMINAR_INICIO ? null : !(base > 0 && plantas < base && !tipos.every((t) => FECHA_COM.includes(t))),
     constr: tipos.map((t) => ({ id: crypto.randomUUID(), tipo: t, descricao: obs || null })),
   };
   porNaFila(reg); LS.del('emCurso'); LS.del('rascFotoRega'); actSync(); desenharMapa(); desenharLista();
@@ -2694,6 +2736,7 @@ async function marcarSaida() {
   let nota = '';
   if ((souActivista() || porEquipa(a)) && antes && plantas > 0) {
     const depois = rondaInfo(actId);
+    if (reg.campo_fechado === false) nota = `<div class="msg info">⏳ <b>Campo por terminar:</b> <span>Faltam</span> ${num(base - plantas)} <span>plantas</span>. <span>No próximo dia de trabalho é o primeiro campo a regar.</span></div>`;
     if (depois.n > antes.n) nota = `<div class="msg ok"><b>Ronda ${antes.n} concluída!</b> Os ${antes.total} campos da lista foram regados de ${fmtData(depois.anterior.ini)} a ${fmtData(depois.anterior.fim)}. A ronda ${depois.n} começa agora.</div>`;
   }
   sugerirProximo(a, nota, reg.id);
@@ -2806,8 +2849,11 @@ function sugerirProximo(feito, nota = '', regId = null) {
   try {
     de = S.pos || (feito.latitude != null ? [feito.latitude, feito.longitude] : null);
     lista = (S.perfil.papel === 'activista' ? minhas() : S.areas.filter((a) => a.comunidade === feito.comunidade)).filter((a) => a.id !== feito.id);
-    const por = lista.filter((a) => situacao(a).cod === 'por');
+    const sits = new Map(lista.map((a) => [a.id, situacao(a).cod]));
+    const por = lista.filter((a) => ['por', 'terminar'].includes(sits.get(a.id)));
     cand = por.filter((a) => a.latitude != null);
+    // v154: os campos por terminar vêm primeiro (antes do itinerário), o mais perto entre eles
+    var term = cand.filter((a) => sits.get(a.id) === 'terminar');
     Object.assign(log, { n_lista: lista.length, n_por: por.length, n_sem_coord: por.length - cand.length, n_candidatos: cand.length, origem_pos: S.pos ? 'gps' : de ? 'campo' : null });
   } catch (e) {
     registarSugProx({ ...log, mostrada: false, motivo: 'erro: ' + (e?.message || e) }); return semSug();
@@ -2820,8 +2866,9 @@ function sugerirProximo(feito, nota = '', regId = null) {
   // com plano aprovado, o próximo campo é o seguinte do itinerário de hoje (23/10/2026, Valdo)
   const it = souActivista() ? itinerarioHoje() : null;
   const pIt = it ? it.campos.map((i) => S.areas.find((x) => x.id === i)).find((x) => x && x.id !== feito.id && !it.feitas.has(x.id) && x.latitude != null) : null;
-  const p = pIt || cand[0], d = metros(de, [p.latitude, p.longitude]), s = situacao(p);
-  if (pIt) log.motivo = 'itinerario';
+  term.sort((x, y) => metros(de, [x.latitude, x.longitude]) - metros(de, [y.latitude, y.longitude]));
+  const p = term[0] || pIt || cand[0], d = metros(de, [p.latitude, p.longitude]), s = situacao(p);
+  if (term[0]) log.motivo = 'por_terminar'; else if (pIt) log.motivo = 'itinerario';
   LS.set('sugestao', { area_id: p.id, em: new Date().toISOString() });
   registarSugProx({ ...log, mostrada: true, area_sugerida_id: p.id, distancia_m: Math.round(d) });
   mostrarSugFixa();
@@ -2836,14 +2883,36 @@ function sugerirProximo(feito, nota = '', regId = null) {
     <button class="btn sec" onclick="fecharFolha()">Escolher outro campo</button>`);
 }
 function sugActual() {                                 // a sugestão guardada, só do dia de hoje e com o campo no telefone
-  const g = LS.get('sugestao'); if (!g || !g.em) return null;
-  const d = new Date(g.em); if (isNaN(d) || `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` !== hojeISO()) return null;
   if (LS.get('emCurso')) return null;
-  const a = S.areas.find((x) => x.id === g.area_id); return a && a.latitude != null ? a : null;
+  const g = LS.get('sugestao');
+  if (g && g.em) {
+    const d = new Date(g.em);
+    if (!isNaN(d) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === hojeISO()) {
+      const a = S.areas.find((x) => x.id === g.area_id); if (a && a.latitude != null) return a;
+    }
+  }
+  // v154: sem sugestão de hoje, o campo por terminar mais perto é o primeiro a regar
+  const l = porTerminarMeus().map((x) => x.a).filter((a) => a.latitude != null);
+  if (S.pos) l.sort((x, y) => metros(S.pos, [x.latitude, x.longitude]) - metros(S.pos, [y.latitude, y.longitude]));
+  return l[0] || null;
 }
 function textoSugFixa(a) {
-  const dist = S.pos ? metros(S.pos, [a.latitude, a.longitude]) : null;
-  return `➡️ <span>Próximo campo sugerido</span>: <b class="sem-trad">${esc(a.produtor)}</b> · <span class="sem-trad">${esc(a.pr)}</span>${dist != null ? ` · <span class="sem-trad">${dist < 1000 ? Math.round(dist) + ' m' : (dist / 1000).toFixed(1) + ' km'}</span> · <span>${rumo(S.pos, [a.latitude, a.longitude])}</span>` : ''}`;
+  const dist = S.pos ? metros(S.pos, [a.latitude, a.longitude]) : null, pt = infoTerminar(a);
+  return `➡️ <span>Próximo campo sugerido</span>: <b class="sem-trad">${esc(a.produtor)}</b> · <span class="sem-trad">${esc(a.pr)}</span>${dist != null ? ` · <span class="sem-trad">${dist < 1000 ? Math.round(dist) + ' m' : (dist / 1000).toFixed(1) + ' km'}</span> · <span>${rumo(S.pos, [a.latitude, a.longitude])}</span>` : ''}${pt ? ` · ⏳ <span>${`Por terminar (faltam ${pt.falta} plantas)`}</span>` : ''}`;
+}
+// v154: campos da minha equipa com a rega a meio nesta ronda (activista)
+function porTerminarMeus() {
+  if (!souActivista() || !S.perfil?.activista_id) return [];
+  const ri = rondaInfo(S.perfil.activista_id);
+  return minhas().filter((a) => ri.terminar.has(a.id)).map((a) => ({ a, ...infoTerminar(a, ri) })).sort((x, y) => String(x.data).localeCompare(String(y.data)));
+}
+function cartaoPorTerminar() {
+  const l = porTerminarMeus(); if (!l.length) return '';
+  return `<div class="cartao" id="hoje-terminar" style="border-left:5px solid ${COR.terminar}"><h2>⏳ <span>Campos por terminar</span> (${l.length})</h2>
+    <p class="pequeno">A rega ficou a meio por falta de água ou avaria. Estes campos são os primeiros a regar.</p>` +
+    l.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.a.produtor)} · ${esc(x.a.pr)}</div>
+      <div class="sub"><span>Faltam</span> ${num(x.falta)} <span>de</span> ${num(plantasN(x.a))} <span>plantas</span>${x.data ? ` · <span>rega a meio a</span> ${fmtData(x.data)}` : ''}</div>
+      <div class="chips">${x.a.latitude != null ? `<button class="chip" onclick="mudar('mapa');setTimeout(()=>{mapa.invalidateSize();mapa.setView([${x.a.latitude},${x.a.longitude}],16)},50)">Ver no mapa</button>` : ''}<button class="chip" onclick="abrirFicha('${esc(x.a.id)}')">Abrir a ficha</button></div></div>`).join('') + '</div>';
 }
 function mostrarSugFixa() {                            // cartão fixo no Mapa (em baixo)
   const el = $('#sug-mapa'); if (!el) return;
@@ -2855,7 +2924,7 @@ function mostrarSugFixa() {                            // cartão fixo no Mapa (
   el.style.display = '';
 }
 function cartaoSugHoje() {
-  const a = sugActual(); if (!a) return '';
+  const a = sugActual(); if (!a || porTerminarMeus().some((x) => x.a.id === a.id)) return '';
   return `<div class="cartao" id="hoje-sugprox"><div>${textoSugFixa(a)}</div><p class="pequeno">É só uma sugestão. Fica aqui até marcar a próxima entrada.</p>
     <div class="chips"><button class="chip" onclick="verSugMapa()">Ver no mapa</button><button class="chip" onclick="abrirFicha('${esc(a.id)}')">Abrir a ficha</button></div></div>`;
 }
@@ -3762,7 +3831,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoApoioAct() + cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoDiaSemRega() + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoApoioAct() + cartaoPorTerminar() + cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoDiaSemRega() + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
@@ -4259,6 +4328,12 @@ function cartaoMeuDia() {
   h += `<h3 style="font-size:14px;margin:12px 0 4px">6. <span>Chegaram ao 1.º campo depois das</span> ${esc(hc)} (${tarde.length})</h3>` +
     (tarde.length ? '<p class="pequeno">Pergunte a cada equipa porque chegou tarde.</p>' + tarde.map((e) => `<div class="lin"><span class="sem-trad">${esc(e.nome)}</span><b>${hMz(e.chegada)} · +${num(minAtraso(e))} min</b></div>`).join('')
       : `<p class="pequeno">${eqs.some((e) => e.chegada) ? 'Todas as equipas que regaram chegaram a tempo.' : 'Ainda nenhuma equipa marcou entrada hoje.'}</p>`);
+  // v154 (30/10/2026, Valdo): campos com a rega a meio (água/avaria) — são os primeiros a regar no dia seguinte
+  const pt = d.por_terminar || [];
+  h += `<h3 style="font-size:14px;margin:12px 0 4px">7. <span>Campos por terminar</span> (${pt.length})</h3>` +
+    (pt.length ? '<p class="pequeno">A rega ficou a meio por falta de água ou avaria. Confirme que a equipa começa o próximo dia por estes campos.</p>' + pt.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
+      <div class="sub"><span class="sem-trad">${esc(x.equipa || '')}</span> · <span>Faltam</span> ${num(Math.max(0, (x.base || 0) - (x.regadas || 0)))} <span>de</span> ${num(x.base || 0)} <span>plantas</span>${x.data ? ` · <span>rega a meio a</span> ${fmtData(x.data)}` : ''}</div>
+      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha</button></div></div>`).join('') : '<p class="pequeno">Nenhum.</p>');
   h += d.fechado_em ? '' : falta.length ? `<p class="pequeno" style="margin-top:12px"><span>Para fechar o dia, todas as equipas têm de ter rega ou motivo. Faltam:</span> ${falta.length}</p>`
     : `<button class="btn" style="margin-top:12px" onclick="fecharDia()">🔒 Fechar o dia</button>`;
   h += `<p class="pequeno">Feche o dia até às 18:00. Os dias fechados a tempo, a monitoria no prazo, as regas com ⚠️ confirmadas e as equipas sem motivo contam no cumprimento de cada técnico e supervisor (painel).</p>${c.em && !navigator.onLine ? `<p class="pequeno"><span>Sem rede: dados de</span> ${fmtHora(c.em)}</p>` : ''}</div>`;
