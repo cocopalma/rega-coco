@@ -4201,15 +4201,15 @@ function sugFeitaVista(id) {
 function cartaoAvisos() {
   const L = avisos(); if (!L.length) return '';
   const varias = S.perfil.papel !== 'activista';
-  return `<div class="cartao"><h2>Avisos da monitoria</h2><p class="pequeno">Campos verificados nos últimos 14 dias com plantas sem solo húmido.</p>` +
+  return `<div class="cartao"><h2>Avisos da monitoria</h2><p class="pequeno">Plantas sem água na verificação feita depois da rega. Na próxima rega, dê atenção a estas plantas.</p>` +
     L.map((v) => { const a = S.areas.find((x) => x.id === v.area_id) || { produtor: v.area_id };
       return `<div class="item" onclick="abrirFicha('${esc(v.area_id)}')"><div><div class="nome">${esc(a.produtor)}</div>
         <div class="sub">${esc(a.pr || '')}${varias ? ' · ' + esc(nomeAct(v.activista_id)) : ''} · rega de ${fmtData(v.data_rega)} · ${textoAviso(v)}</div></div>
-        <span class="tag ${v.solo_regado ? 't-por' : 't-alerta'}">${v.solo_regado ? 'Rever plantas' : 'Campo não regado'}</span></div>`; }).join('') + '</div>';
+        <span class="tag ${v.solo_regado ? 't-por' : 't-alerta'}">${v.solo_regado ? `Regado · ${v.sem_rega} ${v.sem_rega == 1 ? 'planta' : 'plantas'} sem água` : 'Campo não regado'}</span></div>`; }).join('') + '</div>';
 }
 function avisoCampo(id) {
   const v = avisos().find((x) => x.area_id === id); if (!v) return '';
-  return `<div class="msg ${v.solo_regado ? 'info' : 'erro'}"><b>Monitoria (rega de ${fmtData(v.data_rega)}):</b> <span>${v.sem_rega} de ${v.plantas_obs} plantas sem solo húmido</span> · <span>nota ${Number(v.nota).toLocaleString(LOC)}</span>.<span>${v.solo_regado ? ' Campo considerado regado (≥ 80%), mas reveja as plantas sem rega.' : ' Campo considerado não regado (menos de 80% das plantas com solo húmido).'}</span>${v.observacao ? `<br><span>Observação: ${esc(v.observacao)}</span>` : ''}</div>`;
+  return `<div class="msg ${v.solo_regado ? 'info' : 'erro'}"><b>Monitoria (rega de ${fmtData(v.data_rega)}):</b> <span>${v.sem_rega} de ${v.plantas_obs} plantas sem solo húmido</span> · <span>nota ${Number(v.nota).toLocaleString(LOC)}</span>.<span>${v.solo_regado ? ' Campo regado. Na próxima rega, dê atenção às plantas sem água.' : ' Campo considerado não regado (menos de 80% das plantas com solo húmido).'}</span>${v.observacao ? `<br><span>Observação: ${esc(v.observacao)}</span>` : ''}</div>`;
 }
 
 // ---------- monitoria por amostragem (técnico e supervisor) ----------
