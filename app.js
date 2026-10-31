@@ -2818,10 +2818,14 @@ function ecraSaida(msg = '') {
     $('#s-foto-ok').innerHTML = `<span style="color:var(--ok,#2e7d32)">✓ Fotografia da saída às ${fmtHora(LS.get('emCurso').fotos.saida)}</span>`;
   });
 }
+const avisoAcimaBase = (p, base) => `<span>Escreveu</span> ${p} <span>plantas, mas este campo só tem</span> ${base} <span>plantas por regar na base. Conte de novo.</span> <span>Se o campo tem mesmo mais plantas, a rega fica com um aviso para o técnico e o supervisor confirmarem.</span>`;
 // v123 (28/10/2026, Valdo): regou menos plantas do que a base → tem de dizer porquê
 function avisoFalta(a) {
   const el = $('#s-falta'); if (!el) return;
   const p = parseInt($('#s-plantas').value, 10), base = baseSaida(a).resta, tipos = [...document.querySelectorAll('#s-chips .chip.on')].map((b) => b.dataset.k), escolheu = tipos.length > 0;
+  // v167 (31/10/2026, Valdo: "O número de plantas regadas não pode passar o número que está na base. Se passar uma planta, já é um problema"):
+  // aviso logo que passa a base (antes só acima de +20 %)
+  if (base > 0 && p > base) { el.innerHTML = `<div class="msg erro">${avisoAcimaBase(p, base)}</div>`; return; }
   if (!(base > 0 && p >= 0 && p < base)) { el.innerHTML = ''; return; }
   // v154: diz logo se o campo fica fechado ou por terminar
   const fica = !escolheu || !contaRonda(a) ? '' : tipos.every((t) => FECHA_COM.includes(t))
@@ -2835,7 +2839,8 @@ async function marcarSaida() {
   if (semFoto) { alert(FALTA_FOTO[semFoto]); if (semFoto !== 'saida') ecraFotoRega(semFoto); return; }
   const plantas = parseInt($('#s-plantas').value, 10);
   if (!(plantas >= 0)) { alert('Escreva o número de plantas regadas.'); return; }
-  if (plantas > plantasN(a) * 1.2 && !confirm(`Escreveu ${plantas}, mas a base diz ${plantasTxt(a)}. Confirma?`)) return;
+  const lim = baseSaida(a).resta;                                // v167: qualquer número acima da base pede confirmação
+  if (lim > 0 && plantas > lim && !confirm(`Escreveu ${plantas} plantas, mas este campo só tem ${lim} plantas por regar na base. Confirma que contou bem? A rega fica com um aviso para o técnico e o supervisor.`)) return;
   const pessoas = parseInt($('#s-pessoas').value, 10);
   if (!(pessoas >= 1 && pessoas <= 30)) { alert('Escreva o número de pessoas (1 a 30).'); return; }
   const hAgua = $('#s-agua')?.value;
@@ -4094,7 +4099,7 @@ function gravarCorrecaoPlantas(rid, areaId) {
   const a = S.areas.find((x) => x.id === areaId), n = Number($('#cp-n').value), mot = $('#cp-mot').value.trim();
   if ($('#cp-n').value === '' || !Number.isInteger(n) || n < 0) return alert('Escreva o número de plantas regadas.');
   if (mot.length < 3) return alert('Escreva o motivo da correcção.');
-  if (a && n > plantasN(a) * 1.2 && !confirm(`Escreveu ${n}, mas a base diz ${plantasTxt(a)}. Confirma?`)) return;
+  if (a && plantasN(a) > 0 && n > plantasN(a) && !confirm(`Escreveu ${n}, mas a base diz ${plantasTxt(a)}. Confirma?`)) return;   // v167: acima da base
   const f = LS.get('filaAlt', []).filter((x) => !(x.tipo === 'plantas_rega' && x.registo_id === rid)); LS.set('filaAlt', f);   // só a última correcção
   porNaFilaAlt({ tipo: 'plantas_rega', area_id: areaId, registo_id: rid, plantas: n, motivo: mot, em: new Date().toISOString() });
   abrirFicha(areaId, '<div class="msg ok">Correcção guardada.</div>');
