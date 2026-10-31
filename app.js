@@ -850,13 +850,9 @@ function desenharPercurso(x, d, dados, guardadoEm) {
   const P = pontosPerc(dados), regas = dados.regas || [], COR = '#6a1b9a';
   regas.forEach((g, k) => { const a = S.areas.find((y) => y.id === g.area_id); if (a && a.latitude != null) campoRega(a, k + 1, '#1565c0'); });
   const t0 = P.length ? P[0].t : 0, dur = P.length > 1 ? P[P.length - 1].t - t0 : 0, fr = (p) => (dur ? (p.t - t0) / dur : 0);
-  const { dist, semReg } = tracarPercurso(P, COR, '#777', fr);
+  const { dist, semReg } = tracarPercurso(P, COR, '#555', fr, regas);
   P.forEach((p, k) => { if (k && k < P.length - 1) L.circleMarker(p.ll, { ...PP, radius: 4, color: corGrad(fr(p)), weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip(fmtH(p.t), { direction: 'top' }).addTo(percCamada); });
-  // números da ordem do caminho: até 9 marcas seguidas, repartidas pelos pontos entre o início e o fim (tocar = hora)
-  if (P.length > 4) { let ult = -1, n = 0;
-    for (let k = 1; k <= 9; k++) { const i = Math.round(k * (P.length - 1) / 10); if (i <= ult || i <= 0 || i >= P.length - 1) continue; ult = i; const num = ++n;
-      L.marker(P[i].ll, { icon: L.divIcon({ className: 'ic-perc-n', html: `<b style="display:block;width:20px;height:20px;line-height:16px;border-radius:5px;background:${corGrad(fr(P[i]))};color:#fff;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);text-align:center;font-size:11px">${num}</b>`, iconSize: [20, 20], iconAnchor: [10, 10] }) })
-        .bindTooltip(fmtH(P[i].t), { direction: 'top', offset: [0, -10] }).addTo(percCamada); } }
+  // v160 (31/10/2026, Valdo): sem os quadrados 1–9 (confundiam-se com os números das regas); a ordem vê-se pela cor e pelas horas
   const marca = (ll, txt, cor) => L.circleMarker(ll, { ...PP, radius: 9, color: '#fff', weight: 3, fillColor: cor, fillOpacity: 1 }).bindTooltip(txt, { permanent: true, direction: 'top', offset: [0, -9], className: 'rot-regua' }).addTo(percCamada);
   if (P.length) { marca(P[0].ll, `Início ${fmtH(P[0].t)}`, '#2e7d32'); if (P.length > 1) marca(P[P.length - 1].ll, `Fim ${fmtH(P[P.length - 1].t)}`, '#c62828'); }
   // sequência do dia pela hora: início, cada rega, fim
@@ -873,17 +869,24 @@ function desenharPercurso(x, d, dados, guardadoEm) {
     : '<div><span>Sem pontos neste dia.</span></div>') + linhas.map((l) => l[1]).join('')
     + (guardadoEm ? `<div class="pequeno"><span>Sem rede: guardado no telefone às</span> <span>${fmtHora(guardadoEm)}</span></div>` : '');
   $('#pc-info').style.cssText = 'max-height:32vh;overflow:auto';
-  $('#pc-leg').innerHTML = `<span>Caminho: verde no início, amarelo a meio, vermelho no fim · quadrados 1–9: ordem do caminho (toque = hora) · círculos azuis: campos regados, pela ordem · cinzento tracejado: sem registo.</span><div style="height:6px;border-radius:3px;margin:4px 0;background:linear-gradient(90deg,${corGrad(0)},${corGrad(.5)},${corGrad(1)})"></div>`;
-  $('#percurso').style.display = '';
+  $('#pc-leg').innerHTML = `<span>Caminho: verde no início, amarelo a meio, vermelho no fim (toque num ponto = hora) · números azuis: campos regados, pela ordem · tracejado: sem registo (app fechada), passando pelos campos regados nesse tempo.</span><div style="height:6px;border-radius:3px;margin:4px 0;background:linear-gradient(90deg,${corGrad(0)},${corGrad(.5)},${corGrad(1)})"></div>`;
+  verCartaoPerc(true);
   enquadrarPercurso([...P.map((p) => p.ll), ...regas.map((g) => { const a = S.areas.find((y) => y.id === g.area_id); return a && a.latitude != null ? [a.latitude, a.longitude] : null; }).filter(Boolean)]);
 }
 const pontosPerc = (dados) => (dados.pontos || []).map((p) => ({ ll: [p[1], p[0]], t: p[2] }));
-// desenha um percurso: partes seguidas a cheio; buracos de mais de 10 min a tracejado (sem registo)
-function tracarPercurso(P, cor, corBuraco, fr = null) {
+// desenha um percurso: partes seguidas a cheio; buracos de mais de 10 min a tracejado (sem registo). v160 (31/10/2026, Valdo):
+// o tracejado passa pelos campos onde a equipa regou nesse tempo (antes ia em linha recta e um campo a 2,6 km ficava fora do caminho)
+function tracarPercurso(P, cor, corBuraco, fr = null, regas = []) {
   const partes = []; let cur = [], dist = 0, semReg = 0;
+  const campoEm = (t1, t2) => regas.filter((g) => { const t = Date.parse(g.entrada_em) / 1000; return t > t1 && t < t2; })
+    .map((g) => S.areas.find((y) => y.id === g.area_id)).filter((a) => a && a.latitude != null).map((a) => [a.latitude, a.longitude]);
+  const tracejado = (lls) => { if (lls.length < 2) return;
+    L.polyline(lls, { ...PP, color: '#fff', weight: 6, opacity: .85, interactive: false }).addTo(percCamada);
+    L.polyline(lls, { ...PP, color: corBuraco, weight: 3, dashArray: '6 7', opacity: 1, interactive: false }).addTo(percCamada); };
+  if (P.length) { tracejado([...campoEm(0, P[0].t), P[0].ll]); tracejado([P[P.length - 1].ll, ...campoEm(P[P.length - 1].t, 4e9)]); }
   P.forEach((p, k) => {
     if (k && p.t - P[k - 1].t > PERC.buraco) { if (cur.length) partes.push(cur); semReg += p.t - P[k - 1].t;
-      L.polyline([P[k - 1].ll, p.ll], { ...PP, color: corBuraco, weight: 3, dashArray: '4 8', opacity: .8, interactive: false }).addTo(percCamada); cur = []; }
+      tracejado([P[k - 1].ll, ...campoEm(P[k - 1].t, p.t), p.ll]); cur = []; }
     else if (k) dist += metros(P[k - 1].ll, p.ll);
     cur.push(p);
   });
@@ -916,7 +919,7 @@ async function verTodasEquipas(d) {
     if (!dados) { linhas.push(`<div class="pequeno"><i style="display:inline-block;width:12px;height:12px;border-radius:6px;background:${cor}"></i> <b>${esc(x.nome)}</b> · <span>não está no telefone</span></div>`); return; }
     const P = pontosPerc(dados), regas = dados.regas || [];
     regas.forEach((g, k) => { const a = S.areas.find((y) => y.id === g.area_id); if (a && a.latitude != null) { campoRega(a, k + 1, cor); lim.push([a.latitude, a.longitude]); } });
-    const { dist } = tracarPercurso(P, cor, cor);
+    const { dist } = tracarPercurso(P, cor, cor, null, regas);
     if (P.length) { const u = P[P.length - 1];
       L.circleMarker(u.ll, { ...PP, radius: 7, color: '#fff', weight: 2, fillColor: cor, fillOpacity: 1 })
         .bindTooltip(esc(x.nome.split(' ').slice(0, 2).join(' ')), { permanent: true, direction: 'top', offset: [0, -7], className: 'rot-regua' }).addTo(percCamada);
@@ -927,12 +930,16 @@ async function verTodasEquipas(d) {
   $('#pc-info').innerHTML = linhas.join('');
   $('#pc-info').style.cssText = 'max-height:30vh;overflow:auto';
   $('#pc-leg').innerHTML = '<span>Cada cor é uma equipa · números: campos regados, pela ordem · tracejado: sem registo · toque numa equipa para ver só essa.</span>';
-  $('#percurso').style.display = '';
+  verCartaoPerc(true);
   enquadrarPercurso(lim);
 }
 function fecharPercurso() {
   if (percCamada) percCamada.clearLayers();
-  $('#percurso').style.display = 'none'; modoPercurso(false); desenharMapa();
+  $('#percurso').style.display = 'none'; $('#pc-mostrar').style.display = 'none'; modoPercurso(false); desenharMapa();
+}
+// v160 (31/10/2026, Valdo): o cartão do percurso tapa o mapa ao aproximar: esconde-se e volta com um botão
+function verCartaoPerc(on) {
+  $('#percurso').style.display = on ? '' : 'none'; $('#pc-mostrar').style.display = on ? 'none' : '';
 }
 // medir a distância entre campos, como no Google Maps (18/10/2026, Valdo): linha recta, funciona sem rede
 let regua;
