@@ -389,6 +389,11 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Legenda da manutenção (Valdo, 22:55: "Numero e percentagem ai na legenda"): cada situação com nº de campos e % (`legendaManut`, ids `lm-por/curso/completo/feito`), total e quantos sem coordenada.
 - `demo.js`: `membros_lista`, `gravar_membro`, `gravar_presencas` (nomes "Sazonal A1 Exemplo"…). Teste: `rega-test/teste_membros.py` (LING=en / sw); `teste_demo.py` marca os nomes no início do dia.
 
+## Espaço do aparelho cheio (v168, 01/11/2026, Valdo viu «Memória do telefone cheia: The quota has been exceeded» no Mac)
+- O navegador dá ~5 MB a cada site, partilhados pela app e pelo painel (cocopalma.github.io). O painel guardava cópias de cada período de vários dias (e dos períodos escolhidos à mão) até 14 dias; uma apresentação fechada sem «Terminar» deixava as chaves `demo:`.
+- Painel: `guardarCache(p, v)` (uma cópia por período: apaga as de outros dias) e `arrumarCache()` ao abrir (só Tudo/Hoje/Ontem/7/30 e o período actual, a mais recente de cada).
+- `window.regaLibertar()` (no início do `demo.js`, com as funções verdadeiras do navegador): apaga `rega.painel.cache.*`, `demo:rega.painel.cache.*` e, fora da apresentação, todas as chaves `demo:`. `LS.set` e `guardarCache` chamam-na quando o espaço enche e tentam de novo; só depois avisam ("O espaço da app neste aparelho está cheio…", no máximo 1 vez por minuto; `LS.set` devolve true/false). Teste: `rega-test/teste_v168.py` (LING=en / sw). `teste_demo.py` já falhava na v167 ("Rega guardada").
+
 ## Modo apresentação (v124, 28/10/2026, Valdo)
 - Valdo: "posso ter de apresentar o aplicativo a diferentes pessoas… se eu estiver a apresentar apenas na ótica de gestor, há muitas coisas que eu não consigo ver"; escolheu "Modo apresentação".
 - Gestão › "🎬 Modo apresentação" (qualquer gestor; `cartaoDemo` em `#gestao-demo`): "Ver como" Activista, Técnico, Supervisor, Oficial de M&E, M&E, Director, Cliente (`DEMO_FUNCOES`). `entrarDemo(papel)` grava `sessionStorage rega.demo` {papel, lat, lon = posição do gestor (senão centro de Palma), desde} e recarrega. Faixa roxa `#demo-faixa` "🎬 Apresentação · função" com "Mudar" (`ecraDemo`: outra função, "Recomeçar com os dados iniciais", "Terminar") e "Terminar"; "Sair" também abre `ecraDemo`.

@@ -6,6 +6,23 @@
    - o que a app guarda no telefone fica separado (localStorage com o prefixo "demo:", IndexedDB "rega-coco-demo");
    - a sessão verdadeira do gestor não é tocada: ao terminar, a app volta ao gestor.
    Os campos de exemplo ficam à volta do sítio onde o gestor estava ao começar, para a rega poder ser feita ao vivo. */
+// Espaço cheio no aparelho (v168, 01/11/2026, Valdo viu «The quota has been exceeded»): o navegador dá ~5 MB a cada site,
+// partilhados pela app e pelo painel. regaLibertar() apaga o que se pode voltar a descarregar: as cópias do painel guardadas
+// para ver sem rede (todas, também as da apresentação) e, fora da apresentação, o que sobrou de uma apresentação que não foi
+// terminada (prefixo "demo:"). Fica antes do modo apresentação, com as funções verdadeiras do navegador.
+(function () {
+  const SP = Storage.prototype, del = SP.removeItem, key = SP.key;
+  window.regaLibertar = function () {
+    let n = 0;
+    try {
+      const ls = window.localStorage, emDemo = (() => { try { return !!sessionStorage.getItem('rega.demo'); } catch { return false; } })(), ks = [];
+      for (let i = 0; i < ls.length; i++) { const x = key.call(ls, i); if (!x) continue;
+        if (x.startsWith('rega.painel.cache.') || x.startsWith('demo:rega.painel.cache.') || (!emDemo && x.startsWith('demo:'))) ks.push(x); }
+      ks.forEach((x) => { try { del.call(ls, x); n++; } catch {} });
+    } catch {}
+    return n;
+  };
+})();
 (function () {
   'use strict';
   let cfg = null;

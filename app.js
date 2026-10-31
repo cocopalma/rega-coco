@@ -32,7 +32,11 @@ const num = (n) => (n ?? 0).toLocaleString(LOC);
 // ---------- guardar no telefone ----------
 const LS = {
   get(k, d = null) { try { const v = localStorage.getItem('rega.' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('rega.' + k, JSON.stringify(v)); } catch (e) { alert('Memória do telefone cheia: ' + e.message); } },
+  // espaço cheio (v168): apaga as cópias do painel e o que sobrou de apresentações, tenta de novo e só então avisa (no máximo 1 vez por minuto)
+  set(k, v) { const t = JSON.stringify(v); try { localStorage.setItem('rega.' + k, t); return true; } catch {}
+    try { window.regaLibertar?.(); localStorage.setItem('rega.' + k, t); return true; } catch {}
+    if (Date.now() - (LS.avisoEm || 0) > 60e3) { LS.avisoEm = Date.now(); alert('O espaço da app neste aparelho está cheio e não foi possível guardar no aparelho. Não feche a app até ter rede e toque em 💡 para avisar o gestor.'); }
+    return false; },
   del(k) { try { localStorage.removeItem('rega.' + k); } catch {} },
 };
 let S = { perfil: null, areas: [], activistas: [], estado: {}, meus: [], filtro: 'meus', pos: null, user: null };

@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    'O espaço da app neste aparelho está cheio e não foi possível guardar no aparelho. Não feche a app até ter rede e toque em 💡 para avisar o gestor.': 'The app storage on this device is full and something could not be saved on the device. Do not close the app until you have network, and tap 💡 to tell the manager.',
     // navegação e cabeçalho
     'Mapa': 'Map', 'Campos': 'Fields', 'Hoje': 'Today', 'Painel': 'Dashboard', 'Gestão': 'Admin',
     'Sair': 'Log out', 'Sair desta conta': 'Log out of this account', 'Sincronizar': 'Sync', '◎ Eu': '◎ Me',

@@ -3,6 +3,7 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+  'O espaço da app neste aparelho está cheio e não foi possível guardar no aparelho. Não feche a app até ter rede e toque em 💡 para avisar o gestor.': 'Nafasi ya programu kwenye kifaa hiki imejaa na haikuwezekana kuhifadhi kwenye kifaa. Usifunge programu hadi upate mtandao, na ubonyeze 💡 kumjulisha meneja.',
 "Sem rede. O resumo das equipas de hoje aparece quando houver rede.": "Hakuna mtandao. Muhtasari wa timu wa leo utaonekana kukiwa na mtandao.",
 "Mapa": "Ramani",
 "Campos": "Mashamba",

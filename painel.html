@@ -240,10 +240,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=167"></script>
-<script src="i18n.js?v=167"></script>
+<script src="i18n-sw.js?v=168"></script>
+<script src="i18n.js?v=168"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=167"></script>
+<script src="demo.js?v=168"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -958,6 +958,21 @@ async function buscarPeriodo(p) {
   const cu = await sb.rpc('painel_cumprimento', { p_de: de, p_ate: ate });
   return { DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
 }
+// uma só cópia por período (v168, 01/11/2026: o espaço do aparelho encheu): apaga as cópias desse período de outros dias e, se
+// mesmo assim não couber, as outras cópias do painel; períodos escolhidos à mão (de… até…) só fica o que se está a ver
+function guardarCache(p, v) {
+  const suf = JSON.stringify(p), chave = CHAVE_CACHE(p), txt = JSON.stringify(v);
+  try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && k.endsWith(suf) && k !== chave).forEach((k) => localStorage.removeItem(k)); } catch {}
+  try { localStorage.setItem(chave, txt); return true; } catch {}
+  try { window.regaLibertar?.(); localStorage.setItem(chave, txt); return true; } catch { return false; }
+}
+function arrumarCache() {
+  try {
+    const fixos = new Set([...PERIODOS_FIXOS, P].map((p) => JSON.stringify(p))), ultimo = {};
+    const ks = Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).sort();
+    ks.forEach((k) => { const suf = k.slice(28); if (!fixos.has(suf)) { localStorage.removeItem(k); return; } if (ultimo[suf]) localStorage.removeItem(ultimo[suf]); ultimo[suf] = k; });
+  } catch {}
+}
 let aGuardar = false;
 async function guardarOutrosPeriodos() {
   if (aGuardar || !navigator.onLine) return;
@@ -967,7 +982,7 @@ async function guardarOutrosPeriodos() {
     for (const p of PERIODOS_FIXOS) {
       if (JSON.stringify(p) === JSON.stringify(P)) continue;
       const v = await buscarPeriodo(p); if (!v) break;
-      try { localStorage.setItem(CHAVE_CACHE(p), JSON.stringify(v)); } catch { break; }
+      if (!guardarCache(p, v)) break;
     }
     try { localStorage.setItem('rega.painel.outrosEm', String(Date.now())); } catch {}
   } finally { aGuardar = false; }
@@ -1009,12 +1024,8 @@ async function carregar(mudou = false) {
   if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
   D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento();
-  try {   // fica um painel por período: o de hoje, ou o mais recente de outro dia (para ver sem rede)
-    const hoje = new Date().toLocaleDateString('sv-SE'), suf = JSON.stringify(P);
-    Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && k.endsWith(suf) && !k.startsWith('rega.painel.cache.' + hoje)).forEach((k) => localStorage.removeItem(k));
-    Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.') && k.slice(18, 28) < new Date(Date.now() - 14 * 864e5).toLocaleDateString('sv-SE')).forEach((k) => localStorage.removeItem(k));
-    localStorage.setItem(CHAVE_CACHE(), JSON.stringify({ D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, em: Date.now() }));
-  } catch {}
+  arrumarCache();   // fica uma cópia por período (a mais recente), para ver sem rede
+  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, em: Date.now() });
   setTimeout(() => guardarOutrosPeriodos().catch(() => {}), 1500);
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
