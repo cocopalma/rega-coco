@@ -321,7 +321,7 @@
 
   // ---------- 5. respostas aos pedidos da app ----------
   const RPC = {
-    estado_ronda: () => estadoRonda(), estado_ronda2: () => estadoRonda(), estado_ronda3: () => estadoRonda(),
+    estado_ronda: () => estadoRonda(), estado_ronda2: () => estadoRonda(), estado_ronda3: () => estadoRonda(), regas_outra_equipa: () => [],
     lista_comunidades: () => [...new Set(DB.areas.map((a) => a.comunidade))].sort(),
     pontos_comunidades: () => (papel === 'oficial_me' ? [] : DB.areas.map((a) => ({ comunidade: a.comunidade, zona: a.zona, lat: a.latitude, lon: a.longitude }))),
     recontagens_lista: () => recontagensLista(),

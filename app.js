@@ -178,6 +178,15 @@ function rondaInfo(actId) {
     if (r.campo_fechado === false) { const q = (o.parc[r.area_id] ??= { pl: 0, data: r.data }); q.pl += r.plantas_regadas || 0; if (r.data > q.data) q.data = r.data; }
     else o.areas.add(r.area_id);
   }
+  // v163 (31/10/2026, Valdo: "Sim"): a rega fica com o campo. A rega feita por outra equipa antes de o campo passar para esta
+  // conta na ronda desta equipa (o servidor diz em que ronda: privado.regas_contadas)
+  for (const r of S.outras || []) {
+    if (!ids.has(r.area_id)) continue;
+    const n = r.ronda || 1; (porRonda[n] ??= { areas: new Set(), parc: {}, ini: r.data, fim: r.data });
+    const o = porRonda[n]; if (r.data < o.ini) o.ini = r.data; if (r.data > o.fim) o.fim = r.data;
+    if (r.campo_fechado === false) { const q = (o.parc[r.area_id] ??= { pl: 0, data: r.data }); q.pl += r.plantas || 0; if (r.data > q.data) q.data = r.data; }
+    else o.areas.add(r.area_id);
+  }
   const mr = Math.max(1, ...Object.keys(porRonda).map(Number));
   const cur = porRonda[mr] || { areas: new Set(), parc: {} };
   if (lista.length && cur.areas.size >= lista.length) return { n: mr + 1, feitas: new Set(), terminar: new Map(), total: lista.length, anterior: { n: mr, ...cur } };
@@ -202,6 +211,11 @@ function infoTerminar(a, ri = null) {
   }
   if (!t) return null;
   return { regadas: t.pl, falta: Math.max(0, plantasN(a) - t.pl), data: t.data };
+}
+// v163: a rega deste campo nesta ronda foi feita por outra equipa, antes de o campo passar para a equipa actual
+function linhaOutraEquipa(a, s) {
+  const r = (S.outras || []).filter((x) => x.area_id === a.id && (x.ronda || 1) === (s.n || 1)).sort((x, y) => (x.data < y.data ? 1 : -1))[0];
+  return r ? `<div class="msg info">🔁 <span>Regado nesta ronda pela equipa de</span> <b class="sem-trad">${esc(r.quem || '?')}</b> (${fmtData(r.data)}), <span>antes de o campo passar para esta equipa. Conta para a ronda desta equipa: não é preciso voltar a regar nesta ronda.</span></div>` : '';
 }
 const souActivista = () => S.perfil?.papel === 'activista';
 // activista sem telemóvel (24/10/2026, Raul/Valdo: Azizi e Mariano): o técnico, o supervisor ou o gestor registam por ele
@@ -446,13 +460,15 @@ async function carregarEstado(pronto) {
         .then((c) => { if (!c.error && c.count != null) LS.set('nTestes', c.count); }));
   }
   if (PODE_REGAR.includes(papel)) { carregarSemMotivo().catch(() => {}); carregarDiasSemRega().catch(() => {}); tarefas.push(carregarApoios()); }
+  if (!['oficial_me'].includes(papel))                // v163: regas de outra equipa feitas antes de o campo passar para esta equipa
+    tarefas.push(sb.rpc('regas_outra_equipa').then((q) => { if (!q.error && Array.isArray(q.data)) { S.outras = q.data; LS.set('outras', q.data); } }));
   if (VER_TESTES_EQ.includes(papel))
     tarefas.push(sb.rpc('testes_equipa').then((q) => { if (!q.error && Array.isArray(q.data)) { S.testesEq = Object.fromEntries(q.data.map((x) => [x.area_id, { data: x.data, n: x.n, quem: x.quem }])); LS.set('testesEquipa', S.testesEq); } }));
   await Promise.all(tarefas.map((t) => Promise.resolve(t).catch(() => {})));
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []);
   return !!(S.perfil && S.areas.length);
 }
 
@@ -539,7 +555,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -2506,6 +2522,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div>
     ${linhasRegasCampo(a)}
     <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
+    ${linhaOutraEquipa(a, s)}
     ${s.pt ? `<div class="msg info">⏳ <span>Rega a meio nesta ronda: regadas</span> ${num(s.pt.regadas)} <span>de</span> ${num(plantasN(a))} <span>plantas</span>${s.pt.data ? ` (${fmtData(s.pt.data)})` : ''}. <span>O campo só fecha quando regarem as que faltam, ou se as que faltam forem mudas secas ou mortas.</span></div>` : ''}
     ${d != null ? `<div class="lin"><span>Distância${temPoligono(a) ? ' (à borda)' : ''}</span><b>${d === 0 ? 'dentro do campo' : (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') + (a.latitude != null ? ' · ' + rumo(S.pos, [a.latitude, a.longitude]) : '')}</b></div>` : ''}
     ${eNovo(a) ? `<div class="lin"><span>Na rega desde</span><b>${fmtData(a.reactivada_em.slice(0, 10))} <span class="tag t-novo">Novo na rega</span></b></div>` : ''}

@@ -1566,6 +1566,8 @@ window.I18N_SW_D = {
 "Avisos da monitoria": "Tahadhari za ufuatiliaji",
 "Campos verificados nos últimos 14 dias com plantas sem solo húmido.": "Mashamba yaliyokaguliwa katika siku 14 zilizopita yenye mimea isiyo na udongo wenye unyevu.",
 "Rever plantas": "Kagua mimea tena",
+"Regado nesta ronda pela equipa de": "Limemwagiliwa katika mzunguko huu na timu ya",
+"antes de o campo passar para esta equipa. Conta para a ronda desta equipa: não é preciso voltar a regar nesta ronda.": "kabla shamba halijahamia timu hii. Linahesabiwa kwa mzunguko wa timu hii: hakuna haja ya kumwagilia tena katika mzunguko huu.",
 "Cada equipa está na sua ronda. Por baixo do nome: a ronda em curso e quantas rondas a equipa já fez. As equipas mais à frente aparecem primeiro.": "Kila timu iko kwenye mzunguko wake. Chini ya jina: mzunguko unaoendelea na idadi ya mizunguko ambayo timu imekamilisha. Timu zilizo mbele zaidi zinaonekana kwanza.",
 "Este não é o campo sugerido": "Hili si shamba lililopendekezwa",
 "A app sugeriu": "Programu ilipendekeza",
