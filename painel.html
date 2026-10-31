@@ -75,6 +75,8 @@ summary{cursor:pointer;color:var(--ink2);font-size:13px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:7px 8px;border-bottom:1px solid var(--grid);text-align:left;white-space:nowrap}
 th{color:var(--ink2);font-weight:600;background:var(--surface);position:sticky;top:0}
+/* v169 (01/11/2026, Valdo): cabeçalhos das colunas de números em várias linhas, para a tabela ficar mais estreita */
+th.n{white-space:normal;min-width:56px;max-width:104px;vertical-align:bottom;line-height:1.25}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .tabela{overflow:auto;max-height:420px}
 .prog{display:flex;align-items:center;gap:8px;min-width:150px}
@@ -240,10 +242,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=168"></script>
-<script src="i18n.js?v=168"></script>
+<script src="i18n-sw.js?v=169"></script>
+<script src="i18n.js?v=169"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=168"></script>
+<script src="demo.js?v=169"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -446,7 +448,7 @@ async function imagemCumprimento() {
   const larg = (t, f) => { cx.font = f; return cx.measureText(t).width; };
   const quebra = (t, max) => { cx.font = FC; const out = []; let l = ''; t.split(/\s+/).forEach((w) => { const x = l ? l + ' ' + w : w; if (cx.measureText(x).width > max && l) { out.push(l); l = w; } else l = x; }); if (l) out.push(l); return out; };
   // largura de cada coluna: o maior valor (até 260 px); o cabeçalho quebra em linhas
-  const W = cab.map((c, i) => Math.min(260, Math.max(84, ...c.t.split(/\s+/).map((w) => larg(w, FC) + 6), ...fil.map((r) => larg(r[i]?.t || '', FB))) + 2 * PX));
+  const W = cab.map((c, i) => Math.min(260, Math.max(60, ...c.t.split(/\s+/).map((w) => larg(w, FC) + 6), ...fil.map((r) => larg(r[i]?.t || '', FB))) + 2 * PX));
   const linhasCab = cab.map((c, i) => quebra(c.t, W[i] - 2 * PX)), hCab = Math.max(...linhasCab.map((l) => l.length)) * 15 + 2 * PX, hL = 30;
   const L = Math.max(720, W.reduce((a, b) => a + b, 0) + 2 * M), topo = 104, faltaTxt = (window.trEN || ((t) => t))('A vermelho: o que falta.');
   const H = topo + hCab + fil.length * hL + 70;
@@ -871,8 +873,10 @@ function desenharCumprimento() {
   if (!L.length) { const ini = /^\d{4}-\d\d-\d\d$/.test(DCU.inicio || '') ? DCU.inicio.split('-').reverse().join('/') : '';
     $('#t-cump').innerHTML = '<div class="vazio"><span>Sem dias para avaliar neste período.</span>' + (ini ? ` <span>O cumprimento conta a partir de</span> ${ini}.` : '') + '</div>'; return; }
   const ver = (t) => `<b style="color:var(--crit)">${t}</b>`, fr = (a, b) => (a < b ? ver(`${num(a)} / ${num(b)}`) : `${num(a)} / ${num(b)}`);
-  tabela('#t-cump', [['Pessoa'], ['Função'], ['Equipas', 1], ['Dias fechados a tempo', 1], ['Fechados depois das 18:00', 1], ['Monitoria no prazo', 1], ['Regas acompanhadas', 1], ['Regas registadas pela equipa', 1], ['Regas com ⚠️ confirmadas', 1], ['Equipas sem motivo (dias)', 1], ['Motivos por confirmar (dias)', 1]],
-    L.map((p) => [esc(p.nome), p.papel === 'supervisor' ? 'Supervisor' : 'Técnico', num(p.equipas), fr(p.fechados_a_tempo, p.dias), num(p.fechados_tarde),
+  // v169 (01/11/2026, Valdo: "o Essumaila fechou ou não fechou?"): dias a avaliar e, em dias, fechou a tempo / depois das 18:00 / não fechou
+  const nao = (p) => Math.max(0, (p.dias || 0) - (p.fechados_a_tempo || 0) - (p.fechados_tarde || 0)), vr = (n) => (n ? ver(num(n)) : '0');
+  tabela('#t-cump', [['Pessoa'], ['Função'], ['Equipas', 1], ['Dias a avaliar', 1], ['Fechou até às 18:00', 1], ['Fechou depois das 18:00', 1], ['Não fechou', 1], ['Monitoria no prazo', 1], ['Regas acompanhadas', 1], ['Regas registadas pela equipa', 1], ['Regas com ⚠️ confirmadas', 1], ['Equipas sem motivo (dias)', 1], ['Motivos por confirmar (dias)', 1]],
+    L.map((p) => [esc(p.nome), p.papel === 'supervisor' ? 'Supervisor' : 'Técnico', num(p.equipas), num(p.dias), num(p.fechados_a_tempo), vr(p.fechados_tarde), vr(nao(p)),
       fr(p.mon_feitos, p.mon_sorteados), num(p.acompanhamentos || 0), num(p.regas_registadas || 0), fr(p.alertas_tratados, p.alertas), p.sem_motivo ? ver(num(p.sem_motivo)) : '0', p.motivos_por_confirmar ? ver(num(p.motivos_por_confirmar)) : '0']));
 }
 function desenharMonitoria() {
