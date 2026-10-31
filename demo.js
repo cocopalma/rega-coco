@@ -373,9 +373,11 @@
       if (!['tecnico', 'supervisor'].includes(papel)) return null;
       const hoje = dia(0), ids = vis(), est = estadoRonda();
       const eqs = DB.activistas.filter((t) => ids.includes(t.id) && DB.areas.some((a) => a.activista_id === t.id)).map((t) => {
-        const l = reais().filter((r) => r.activista_id === t.id && r.data === hoje), sr = DB.dsr.filter((d) => !d.removido && d.activista_id === t.id && d.data === hoje).map((d) => d.motivo);
+        const l = reais().filter((r) => r.activista_id === t.id && r.data === hoje), ms = DB.dsr.filter((d) => !d.removido && d.activista_id === t.id && d.data <= hoje && (d.ate || d.data) >= hoje), sr = ms.map((d) => d.motivo);
         return { id: t.id, nome: t.nome, comunidade: t.comunidade_principal, sem_telefone: false, regas: l.length, plantas: l.reduce((x, r) => x + r.plantas_regadas, 0),
-          chegada: l.map((r) => r.entrada_em).sort()[0] || null, sem_rega: sr.length ? sr.join(', ') : null }; });
+          chegada: l.map((r) => r.entrada_em).sort()[0] || null, sem_rega: sr.length ? sr.join(', ') : null, comecou: null,
+          motivos: ms.map((d) => ({ id: d.id, motivo: d.motivo, descricao: d.descricao, todo_dia: d.todo_dia, data: d.data, ate: d.ate || null, quem: d.quem, papel_quem: d.papel_quem || 'tecnico',
+            criado_em: d.criado_em, por_confirmar: d.papel_quem === 'activista' && !d.confirmado_em, confirmado_nome: d.confirmado_nome || null, confirmado_em: d.confirmado_em || null })) }; });
       const base = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
       const alertas = reais().filter((r) => ids.includes(r.activista_id) && !r.alerta_confirmado_em && !r.plantas_corrigidas_em && r.plantas_regadas > base(area(r.area_id)))
         .map((r) => ({ registo_id: r.id, data: r.data, area_id: r.area_id, produtor: area(r.area_id).produtor, equipa: nomeAct(r.activista_id), plantas: r.plantas_regadas, base: base(area(r.area_id)), ritmo: null, mediana: null, tipo: 'mais_que_base' }));
@@ -442,6 +444,8 @@
       DB.recontagens.push({ id: uid(), area_id: a.p_area, queimada_id: a.p_id, motivo: 'Queimada', estado: 'por_encaminhar', pedido_em: new Date().toISOString(), pedido_por: EU, oficial_id: null }); } return null; },
     aprovar_poligono: (a) => { const ar = area(a.p_area); if (ar.id && ar.poligono_proposto) { if (a.p_aprovar) { ar.poligono = ar.poligono_proposto; ar.area_m2 = ar.area_m2_proposta; ar.limites_abertos = false; } ar.poligono_proposto = null; ar.area_m2_proposta = null; ar.proposta_em = null; } return null; },
     atribuir_area2: (a) => { const ar = area(a.p_area); if (ar.id) ar.activista_id = a.p_activista; return null; },
+    gravar_dia_sem_rega4: (a) => { RPC.gravar_dia_sem_rega3(a); const d = DB.dsr.find((x) => x.id === a.p_id); if (d) { d.ate = a.p_ate && a.p_ate > a.p_data ? a.p_ate : null; if (papel !== 'activista') { d.confirmado_em = new Date().toISOString(); d.confirmado_nome = NOMES[papel]; } else d.papel_quem = 'activista'; } return { substituido: false }; },
+    confirmar_dia_sem_rega: (a) => { const d = DB.dsr.find((x) => x.id === a.p_id); if (d) { d.confirmado_em = new Date().toISOString(); d.confirmado_nome = NOMES[papel]; d.confirmacao_nota = a.p_nota || null; } return { estado: 'confirmado' }; },
     gravar_dia_sem_rega3: (a) => { DB.dsr.push({ id: a.p_id, activista_id: a.p_activista, data: a.p_data, motivo: a.p_motivo, todo_dia: a.p_todo_dia, descricao: a.p_descricao || null, quem: NOMES[papel], user_id: EU, criado_em: new Date().toISOString(), foto_path: a.p_foto || null, area_id: a.p_area || null, entrada_em: a.p_entrada || null }); return null; },
     remover_dia_sem_rega: (a) => { const d = DB.dsr.find((x) => x.id === a.p_id); if (d) d.removido = true; return null; },
     corrigir_plantas_rega: (a) => { const r = DB.registos.find((x) => x.id === a.p_id); if (r) { if (r.plantas_originais == null) r.plantas_originais = r.plantas_regadas; r.plantas_regadas = a.p_plantas; r.plantas_corrigidas_em = new Date().toISOString(); } return null; },

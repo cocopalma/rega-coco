@@ -240,10 +240,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=164"></script>
-<script src="i18n.js?v=164"></script>
+<script src="i18n-sw.js?v=165"></script>
+<script src="i18n.js?v=165"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=164"></script>
+<script src="demo.js?v=165"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -825,7 +825,7 @@ function desenharManut() {
     [...D2].reverse().map((d) => [fmtData(d.data), num(d.campos), num(d.cavaroda), num(d.mulching), d.pessoas != null ? num(d.pessoas) : '—']));
 }
 // Dias sem rega (v116, 26/10/2026, Valdo: "um campo de constrangimentos para casos de não haver rega para uma equipa, não chegar o tuk tuk")
-const MOT_DSR = { tuk_tuk: 'O tuk-tuk não chegou', avaria_tuk_tuk: 'Tuk-tuk avariado ou sem combustível', avaria_camiao: 'Camião avariado', sem_agua: 'Sem água na fonte ou no poço', chuva: 'Choveu: não foi preciso regar', material: 'Falta de material (bidões, regadores)', equipa: 'A equipa não compareceu', outro: 'Outro motivo' };
+const MOT_DSR = { tuk_tuk: 'O tuk-tuk não chegou', avaria_tuk_tuk: 'Tuk-tuk avariado ou sem combustível', avaria_camiao: 'Camião avariado', sem_agua: 'Sem água na fonte ou no poço', chuva: 'Choveu: não foi preciso regar', material: 'Falta de material (bidões, regadores)', equipa: 'A equipa não compareceu', regou_sem_registo: 'A equipa regou, mas não registou na app', outro: 'Outro motivo' };
 function desenharDiasSemRega() {
   const el = $('#s-dsr'); if (!el) return;
   const L = Array.isArray(DSR) ? DSR : null; el.hidden = !L; if (!L) return;
@@ -835,9 +835,10 @@ function desenharDiasSemRega() {
   $('#k-dsr').innerHTML = kpi('Dias de equipa sem rega', num(L.filter((x) => x.todo_dia !== false).length), `${num(L.filter((x) => x.todo_dia === false).length)} com a rega parada a meio do dia`) +
     ord.slice(0, 3).map(([m, n]) => kpi(MOT_DSR[m] || m, num(n), 'registos')).join('');
   if (!L.length) { $('#t-dsr').innerHTML = '<div class="vazio">Nenhum dia sem rega registado no período.</div>'; return; }
-  tabela('#t-dsr', [['Data'], ['Equipa (activista)'], ['Comunidade'], ['Produtor'], ['Motivo'], ['Dia todo?'], ['Observação'], ['Regas no dia', 1], ['Registado por'], ['Fotografia']],
-    L.map((x) => [fmtData(x.data), esc(x.activista || ''), esc(x.comunidade || ''), x.produtor ? `<span class="sem-trad">${esc(x.produtor)}</span> · ${esc(x.area_id || '')}${x.entrada_em ? ` <span style="color:var(--muted)">(${new Date(x.entrada_em).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })})</span>` : ''}` : '—', MOT_DSR[x.motivo] || esc(x.motivo), x.todo_dia === false ? 'Parte do dia' : 'Dia todo',
-      `<span class="sem-trad">${esc(x.descricao || '')}</span>`, num(x.regas || 0), esc(x.quem || ''), x.foto_path ? `<button class="foto-btn" type="button" onclick="verFotoBalde('rega-fotos', '${esc(x.foto_path)}')">📷</button>` : '—']));
+  tabela('#t-dsr', [['Data'], ['Equipa (activista)'], ['Comunidade'], ['Produtor'], ['Motivo'], ['Dia todo?'], ['Observação'], ['Regas no dia', 1], ['Registado por'], ['Confirmado por'], ['Fotografia']],
+    L.map((x) => [fmtData(x.data) + (x.ate ? ' – ' + fmtData(x.ate) : ''), esc(x.activista || ''), esc(x.comunidade || ''), x.produtor ? `<span class="sem-trad">${esc(x.produtor)}</span> · ${esc(x.area_id || '')}${x.entrada_em ? ` <span style="color:var(--muted)">(${new Date(x.entrada_em).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })})</span>` : ''}` : '—', MOT_DSR[x.motivo] || esc(x.motivo), x.todo_dia === false ? 'Parte do dia' : 'Dia todo',
+      `<span class="sem-trad">${esc(x.descricao || '')}</span>`, num(x.regas || 0), esc(x.quem || ''),
+      x.por_confirmar ? '<b style="color:var(--crit)">Por confirmar</b>' : x.papel_quem === 'activista' && x.confirmado_nome ? `<span class="sem-trad">${esc(x.confirmado_nome)}</span>${x.confirmacao_nota ? ` · <span class="sem-trad">${esc(x.confirmacao_nota)}</span>` : ''}` : '—', x.foto_path ? `<button class="foto-btn" type="button" onclick="verFotoBalde('rega-fotos', '${esc(x.foto_path)}')">📷</button>` : '—']));
 }
 async function verFotoBalde(balde, caminho) {
   const m = document.createElement('div');
@@ -870,9 +871,9 @@ function desenharCumprimento() {
   if (!L.length) { const ini = /^\d{4}-\d\d-\d\d$/.test(DCU.inicio || '') ? DCU.inicio.split('-').reverse().join('/') : '';
     $('#t-cump').innerHTML = '<div class="vazio"><span>Sem dias para avaliar neste período.</span>' + (ini ? ` <span>O cumprimento conta a partir de</span> ${ini}.` : '') + '</div>'; return; }
   const ver = (t) => `<b style="color:var(--crit)">${t}</b>`, fr = (a, b) => (a < b ? ver(`${num(a)} / ${num(b)}`) : `${num(a)} / ${num(b)}`);
-  tabela('#t-cump', [['Pessoa'], ['Função'], ['Equipas', 1], ['Dias fechados a tempo', 1], ['Fechados depois das 18:00', 1], ['Monitoria no prazo', 1], ['Regas acompanhadas', 1], ['Regas com ⚠️ confirmadas', 1], ['Equipas sem motivo (dias)', 1]],
+  tabela('#t-cump', [['Pessoa'], ['Função'], ['Equipas', 1], ['Dias fechados a tempo', 1], ['Fechados depois das 18:00', 1], ['Monitoria no prazo', 1], ['Regas acompanhadas', 1], ['Regas com ⚠️ confirmadas', 1], ['Equipas sem motivo (dias)', 1], ['Motivos por confirmar (dias)', 1]],
     L.map((p) => [esc(p.nome), p.papel === 'supervisor' ? 'Supervisor' : 'Técnico', num(p.equipas), fr(p.fechados_a_tempo, p.dias), num(p.fechados_tarde),
-      fr(p.mon_feitos, p.mon_sorteados), num(p.acompanhamentos || 0), fr(p.alertas_tratados, p.alertas), p.sem_motivo ? ver(num(p.sem_motivo)) : '0']));
+      fr(p.mon_feitos, p.mon_sorteados), num(p.acompanhamentos || 0), fr(p.alertas_tratados, p.alertas), p.sem_motivo ? ver(num(p.sem_motivo)) : '0', p.motivos_por_confirmar ? ver(num(p.motivos_por_confirmar)) : '0']));
 }
 function desenharMonitoria() {
   const M = DM; if (!$('#s-mon')) return;
