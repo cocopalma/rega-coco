@@ -1465,6 +1465,29 @@ function ecraMotivoItinerario(id, it) {
     marcarEntrada(id, MOTIVOS_IT[k] + (txt ? ': ' + txt : ''));
   };
 }
+// v161 (31/10/2026, Valdo: "é importante"): o activista que não vai para o campo sugerido diz porquê (como no itinerário)
+const MOTIVOS_SUG = ['Falta de água ou do tuk-tuk', 'Pedido do supervisor ou do técnico', 'O campo sugerido tem problema (acesso, produtor ausente, sem mudas)', 'Este campo ficou mais perto ou no caminho', 'Outro motivo'];
+function sugHoje() {                                       // a sugestão guardada hoje (não a do dia anterior)
+  const g = LS.get('sugestao'); if (!g || !g.em) return null;
+  const d = new Date(g.em); if (isNaN(d)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === hojeISO() ? g : null;
+}
+function ecraMotivoSugestao(id, s, motivoIt) {
+  const a = S.areas.find((x) => x.id === id) || {};
+  folha(`<h2>Este não é o campo sugerido</h2>
+    <p class="pequeno"><span class="sem-trad">${esc(a.produtor || '')} · ${esc(a.pr || '')}</span></p>
+    <div class="msg info"><span>A app sugeriu</span> <b class="sem-trad">${esc(s.produtor || '')} · ${esc(s.pr || '')}</b>. <span>Pode regar este campo, mas diga porquê.</span></div>
+    <label>Porque vai regar este campo?</label><div class="chips" id="sg-mot">${MOTIVOS_SUG.map((m, k) => `<button class="chip" data-k="${k}">${m}</button>`).join('')}</div>
+    <textarea id="sg-txt" rows="2" placeholder="Explique (obrigatório em «Outro motivo»)"></textarea>
+    <button class="btn" id="sg-ok">Continuar</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Voltar</button>`);
+  document.querySelectorAll('#sg-mot .chip').forEach((b) => b.onclick = () => document.querySelectorAll('#sg-mot .chip').forEach((c) => c.classList.toggle('on', c === b)));
+  $('#sg-ok').onclick = () => {
+    const k = $('#sg-mot .chip.on')?.dataset.k, txt = $('#sg-txt').value.trim();
+    if (k == null) { alert('Escolha o motivo.'); return; }
+    if (+k === MOTIVOS_SUG.length - 1 && txt.length < 3) { alert('Escreva o motivo.'); return; }
+    marcarEntrada(id, motivoIt, MOTIVOS_SUG[k] + (txt ? ': ' + txt : ''));
+  };
+}
 function cartaoItinerario() {
   const it = itinerarioHoje(); if (!it) return '';
   const linhas = it.campos.map((i, k) => { const a = S.areas.find((x) => x.id === i) || {}, feito = it.feitas.has(i);
@@ -2564,7 +2587,7 @@ function guardarJornada(depois) {
   if (depois) marcarEntrada(depois); else { fecharFolha(); if ($('#e-hoje').classList.contains('on')) desenharHoje(); }
 }
 
-async function marcarEntrada(id, motivoIt = null) {
+async function marcarEntrada(id, motivoIt = null, motivoSug = null) {
   if ((LS.get('semMotivo', []) || []).length) return ecraSemMotivo();   // v115: primeiro o motivo das regas fora da lista
   const a = S.areas.find((x) => x.id === id);
   const minha = souActivista() && a.activista_id === S.perfil.activista_id, apoio = apoioMeu(id);
@@ -2576,13 +2599,15 @@ async function marcarEntrada(id, motivoIt = null) {
   if (souActivista() && S.perfil.activista_id && !jornadaHoje()) return ecraJornada(id);
   const it = minha ? itinerarioHoje() : null;               // plano da equipa aprovado (23/10/2026, Valdo): sugestão; fora dele, diz porquê
   if (it && !it.campos.includes(id) && motivoIt == null) return ecraMotivoItinerario(id, it);
+  const sh = minha && !it ? sugHoje() : null, sa = sh && sh.area_id !== id ? S.areas.find((x) => x.id === sh.area_id) : null;
+  if (sa && situacao(sa).cod !== 'feita' && motivoSug == null) return ecraMotivoSugestao(id, sa, motivoIt);
   folha(FOLHA_GPS('A confirmar que está no campo.'));
   let g; try { g = await validarPosicao(a); } catch (e) { return abrirFicha(id, `<div class="msg erro">${esc(e.message)}</div>`); }
   if (g.valido === false) return abrirFicha(id, `<div class="msg erro">Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Só pode marcar a entrada até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'} do campo.${dicaGpsFraco(g)}</div>`);
   const ent = { area_id: id, produtor: (S.areas.find((x) => x.id === id) || {}).produtor || null, entrada_em: new Date().toISOString(), entrada_lat: g.lat, entrada_lon: g.lon, gps_precisao_m: g.precisao, distancia_area_m: g.dist, gps_valido: g.valido };
   if (it) { ent.plano_id = it.plano.id; ent.plano_dia = it.dia.n; ent.fora_itinerario = !it.campos.includes(id); ent.motivo_itinerario = ent.fora_itinerario ? motivoIt : null; }
   const sug = LS.get('sugestao');
-  if (sug) { ent.area_sugerida_id = sug.area_id; ent.seguiu_sugestao = sug.area_id === id; LS.del('sugestao'); mostrarSugFixa(); }
+  if (sug) { ent.area_sugerida_id = sug.area_id; ent.seguiu_sugestao = sug.area_id === id; ent.motivo_sugestao = ent.seguiu_sugestao ? null : motivoSug; LS.del('sugestao'); mostrarSugFixa(); }
   if (apoio) ent.apoio_id = apoio.id;                           // v149: campo em apoio (activado pelo técnico/supervisor)
   if (souActivista() && !minha && !apoio) {                     // campo de outra equipa ou sem activista
     LS.set('pendenteAlerta', ent);
@@ -2733,7 +2758,7 @@ async function marcarSaida() {
     distancia_area_m: ent.distancia_area_m, gps_valido: ent.gps_valido, plantas_regadas: plantas,
     alerta: ent.alerta || null, motivo_alerta: ent.motivo_alerta || null, apoio_id: ent.apoio_id || null,
     plano_id: ent.plano_id || null, plano_dia: ent.plano_dia ?? null, fora_itinerario: ent.fora_itinerario ?? null, motivo_itinerario: ent.motivo_itinerario || null,
-    area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null,
+    area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null, motivo_sugestao: ent.motivo_sugestao || null,
     criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista' && !porEquipa(a), observacao: obs || null,
     // v154: false = rega a meio (faltam plantas e o motivo não é só mudas secas/mortas): o campo continua por terminar na ronda
     campo_fechado: hojeISO() < POR_TERMINAR_INICIO ? null : !(base > 0 && plantas < base && !tipos.every((t) => FECHA_COM.includes(t))),
