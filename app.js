@@ -221,7 +221,11 @@ const souActivista = () => S.perfil?.papel === 'activista';
 // activista sem telemóvel (24/10/2026, Raul/Valdo: Azizi e Mariano): o técnico, o supervisor ou o gestor registam por ele
 // nos campos da lista dele e a rega conta a sério para essa equipa (no servidor: privado.regista_por).
 const semTelefone = (id) => !!(id && (S.activistas || []).find((t) => t.id === id)?.sem_telefone);
-const porEquipa = (a) => !!(a && !souActivista() && !S.perfil?.so_teste && ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) && semTelefone(a.activista_id) && meuCampo(a));
+// v166 (31/10/2026, Valdo): o técnico/supervisor também pode registar uma rega que conta para a equipa de um activista com telemóvel,
+// com motivo obrigatório (registos_rega.motivo_tecnico); escolhe-o antes da entrada (S.motTec) e fica na entrada em curso.
+const tecPelaEquipa = (a) => !!a && (S.motTec?.id === a.id || (() => { const e = LS.get('emCurso'); return !!(e && e.area_id === a.id && e.motivo_tecnico); })());
+const podeTecEquipa = (a) => !!(a && a.activista_id && !souActivista() && !S.perfil?.so_teste && ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) && meuCampo(a));
+const porEquipa = (a) => podeTecEquipa(a) && (semTelefone(a.activista_id) || tecPelaEquipa(a));
 // o que cada função pode fazer na app
 const FUNCOES = {
   tecnico: { nome: 'Técnico', desc: 'vê os campos e a rega das equipas dos seus activistas (e das que cobre) e o painel geral; grava coordenadas, atribui campos e pode fazer regas de teste.' },
@@ -1512,6 +1516,24 @@ function ecraMotivoRepetir(id, ri) {
     marcarEntrada(id);
   };
 }
+const MOTIVOS_TEC = ['O telemóvel do activista está avariado ou sem bateria', 'O telemóvel do activista não deixa ler a localização', 'O activista não está; a equipa rega com o técnico', 'Outro motivo'];
+function ecraRegaPelaEquipa(id) {
+  const a = S.areas.find((x) => x.id === id) || {};
+  folha(`<h2>Regar pela equipa</h2>
+    <p class="pequeno"><span class="sem-trad">${esc(a.produtor || '')} · ${esc(a.pr || '')}</span></p>
+    <div class="msg info"><span>Esta rega conta a sério para a ronda da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>. <span>Fica marcada como registada por si, com o motivo. O supervisor e o gestor vêem-na.</span></div>
+    <label>Porque regista esta rega pela equipa?</label><div class="chips" id="te-mot">${MOTIVOS_TEC.map((m, k) => `<button class="chip" data-k="${k}">${m}</button>`).join('')}</div>
+    <textarea id="te-txt" rows="2" placeholder="Explique (obrigatório em «Outro motivo»)"></textarea>
+    <button class="btn" id="te-ok">Continuar</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Voltar</button>`);
+  document.querySelectorAll('#te-mot .chip').forEach((b) => b.onclick = () => document.querySelectorAll('#te-mot .chip').forEach((c) => c.classList.toggle('on', c === b)));
+  $('#te-ok').onclick = () => {
+    const k = $('#te-mot .chip.on')?.dataset.k, txt = $('#te-txt').value.trim();
+    if (k == null) { alert('Escolha o motivo.'); return; }
+    if (+k === MOTIVOS_TEC.length - 1 && txt.length < 3) { alert('Escreva o motivo.'); return; }
+    S.motTec = { id, m: MOTIVOS_TEC[k] + (txt ? ': ' + txt : '') };
+    marcarEntrada(id);
+  };
+}
 function ecraMotivoSugestao(id, s, motivoIt) {
   const a = S.areas.find((x) => x.id === id) || {};
   folha(`<h2>Este não é o campo sugerido</h2>
@@ -2525,7 +2547,7 @@ function abrirFicha(id, nota = '') {
   const d = S.pos ? distCampo(a, S.pos) : null;
   const podeRegar = PODE_REGAR.includes(S.perfil.papel) && (S.perfil.papel === 'activista' || a.activista_id);
   let acc = '';
-  if (emCurso && emCurso.area_id === a.id) acc = cartaoFotosRega(emCurso) + (emCurso.agua_em
+  if (emCurso && emCurso.area_id === a.id) acc = (emCurso.motivo_tecnico ? `<div class="msg info">🤝 <span>Rega pela equipa: conta na ronda da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>.</div>` : '') + cartaoFotosRega(emCurso) + (emCurso.agua_em
       ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>`
       : `<button class="btn sec" onclick="marcarAgua(false)">💧 Chegou a água (tuk-tuk) agora</button>
          <button class="btn sec" onclick="marcarAgua(true)">A água já estava no campo quando chegámos</button>`) +
@@ -2533,7 +2555,13 @@ function abrirFicha(id, nota = '') {
      <button class="btn sec" onclick="ecraNaoRegou()">🚫 Não houve rega neste campo</button>` +
     (!emCurso.fotos?.rega && Date.now() - new Date(emCurso.entrada_em) < 3600e3 ? `<button class="btn sec" onclick="entradaEngano()">↩️ Marquei a entrada no campo errado</button>` : '');
   else if (emCurso) acc = `<div class="msg info">Tem a rega de outro campo em curso. Termine-a primeiro.</div><button class="btn sec" onclick="abrirFicha('${esc(emCurso.area_id)}')">Abrir o campo em curso</button>`;
-  else if (podeRegar && meuCampo(a)) acc = (porEquipa(a) ? `<div class="msg info">📵 <span>${esc(nomeAct(a.activista_id))} não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele.</span></div>` : '') + `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`;
+  else if (podeRegar && meuCampo(a)) {
+    S.motTec = null;                                             // v166: a escolha «pela equipa» faz-se de novo a cada entrada
+    const sem = porEquipa(a), pela = !sem && podeTecEquipa(a);
+    acc = (sem ? `<div class="msg info">📵 <span>${esc(nomeAct(a.activista_id))} não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele.</span></div>` : '') +
+      `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>` +
+      (pela ? `<p class="pequeno" style="margin:2px 0 6px">Rega de teste: não conta para a equipa.</p><button class="btn sec" onclick="ecraRegaPelaEquipa('${esc(a.id)}')">🤝 Regar pela equipa (conta na ronda)</button>` : '');
+  }
   const alheio = !meuCampo(a); S.soVer = alheio;
   folha(`${nota}<h2 style="margin-top:0">${esc(a.produtor)}</h2>
    <div class="cartao" style="margin:8px 0">
@@ -2675,6 +2703,7 @@ async function marcarEntrada(id, motivoIt = null, motivoSug = null) {
   const sug = LS.get('sugestao');
   if (sug) { ent.area_sugerida_id = sug.area_id; ent.seguiu_sugestao = sug.area_id === id; ent.motivo_sugestao = ent.seguiu_sugestao ? null : motivoSug; LS.del('sugestao'); mostrarSugFixa(); }
   if (motRep) { ent.motivo_repetir = motRep; S.motRep = null; }
+  if (S.motTec?.id === id) { ent.motivo_tecnico = S.motTec.m; S.motTec = null; }   // v166: rega do técnico que conta para a equipa
   if (apoio) ent.apoio_id = apoio.id;                           // v149: campo em apoio (activado pelo técnico/supervisor)
   if (souActivista() && !minha && !apoio) {                     // campo de outra equipa ou sem activista
     LS.set('pendenteAlerta', ent);
@@ -2834,7 +2863,7 @@ async function marcarSaida() {
     alerta: ent.alerta || null, motivo_alerta: ent.motivo_alerta || null, apoio_id: ent.apoio_id || null,
     plano_id: ent.plano_id || null, plano_dia: ent.plano_dia ?? null, fora_itinerario: ent.fora_itinerario ?? null, motivo_itinerario: ent.motivo_itinerario || null,
     area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null, motivo_sugestao: ent.motivo_sugestao || null,
-    motivo_repetir: ent.motivo_repetir || null,
+    motivo_repetir: ent.motivo_repetir || null, motivo_tecnico: ent.motivo_tecnico || null,
     criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista' && !porEquipa(a), observacao: obs || null,
     // v154: false = rega a meio (faltam plantas e o motivo não é só mudas secas/mortas): o campo continua por terminar na ronda
     campo_fechado: hojeISO() < POR_TERMINAR_INICIO ? null : ent.motivo_repetir ? true : !(base > 0 && plantas < base && !tipos.every((t) => FECHA_COM.includes(t))),
@@ -3978,6 +4007,7 @@ async function regasDoCampo(id) {
   el.innerHTML = `<div class="cartao" style="margin-top:10px"><h2>Regas deste campo</h2>` + r.data.map((v) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
       <div class="lin" style="border:0;padding:0"><span>${fmtData(v.data)} · ${fmtHora(v.entrada_em)}–${v.saida_em ? fmtHora(v.saida_em) : '…'}${v.teste ? ' <span class="tag t-teste">teste</span>' : ''}</span><b>${num(v.plantas_regadas)} plantas</b></div>
       <div class="pequeno">${esc(v.quem || '')}</div>
+      ${v.motivo_tecnico ? `<div class="pequeno">🤝 <span>Registada por</span> <b class="sem-trad">${esc(v.registada_por || '')}</b> <span>pela equipa:</span> <span class="sem-trad">${esc(v.motivo_tecnico)}</span></div>` : ''}
       ${v.motivo_repetir ? `<div class="pequeno">🔁 <span>Regado outra vez antes de acabar a ronda:</span> <span class="sem-trad">${esc(v.motivo_repetir)}</span></div>` : ''}
       ${v.pendente ? `<div class="pequeno">✏️ <span>Correcção no telefone: é enviada quando houver rede.</span> <span>Antes:</span> <span>${num(v.pendente.era)} plantas</span></div>`
         : v.plantas_corrigidas_em ? `<div class="pequeno">✏️ <span>Corrigido por ${esc(v.corrigido_por || '?')} em ${fmtData(v.plantas_corrigidas_em)}</span> · <span>Antes:</span> <span>${num(v.plantas_originais)} plantas</span>${v.motivo_correccao ? ` · ${esc(v.motivo_correccao)}` : ''}</div>` : ''}

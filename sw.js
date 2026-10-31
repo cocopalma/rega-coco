@@ -1,6 +1,6 @@
 // Service worker: guarda a app e as bibliotecas para funcionar sem rede.
 // Os pedidos ao Supabase nunca são guardados aqui (a fila offline está na app).
-const VERSAO = 'rega-v165';
+const VERSAO = 'rega-v166';
 const V = VERSAO.split('-v')[1];   // o ?v= de index.html e painel.html é sempre o número da VERSAO
 const BASE = ['./', 'index.html', `app.js?v=${V}`, `demo.js?v=${V}`, `i18n.js?v=${V}`, `i18n-sw.js?v=${V}`, 'painel.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js',
