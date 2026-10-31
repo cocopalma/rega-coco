@@ -149,7 +149,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <p class="desc">Cada equipa rega toda a sua lista antes de repetir um campo. A duração de cada ronda concluída é o ciclo provisório da comunidade.</p>
     <p class="desc">A produtividade por equipa está na secção <a href="#s-meta">Meta: 140 plantas por pessoa por dia</a>, mais abaixo.</p>
     <p class="desc" id="d-equipa" hidden><b>Atenção:</b> Ronda, Progresso da ronda e Rondas concluídas mostram o estado de hoje (todas as regas até agora). Dias trab., Plantas, Plantas/pessoa-dia, Min/campo e Espera água contam só o período escolhido.</p>
-    <h3 style="font-size:14px;margin:4px 0">Progresso da ronda actual</h3><div id="g-eq-ronda" style="margin-bottom:12px"></div>
+    <h3 style="font-size:14px;margin:4px 0">Progresso da ronda actual</h3><p style="margin:0 0 6px;font-size:12px;color:var(--ink2)">Cada equipa está na sua ronda. Por baixo do nome: a ronda em curso e quantas rondas a equipa já fez. As equipas mais à frente aparecem primeiro.</p><div id="g-eq-ronda" style="margin-bottom:12px"></div>
     <details><summary>Ver tabela</summary><div class="tabela" id="t-equipa" style="max-height:none"></div></details></section>
 
   <section class="card sec" id="s-pde"><h2>Plantas regadas por dia, por equipa</h2>
@@ -240,10 +240,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=161"></script>
-<script src="i18n.js?v=161"></script>
+<script src="i18n-sw.js?v=162"></script>
+<script src="i18n.js?v=162"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=161"></script>
+<script src="demo.js?v=162"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -354,11 +354,14 @@ function colunas(alvo, dados, { valor, rotulo, dicaDe, fmt = compacto, ref, refT
 }
 
 // ---------- barras horizontais (uma série) ----------
-function barras(alvo, dados, { valor, rotulo, texto, dicaDe, max, ref, refTxt }) {
+function barras(alvo, dados, { valor, rotulo, texto, dicaDe, max, ref, refTxt, sub }) {
   const el = $(alvo);
   if (!dados.length) { el.innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
-  const W = Math.max(320, el.clientWidth || 520), linha = 30, H = dados.length * linha + 8;
-  const pl = Math.min(150, W * 0.36), pr = 56, iw = W - pl - pr;
+  const W = Math.max(320, el.clientWidth || 520), linha = sub ? 40 : 30, H = dados.length * linha + 8;
+  // v162: a coluna dos nomes cabe o nome mais comprido (até 42 % da largura); antes cortava nomes longos
+  const cx = (barras.cx ||= document.createElement('canvas').getContext('2d')); cx.font = `12px ${getComputedStyle(document.body).fontFamily || 'sans-serif'}`;
+  const largNome = Math.max(...dados.map((d) => Math.max(cx.measureText(String(rotulo(d))).width, sub ? cx.measureText(String(sub(d))).width * 0.92 : 0)));
+  const pl = Math.min(Math.max(150, largNome + 14), W * (W < 600 ? 0.5 : 0.42)), pr = 56, iw = W - pl - pr;
   const top = max ?? Math.max(...dados.map(valor), 1);
   const xr = ref != null ? pl + (ref / top) * iw : null, sobe = xr != null && refTxt ? 18 : 0;
   let s = `<svg viewBox="0 ${-sobe} ${W} ${H + sobe}" role="img" aria-label="Gráfico de barras"><line x1="${pl}" x2="${pl}" y1="0" y2="${H - 8}" stroke="var(--axis)"/>` +
@@ -367,6 +370,7 @@ function barras(alvo, dados, { valor, rotulo, texto, dicaDe, max, ref, refTxt })
     const v = valor(d), w = Math.max(0, (v / top) * iw), y = i * linha + 4, bh = 18;
     s += `<g class="marca-dados" tabindex="0" data-dica="${dica(dicaDe(d))}"><rect x="0" y="${y - 3}" width="${W}" height="${linha}" fill="transparent"/>` +
       `<text class="lbl" x="${pl - 8}" y="${y + 13}" text-anchor="end">${esc(rotulo(d))}</text>` +
+      (sub ? `<text class="lbl" x="${pl - 8}" y="${y + 28}" text-anchor="end" style="font-size:11px;fill:var(--muted)">${esc(sub(d))}</text>` : '') +
       (w > 0 ? `<path class="vis" d="${barraPath(pl, y, w, bh)}" fill="var(--s1)"/>` : '') +
       `<text class="valor" x="${pl + w + 6}" y="${y + 13}">${esc(texto(d))}</text></g>`;
   });
@@ -527,8 +531,12 @@ function desenhar() {
 
   const eq = (D.por_equipa || []).slice().sort((a, b) => a.comunidade?.localeCompare(b.comunidade || '') || a.nome.localeCompare(b.nome));
   const pr = (e) => pct(e.regadas_ronda, e.lista);
-  barras('#g-eq-ronda', eq.filter((e) => e.lista).sort((a, b) => pr(b) - pr(a)), { valor: pr, max: 100, rotulo: (e) => e.nome, texto: (e) => `${e.regadas_ronda}/${e.lista}`,
-    dicaDe: (e) => [[fmtPct(pr(e)), 'da lista regada'], [`${e.nome} · ${e.comunidade || ''}`], [`Ronda ${e.ronda}: ${e.regadas_ronda} de ${e.lista} campos`]] });
+  // v162 (31/10/2026, Valdo): ronda a que se refere o progresso e rondas já feitas por cada equipa; quem vai mais à frente primeiro
+  const feitas = (e) => (Array.isArray(e.rondas_concluidas) ? e.rondas_concluidas.length : Math.max(0, (e.ronda || 1) - 1));
+  const txtFeitas = (e) => `${feitas(e)} ${feitas(e) === 1 ? 'ronda feita' : 'rondas feitas'}`;
+  barras('#g-eq-ronda', eq.filter((e) => e.lista).sort((a, b) => (feitas(b) + pr(b) / 100) - (feitas(a) + pr(a) / 100)), { valor: pr, max: 100, rotulo: (e) => e.nome,
+    sub: (e) => `Ronda ${e.ronda} · ${txtFeitas(e)}`, texto: (e) => `${e.regadas_ronda}/${e.lista}`,
+    dicaDe: (e) => [[fmtPct(pr(e)), 'da lista regada'], [`${e.nome} · ${e.comunidade || ''}`], [`Ronda ${e.ronda}: ${e.regadas_ronda} de ${e.lista} campos`], [txtFeitas(e) + ((e.rondas_concluidas || []).length ? ' (' + e.rondas_concluidas.map((r) => `R${r.ronda}: ${r.dias} d`).join(', ') + ')' : '')]] });
   const ag = eq.filter((e) => e.espera_agua_min != null).sort((a, b) => b.espera_agua_min - a.espera_agua_min);
   barras('#g-agua', ag, { valor: (e) => +e.espera_agua_min, rotulo: (e) => e.nome, texto: (e) => num(e.espera_agua_min) + ' min',
     dicaDe: (e) => [[num(e.espera_agua_min) + ' min', 'de espera média'], [`${e.nome} · ${e.comunidade || ''}`]] });
