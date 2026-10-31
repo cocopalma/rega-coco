@@ -551,6 +551,9 @@ async function entrar() {
 }
 async function sair() {
   if (window.DEMO) return ecraDemo();                     // modo apresentação: "Sair" termina a apresentação
+  // v164 (Atoquei, 30/10: regas que não chegaram): uma rega com entrada marcada perdia-se sem aviso ao sair
+  const emc = LS.get('emCurso');
+  if (emc) { alert(`Tem uma rega em curso (${emc.produtor || emc.area_id}, entrada às ${fmtHora(emc.entrada_em)}). Se sair agora, esta rega perde-se. Marque primeiro a saída na ficha do campo.`); return abrirFicha(emc.area_id); }
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
@@ -1487,6 +1490,26 @@ function sugHoje() {                                       // a sugestão guarda
   const g = LS.get('sugestao'); if (!g || !g.em) return null;
   const d = new Date(g.em); if (isNaN(d)) return null;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === hojeISO() ? g : null;
+}
+// Voltar a regar um campo antes de acabar a ronda (v164, 31/10/2026, Valdo, sugestão do Gelson: "Isto podemos autorizar, mas tem que
+// estar claro o motivo… Ele tem que colocar o motivo e é obrigatório"). A rega fica com registos_rega.motivo_repetir.
+const MOTIVOS_REP = ['Os campos que faltam não têm mudas ou acesso para o tuk-tuk', 'As plantas deste campo estão a secar', 'Pedido do técnico ou do supervisor', 'Outro motivo'];
+function ecraMotivoRepetir(id, ri) {
+  const a = S.areas.find((x) => x.id === id) || {};
+  folha(`<h2>Este campo já foi regado nesta ronda</h2>
+    <p class="pequeno"><span class="sem-trad">${esc(a.produtor || '')} · ${esc(a.pr || '')}</span></p>
+    <div class="msg info"><span>Este campo já foi regado na ronda ${ri.n}. Ainda faltam ${ri.total - ri.feitas.size} de ${ri.total} campos da sua lista.</span> <span>Pode voltar a regá-lo, mas tem de dizer porquê. O técnico e o supervisor vêem o motivo.</span></div>
+    <label>Porque vai regar este campo outra vez?</label><div class="chips" id="rp-mot">${MOTIVOS_REP.map((m, k) => `<button class="chip" data-k="${k}">${m}</button>`).join('')}</div>
+    <textarea id="rp-txt" rows="2" placeholder="Explique (obrigatório em «Outro motivo»)"></textarea>
+    <button class="btn" id="rp-ok">Continuar</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Voltar</button>`);
+  document.querySelectorAll('#rp-mot .chip').forEach((b) => b.onclick = () => document.querySelectorAll('#rp-mot .chip').forEach((c) => c.classList.toggle('on', c === b)));
+  $('#rp-ok').onclick = () => {
+    const k = $('#rp-mot .chip.on')?.dataset.k, txt = $('#rp-txt').value.trim();
+    if (k == null) { alert('Escolha o motivo.'); return; }
+    if (+k === MOTIVOS_REP.length - 1 && txt.length < 3) { alert('Escreva o motivo.'); return; }
+    S.motRep = { id, m: MOTIVOS_REP[k] + (txt ? ': ' + txt : '') };
+    marcarEntrada(id);
+  };
 }
 function ecraMotivoSugestao(id, s, motivoIt) {
   const a = S.areas.find((x) => x.id === id) || {};
@@ -2604,6 +2627,28 @@ function guardarJornada(depois) {
   if (depois) marcarEntrada(depois); else { fecharFolha(); if ($('#e-hoje').classList.contains('on')) desenharHoje(); }
 }
 
+// v164 (Julia Jaime 30/10 e Martins 31/10: "não sai a marcação de entrada"): estavam a 440 e 520 m do campo, junto de outro campo.
+// Agora a recusa diz de que campo da lista está perto e mostra no mapa onde fica o campo escolhido.
+function campoJunto(id, g) {
+  if (g.lat == null || g.lon == null) return '';
+  let m = null;
+  for (const b of S.areas || []) { if (b.id === id) continue; const d = distCampo(b, [g.lat, g.lon]); if (d != null && d <= 100 && (!m || d < m.d)) m = { a: b, d }; }
+  const ver = `<button class="chip" onclick="fecharFolha();verNoMapaCampo('${esc(id)}')">🗺 Ver no mapa onde fica este campo</button>`;
+  if (!m) return `<div class="msg info"><span>Confirme que está no campo certo. Se tem a certeza de que está no campo deste produtor, a coordenada pode estar errada: diga ao técnico ou ao supervisor.</span><div style="margin-top:6px">${ver}</div></div>`;
+  return `<div class="msg info"><span>Está junto do campo de</span> <b class="sem-trad">${esc(m.a.produtor || '')} · ${esc(m.a.id)}</b>. <span>É este o campo onde está?</span>
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="chip" onclick="abrirFicha('${esc(m.a.id)}')">Abrir a ficha deste campo</button>${ver}</div>
+    <div class="pequeno" style="margin-top:4px">Se tem a certeza de que está no campo deste produtor, a coordenada pode estar errada: diga ao técnico ou ao supervisor.</div></div>`;
+}
+function verNoMapaCampo(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  mudar('mapa');
+  setTimeout(() => {
+    mapa.invalidateSize();
+    const pts = temPoligono(a) ? a.poligono.map(([lo, la]) => [la, lo]) : a.latitude != null ? [[a.latitude, a.longitude]] : [];
+    if (S.pos) pts.push([S.pos[0], S.pos[1]]);
+    if (pts.length > 1) mapa.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 18 }); else if (pts.length) mapa.setView(pts[0], 17);
+  }, 60);
+}
 async function marcarEntrada(id, motivoIt = null, motivoSug = null) {
   if ((LS.get('semMotivo', []) || []).length) return ecraSemMotivo();   // v115: primeiro o motivo das regas fora da lista
   const a = S.areas.find((x) => x.id === id);
@@ -2611,20 +2656,24 @@ async function marcarEntrada(id, motivoIt = null, motivoSug = null) {
   if (apoio && situacao(a).cod === 'feita') return abrirFicha(id, `<div class="msg erro">Este campo já foi regado nesta ronda da equipa de ${esc(nomeAct(a.activista_id))}.</div>`);
   if ((souActivista() && minha) || porEquipa(a)) {             // regra da ronda: não repetir antes de acabar a lista
     const ri = rondaInfo(a.activista_id);
-    if (ri.feitas.has(id)) return abrirFicha(id, `<div class="msg erro">Este campo já foi regado na ronda ${ri.n}. Só pode voltar a regá-lo depois de regar todos os campos da sua lista (faltam ${ri.total - ri.feitas.size} de ${ri.total}).</div>`);
+    if (ri.feitas.has(id) && S.motRep?.id !== id) return ecraMotivoRepetir(id, ri);   // v164: pode voltar a regar, com motivo
   }
+  const motRep = S.motRep?.id === id ? S.motRep.m : null;
   if (souActivista() && S.perfil.activista_id && !jornadaHoje()) return ecraJornada(id);
   const it = minha ? itinerarioHoje() : null;               // plano da equipa aprovado (23/10/2026, Valdo): sugestão; fora dele, diz porquê
+  if (motRep && motivoIt == null) motivoIt = motRep;          // v164: o motivo de voltar a regar já explica; não pergunta de novo
+  if (motRep && motivoSug == null) motivoSug = motRep;
   if (it && !it.campos.includes(id) && motivoIt == null) return ecraMotivoItinerario(id, it);
   const sh = minha && !it ? sugHoje() : null, sa = sh && sh.area_id !== id ? S.areas.find((x) => x.id === sh.area_id) : null;
   if (sa && situacao(sa).cod !== 'feita' && motivoSug == null) return ecraMotivoSugestao(id, sa, motivoIt);
   folha(FOLHA_GPS('A confirmar que está no campo.'));
   let g; try { g = await validarPosicao(a); } catch (e) { return abrirFicha(id, `<div class="msg erro">${esc(e.message)}</div>`); }
-  if (g.valido === false) return abrirFicha(id, `<div class="msg erro">Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Só pode marcar a entrada até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'} do campo.${dicaGpsFraco(g)}</div>`);
+  if (g.valido === false) return abrirFicha(id, `<div class="msg erro">Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Só pode marcar a entrada até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'} do campo.${dicaGpsFraco(g)}</div>${campoJunto(id, g)}`);
   const ent = { area_id: id, produtor: (S.areas.find((x) => x.id === id) || {}).produtor || null, entrada_em: new Date().toISOString(), entrada_lat: g.lat, entrada_lon: g.lon, gps_precisao_m: g.precisao, distancia_area_m: g.dist, gps_valido: g.valido };
   if (it) { ent.plano_id = it.plano.id; ent.plano_dia = it.dia.n; ent.fora_itinerario = !it.campos.includes(id); ent.motivo_itinerario = ent.fora_itinerario ? motivoIt : null; }
   const sug = LS.get('sugestao');
   if (sug) { ent.area_sugerida_id = sug.area_id; ent.seguiu_sugestao = sug.area_id === id; ent.motivo_sugestao = ent.seguiu_sugestao ? null : motivoSug; LS.del('sugestao'); mostrarSugFixa(); }
+  if (motRep) { ent.motivo_repetir = motRep; S.motRep = null; }
   if (apoio) ent.apoio_id = apoio.id;                           // v149: campo em apoio (activado pelo técnico/supervisor)
   if (souActivista() && !minha && !apoio) {                     // campo de outra equipa ou sem activista
     LS.set('pendenteAlerta', ent);
@@ -2776,9 +2825,10 @@ async function marcarSaida() {
     alerta: ent.alerta || null, motivo_alerta: ent.motivo_alerta || null, apoio_id: ent.apoio_id || null,
     plano_id: ent.plano_id || null, plano_dia: ent.plano_dia ?? null, fora_itinerario: ent.fora_itinerario ?? null, motivo_itinerario: ent.motivo_itinerario || null,
     area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null, motivo_sugestao: ent.motivo_sugestao || null,
+    motivo_repetir: ent.motivo_repetir || null,
     criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista' && !porEquipa(a), observacao: obs || null,
     // v154: false = rega a meio (faltam plantas e o motivo não é só mudas secas/mortas): o campo continua por terminar na ronda
-    campo_fechado: hojeISO() < POR_TERMINAR_INICIO ? null : !(base > 0 && plantas < base && !tipos.every((t) => FECHA_COM.includes(t))),
+    campo_fechado: hojeISO() < POR_TERMINAR_INICIO ? null : ent.motivo_repetir ? true : !(base > 0 && plantas < base && !tipos.every((t) => FECHA_COM.includes(t))),
     constr: tipos.map((t) => ({ id: crypto.randomUUID(), tipo: t, descricao: obs || null })),
   };
   porNaFila(reg); LS.del('emCurso'); LS.del('rascFotoRega'); actSync(); desenharMapa(); desenharLista();
@@ -3919,6 +3969,7 @@ async function regasDoCampo(id) {
   el.innerHTML = `<div class="cartao" style="margin-top:10px"><h2>Regas deste campo</h2>` + r.data.map((v) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
       <div class="lin" style="border:0;padding:0"><span>${fmtData(v.data)} · ${fmtHora(v.entrada_em)}–${v.saida_em ? fmtHora(v.saida_em) : '…'}${v.teste ? ' <span class="tag t-teste">teste</span>' : ''}</span><b>${num(v.plantas_regadas)} plantas</b></div>
       <div class="pequeno">${esc(v.quem || '')}</div>
+      ${v.motivo_repetir ? `<div class="pequeno">🔁 <span>Regado outra vez antes de acabar a ronda:</span> <span class="sem-trad">${esc(v.motivo_repetir)}</span></div>` : ''}
       ${v.pendente ? `<div class="pequeno">✏️ <span>Correcção no telefone: é enviada quando houver rede.</span> <span>Antes:</span> <span>${num(v.pendente.era)} plantas</span></div>`
         : v.plantas_corrigidas_em ? `<div class="pequeno">✏️ <span>Corrigido por ${esc(v.corrigido_por || '?')} em ${fmtData(v.plantas_corrigidas_em)}</span> · <span>Antes:</span> <span>${num(v.plantas_originais)} plantas</span>${v.motivo_correccao ? ` · ${esc(v.motivo_correccao)}` : ''}</div>` : ''}
       ${podeCorr && v.saida_em ? `<div style="margin-top:4px"><button class="chip" onclick="ecraCorrigirPlantas('${esc(v.id)}','${esc(id)}')">✏️ Corrigir as plantas regadas</button></div>` : ''}
@@ -4254,7 +4305,7 @@ function cartaoAvisos() {
     L.map((v) => { const a = S.areas.find((x) => x.id === v.area_id) || { produtor: v.area_id };
       return `<div class="item" onclick="abrirFicha('${esc(v.area_id)}')"><div><div class="nome">${esc(a.produtor)}</div>
         <div class="sub">${esc(a.pr || '')}${varias ? ' · ' + esc(nomeAct(v.activista_id)) : ''} · rega de ${fmtData(v.data_rega)} · ${textoAviso(v)}</div></div>
-        <span class="tag ${v.solo_regado ? 't-por' : 't-alerta'}">${v.solo_regado ? `Regado · ${v.sem_rega} ${v.sem_rega == 1 ? 'planta' : 'plantas'} sem água` : 'Campo não regado'}</span></div>`; }).join('') + '</div>';
+        <span class="tag ${v.solo_regado ? 't-feita' : 't-alerta'}">${v.solo_regado ? `Regado · ${v.sem_rega} ${v.sem_rega == 1 ? 'planta' : 'plantas'} sem água` : 'Campo não regado'}</span></div>`; }).join('') + '</div>';
 }
 function avisoCampo(id) {
   const v = avisos().find((x) => x.area_id === id); if (!v) return '';
@@ -4405,6 +4456,8 @@ function ecraConfirmarRega(id, tipo, plantas, base, area) {
       <p class="pequeno">Se o número for diferente da base, a app pede uma recontagem ao M&amp;E.</p>` : ''}
     <label><span>Porque está certo?</span></label><textarea id="cr-nota" rows="3"></textarea><div id="cr-msg"></div>
     <button class="btn" id="cr-ok">Confirmar</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  // v164 (Nuro, 31/10 10:16: a 2.ª confirmação "não aceita"): o botão não dava sinal e o erro escrevia num ecrã já fechado (16 tentativas)
+  const msg = (h, txt) => { const el = $('#cr-msg'); if (el) el.innerHTML = h; else aviso(txt || 'A confirmação não foi gravada.', 'erro'); };
   $('#cr-ok').onclick = async () => {
     const t = $('#cr-nota').value.trim();
     let v = null;
@@ -4416,8 +4469,16 @@ function ecraConfirmarRega(id, tipo, plantas, base, area) {
     }
     if (t.length < 3) { $('#cr-msg').innerHTML = '<div class="msg erro">Escreva porque está certo.</div>'; return; }
     if (!navigator.onLine) { $('#cr-msg').innerHTML = '<div class="msg erro">Precisa de rede.</div>'; return; }
-    const r = conta ? await sb.rpc('confirmar_rega2', { p_id: id, p_nota: t, p_vivas: v }) : await sb.rpc('confirmar_rega', { p_id: id, p_nota: t });
-    if (r.error) { $('#cr-msg').innerHTML = `<div class="msg erro">${esc(r.error.message)}</div>`; return; }
+    const bt = $('#cr-ok'); if (bt.disabled) return; bt.disabled = true; bt.textContent = 'A gravar…'; $('#cr-msg').innerHTML = '';
+    let r; try { r = conta ? await sb.rpc('confirmar_rega2', { p_id: id, p_nota: t, p_vivas: v }) : await sb.rpc('confirmar_rega', { p_id: id, p_nota: t }); } catch (e) { r = { error: { message: String(e?.message || e) } }; }
+    if (r.error) {
+      const m = String(r.error.message || ''), rede = !m || /fetch|network|Load failed|timeout/i.test(m);
+      problemaApp('confirmar_rega', m || 'sem mensagem', { id, tipo });
+      const txt = rede ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : m;
+      msg(`<div class="msg erro">${esc(txt)}</div>`, txt);
+      if ($('#cr-ok')) { $('#cr-ok').disabled = false; $('#cr-ok').textContent = 'Confirmar'; }
+      return;
+    }
     const rc = r.data && r.data.recontagem;
     fecharFolha(); aviso(rc === 'pedida' ? 'Confirmado. Foi pedida a recontagem ao M&E.' : rc === 'ja_havia' ? 'Confirmado. Já há uma recontagem em curso neste campo.' : 'Confirmado.', 'ok');
     await carregarMeuDia(); actHoje();
