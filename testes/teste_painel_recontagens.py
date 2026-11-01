@@ -40,6 +40,7 @@ with sync_playwright() as p:
     f = d.value; caminho = f.path(); txt = open(caminho, encoding="utf-8-sig").read()
     print("csv:", f.suggested_filename, "| linhas:", len(txt.strip().split("\n")), "|", txt.split("\n")[0][:80]); print("csv l2:", txt.split("\n")[1][:140]); print("csv aspas:", [l for l in txt.split("\n") if "Um" in l][0][:60])
     pg.click("#filtro [data-p='7']"); pg.wait_for_timeout(800); print("7 dias KPIs:", pg.inner_text("#k-rec").split("\n")[:2])
+    pg.click("#filtro [data-p='hoje']"); pg.wait_for_timeout(800); print("hoje, cartão Validadas (0 → sem rodapé):", pg.inner_text("#k-rec .kpi:nth-child(2)").replace("\n", " | "))
     pg.locator("#s-rec").screenshot(path=f"/home/claude/rega-test/painel_recontagens{os.environ.get('LING','')}.png")
     print("ERROS JS:", erros or "nenhum"); b.close()
 srv.terminate()

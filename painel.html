@@ -242,10 +242,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=173"></script>
-<script src="i18n.js?v=173"></script>
+<script src="i18n-sw.js?v=174"></script>
+<script src="i18n.js?v=174"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=173"></script>
+<script src="demo.js?v=174"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -713,7 +713,7 @@ function desenharRecontagens() {
   const kpi = (rot, v, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${v}</div><div class="sub">${sub}</div></div>`;
   const antes = val.reduce((t, r) => t + (r.vivas_antes || 0), 0), depois = val.reduce((t, r) => t + (r.vivas || 0), 0), mortas = val.reduce((t, r) => t + (r.mortas || 0), 0);
   $('#k-rec').innerHTML = kpi('Recontagens', num(L.length), `${num(n(['por_encaminhar']))} por encaminhar · ${num(n(['encaminhada', 'recusada']))} com o oficial · ${num(n(['enviada']))} por validar`) +
-    kpi('Validadas', num(val.length), 'os números do campo já mudaram') +
+    kpi('Validadas', num(val.length), val.length ? 'os números do campo já mudaram' : '')   // v174 (Valdo): com 0 validadas nada mudou +
     kpi('Plantas vivas nos campos validados', val.length ? num(depois) : '—', val.length ? `antes: ${num(antes)} · diferença: ${depois - antes > 0 ? '+' : ''}${num(depois - antes)} · mortas contadas: ${num(mortas)}` : 'sem recontagens validadas');
   const fb = (c, t) => (c ? `<button class="foto-btn" onclick="verFotoRec('${esc(c).replace(/'/g, '&#39;')}')" title="${t}">📷 ${t}</button>` : '');
   const foto = (r) => fb(r.foto_campo_path, 'Campo') + (r.foto_campo_path && r.foto_path ? ' ' : '') + fb(r.foto_path, 'Declaração');
