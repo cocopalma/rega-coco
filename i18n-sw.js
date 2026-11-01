@@ -381,7 +381,7 @@ window.I18N_SW_D = {
 "As sugestões (💡) feitas na apresentação ficam só na apresentação (não chegam à Gestão verdadeira).": "Mapendekezo (💡) yaliyotolewa katika maonyesho yanabaki kwenye maonyesho (hayafiki Usimamizi halisi).",
 "Na ficha de cada campo, «🎬 Pôr-me neste campo» leva-o até lá. Ao medir a área, o GPS anda sozinho à volta do campo.": "Kwenye kadi ya kila shamba, «🎬 Niweke kwenye shamba hili» inakupeleka huko. Unapopima eneo, GPS inazunguka shamba yenyewe.",
 "Ver como Gestor": "Tazama kama Meneja",
-"Tudo o que o gestor vê, com dados de exemplo: Gestão (sugestões: aprovar ou recusar), manutenção, painel.": "Kila kitu anachoona meneja, kwa data ya mfano: Usimamizi (mapendekezo: kuidhinisha au kukataa), matunzo, dashibodi.",
+"Tudo o que o gestor vê, com dados de exemplo: Gestão (sugestões: aprovar ou recusar), painel.": "Kila kitu anachoona meneja, kwa data ya mfano: Usimamizi (mapendekezo: kuidhinisha au kukataa), dashibodi.",
 "A vermelho: o que falta.": "Kwa rangi nyekundu: kinachokosekana.",
 "📷 Guardar imagem do cumprimento": "📷 Hifadhi picha ya utekelezaji",
 "Campo por terminar: já se regaram": "Shamba la kumaliza: tayari mimea",

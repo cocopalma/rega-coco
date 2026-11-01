@@ -333,7 +333,9 @@
     return a.p_id || null;
   }
   const MANUT_COM = ['Exemplo Sul'];
+  const MANUT_DEMO = false;   // v180 (01/11/2026, Valdo: "tirar a manutenção do modo apresentação"): sem botão 💧/🌱, sem cartão no Hoje e sem secção no painel
   function manutCampos() {
+    if (!MANUT_DEMO) return null;
     const acesso = ['gestor', 'supervisor'].includes(papel) ? 'escreve' : papel === 'tecnico' ? 'regista' : ['director', 'me'].includes(papel) ? 'le' : null;
     if (!acesso) return null;
     const campos = DB.areas.filter((a) => MANUT_COM.includes(a.comunidade)).map((a) => {

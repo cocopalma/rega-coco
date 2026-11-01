@@ -106,6 +106,7 @@ with sync_playwright() as p:
         if eq.count(): eq.evaluate("e => e.open = true"); print(papel, "EQUIPAS:", txt(pg, "#hoje details[open]")[:420])
         else: print(papel, "EQUIPAS: (sem cartão)")
         if pg.locator("#meu-dia").count(): print(papel, "MEU DIA:", txt(pg, "#meu-dia")[:300])
+        print(papel, "MANUTENÇÃO: cartão no Hoje:", "Manuten" in pg.inner_text("#hoje") or "Maintenance" in pg.inner_text("#hoje"), "| botão no mapa:", pg.evaluate("[...document.querySelectorAll('.modo-sw')].some(d => d.style.display !== 'none')"), "| S.manut:", pg.evaluate("!!S.manut"))
     print("pedidos ao servidor:", PEDIDOS["n"])
     print("ERROS JS:", erros or "nenhum"); b.close()
 srv.terminate() if 'srv' in dir() else None

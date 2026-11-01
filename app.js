@@ -5107,7 +5107,7 @@ const DEMO_FUNCOES = [
   ['me', 'M&E', 'Encaminhar recontagens aos oficiais e validá-las; ver tudo; painel.'],
   ['director', 'Director', 'Vê todos os campos, a rega do dia, os percursos e o painel; não regista.'],
   ['cliente', 'Cliente / administração', 'Mapa, fichas dos campos (só leitura) e painel.'],
-  ['gestor', 'Gestor', 'Tudo o que o gestor vê, com dados de exemplo: Gestão (sugestões: aprovar ou recusar), manutenção, painel.'],   // v156
+  ['gestor', 'Gestor', 'Tudo o que o gestor vê, com dados de exemplo: Gestão (sugestões: aprovar ou recusar), painel.'],   // v156
 ];
 const nomeFuncaoDemo = (p) => (DEMO_FUNCOES.find((f) => f[0] === p) || [p, p])[1];
 function cartaoDemo() {
