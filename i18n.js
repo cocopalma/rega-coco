@@ -40,6 +40,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    "Técnico:": "Technician:",
+    "Sem técnico": "No technician",
+    "activista": "activist",
+    "activistas": "activists",
     "Oficial confirmou que registou no NAVUNA": "Officer confirmed recording it in NAVUNA",
     "✓ Sim": "✓ Yes",
     "Campo fora da lista do activista": "Field outside the activist's list",

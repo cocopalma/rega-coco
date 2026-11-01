@@ -3,6 +3,10 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    "Técnico:": "Fundi:",
+    "Sem técnico": "Hakuna fundi",
+    "activista": "mhamasishaji",
+    "activistas": "wahamasishaji",
     "Oficial confirmou que registou no NAVUNA": "Afisa amethibitisha kurekodi katika NAVUNA",
     "✓ Sim": "✓ Ndiyo",
     "Campo fora da lista do activista": "Shamba nje ya orodha ya mhamasishaji",

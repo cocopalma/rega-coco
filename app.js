@@ -4361,7 +4361,13 @@ function cartaoEquipas() {
   const nC = (id) => S.areas.filter((a) => a.activista_id === id).length;
   return `<div class="cartao"><details><summary><b>👥 <span>As minhas equipas</span> (${L.length})</b></summary>
     <p class="pequeno">Toque num activista para mudar a comunidade, as pessoas da equipa ou marcar que não tem telemóvel.</p>
-    ${L.map((t) => `<div class="lin"><span><span class="sem-trad">${esc(t.nome)}</span><br><span class="pequeno"><span class="sem-trad">${esc(t.comunidade_principal || '—')}</span> · ${nC(t.id)} <span>${nC(t.id) === 1 ? 'campo' : 'campos'}</span> · ${t.equipa_tamanho ? t.equipa_tamanho + ' <span>pessoas</span>' : '<span>equipa por definir</span>'}${t.sem_telefone ? ' · 📵' : ''}</span></span><button class="chip" onclick="ecraTamanho('${t.id}')">Alterar</button></div>`).join('')}</details></div>`;
+    ${(() => {
+      const linha = (t) => `<div class="lin"><span><span class="sem-trad">${esc(t.nome)}</span><br><span class="pequeno"><span class="sem-trad">${esc(t.comunidade_principal || '—')}</span> · ${nC(t.id)} <span>${nC(t.id) === 1 ? 'campo' : 'campos'}</span> · ${t.equipa_tamanho ? t.equipa_tamanho + ' <span>pessoas</span>' : '<span>equipa por definir</span>'}${t.sem_telefone ? ' · 📵' : ''}</span></span><button class="chip" onclick="ecraTamanho('${t.id}')">Alterar</button></div>`;
+      if (S.perfil.papel === 'tecnico') return L.map(linha).join('');
+      // v178 (01/11/2026, Valdo: "seria importante que aparecessem os técnicos e os activistas"): supervisor e gestor vêem as equipas por técnico
+      const G = {}; L.forEach((t) => { const k = t.tecnico || ''; (G[k] ||= []).push(t); });
+      return Object.keys(G).sort((x, y) => (x ? 0 : 1) - (y ? 0 : 1) || x.localeCompare(y)).map((k) => `<div class="pequeno" style="margin:10px 0 2px;font-weight:600">👷 ${k ? `<span>Técnico:</span> <span class="sem-trad">${esc(k)}</span>` : '<span>Sem técnico</span>'} · ${G[k].length} <span>${G[k].length === 1 ? 'activista' : 'activistas'}</span></div>` + G[k].map(linha).join('')).join('');
+    })()}</details></div>`;
 }
 function verCamposDe(id) {
   if (listaPropria()) { S.filtro = 'meus'; LS.set('filtroSup', 'meus'); $('#f-ambito').value = 'meus'; }
@@ -4561,7 +4567,8 @@ function cartaoMeuDia() {
     <h3 style="font-size:14px;margin:8px 0 4px">1. <span>Equipas</span>: ${eqs.length - falta.length} / ${eqs.length} <span>com rega, a trabalhar ou com motivo</span></h3>
     ${porConf ? `<div class="msg erro">${num(porConf)} <span>motivos registados pelos activistas por confirmar. Basta um de vós (técnico ou supervisor) confirmar.</span></div>` : ''}` +
     eqs.map((e) => { const ms = motivosDe(e);
-      return `<div class="lin"><span class="sem-trad">${esc(e.nome)}</span><b>${e.regas ? `✓ ${num(e.regas)} <span>campos</span> · ${num(e.plantas)} <span>plantas</span>`
+      const tec = S.perfil.papel !== 'tecnico' ? tecDe({ activista_id: e.id }) : '';   // v178: o supervisor vê o técnico de cada equipa
+      return `<div class="lin"><span><span class="sem-trad">${esc(e.nome)}</span>${tec ? `<br><span class="pequeno">👷 <span class="sem-trad">${esc(tec)}</span></span>` : ''}</span><b>${e.regas ? `✓ ${num(e.regas)} <span>campos</span> · ${num(e.plantas)} <span>plantas</span>`
         : e.comecou ? `🟢 <span>Começou às</span> ${fmtHora(e.comecou)}`
         : ms.length ? `<span>Sem rega</span>: ${esc(nomeMot(ms.map((m) => m.motivo).join(', ')))}`
         : cedo ? `<span style="color:var(--suave,#777)">Ainda sem rega · pode regar até às 18:00</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`
