@@ -272,6 +272,11 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Servidor: coluna `registos_rega.motivo_tecnico`; `privado.rega_pela_equipa(act)` (técnico/supervisor/gestor sem `so_teste`, activista activo, `ids_visiveis` ou gestor); `registos_inserir` aceita `teste = false` com `motivo_tecnico` ≥ 3 letras e `rega_pela_equipa`. Testado: Guidion na equipa do Samugi aceite; sem motivo recusado; equipa de outro técnico recusada. `regas_campo` devolve `motivo_tecnico` e `registada_por`; a ficha mostra "🤝 Registada por X pela equipa: motivo". Painel › Cumprimento: coluna "Regas registadas pela equipa" (`painel_cumprimento.regas_registadas` = regas reais com `user_id` da pessoa, inclui as dos activistas sem telemóvel).
 - Teste: `rega-test/teste_v166.py` (PELA=0; LING=en / sw). `teste.py` falha no passo "já foi regado na ronda 1" desde a v164 (a app agora pede o motivo); não é da v166.
 
+## Funções em teste escondíveis e «Fechar o dia» sempre visível (v183, 01/11/2026, Valdo)
+- Painel › «📏 Medições com a vara (teste)»: botão «Esconder» no título; escondida neste aparelho (`localStorage rega.painel.ocultas`, `SEC_TESTE`, `aplicarOcultas`, `esconderSec`, `mostrarSec`); no fim do painel «Escondido no painel: … · Mostrar». Teste: `teste_painel_med.py`.
+- Mapa › «🥥 Coqueiros (teste)»: no painel dos coqueiros «Esconder este botão (teste)» (`esconderCoq`, LS `escondeCoq`, neste aparelho); para voltar: ℹ️ Legenda › «🥥 Coqueiros (teste): botão escondido · Mostrar» (`#leg-coq`). Teste: `rega-test/teste_v183_coq.py` (LING=en).
+- «O meu dia» (Valdo: "não vi onde é que o supervisor e o técnico fecham o dia"): «🔒 Fechar o dia» aparece sempre; desactivado, com a razão por cima, enquanto houver equipas sem rega nem motivo ou motivos por confirmar. Teste: `teste_v178.py` (apresentação: desactivado com 3/2 equipas por tratar; depois dos motivos, activo e o dia fecha).
+
 ## Equipas por técnico (v178, 01/11/2026, Valdo: "seria importante que aparecessem os técnicos e os activistas")
 - Hoje › «👥 As minhas equipas»: supervisor e gestor vêem as equipas agrupadas por técnico («👷 Técnico: X · N activistas», «Sem técnico» no fim); o técnico vê só os seus activistas, como antes. «O meu dia» (supervisor): por baixo de cada activista, «👷 técnico» (`tecDe`). Teste: `rega-test/teste_v178.py` (modo apresentação; LING=en).
 

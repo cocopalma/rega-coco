@@ -40,6 +40,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    "Escondido no painel:": "Hidden in the dashboard:",
+    "📏 Medições com a vara (teste)": "📏 Measurements with the 1 m stick (test)",
+    "🥥 Coqueiros (teste)": "🥥 Coconut trees (test)",
+    "Esconder este botão (teste)": "Hide this button (test)",
+    "🥥 Coqueiros (teste): botão escondido ·": "🥥 Coconut trees (test): button hidden ·",
+    "Botão dos coqueiros escondido. Para o voltar a mostrar: ℹ️ Legenda do mapa › «Mostrar».": "Coconut trees button hidden. To show it again: ℹ️ Map legend › «Show».",
     "Mudar a minha senha ou o meu PIN": "Change my password or PIN",
     "Técnico:": "Technician:",
     "Sem técnico": "No technician",

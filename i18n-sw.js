@@ -3,6 +3,12 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    "Escondido no painel:": "Imefichwa kwenye dashibodi:",
+    "📏 Medições com a vara (teste)": "📏 Vipimo kwa fimbo ya m 1 (jaribio)",
+    "🥥 Coqueiros (teste)": "🥥 Minazi (jaribio)",
+    "Esconder este botão (teste)": "Ficha kitufe hiki (jaribio)",
+    "🥥 Coqueiros (teste): botão escondido ·": "🥥 Minazi (jaribio): kitufe kimefichwa ·",
+    "Botão dos coqueiros escondido. Para o voltar a mostrar: ℹ️ Legenda do mapa › «Mostrar».": "Kitufe cha minazi kimefichwa. Kukionyesha tena: ℹ️ Ufunguo wa ramani › «Onyesha».",
     "Mudar a minha senha ou o meu PIN": "Badilisha nenosiri au PIN yangu",
     "Técnico:": "Fundi:",
     "Sem técnico": "Hakuna fundi",

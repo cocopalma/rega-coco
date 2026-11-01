@@ -106,7 +106,15 @@ with sync_playwright() as p:
         if eq.count(): eq.evaluate("e => e.open = true"); print(papel, "EQUIPAS:", txt(pg, "#hoje details[open]")[:420])
         else: print(papel, "EQUIPAS: (sem cartão)")
         if pg.locator("#meu-dia").count(): print(papel, "MEU DIA:", txt(pg, "#meu-dia")[:300])
+        if pg.locator("#meu-dia").count(): print(papel, "FECHAR O DIA:", pg.evaluate("[...document.querySelectorAll('#meu-dia button')].filter(b=>/Fechar o dia|Close the day|Funga siku/.test(b.textContent)).map(b=>b.textContent.trim()+(b.disabled?' (desactivado)':''))"), "|", pg.evaluate("(() => { const p=[...document.querySelectorAll('#meu-dia p')].find(p=>/fechar o dia|close the day|kufunga siku/i.test(p.textContent)); return p ? p.textContent.trim() : '' })()")[:120])
         print(papel, "MANUTENÇÃO: cartão no Hoje:", "Manuten" in pg.inner_text("#hoje") or "Maintenance" in pg.inner_text("#hoje"), "| botão no mapa:", pg.evaluate("[...document.querySelectorAll('.modo-sw')].some(d => d.style.display !== 'none')"), "| S.manut:", pg.evaluate("!!S.manut"))
+    # técnico regista o motivo das 2 equipas e fecha o dia
+    pg.evaluate("""async () => { for (const e of (LS.get('meuDia').d.equipas || [])) await sb.rpc('gravar_dia_sem_rega4', { p_id: crypto.randomUUID(), p_activista: e.id, p_data: hojeISO(), p_motivo: 'tuk_tuk', p_todo_dia: true, p_descricao: 'teste', p_lat: null, p_lon: null, p_foto: null, p_area: null, p_entrada: null, p_ate: null }); }""")
+    pg.evaluate("mudar('hoje')"); pg.wait_for_timeout(3000)
+    bt = pg.locator("#meu-dia button:has-text('Fechar o dia')")
+    print("depois dos motivos: botão activo:", bt.count() and not bt.first.is_disabled())
+    if bt.count() and not bt.first.is_disabled():
+        bt.first.click(); pg.wait_for_timeout(2500); print("fechado:", "Dia fechado" in pg.inner_text("#meu-dia"))
     print("pedidos ao servidor:", PEDIDOS["n"])
     print("ERROS JS:", erros or "nenhum"); b.close()
 srv.terminate() if 'srv' in dir() else None

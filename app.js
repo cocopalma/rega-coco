@@ -1050,7 +1050,8 @@ function desenharMapa(enquadrar = false) {
   $('#b-filtro').textContent = S.filtro === 'meus' ? 'As minhas' : 'Todas';
   $('#b-filtro').style.display = listaPropria() ? '' : 'none';
   $('#b-perc').style.display = podeVerPercursos() ? '' : 'none';
-  $('#b-coq').style.display = temCoq() ? '' : 'none';
+  $('#b-coq').style.display = temCoq() && !LS.get('escondeCoq', false) ? '' : 'none';
+  { const l = $('#leg-coq'); if (l) l.style.display = temCoq() && LS.get('escondeCoq', false) ? '' : 'none'; }
   const ri = $('#ronda-info');
   if (souActivista() && S.perfil.activista_id) { ri.style.display = ''; ri.innerHTML = textoRonda(); }
   // O filtro do activista escolhido na lista também vale no mapa. Mostra-o (v112, 26/10/2026: o Manuel e o Nuro não viam
@@ -1103,6 +1104,14 @@ function abrirCoq() {
   desenharCoq(); mostrarSugFixa(); mapa.on('click', cliqueCoqPerto);
   carregarCoq();
   const l = coqLista(); if (l.length && !S.pos) mapa.fitBounds(l.map((c) => [c.lat, c.lon]), { padding: [40, 40], maxZoom: 18 });
+}
+// v183 (01/11/2026, Valdo: "o georreferenciamento dos coqueiros… está em teste… tem que estar com um botão para esconder"):
+// esconde o botão 🥥 neste aparelho; volta pela legenda do mapa («Mostrar»)
+function esconderCoq(sim) {
+  LS.set('escondeCoq', !!sim);
+  if (sim && S.coq) fecharCoq();
+  desenharMapa();
+  if (sim) aviso('Botão dos coqueiros escondido. Para o voltar a mostrar: ℹ️ Legenda do mapa › «Mostrar».');
 }
 function fecharCoq() {
   S.coq = null; mapa.off('click', cliqueCoqPerto); if (camadaCoq) { camadaCoq.clearLayers(); mapa.removeLayer(camadaCoq); }
@@ -4601,8 +4610,10 @@ function cartaoMeuDia() {
     (pt.length ? '<p class="pequeno">A rega ficou a meio por falta de água ou avaria. Confirme que a equipa começa o próximo dia por estes campos.</p>' + pt.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
       <div class="sub"><span class="sem-trad">${esc(x.equipa || '')}</span> · <span>Faltam</span> ${num(Math.max(0, (x.base || 0) - (x.regadas || 0)))} <span>de</span> ${num(x.base || 0)} <span>plantas</span>${x.data ? ` · <span>rega a meio a</span> ${fmtData(x.data)}` : ''}</div>
       <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha</button></div></div>`).join('') : '<p class="pequeno">Nenhum.</p>');
-  h += d.fechado_em ? '' : falta.length ? `<p class="pequeno" style="margin-top:12px"><span>Para fechar o dia, todas as equipas têm de ter rega ou motivo. Faltam:</span> ${falta.length}</p>`
-    : porConf ? `<p class="pequeno" style="margin-top:12px"><span>Para fechar o dia, confirme os motivos dos activistas. Faltam:</span> ${porConf}</p>`
+  // v183 (01/11/2026, Valdo: "não vi onde é que o supervisor e o técnico fecham o dia"): o botão aparece sempre; fica desactivado
+  // enquanto faltar alguma equipa sem rega nem motivo ou motivos por confirmar, com a razão por cima
+  h += d.fechado_em ? '' : falta.length ? `<p class="pequeno" style="margin-top:12px"><span>Para fechar o dia, todas as equipas têm de ter rega ou motivo. Faltam:</span> ${falta.length}</p><button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button>`
+    : porConf ? `<p class="pequeno" style="margin-top:12px"><span>Para fechar o dia, confirme os motivos dos activistas. Faltam:</span> ${porConf}</p><button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button>`
     : `<button class="btn" style="margin-top:12px" onclick="fecharDia()">🔒 Fechar o dia</button>`;
   h += `<p class="pequeno">Feche o dia até às 18:00. Os dias fechados a tempo, a monitoria no prazo, as regas com ⚠️ confirmadas e as equipas sem motivo contam no cumprimento de cada técnico e supervisor (painel).</p>${c.em && !navigator.onLine ? `<p class="pequeno"><span>Sem rede: dados de</span> ${fmtHora(c.em)}</p>` : ''}</div>`;
   return h;

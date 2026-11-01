@@ -54,5 +54,10 @@ with sync_playwright() as p:
         with pg.expect_download() as d: pg.click("#b-med-csv")
         t = open(d.value.path(), encoding="utf-8-sig").read().splitlines(); print("excel:", d.value.suggested_filename, "|", t[0], "|", t[1], "|", t[2])
         pg.locator("#s-med").screenshot(path="/home/claude/rega-test/painel_med%s.png" % os.environ.get("LING", ""))
+    if pg.is_visible("#s-med"):
+        pg.click("#s-med .esc-teste"); pg.wait_for_timeout(300)
+        print("v183 esconder: secção visível:", pg.is_visible("#s-med"), "| rodapé:", pg.inner_text("#ocultas") if pg.is_visible("#ocultas") else "-")
+        pg.reload(); pg.wait_for_timeout(3000); print("v183 depois de recarregar: visível:", pg.is_visible("#s-med"))
+        pg.click("#ocultas button"); pg.wait_for_timeout(300); print("v183 mostrar: visível:", pg.is_visible("#s-med"), "| rodapé visível:", pg.is_visible("#ocultas"))
     print("ERROS JS:", erros or "nenhum"); b.close()
 srv.terminate()

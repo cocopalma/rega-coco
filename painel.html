@@ -102,6 +102,9 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .filtro .datas button{border-radius:8px}
 .filtro .legenda{flex-basis:100%;color:var(--ink);font-size:13px;font-weight:600}
 .per-tag{font-size:12px;color:var(--muted);margin:-4px 0 8px}
+.sec.oculta{display:none!important}
+.esc-teste{float:right;font-size:12px;font-weight:400;margin-top:4px}
+#ocultas{text-align:center;margin:16px 0}
 </style>
 </head>
 <body>
@@ -196,7 +199,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <div class="grelha kpis" id="k-pl"></div>
     <div class="tabela" id="t-pl" style="max-height:none"></div></section>
 
-  <section class="card sec" id="s-med" hidden><h2>📏 Medições com a vara · teste</h2>
+  <section class="card sec" id="s-med" hidden><h2>📏 Medições com a vara (teste) <button class="foto-btn esc-teste" type="button" onclick="esconderSec('s-med')">Esconder</button></h2>
     <p class="desc">Altura, diâmetro do tronco e largura da copa medidos na fotografia com a vara de 1 m (plantas do Mapa das plantas e coqueiros do ACE). Crescimento = último registo − penúltimo registo. Entram as plantas e os coqueiros com a última medição no período.</p>
     <div class="grelha kpis" id="k-med"></div>
     <p style="margin:8px 0"><button class="foto-btn" id="b-med-csv" type="button">⬇ Descarregar a tabela (Excel, .csv)</button></p>
@@ -239,13 +242,14 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <h3>Por equipa</h3><p class="desc">Nota média (0 a 10) dos campos verificados de cada equipa.</p><div id="g-mon-eq"></div>
     <details><summary>Ver tabela</summary><div class="tabela" id="t-mon-eq"></div></details>
   </section>
+  <p id="ocultas" class="desc" hidden></p>
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=182"></script>
-<script src="i18n.js?v=182"></script>
+<script src="i18n-sw.js?v=183"></script>
+<script src="i18n.js?v=183"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=182"></script>
+<script src="demo.js?v=183"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -775,8 +779,22 @@ const cmTxt = (v) => (v == null ? '—' : v >= 100 ? `${(v / 100).toLocaleString
 const difTxt = (u, p) => (u == null || p == null ? '' : ` <span style="color:${u - p >= 0 ? 'var(--good)' : 'var(--crit)'}">(${u - p > 0 ? '+' : u - p < 0 ? '−' : ''}${cmTxt(Math.abs(u - p))})</span>`);
 const diasMed = (x) => (x.pen_em ? Math.round((new Date(x.ult_em) - new Date(x.pen_em)) / 864e5) : null);
 const oQueMed = (x) => (x.tipo === 'coqueiro' ? `Coqueiro nº ${x.coqueiro_n ?? '?'}${x.local ? ' · ' + x.local : ''}` : `Planta nº ${x.planta_n ?? '?'} · ${x.area_id || ''}`);
+// v183 (01/11/2026, Valdo: "Coloca um botão para ocultar isto do painel geral… está em teste"): secções em teste escondidas
+// neste aparelho (rega.painel.ocultas); por baixo do painel fica «Escondido no painel: … · Mostrar»
+const SEC_TESTE = { 's-med': '📏 Medições com a vara (teste)' };
+const lerOcultas = () => { try { return JSON.parse(localStorage.getItem('rega.painel.ocultas') || '[]'); } catch { return []; } };
+function aplicarOcultas() {
+  const o = lerOcultas().filter((k) => SEC_TESTE[k]);
+  Object.keys(SEC_TESTE).forEach((k) => { const el = $('#' + k); if (el) el.classList.toggle('oculta', o.includes(k)); });
+  const p = $('#ocultas'); if (!p) return;
+  p.hidden = !o.length;
+  p.innerHTML = o.length ? `<span>Escondido no painel:</span> ${o.map((k) => `<span>${SEC_TESTE[k]}</span> · <button class="foto-btn" type="button" onclick="mostrarSec('${k}')">Mostrar</button>`).join(' &nbsp; ')}` : '';
+}
+function esconderSec(k) { const o = lerOcultas(); if (!o.includes(k)) o.push(k); try { localStorage.setItem('rega.painel.ocultas', JSON.stringify(o)); } catch {} aplicarOcultas(); }
+function mostrarSec(k) { try { localStorage.setItem('rega.painel.ocultas', JSON.stringify(lerOcultas().filter((x) => x !== k))); } catch {} aplicarOcultas(); const el = $('#' + k); if (el && !el.hidden) el.scrollIntoView({ behavior: 'smooth' }); }
 function desenharMedicoes() {
   const el = $('#s-med'); if (!el) return;
+  aplicarOcultas();
   const L = Array.isArray(DMD) ? DMD : null; el.hidden = !L; if (!L) return;
   const kpi = (rot, v, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${v}</div><div class="sub">${sub}</div></div>`;
   const com2 = L.filter((x) => x.pen_em && x.ult_altura != null && x.pen_altura != null);
