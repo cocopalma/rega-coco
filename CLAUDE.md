@@ -399,6 +399,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 
 ## Cumprimento mais claro (v169, 01/11/2026, Valdo: "o Essumaila fechou ou não fechou?")
 - Painel › Cumprimento: colunas "Dias a avaliar", "Fechou até às 18:00", "Fechou depois das 18:00" e "Não fechou" (= dias − a tempo − depois; os dois últimos a vermelho quando > 0), em vez de "Dias fechados a tempo" (a / dias) e "Fechados depois das 18:00". Cabeçalhos das colunas de números em várias linhas em todas as tabelas do painel (`th.n`: 56–104 px); na imagem do cumprimento as colunas começam em 60 px. Teste: `rega-test/teste_v169.py` (LING=en / sw).
+- Texto do cumprimento (v184, 01/11/2026, Valdo: "O que significa dias a avaliar?"): a descrição dizia «Do início do trabalho dos activistas (24/10)», mas o cumprimento conta desde `config.cumprimento_inicio` (29/10); passou a «Dias a avaliar = dias de trabalho, de segunda a sábado…, desde 29/10… Fechou até às 18:00 + Fechou depois das 18:00 + Não fechou = Dias a avaliar.»
 - Domingos fora do cumprimento (01/11/2026, Valdo: "Sim"; não há rega ao domingo): `painel_cumprimento` (migração `cumprimento_sem_domingo`) conta só segunda a sábado em `dias`, nos fechos do dia e nas equipas-dia sem motivo; um período só com domingo devolve `pessoas: []`. Monitoria, regas registadas e acompanhamentos não mudam.
 
 ## Cumprimento a partir de 29/10 (v134, 28/10/2026, Valdo: "1 sim")
