@@ -40,6 +40,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    "Oficial confirmou NAVUNA": "Officer confirmed NAVUNA",
+    "✓ Oficial confirmou": "✓ Officer confirmed",
+    "A app não lê o NAVUNA: confira lá os números antes de validar.": "The app does not read NAVUNA: check the numbers there before validating.",
     "total na rega:": "total in watering:",
     "Não regou hoje · falta o motivo": "No watering today · reason missing",
     "Depois da chegada da água": "After the water arrives",
