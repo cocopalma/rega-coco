@@ -503,6 +503,13 @@
   }
   const resp = (b, st = 200, h = {}) => new Response(st === 204 || b === undefined ? null : JSON.stringify(b), { status: st, headers: { 'Content-Type': 'application/json', ...h } });
   const fotosMem = {};
+  // v179 (01/11/2026, Valdo: a fotografia da queimada aparecia partida ao M&E): as fotografias da apresentação ficam numa base
+  // própria do navegador, que sobrevive à troca de função (a troca recarrega a página e apaga a base do «telefone»)
+  const FIDB = 'rega-coco-demo-fotos';
+  const fotosDB = () => new Promise((ok, ko) => { const q = op.call(indexedDB, FIDB, 1); q.onupgradeneeded = () => q.result.createObjectStore('f'); q.onsuccess = () => ok(q.result); q.onerror = () => ko(q.error); });
+  const fotoGuardar = async (k, blob) => { try { const db = await fotosDB(); await new Promise((ok) => { const t = db.transaction('f', 'readwrite'); t.objectStore('f').put(blob, k); t.oncomplete = ok; t.onerror = ok; }); db.close(); } catch {} };
+  const fotoLer = async (k) => { try { const db = await fotosDB(); const b = await new Promise((ok) => { const q = db.transaction('f').objectStore('f').get(k); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }); db.close(); return b; } catch { return null; } };
+  const fotoUrl = async (p) => { if (fotosMem[p]) return fotosMem[p]; const b = await fotoLer(p); if (b) { fotosMem[p] = URL.createObjectURL(b); return fotosMem[p]; } return FOTO_EX; };
   async function demoFetch(entrada, init = {}) {
     const url = new URL(typeof entrada === 'string' ? entrada : entrada.url), metodo = (init.method || (entrada.method) || 'GET').toUpperCase();
     const h = new Headers(init.headers || (typeof entrada === 'string' ? {} : entrada.headers));
@@ -514,7 +521,7 @@
       if (c.startsWith('/storage/v1/')) {
         if (metodo === 'POST' || metodo === 'PUT') {
           const p = decodeURIComponent(c.split('/object/')[1] || ''), blob = corpo instanceof Blob ? corpo : corpo instanceof FormData ? [...corpo.values()].find((v) => v instanceof Blob) : null;
-          if (blob) fotosMem[p.split('/').slice(1).join('/')] = URL.createObjectURL(blob);
+          if (blob) { const k = p.split('/').slice(1).join('/'); fotosMem[k] = URL.createObjectURL(blob); await fotoGuardar(k, blob); }
           return resp({ Key: p, Id: p });
         }
         return resp([]);
@@ -556,8 +563,9 @@
   if (sbOrig && sbOrig.createClient) {
     window.supabase = Object.assign({}, sbOrig, { createClient(u, k3, o = {}) {
       const cl = sbOrig.createClient(u, k3, { ...o, global: { ...(o.global || {}), fetch: demoFetch } });
-      const from = cl.storage.from.bind(cl.storage);
-      cl.storage.from = (b) => { const s = from(b); s.createSignedUrl = async (p) => ({ data: { signedUrl: fotosMem[p] || FOTO_EX, signedURL: fotosMem[p] || FOTO_EX }, error: null }); return s; };
+      // v179: «cl.storage» é criado de novo a cada leitura, por isso muda-se o método no protótipo (antes não tinha efeito)
+      const proto = Object.getPrototypeOf(cl.storage.from('x'));
+      if (proto && !proto.__demo) { proto.__demo = true; proto.createSignedUrl = async function (p) { const u = await fotoUrl(p); return { data: { signedUrl: u, signedURL: u }, error: null }; }; }
       return cl;
     } });
   }
@@ -579,7 +587,7 @@
     andarMedir(id) { const a = area(id); if (a.latitude == null) return; parar(); const k = volta(a); let i = 0;
       andar = setInterval(() => { i++; if (i >= k.length) { parar(); return; } porPos(k[i][0], k[i][1]); }, 350); },
     pararAndar: () => parar(),
-    terminar() { limparTelefone(); try { ['rega.demo', 'rega.demo.db', 'rega.demo.pos', 'rega.demo.modo'].forEach((x) => sessionStorage.removeItem(x)); } catch {} location.reload(); },
-    recomecar(modo) { limparTelefone(); try { sessionStorage.setItem('rega.demo.modo', modo === 'exemplos' ? 'exemplos' : 'zero'); sessionStorage.removeItem('rega.demo.db'); sessionStorage.removeItem('rega.demo.pos'); } catch {} location.reload(); },
+    terminar() { limparTelefone(); try { indexedDB.deleteDatabase(FIDB); } catch {} try { ['rega.demo', 'rega.demo.db', 'rega.demo.pos', 'rega.demo.modo'].forEach((x) => sessionStorage.removeItem(x)); } catch {} location.reload(); },
+    recomecar(modo) { limparTelefone(); try { indexedDB.deleteDatabase(FIDB); } catch {} try { sessionStorage.setItem('rega.demo.modo', modo === 'exemplos' ? 'exemplos' : 'zero'); sessionStorage.removeItem('rega.demo.db'); sessionStorage.removeItem('rega.demo.pos'); } catch {} location.reload(); },
   };
 })();

@@ -125,6 +125,9 @@ with sync_playwright() as p:
     demo(pg, 'me')
     pg.evaluate("mudar('hoje')"); pg.wait_for_timeout(3000)
     rid = pg.evaluate("(recontagens().find(r=>r.area_id==='PR900101-1')||{}).id"); print("6 M&E vê o pedido:", bool(rid), pg.evaluate("recontagens().map(r=>r.estado)"))
+    fq = DB(pg, "(D.queimadas[0]||{}).foto_path")
+    print("6f fotografia da queimada no M&E:", pg.evaluate("""async (p) => { const r = await sb.storage.from('rega-fotos').createSignedUrl(p, 600); const u = r.data.signedUrl;
+      const w = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i.naturalWidth); i.onerror = () => ok(-1); i.src = u; }); return [u.slice(0, 5), w]; }""", fq))
     pg.evaluate(f"ecraEncaminhar('{rid}')"); pg.wait_for_selector("#en-of"); pg.wait_for_timeout(500)
     print("   opções:", pg.evaluate("[...document.querySelectorAll('#en-of option')].map(o=>[o.value,o.text])")); pg.select_option("#en-of", index=0); pg.click("#en-ok"); pg.wait_for_timeout(2500)
     print("6a encaminhada:", DB(pg, "D.recontagens.map(r=>r.estado)"))
