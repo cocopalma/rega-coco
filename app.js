@@ -5033,8 +5033,8 @@ function mostrarApp() {
   faixaDemo();
   $('#login').style.display = 'none'; $('#app').style.display = 'flex'; avisoNavegador(); avisoSemMotivo(false);
   $('#h-nome').textContent = `${S.perfil.nome}${['activista', 'cliente'].includes(papel) ? '' : ' · ' + (S.perfil.titulo || (papel === 'gestor' ? 'Gestor' : FUNCOES[papel]?.nome || papel))}`;
-  $('#h-nome').title = S.perfil.papel === 'activista' ? 'Mudar o meu PIN' : 'Mudar a minha senha';
-  $('#h-nome').onclick = () => ecraTrocarSenha(false);
+  $('#h-nome').title = $('#h-nome').textContent;   // v182: a dica mostra o nome completo (o nome já não abre a mudança de senha)
+  // v182 (Valdo): tocar no nome já não abre nada; mudar a senha/PIN só pelo ⚙️
   { const c = $('#h-conf'); if (c) c.style.display = window.DEMO ? 'none' : ''; }   // v181 (Valdo): botão ⚙️ para mudar a senha/PIN (antes só tocando no nome); escondido na apresentação
   $('#nav-gestao').style.display = papel === 'gestor' ? '' : 'none';
   $('#nav-painel').style.display = VER_PAINEL.includes(papel) ? '' : 'none';

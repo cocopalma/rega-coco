@@ -84,6 +84,7 @@ with sync_playwright() as p:
               "| ⚙️ visível:", pg.is_visible("#h-conf"), "| botões:", pg.evaluate("[...document.querySelectorAll('header button')].filter(b=>b.offsetParent).map(b=>b.textContent.trim()).join(' ')"))
     print("nome com ⚙️:", pg.evaluate("document.getElementById('h-nome').getBoundingClientRect().width"), "| sem:", pg.evaluate("(() => { const c = document.getElementById('h-conf'); c.style.display='none'; const w = document.getElementById('h-nome').getBoundingClientRect().width; c.style.display=''; return w })()"), "| texto:", pg.inner_text("#h-nome"))
     pg.screenshot(path="/home/claude/rega-test/v181_topo.png", clip={"x": 0, "y": 0, "width": 390, "height": 120})
+    pg.click("#h-nome"); pg.wait_for_timeout(400); print("tocar no nome abre folha:", pg.is_visible("#folha.on"), "| dica:", pg.get_attribute("#h-nome", "title"))
     pg.click("#h-conf"); pg.wait_for_timeout(400); print("ecrã:", pg.inner_text("#folha-c").split("\n")[0], "| title:", pg.get_attribute("#h-conf", "title"))
     print("ERROS JS:", erros or "nenhum"); b.close()
 srv.terminate()
