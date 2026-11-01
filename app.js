@@ -1135,6 +1135,18 @@ function coqLeitura(c) {                                 // leituras do GPS do m
   if (dentro && P.dentro !== perto.id) { try { navigator.vibrate?.([200, 100, 200]); } catch {} }
   P.dentro = dentro ? perto.id : null;
 }
+function svgPalmeira(cor, retirado) {                // ícone dos coqueiros no mapa (base do tronco = posição); retirado = cinzento com ✕ vermelho
+  const f = retirado ? '#bdbdbd' : cor;
+  const folhas = ['M12 8.5Q5 2.5 0.4 8.8Q5.5 9.6 12 8.5Z', 'M12 8.5Q19 2.5 23.6 8.8Q18.5 9.6 12 8.5Z', 'M12 8.5Q10 0.4 3.6 0.8Q7.6 6 12 8.5Z',
+    'M12 8.5Q14 0.4 20.4 0.8Q16.4 6 12 8.5Z', 'M12 8.5Q5.6 8.6 3 15.4Q8.6 13.4 12 8.5Z', 'M12 8.5Q18.4 8.6 21 15.4Q15.4 13.4 12 8.5Z'];
+  return `<svg width="32" height="32" viewBox="0 0 24 24" style="display:block;cursor:pointer;overflow:visible${retirado ? ';opacity:.85' : ''}">` +
+    `<path d="M12 9Q13.8 16 11.4 23" fill="none" stroke="#fff" stroke-width="4.4" stroke-linecap="round"/>` +
+    `<path d="M12 9Q13.8 16 11.4 23" fill="none" stroke="${retirado ? '#9e9e9e' : '#7a5232'}" stroke-width="2.6" stroke-linecap="round"/>` +
+    folhas.map((d) => `<path d="${d}" fill="${f}" stroke="#fff" stroke-width="1.2" stroke-linejoin="round" paint-order="stroke"/>`).join('') +
+    (retirado ? `<path d="M7 5L17 15M17 5L7 15" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M7 5L17 15M17 5L7 15" stroke="#c62828" stroke-width="2.2" stroke-linecap="round"/>`
+      : `<circle cx="10.8" cy="10" r="1.5" fill="#6d4c2f" stroke="#fff" stroke-width=".6"/><circle cx="13.3" cy="10.2" r="1.5" fill="#6d4c2f" stroke="#fff" stroke-width=".6"/>`) +
+    `</svg>`;
+}
 function desenharCoq() {
   if (!S.coq || !camadaCoq) return;
   camadaCoq.clearLayers();
@@ -1145,8 +1157,9 @@ function desenharCoq() {
     const ret = c.estado === 'retirado';
     // v143 (29/10/2026, Valdo: no computador (Safari) tocar no ponto não abria a ficha; no telemóvel abria): o ponto é um elemento
     // da página (divIcon) em vez de um desenho no canvas, para o clique funcionar em todos os navegadores.
-    L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'coq-pt', iconSize: [22, 22], iconAnchor: [11, 11],
-      html: `<span style="background:${ret ? 'transparent' : (COR_COQ[c.estado] || '#777')};border:${ret ? '3px solid #c62828' : '2px solid #fff'}"></span>` }), keyboard: false })
+    // v185 (01/11/2026, Valdo: o ponto confundia-se com o ponto de um campo): palmeira com a cor do estado nas folhas; retirado = cinzento com ✕.
+    L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'coq-pt', iconSize: [32, 32], iconAnchor: [16, 30],
+      html: svgPalmeira(COR_COQ[c.estado] || '#777', ret) }), keyboard: false })
       .on('click', (e) => { L.DomEvent.stop(e); verCoq(c.id); }).addTo(camadaCoq);
   }
   const exist = l.filter((c) => c.estado !== 'retirado'), trat = exist.filter((c) => c.tratamento).length, prod = exist.filter((c) => c.cachos || c.cocos).length;
