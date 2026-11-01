@@ -470,7 +470,7 @@
       else Object.assign(r, { estado: 'recusada', recusa_motivo: a.p_motivo, recusada_em: new Date().toISOString(), navuna: null }); return null; },
     cancelar_recontagem: (a) => { const r = DB.recontagens.find((x) => x.id === a.p_id); if (r) r.estado = 'cancelada'; return null; },
     pedir_recontagem2: (a) => { if (!DB.recontagens.some((x) => x.id === a.p_id)) DB.recontagens.push({ id: a.p_id, area_id: a.p_area, motivo: a.p_motivo, estado: a.p_oficial && ['me', 'gestor'].includes(papel) ? 'encaminhada' : 'por_encaminhar', pedido_em: a.p_em || new Date().toISOString(), pedido_por: EU, oficial_id: ['me', 'gestor'].includes(papel) ? a.p_oficial || null : null }); return null; },
-    gravar_queimada2: (a) => { if (!DB.queimadas.some((x) => x.id === a.p_id)) { DB.queimadas.push({ id: a.p_id, area_id: a.p_area, data: a.p_data, observacao: a.p_obs || null, foto_path: a.p_foto || null, registada_por: EU, registada_em: new Date().toISOString(), plantas_afectadas: a.p_afectadas, plantas_mortas: a.p_mortas ?? null });
+    gravar_queimada2: (a) => { if (!DB.queimadas.some((x) => x.id === a.p_id)) { DB.queimadas.push({ id: a.p_id, area_id: a.p_area, data: a.p_data, observacao: a.p_obs || null, foto_path: a.p_foto || null, registada_por: EU, registada_em: new Date().toISOString(), plantas_afectadas: a.p_afectadas, plantas_mortas: a.p_mortas ?? null, removida: false });
       DB.recontagens.push({ id: uid(), area_id: a.p_area, queimada_id: a.p_id, motivo: 'Queimada', estado: 'por_encaminhar', pedido_em: new Date().toISOString(), pedido_por: EU, oficial_id: null }); } return null; },
     aprovar_poligono: (a) => { const ar = area(a.p_area); if (ar.id && ar.poligono_proposto) { if (a.p_aprovar) { ar.poligono = ar.poligono_proposto; ar.area_m2 = ar.area_m2_proposta; ar.limites_abertos = false; } ar.poligono_proposto = null; ar.area_m2_proposta = null; ar.proposta_em = null; } return null; },
     atribuir_area2: (a) => { const ar = area(a.p_area); if (ar.id) ar.activista_id = a.p_activista; return null; },
@@ -483,7 +483,7 @@
   const TABELAS = {
     perfis: () => [{ id: EU, nome: NOMES[papel], papel, activista_id: act(), titulo: null, gere_acessos: papel === 'gestor', trocar_senha: false, marca_coqueiros: false, so_teste: false }],
     activistas: () => DB.activistas, areas: () => areasVisiveis(), zonas: () => [], pocos: () => [], coberturas: () => [], pessoas_acesso: () => [], plantas: () => [], config: () => [{ chave: 'monitoria_campos_por_dia', valor: 2 }],
-    queimadas: () => DB.queimadas.filter((q) => !q.removida), registos_rega: () => DB.registos.filter((r) => !act() || r.activista_id === A1),
+    queimadas: () => DB.queimadas.filter((q) => !q.removida).map((q) => ({ removida: false, ...q })),   // v172: sem «removida» o filtro removida=eq.false deixava-a de fora (o 🔥 não aparecia aos outros papéis) registos_rega: () => DB.registos.filter((r) => !act() || r.activista_id === A1),
     jornadas: () => DB.jornadas, chuva: () => [], monitorias: () => [], constrangimentos: () => DB.constr,
   };
   function filtrar(linhas, q) {

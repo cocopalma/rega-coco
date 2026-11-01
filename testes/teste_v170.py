@@ -115,6 +115,7 @@ with sync_playwright() as p:
     pg.click("button[onclick^=gravarQueimada]"); pg.wait_for_timeout(3000)
     print("3 queimada → recontagem:", DB(pg, "D.recontagens.map(r=>[r.area_id,r.estado])"))
     demo(pg, 'tecnico')
+    print("3a técnico vê a queimada (🔥 no mapa):", pg.evaluate("(S.queimadas||[]).map(q=>q.area_id)"), pg.evaluate("document.querySelectorAll('.ic-fogo').length"))
     pg.click("nav button[data-e=hoje]"); pg.wait_for_selector("#meu-dia", timeout=15000); pg.wait_for_timeout(800)
     t = txt(pg, "#meu-dia"); print("4 técnico, o meu dia:", "Activista Exemplo" in t, "| ⚠️ 300:", "300" in t, "| monitoria:", pg.evaluate("(S.mon||[]).map(m=>m.area_id)"))
     print("4a cartão monitoria:", txt(pg, "#hoje")[txt(pg, "#hoje").find("Monitoria"):][:160])
