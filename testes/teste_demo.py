@@ -104,7 +104,7 @@ with sync_playwright() as p:
     pg.evaluate("fecharFolha()"); pg.click("nav button[data-e=lista]"); pg.wait_for_timeout(300)
     print("3 lista:", pg.locator("#lista .item").count(), "|", pg.locator("#lista .item .nome").all_inner_texts()[:5])
     pg.click(".item[data-id='PR900101-1']"); pg.wait_for_selector("#folha.on"); print("   centro:", pg.evaluate("[DEMO.lat, DEMO.lon]"), "| pos:", pg.evaluate("S.pos")); pg.click("text=Cheguei — marcar entrada"); pg.wait_for_selector("text=Entrada marcada", timeout=30000)
-    pg.evaluate("(async()=>{for (const t of ['entrada','rega','saida']) await guardarFotoRega(t, new Blob(['x'],{type:'image/jpeg'})); abrirFicha(LS.get('emCurso').area_id)})()"); pg.wait_for_timeout(400)
+    pg.evaluate("(async()=>{{const e=LS.get('emCurso'); if(e&&!e.agua_em&&!window.SEM_AGUA){e.agua_em=e.entrada_em; LS.set('emCurso',e)}} for (const t of ['entrada','rega','saida']) await guardarFotoRega(t, new Blob(['x'],{type:'image/jpeg'})); abrirFicha(LS.get('emCurso').area_id)})()"); pg.wait_for_timeout(400)
     pg.click("text=Terminei — marcar saída"); pg.fill("#s-plantas", "150"); pg.click("#s-chips .chip[data-k=mudas_secas]"); pg.click("text=Marcar saída e guardar"); pg.wait_for_selector("text=Rega guardada", timeout=30000); pg.wait_for_timeout(2500)
     print("4 rega:", pg.inner_text("#folha-c")[:200].replace("\n", " | "), "| fila:", pg.evaluate("(LS.get('fila')||[]).length"), "| base:", pg.evaluate("JSON.parse(sessionStorage.getItem('rega.demo.db')).registos.length"))
     pg.evaluate("fecharFolha()")

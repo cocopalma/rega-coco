@@ -46,8 +46,9 @@ def fechar_sugestao(pg):
 
 def regar(pg, area, plantas=None, agua=None, hora_agua=None):
     pg.click("nav button[data-e=lista]"); pg.click(f".item[data-id='{area}']"); pg.wait_for_selector("#folha.on")
-    pg.click("text=Cheguei — marcar entrada"); pg.wait_for_selector("text=Entrada marcada", timeout=15000); fotos(pg)
-    if agua == "agora": pg.click("text=Chegou a água (tuk-tuk) agora"); pg.wait_for_selector("text=Água (tuk-tuk) no campo")
+    pg.click("text=Cheguei — marcar entrada"); pg.wait_for_selector("text=Entrada marcada", timeout=15000)
+    if agua == "agora": pg.evaluate("abrirFicha(LS.get('emCurso').area_id)"); pg.click("text=Chegou a água (tuk-tuk) agora"); pg.wait_for_selector("text=Água (tuk-tuk) no campo")
+    fotos(pg)
     pg.click("text=Terminei — marcar saída")
     if plantas is None: plantas = pg.evaluate("(id) => plantasN(S.areas.find((a) => a.id === id))", area)   # o campo vem vazio desde a v85
     pg.fill("#s-plantas", str(plantas))
@@ -56,7 +57,7 @@ def regar(pg, area, plantas=None, agua=None, hora_agua=None):
     pg.click("text=Marcar saída e guardar"); pg.wait_for_selector("text=Rega guardada", timeout=15000)
 
 def fotos(pg):   # fotografias obrigatórias da rega (15/10/2026): no teste guardam-se directamente
-    pg.evaluate("(async()=>{for (const t of ['entrada','rega','saida']) await guardarFotoRega(t, new Blob(['x'],{type:'image/jpeg'})); abrirFicha(LS.get('emCurso').area_id)})()"); pg.wait_for_timeout(300)
+    pg.evaluate("(async()=>{{const e=LS.get('emCurso'); if(e&&!e.agua_em&&!window.SEM_AGUA){e.agua_em=e.entrada_em; LS.set('emCurso',e)}} for (const t of ['entrada','rega','saida']) await guardarFotoRega(t, new Blob(['x'],{type:'image/jpeg'})); abrirFicha(LS.get('emCurso').area_id)})()"); pg.wait_for_timeout(300)
 with sync_playwright() as p:
     b = p.chromium.launch()
     ctx = b.new_context(geolocation={"latitude": -10.6836, "longitude": 40.6341}, permissions=["geolocation"], viewport={"width": 390, "height": 800})
@@ -78,7 +79,7 @@ with sync_playwright() as p:
     r1 = recebidos["registos"][0]
     print("3 PR1:", {k: r1[k] for k in ["ronda", "pessoas", "plantas_regadas"]}, "| agua_em:", bool(r1["agua_em"]), "| sugestão:", pg.inner_text("#folha-c").split("Produtor")[1][:20].strip())
     fechar_sugestao(pg)
-    regar(pg, "PR2-1", hora_agua="07:30"); pg.wait_for_timeout(1500)
+    regar(pg, "PR2-1"); pg.wait_for_timeout(1500)
     r2 = recebidos["registos"][-1]; print("4 PR2: hora da água escrita →", r2["agua_em"], "| seguiu sugestão:", r2["seguiu_sugestao"])
     fechar_sugestao(pg)
     # repetir PR1 na mesma ronda → bloqueado

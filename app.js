@@ -2581,10 +2581,10 @@ function abrirFicha(id, nota = '') {
   const d = S.pos ? distCampo(a, S.pos) : null;
   const podeRegar = PODE_REGAR.includes(S.perfil.papel) && (S.perfil.papel === 'activista' || a.activista_id);
   let acc = '';
-  if (emCurso && emCurso.area_id === a.id) acc = (emCurso.motivo_tecnico ? `<div class="msg info">🤝 <span>Rega pela equipa: conta na ronda da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>.</div>` : '') + cartaoFotosRega(emCurso) + (emCurso.agua_em
+  if (emCurso && emCurso.area_id === a.id) acc = (emCurso.motivo_tecnico ? `<div class="msg info">🤝 <span>Rega pela equipa: conta na ronda da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>.</div>` : '') + (emCurso.agua_em
       ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>`
-      : `<button class="btn sec" onclick="marcarAgua(false)">💧 Chegou a água (tuk-tuk) agora</button>
-         <button class="btn sec" onclick="marcarAgua(true)">A água já estava no campo quando chegámos</button>`) +
+      : `<button class="btn" onclick="marcarAgua(false)">💧 Chegou a água (tuk-tuk) agora</button>
+         <button class="btn sec" onclick="marcarAgua(true)">A água já estava no campo quando chegámos</button>`) + cartaoFotosRega(emCurso) +
     `<button class="btn aviso" onclick="ecraSaida()">Terminei — marcar saída</button>
      <button class="btn sec" onclick="ecraNaoRegou()">🚫 Não houve rega neste campo</button>` +
     (!emCurso.fotos?.rega && Date.now() - new Date(emCurso.entrada_em) < 3600e3 ? `<button class="btn sec" onclick="entradaEngano()">↩️ Marquei a entrada no campo errado</button>` : '');
@@ -2765,8 +2765,11 @@ function confirmarAlerta() {
 }
 function marcarAgua(jaEstava) {
   const ent = LS.get('emCurso'); if (!ent) return;
-  ent.agua_em = jaEstava ? ent.entrada_em : new Date().toISOString(); LS.set('emCurso', ent);
-  abrirFicha(ent.area_id);
+  ent.agua_em = jaEstava ? ent.entrada_em : new Date().toISOString();
+  let nota = '';
+  if (!jaEstava && ent.fotos?.rega && ent.fotos.rega < ent.agua_em) { delete ent.fotos.rega; nota = `<div class="msg erro">A fotografia da rega foi tirada antes de chegar a água. Tire-a outra vez, agora com água.</div>`; }
+  LS.set('emCurso', ent);
+  abrirFicha(ent.area_id, nota);
 }
 
 // ---------- fotografias da rega (15/10/2026, Valdo): entrada, evidência da rega e saída, todas obrigatórias ----------
@@ -2784,13 +2787,17 @@ async function guardarFotoRega(tipo, foto) {
 function cartaoFotosRega(ent) {
   const f = ent.fotos || {};
   return `<div class="cartao" style="margin:8px 0"><div class="lin"><span><b>Fotografias</b></span><span class="pequeno">obrigatórias</span></div>` +
-    ['entrada', 'rega'].map((t) => `<div class="lin"><span>📷 ${FOTOS_REGA[t]}</span><b>${f[t]
+    ['entrada', 'rega'].map((t) => `<div class="lin"><span>📷 ${FOTOS_REGA[t]}</span><b>${t === 'rega' && !ent.agua_em && !f[t]
+      ? `<span class="pequeno">Depois da chegada da água</span>`
+      : f[t]
       ? `<span style="color:var(--ok,#2e7d32)">✓ ${fmtHora(f[t])}</span> <button class="chip" onclick="ecraFotoRega('${t}')">Tirar outra</button>`
       : `<button class="chip" onclick="ecraFotoRega('${t}')">Tirar</button>`}</b></div>`).join('') +
     `<p class="pequeno" style="margin:4px 0 0">A fotografia da saída tira-se ao marcar a saída.</p></div>`;
 }
 function ecraFotoRega(tipo, nota = '', r = null) {
   const ent = LS.get('emCurso'); if (!ent) return;
+  // v173 (01/11/2026, Valdo): a rega começa quando há água; a fotografia da rega só depois de marcar a chegada da água (tuk-tuk)
+  if (tipo === 'rega' && !ent.agua_em) { alert('Marque primeiro a chegada da água (tuk-tuk). A rega só começa quando há água no campo.'); return abrirFicha(ent.area_id); }
   const ajuda = { entrada: 'Fotografia da equipa a chegar ao campo.', rega: 'Fotografia da equipa a regar as plantas.', saida: 'Fotografia do campo regado, ao sair.' }[tipo];
   folha(`${nota}${r?.camara ? AVISO_CAMARA : ''}<h2>${FOTOS_REGA[tipo]}</h2><p class="pequeno">${ajuda} Obrigatória.</p>
     ${campoFoto('fr-foto', FOTOS_REGA[tipo])}
@@ -2829,7 +2836,7 @@ function ecraSaida(msg = '') {
    ${(() => { const b = baseSaida(a); return b.ja ? `<div class="msg info">⏳ <span>Campo por terminar: já se regaram</span> ${num(b.ja)} <span>plantas nesta ronda. Faltam</span> ${num(b.resta)}. <span>Escreva só as plantas que regou agora.</span></div>` : ''; })()}
    <label>Pessoas que regaram este campo<input id="s-pessoas" type="number" inputmode="numeric" min="1" max="30" value="${(ent.motivo_tecnico && presTec(a.activista_id) ? presTec(a.activista_id).pessoas || '' : jornadaHoje()?.pessoas) ?? ''}"></label>
    ${ent.agua_em ? `<p class="pequeno">Água no campo às ${fmtHora(ent.agua_em)}.</p>`
-     : `<label>Hora a que chegou a água (tuk-tuk)<input id="s-agua" type="time"></label><p class="pequeno">Deixe vazio se não chegou água.</p>`}
+     : `<label>Hora a que chegou a água (tuk-tuk)<input id="s-agua" type="time"></label><p class="pequeno">Obrigatória: entre a entrada (${fmtHora(ent.entrada_em)}) e a fotografia da rega${ent.fotos?.rega ? ` (${fmtHora(ent.fotos.rega)})` : ''}. Se não chegou água, volte e use «🚫 Não houve rega neste campo».</p>`}
    <label>O que dificultou a rega neste campo?</label><p class="pequeno">Pode escolher mais do que um. Se nada dificultou, não escolha nenhum.</p>
    <div id="s-falta"></div>
    <div class="chips" id="s-chips">${TIPOS.map(([k, t, d]) => `<button class="chip op" data-k="${k}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
@@ -2883,7 +2890,15 @@ async function marcarSaida() {
   const pessoas = parseInt($('#s-pessoas').value, 10);
   if (!(pessoas >= 1 && pessoas <= 30)) { alert('Escreva o número de pessoas (1 a 30).'); return; }
   const hAgua = $('#s-agua')?.value;
-  if (hAgua) { const t = new Date(); const [hh, mm] = hAgua.split(':'); t.setHours(+hh, +mm, 0, 0); ent.agua_em = t.toISOString(); }
+  if ($('#s-agua')) {                                            // v173: a água chega depois da entrada e antes da fotografia da rega
+    if (!hAgua) { alert('Escreva a hora a que chegou a água (tuk-tuk). Se não chegou água, use «🚫 Não houve rega neste campo».'); $('#s-agua').focus(); return; }
+    const t = new Date(ent.entrada_em); const [hh, mm] = hAgua.split(':'); t.setHours(+hh, +mm, 0, 0);
+    const ini = new Date(ent.entrada_em); ini.setSeconds(0, 0);
+    const fim = ent.fotos?.rega ? new Date(ent.fotos.rega) : new Date();
+    if (t < ini) { alert(`A água não pode ter chegado antes da entrada no campo (${fmtHora(ent.entrada_em)}).`); $('#s-agua').focus(); return; }
+    if (t > fim) { alert(ent.fotos?.rega ? `A água não pode ter chegado depois da fotografia da rega (${fmtHora(ent.fotos.rega)}).` : 'A hora da água não pode ser depois de agora.'); $('#s-agua').focus(); return; }
+    ent.agua_em = t.toISOString();
+  }
   const j = jornadaHoje(); if (j && j.pessoas !== pessoas) { j.pessoas = pessoas; LS.set('jornada', j); }
   const tipos = [...document.querySelectorAll('#s-chips .chip.on')].map((b) => b.dataset.k), obs = $('#s-obs').value.trim();
   const base = baseSaida(a).resta;
@@ -4550,7 +4565,7 @@ function cartaoMeuDia() {
         : e.comecou ? `🟢 <span>Começou às</span> ${fmtHora(e.comecou)}`
         : ms.length ? `<span>Sem rega</span>: ${esc(nomeMot(ms.map((m) => m.motivo).join(', ')))}`
         : cedo ? `<span style="color:var(--suave,#777)">Ainda sem rega · pode regar até às 18:00</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`
-        : `<span style="color:var(--erro,#c62828)">Sem rega e sem motivo</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`}</b></div>` + ms.filter((m) => m.id).map((m) => linhaMot(e, m)).join(''); }).join('') +
+        : `<span style="color:var(--erro,#c62828)">Não regou hoje · falta o motivo</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`}</b></div>` + ms.filter((m) => m.id).map((m) => linhaMot(e, m)).join(''); }).join('') +
     `<p class="pequeno">🟢 = <span>a equipa começou o dia na app (rega em curso ou ainda por enviar). Se a equipa estiver sem rede, o início só chega quando o telefone tiver rede; se até ao fim do dia nada chegar, registe «A equipa regou, mas não registou na app».</span></p>` +
     `<h3 style="font-size:14px;margin:12px 0 4px">2. <span>Monitoria</span></h3>
      <p class="pequeno">${d.monitoria_hoje ? `${num(d.monitoria_hoje)} <span>campos para verificar hoje.</span>` : 'Nenhum campo por verificar hoje.'}</p>

@@ -3,6 +3,13 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    "total na rega:": "jumla katika umwagiliaji:",
+    "Não regou hoje · falta o motivo": "Hakumwagilia leo · sababu haipo",
+    "Depois da chegada da água": "Baada ya maji kufika",
+    "Marque primeiro a chegada da água (tuk-tuk). A rega só começa quando há água no campo.": "Kwanza weka kufika kwa maji (tuk-tuk). Umwagiliaji huanza tu kukiwa na maji shambani.",
+    "A fotografia da rega foi tirada antes de chegar a água. Tire-a outra vez, agora com água.": "Picha ya umwagiliaji ilipigwa kabla maji hayajafika. Ipige tena, sasa ikiwa na maji.",
+    "Escreva a hora a que chegou a água (tuk-tuk). Se não chegou água, use «🚫 Não houve rega neste campo».": "Andika saa maji (tuk-tuk) yalipofika. Kama maji hayakufika, tumia «🚫 Hakuna umwagiliaji katika shamba hili».",
+    "A hora da água não pode ser depois de agora.": "Saa ya maji haiwezi kuwa baada ya sasa.",
   'O espaço da app neste aparelho está cheio e não foi possível guardar no aparelho. Não feche a app até ter rede e toque em 💡 para avisar o gestor.': 'Nafasi ya programu kwenye kifaa hiki imejaa na haikuwezekana kuhifadhi kwenye kifaa. Usifunge programu hadi upate mtandao, na ubonyeze 💡 kumjulisha meneja.',
 "Sem rede. O resumo das equipas de hoje aparece quando houver rede.": "Hakuna mtandao. Muhtasari wa timu wa leo utaonekana kukiwa na mtandao.",
 "Mapa": "Ramani",
@@ -1850,6 +1857,8 @@ window.I18N_SW_R = (tr) => [
     [/^Campo atribuído a (.+)\.$/, 'Shamba limepangiwa $1.'], [/^(.+) cobre (.+)$/, '$1 anashughulikia $2'],
     [/^Entrada marcada às (\S+) \(campo fora da lista\)\.$/, 'Kuingia kumewekwa saa $1 (shamba nje ya orodha).'], [/^Entrada marcada às (\S+) · a (.+) m do campo\.$/, 'Kuingia kumewekwa saa $1 · $2 m kutoka shambani.'],
     [/^Entrada marcada às (\S+)\.$/, 'Kuingia kumewekwa saa $1.'], [/^Entrada às (.+)$/, 'Kuingia saa $1'],
+    [/^Obrigatória: entre a entrada \((\S+)\) e a fotografia da rega(?: \((\S+)\))?\. Se não chegou água, volte e use «🚫 Não houve rega neste campo»\.$/, (m, a, b) => `Lazima: kati ya kuingia (${a}) na picha ya umwagiliaji${b ? ` (${b})` : ''}. Kama maji hayakufika, rudi na utumie «🚫 Hakuna umwagiliaji katika shamba hili».`],
+    [/^A água não pode ter chegado antes da entrada no campo \((\S+)\)\.$/, 'Maji hayawezi kuwa yamefika kabla ya kuingia shambani ($1).'], [/^A água não pode ter chegado depois da fotografia da rega \((\S+)\)\.$/, 'Maji hayawezi kuwa yamefika baada ya picha ya umwagiliaji ($1).'],
     [/^Este campo já foi regado na ronda (\d+)\. Só pode voltar a regá-lo depois de regar todos os campos da sua lista \(faltam (\d+) de (\d+)\)\.$/, 'Shamba hili tayari limemwagiliwa katika mzunguko $1. Unaweza kulimwagilia tena baada tu ya kumwagilia mashamba yote ya orodha yako (yamebaki $2 kati ya $3).'],
     [/^Este campo é de (.+)\. Não conta para a sua ronda\.$/, 'Shamba hili ni la $1. Halihesabiwi katika mzunguko wako.'],
     [/^Está a (.+) m do campo \(precisão ±(.+) m\)\. Só pode marcar a entrada até (.+) m do campo\.$/, 'Uko $1 m kutoka shambani (usahihi ±$2 m). Unaweza kuweka kuingia tu ukiwa ndani ya $3 m kutoka shambani.'],

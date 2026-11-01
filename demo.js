@@ -483,7 +483,7 @@
   const TABELAS = {
     perfis: () => [{ id: EU, nome: NOMES[papel], papel, activista_id: act(), titulo: null, gere_acessos: papel === 'gestor', trocar_senha: false, marca_coqueiros: false, so_teste: false }],
     activistas: () => DB.activistas, areas: () => areasVisiveis(), zonas: () => [], pocos: () => [], coberturas: () => [], pessoas_acesso: () => [], plantas: () => [], config: () => [{ chave: 'monitoria_campos_por_dia', valor: 2 }],
-    queimadas: () => DB.queimadas.filter((q) => !q.removida).map((q) => ({ removida: false, ...q })),   // v172: sem «removida» o filtro removida=eq.false deixava-a de fora (o 🔥 não aparecia aos outros papéis) registos_rega: () => DB.registos.filter((r) => !act() || r.activista_id === A1),
+    queimadas: () => DB.queimadas.filter((q) => !q.removida).map((q) => ({ removida: false, ...q })), /* v172: sem «removida» o filtro removida=eq.false deixava-a de fora */ registos_rega: () => DB.registos.filter((r) => !act() || r.activista_id === A1),
     jornadas: () => DB.jornadas, chuva: () => [], monitorias: () => [], constrangimentos: () => DB.constr,
   };
   function filtrar(linhas, q) {

@@ -108,7 +108,7 @@ with sync_playwright() as p:
     print("1 Bento (sem rega):", entrada(pg, 'PR900102-1')[:60])
     pg.evaluate("fecharFolha(); LS.del('emCurso')")
     ficha(pg, 'PR900101-1'); pg.click("button[onclick^=marcarEntrada]"); pg.wait_for_selector("text=/Entrada marcada|Entry recorded|Kuingia kumewekwa/", timeout=30000)
-    pg.evaluate("(async()=>{for (const t of ['entrada','rega','saida']) await guardarFotoRega(t, new Blob(['x'],{type:'image/jpeg'})); abrirFicha(LS.get('emCurso').area_id)})()"); pg.wait_for_timeout(400)
+    pg.evaluate("(async()=>{{const e=LS.get('emCurso'); if(e&&!e.agua_em&&!window.SEM_AGUA){e.agua_em=e.entrada_em; LS.set('emCurso',e)}} for (const t of ['entrada','rega','saida']) await guardarFotoRega(t, new Blob(['x'],{type:'image/jpeg'})); abrirFicha(LS.get('emCurso').area_id)})()"); pg.wait_for_timeout(400)
     pg.click("button[onclick='ecraSaida()']"); pg.fill("#s-plantas", "300"); pg.click("button[onclick='marcarSaida()']"); pg.wait_for_timeout(4000)
     print("2 rega guardada:", DB(pg, "D.registos.filter(r=>!r.teste).map(r=>[r.area_id,r.plantas_regadas])"), "| amostra técnico:", DB(pg, "D.amostras.map(a=>a.area_id)"))
     pg.evaluate("ecraQueimada('PR900101-1')"); pg.wait_for_selector("#q-afect"); pg.fill("#q-afect", "30"); pg.fill("#q-mortas", "10"); pg.set_input_files("#q-foto", FOTO); pg.wait_for_timeout(800)

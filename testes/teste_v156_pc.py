@@ -104,7 +104,7 @@ with sync_playwright() as p:
         pg.click("#folha-c .btn >> nth=-1"); pg.wait_for_timeout(500)
     print("1 Bento (já regado):", entrada(pg, 'PR900102-1'))
     ficha(pg, 'PR900101-1'); pg.click("button[onclick^=marcarEntrada]"); pg.wait_for_selector("text=/Entrada marcada|Entry recorded|Kuingia kumewekwa/", timeout=30000)
-    pg.evaluate("(async()=>{for (const t of ['entrada','rega','saida']) await guardarFotoRega(t, new Blob(['x'],{type:'image/jpeg'})); abrirFicha(LS.get('emCurso').area_id)})()"); pg.wait_for_timeout(400)
+    pg.evaluate("(async()=>{{const e=LS.get('emCurso'); if(e&&!e.agua_em&&!window.SEM_AGUA){e.agua_em=e.entrada_em; LS.set('emCurso',e)}} for (const t of ['entrada','rega','saida']) await guardarFotoRega(t, new Blob(['x'],{type:'image/jpeg'})); abrirFicha(LS.get('emCurso').area_id)})()"); pg.wait_for_timeout(400)
     pg.click("button[onclick='ecraSaida()']"); pg.fill("#s-plantas", "165"); pg.click("button[onclick='marcarSaida()']"); pg.wait_for_timeout(4000)
     t = pg.inner_text("#folha-c"); print("2 próximo sugerido:", "Olga" in t, "|", t[:60].replace("\n", " | "))
     print("3 Olga ao longe:", entrada(pg, 'PR900105-1'))

@@ -39,6 +39,7 @@ with sync_playwright() as p:
     pg = ctx.new_page(); pg.on("pageerror", lambda e: erros.append(str(e)))
     pg.goto("http://localhost:8841/painel.html?embutido=1"); pg.wait_for_selector("#l-entrar", state="visible")
     pg.fill("#l-user", "g"); pg.fill("#l-pin", "x"); pg.click("#l-entrar"); pg.wait_for_selector("#kpis .kpi", state="visible"); pg.wait_for_timeout(2500)
+    print("0 kpi ronda:", pg.evaluate("[...document.querySelectorAll('#kpis .kpi')].map(k=>k.innerText.replace(/\\s+/g,' ')).filter(t=>/ronda|round|mzunguko/i.test(t)).join(' // ')"))
     print("1 testes: details aberto?", pg.evaluate("document.querySelector('#d-tp').open"), "| tabela visível?", pg.is_visible("#t-tp"), "| resumo:", pg.inner_text("#d-tp summary"))
     pg.click("#d-tp summary"); pg.wait_for_timeout(200); print("2 depois de tocar: tabela visível?", pg.is_visible("#t-tp"), "| linhas:", pg.locator("#t-tp tr").count())
     print("3 por pessoa:", pg.evaluate("[...document.querySelectorAll('#t-mon-ver tr')].map(r => r.textContent.replace(/\\s+/g,' ').trim())"))

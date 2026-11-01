@@ -40,6 +40,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    "total na rega:": "total in watering:",
+    "Não regou hoje · falta o motivo": "No watering today · reason missing",
+    "Depois da chegada da água": "After the water arrives",
+    "Marque primeiro a chegada da água (tuk-tuk). A rega só começa quando há água no campo.": "First record the water (tuk-tuk) arrival. Watering only starts when there is water in the field.",
+    "A fotografia da rega foi tirada antes de chegar a água. Tire-a outra vez, agora com água.": "The watering photo was taken before the water arrived. Take it again, now with water.",
+    "Escreva a hora a que chegou a água (tuk-tuk). Se não chegou água, use «🚫 Não houve rega neste campo».": "Write the time the water (tuk-tuk) arrived. If no water arrived, use «🚫 No watering in this field».",
+    "A hora da água não pode ser depois de agora.": "The water time cannot be later than now.",
     'O espaço da app neste aparelho está cheio e não foi possível guardar no aparelho. Não feche a app até ter rede e toque em 💡 para avisar o gestor.': 'The app storage on this device is full and something could not be saved on the device. Do not close the app until you have network, and tap 💡 to tell the manager.',
     // navegação e cabeçalho
     'Mapa': 'Map', 'Campos': 'Fields', 'Hoje': 'Today', 'Painel': 'Dashboard', 'Gestão': 'Admin',
@@ -423,6 +430,8 @@ document.addEventListener('DOMContentLoaded', () => {
     [/^Campo atribuído a (.+)\.$/, 'Field assigned to $1.'], [/^(.+) cobre (.+)$/, '$1 covers $2'],
     [/^Entrada marcada às (\S+) \(campo fora da lista\)\.$/, 'Entry recorded at $1 (field outside the list).'], [/^Entrada marcada às (\S+) · a (.+) m do campo\.$/, 'Entry recorded at $1 · $2 m from the field.'],
     [/^Entrada marcada às (\S+)\.$/, 'Entry recorded at $1.'], [/^Entrada às (.+)$/, 'Entry at $1'],
+    [/^Obrigatória: entre a entrada \((\S+)\) e a fotografia da rega(?: \((\S+)\))?\. Se não chegou água, volte e use «🚫 Não houve rega neste campo»\.$/, (m, a, b) => `Required: between the entry (${a}) and the watering photo${b ? ` (${b})` : ''}. If no water arrived, go back and use «🚫 No watering in this field».`],
+    [/^A água não pode ter chegado antes da entrada no campo \((\S+)\)\.$/, 'The water cannot have arrived before the entry into the field ($1).'], [/^A água não pode ter chegado depois da fotografia da rega \((\S+)\)\.$/, 'The water cannot have arrived after the watering photo ($1).'],
     [/^Este campo já foi regado na ronda (\d+)\. Só pode voltar a regá-lo depois de regar todos os campos da sua lista \(faltam (\d+) de (\d+)\)\.$/, 'This field was already watered in round $1. You can water it again only after watering all fields on your list ($2 of $3 left).'],
     [/^Este campo é de (.+)\. Não conta para a sua ronda\.$/, 'This field belongs to $1. It does not count for your round.'],
     [/^Está a (.+) m do campo \(precisão ±(.+) m\)\. Só pode marcar a entrada até (.+) m do campo\.$/, 'You are $1 m from the field (accuracy ±$2 m). You can only record entry within $3 m of the field.'],
