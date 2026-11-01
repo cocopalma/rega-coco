@@ -391,6 +391,8 @@
       Object.assign(m, { activista_id: a.p_activista, nome: a.p_nome, activo: a.p_activo !== false });
       [antes, a.p_activista].filter(Boolean).forEach((id) => { const t = DB.activistas.find((x) => x.id === id); if (t) t.equipa_tamanho = 1 + l.filter((x) => x.activo && x.activista_id === id).length; });
       guardarDB(); return { id: m.id }; },
+    gravar_presencas2: (a) => { const r = RPC.gravar_presencas(a); const p = DB.presencas.find((x) => x.activista_id === a.p_activista && x.data === a.p_data); if (p) p.ausente = a.p_activista_presente === false; return { pessoas: r.pessoas - (p && p.ausente ? 1 : 0) }; },   // v171
+    ausentes_hoje: () => (DB.presencas || []).filter((x) => x.data === dia(0) && x.ausente).map((x) => x.activista_id),
     gravar_presencas: (a) => { DB.presencas ||= []; DB.presencas = DB.presencas.filter((x) => !(x.activista_id === a.p_activista && x.data === a.p_data));
       const ok = (a.p_presentes || []).filter((id) => membros().some((m) => m.id === id && m.activista_id === a.p_activista));
       DB.presencas.push({ id: a.p_id, activista_id: a.p_activista, data: a.p_data, presentes: ok, outros: a.p_outros || 0 }); guardarDB(); return { pessoas: 1 + ok.length + (a.p_outros || 0) }; },
@@ -571,7 +573,7 @@
     limparTelefone,
     // v156: «🎬 Pôr-me neste campo» — a posição passa a ser o centro do campo e a ficha volta a abrir
     irPara(id) { const a = area(id); if (a.latitude == null) return; parar(); porPos(a.latitude, a.longitude);
-      setTimeout(() => { if (typeof window.abrirFicha === 'function') window.abrirFicha(id, '<div class="msg ok">🎬 Está agora neste campo (apresentação).</div>'); }, 500); },
+      setTimeout(() => { if (typeof window.abrirFicha === 'function') window.abrirFicha(id, '<div class="msg ok">🎬 Está agora neste campo (apresentação). Já pode marcar a entrada.</div>'); }, 500); },
     // v156: medir a área ao vivo: vai para um canto do campo (rectângulo de 60 × 50 m à volta do ponto) e, ao «Começar», anda à volta
     cantoMedir(id) { const a = area(id); if (a.latitude == null) return; parar(); const k = volta(a); porPos(k[0][0], k[0][1]); },
     andarMedir(id) { const a = area(id); if (a.latitude == null) return; parar(); const k = volta(a); let i = 0;

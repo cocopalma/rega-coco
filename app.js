@@ -353,7 +353,8 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'aval_sug' ? await sb.rpc('avaliar_sugestao', { p_id: x.sug_id, p_estado: x.estado, p_nota: x.nota })
         : x.tipo === 'com_act' ? await sb.rpc('definir_comunidade_activista', { p_activista: x.activista_id, p_comunidade: x.comunidade })
         : x.tipo === 'membro' ? await sb.rpc('gravar_membro', { p_id: x.membro_id, p_activista: x.activista_id, p_nome: x.nome, p_activo: x.activo, p_motivo: x.motivo || null })
-        : x.tipo === 'presencas' ? await sb.rpc('gravar_presencas', { p_id: x.pres_id, p_activista: x.activista_id, p_data: x.data, p_presentes: x.presentes, p_outros: x.outros || 0 })
+        : x.tipo === 'presencas' ? (x.ausente ? await sb.rpc('gravar_presencas2', { p_id: x.pres_id, p_activista: x.activista_id, p_data: x.data, p_presentes: x.presentes, p_outros: x.outros || 0, p_activista_presente: false })
+          : await sb.rpc('gravar_presencas', { p_id: x.pres_id, p_activista: x.activista_id, p_data: x.data, p_presentes: x.presentes, p_outros: x.outros || 0 }))
         : x.tipo === 'justif' ? await sb.rpc('justificar_rega', { p_id: x.registo_id, p_motivo: x.motivo })
         : x.tipo === 'dia_sem_rega' ? await enviarDiaSemRega(x.d)
         : x.tipo === 'dia_sem_rega_rem' ? await sb.rpc('remover_dia_sem_rega', { p_id: x.dsr_id })
@@ -455,6 +456,7 @@ async function carregarEstado(pronto) {
   const papel = S.perfil?.papel, tarefas = [];
   if (!['cliente', 'oficial_me'].includes(papel)) tarefas.push(sb.rpc('planos_lista').then((q) => { if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data); }));
   if (VER_MEMBROS.includes(papel))                       // nomes das pessoas de cada equipa (v135, lista do RH de 23/10/2026)
+    tarefas.push(sb.rpc('ausentes_hoje').then((q) => { if (!q.error && Array.isArray(q.data)) LS.set('ausentes', { data: hojeISO(), ids: q.data }); }));   // v171
     tarefas.push(sb.rpc('membros_lista').then((q) => { if (!q.error && Array.isArray(q.data)) { S.membros = q.data; aplicarMembrosPendentes(); LS.set('membros', S.membros); } }));
   if (souActivista() && S.perfil.activista_id) {        // registos da minha equipa (para a ronda funcionar sem rede)
     tarefas.push(sb.from('registos_rega').select('id,area_id,activista_id,apoio_para,data,ronda,plantas_regadas,teste,campo_fechado')
@@ -1535,6 +1537,34 @@ function ecraRegaPelaEquipa(id) {
     if (k == null) { alert('Escolha o motivo.'); return; }
     if (+k === MOTIVOS_TEC.length - 1 && txt.length < 3) { alert('Escreva o motivo.'); return; }
     S.motTec = { id, m: MOTIVOS_TEC[k] + (txt ? ': ' + txt : '') };
+    if (+k === 2 && !presTec(a.activista_id)) return ecraPresencaEquipa(id);   // v171: o activista não está — quem da equipa veio?
+    marcarEntrada(id);
+  };
+}
+// v171 (01/11/2026, Valdo: "não existe um botão para fazer a rega… em caso do activista não aparecer"): o técnico/supervisor
+// marca quem da equipa veio; o activista fica registado como ausente hoje (presencas.activista_presente = false). Funciona sem rede.
+function ecraPresencaEquipa(id) {
+  const a = S.areas.find((x) => x.id === id) || {}, act = a.activista_id, l = membrosDe(act);
+  folha(`<h2>Quem da equipa veio hoje?</h2>
+    <p class="pequeno"><span>Equipa de</span> <b class="sem-trad">${esc(nomeAct(act))}</b></p>
+    <div class="msg info"><span class="sem-trad">${esc(nomeAct(act))}</span> <span>fica registado como ausente hoje.</span></div>
+    ${l.length ? `<p>Toque no nome de cada pessoa da equipa que está presente.</p>
+    <div id="pe-lista">${l.map((m) => `<label class="sem-trad" style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--linha,#ddd);font-size:17px"><input type="checkbox" value="${esc(m.id)}" style="width:24px;height:24px"> ${esc(m.nome)}</label>`).join('')}</div>` : ''}
+    <label>${l.length ? 'Outras pessoas que vieram e não estão na lista' : 'Quantas pessoas da equipa vieram hoje?'}<input id="pe-outros" type="number" inputmode="numeric" min="0" max="30" value="0"></label>
+    <div class="msg info" id="pe-total"></div>
+    <button class="btn" id="pe-ok">Guardar e marcar a entrada</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Voltar</button>`);
+  const conta = () => document.querySelectorAll('#pe-lista input:checked').length + (parseInt($('#pe-outros').value, 10) || 0);
+  const mostra = () => { $('#pe-total').innerHTML = `<span>Pessoas da equipa hoje (sem o activista):</span> <b>${conta()}</b>`; };
+  document.querySelectorAll('#pe-lista input, #pe-outros').forEach((e) => e.addEventListener('input', mostra)); mostra();
+  $('#pe-ok').onclick = () => {
+    const presentes = [...document.querySelectorAll('#pe-lista input:checked')].map((x) => x.value), outros = parseInt($('#pe-outros').value, 10) || 0;
+    if (outros < 0 || outros > 30) { alert('Escreva um número entre 0 e 30.'); return; }
+    if (!presentes.length && !outros && !confirm('Ninguém da equipa veio hoje?')) return;
+    const p = LS.get('presTec', {}), presId = crypto.randomUUID(), d = hojeISO();
+    p[act] = { data: d, presentes, outros, pessoas: presentes.length + outros, ausente: true }; LS.set('presTec', p);
+    const f = LS.get('filaAlt', []).filter((y) => !(y.tipo === 'presencas' && y.activista_id === act && y.data === d));
+    f.push({ id: crypto.randomUUID(), tipo: 'presencas', pres_id: presId, activista_id: act, data: d, presentes, outros, ausente: true }); LS.set('filaAlt', f);
+    actSync(); sincronizar(true);
     marcarEntrada(id);
   };
 }
@@ -2585,7 +2615,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (apresentação)</button>` : ''}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (apresentação)</button><p class="pequeno" style="margin:0 0 6px">Só na apresentação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
   S.soVer = false;
   if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
 }
@@ -2606,12 +2636,17 @@ const jornadaHoje = () => { const j = LS.get('jornada'); return j && j.data === 
 // veio; as faltas passam a ter nome. Sem lista de nomes, continua o número. Pessoas = activista + marcados + outras pessoas.
 const VER_MEMBROS = ['activista', 'tecnico', 'supervisor', 'gestor', 'director', 'me'];
 const membrosDe = (act) => (S.membros || []).filter((m) => m.activista_id === act);
+// v171 (01/11/2026, Valdo): o activista não apareceu — o técnico/supervisor regista quem da equipa veio (presTec, no telefone)
+const presTec = (act) => { const p = LS.get('presTec', {})[act]; return p && p.data === hojeISO() ? p : null; };
+const activistaAusente = (act) => !!presTec(act)?.ausente || (() => { const a = LS.get('ausentes', null); return !!(a && a.data === hojeISO() && (a.ids || []).includes(act)); })();
 function faltaramHoje(act) {                              // nomes de quem não veio hoje (do telefone ou do servidor)
-  const l = membrosDe(act); if (!l.length) return null;
+  const aus = activistaAusente(act) ? [nomeAct(act) + ' (activista)'] : [];
+  const l = membrosDe(act); if (!l.length) return aus.length ? aus : null;
+  const pt = presTec(act); if (pt) return [...aus, ...l.filter((m) => !pt.presentes.includes(m.id)).map((m) => m.nome)];
   const j = souActivista() && act === S.perfil?.activista_id ? jornadaHoje() : null;
   if (j && Array.isArray(j.presentes)) return l.filter((m) => !j.presentes.includes(m.id)).map((m) => m.nome);
-  if (!l.some((m) => m.presente_hoje != null)) return null;
-  return l.filter((m) => m.presente_hoje === false).map((m) => m.nome);
+  if (!l.some((m) => m.presente_hoje != null)) return aus.length ? aus : null;
+  return [...aus, ...l.filter((m) => m.presente_hoje === false).map((m) => m.nome)];
 }
 const linhaFaltaram = (act) => { const f = faltaramHoje(act);
   return f && f.length ? `<div class="pequeno" style="color:var(--crit,#b42318)"><span>Faltou:</span> <span class="sem-trad">${f.map(esc).join(', ')}</span></div>` : ''; };
@@ -2792,7 +2827,7 @@ function ecraSaida(msg = '') {
    <label>Plantas regadas neste campo<input id="s-plantas" type="number" inputmode="numeric" min="0" value="${ent.plantas_escritas ?? ''}"></label>
    <p class="pequeno">Na base: ${plantasTxt(a)}. Escreva o número de plantas que regou.</p>
    ${(() => { const b = baseSaida(a); return b.ja ? `<div class="msg info">⏳ <span>Campo por terminar: já se regaram</span> ${num(b.ja)} <span>plantas nesta ronda. Faltam</span> ${num(b.resta)}. <span>Escreva só as plantas que regou agora.</span></div>` : ''; })()}
-   <label>Pessoas que regaram este campo<input id="s-pessoas" type="number" inputmode="numeric" min="1" max="30" value="${jornadaHoje()?.pessoas ?? ''}"></label>
+   <label>Pessoas que regaram este campo<input id="s-pessoas" type="number" inputmode="numeric" min="1" max="30" value="${(ent.motivo_tecnico && presTec(a.activista_id) ? presTec(a.activista_id).pessoas || '' : jornadaHoje()?.pessoas) ?? ''}"></label>
    ${ent.agua_em ? `<p class="pequeno">Água no campo às ${fmtHora(ent.agua_em)}.</p>`
      : `<label>Hora a que chegou a água (tuk-tuk)<input id="s-agua" type="time"></label><p class="pequeno">Deixe vazio se não chegou água.</p>`}
    <label>O que dificultou a rega neste campo?</label><p class="pequeno">Pode escolher mais do que um. Se nada dificultou, não escolha nenhum.</p>
