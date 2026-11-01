@@ -74,7 +74,7 @@ def contexto(b, ua=None):
     ctx.route("**/*.tile.openstreetmap.org/**", lambda r: r.fulfill(status=204, body=""))
     ctx.route("**/server.arcgisonline.com/**", lambda r: r.fulfill(status=204, body=""))
     ctx.route("**/fgzdqnvobgfzjetbbxcm.supabase.co/**", mock)
-    ctx.add_init_script("localStorage.setItem('rega.lingua', %r)" % LING); ctx.add_init_script(CAM)
+    ctx.add_init_script("localStorage.setItem('rega.lingua', %r)" % LING); ctx.add_init_script(CAM); ctx.add_init_script("sessionStorage.setItem('rega.demo.modo','exemplos')")
     pg = ctx.new_page(); pg.on("pageerror", lambda e: erros.append(str(e))); pg.on("dialog", lambda d: (dial.append(d.message), d.accept()))
     return ctx, pg
 def entrar(pg, modo="tecnico", pin="segredo12"):

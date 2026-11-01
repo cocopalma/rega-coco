@@ -5056,7 +5056,7 @@ const nomeFuncaoDemo = (p) => (DEMO_FUNCOES.find((f) => f[0] === p) || [p, p])[1
 function cartaoDemo() {
   if (S.perfil?.papel !== 'gestor' || window.DEMO) return '';
   return `<div class="cartao" style="border-left:4px solid #6a1b9a"><h2>🎬 Modo apresentação</h2>
-    <p class="pequeno">Para mostrar a app a outras pessoas: escolha uma função e a app passa a mostrar o que essa pessoa vê, com dados de exemplo. Nada do que fizer é gravado no servidor (nem as sugestões 💡). Os campos de exemplo ficam em Palma; na ficha de cada campo, «🎬 Pôr-me neste campo» leva-o até lá.</p>
+    <p class="pequeno">Para mostrar a app a outras pessoas: escolha uma função e a app passa a mostrar o que essa pessoa vê. Começa do zero: só há campos, equipas e pessoas de exemplo, sem nada registado. O que fizer numa função aparece nas outras. Nada do que fizer é gravado no servidor (nem as sugestões 💡). Os campos de exemplo ficam em Palma; na ficha de cada campo, «🎬 Pôr-me neste campo» leva-o até lá.</p>
     ${DEMO_FUNCOES.map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">Ver como ${n}</div><div class="sub">${d}</div></div></div>`).join('')}</div>`;
 }
 function entrarDemo(papel) {
@@ -5073,12 +5073,14 @@ function faixaDemo() {
   f.innerHTML = `<span style="flex:1">🎬 <b>Apresentação</b> · ${esc(nomeFuncaoDemo(DEMO.papel))}</span><button onclick="ecraDemo()">Mudar</button><button onclick="DEMO.terminar()">Terminar</button>`;
 }
 function ecraDemo() {
-  folha(`<h2>🎬 Modo apresentação</h2><p class="pequeno">Está a ver a app como ${esc(nomeFuncaoDemo(DEMO.papel))}, com dados de exemplo. Nada é gravado no servidor.</p><p class="pequeno">O GPS não é verificado: a app faz de conta que está nos campos de exemplo, em Palma.</p><p class="pequeno">Na ficha de cada campo, «🎬 Pôr-me neste campo» leva-o até lá. Ao medir a área, o GPS anda sozinho à volta do campo.</p>
+  folha(`<h2>🎬 Modo apresentação</h2><p class="pequeno">Está a ver a app como ${esc(nomeFuncaoDemo(DEMO.papel))}. Nada é gravado no servidor.</p>
+    <p class="pequeno">${DEMO.modo === 'exemplos' ? 'Com exemplos: já há regas, queimadas, recontagens e outros registos de exemplo.' : 'Do zero: só há campos, equipas e pessoas de exemplo. Tudo o que aparece registado foi feito por si nesta apresentação.'}</p><p class="pequeno">O GPS não é verificado: a app faz de conta que está nos campos de exemplo, em Palma.</p><p class="pequeno">Na ficha de cada campo, «🎬 Pôr-me neste campo» leva-o até lá. Ao medir a área, o GPS anda sozinho à volta do campo.</p>
     <h3>Ver como outra função</h3>
     ${DEMO_FUNCOES.filter(([k]) => k !== DEMO.papel).map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">${n}</div><div class="sub">${d}</div></div></div>`).join('')}
     <p class="pequeno">O que fizer numa função aparece nas outras (por exemplo: o oficial conta, o M&E valida).</p>
     <p class="pequeno">As sugestões (💡) feitas na apresentação ficam só na apresentação (não chegam à Gestão verdadeira).</p>
-    <button class="btn sec" onclick="if (confirm('Apagar o que fez na apresentação e voltar aos dados de exemplo iniciais?')) DEMO.recomecar()">Recomeçar com os dados iniciais</button>
+    <button class="btn sec" onclick="if (confirm('Apagar tudo o que fez na apresentação e começar do zero (sem exemplos)?')) DEMO.recomecar('zero')">🧹 Começar do zero (sem exemplos)</button>
+    <button class="btn sec" onclick="if (confirm('Apagar o que fez na apresentação e voltar aos dados de exemplo?')) DEMO.recomecar('exemplos')">Recomeçar com exemplos</button>
     <button class="btn" onclick="DEMO.terminar()">Terminar a apresentação</button>`);
 }
 // sessão do Supabase guardada no telefone (sem pedir nada à rede)
