@@ -448,7 +448,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Antes da v143, no Safari, o clique num coqueiro abriu a ficha de um campo a ~7 km (PR400069-1, Maganja): no Safari o clique nos desenhos do canvas pode ir para o desenho errado (pode afectar também os campos). Com a v143 carregada, o Valdo confirmou (29/10 15:17): "Já está".
 
 ## Palmeira no lugar do ponto (v185, 01/11/2026, Valdo: "o ponto… acaba se confundindo com um ponto de um campo")
-- Mapa › 🥥 Coqueiros: cada coqueiro é uma palmeira (`svgPalmeira(cor, retirado)`, SVG em `divIcon`, 32 px, base do tronco = posição, `iconAnchor` [16, 30]) com as folhas na cor do estado (verde vivo, laranja seco, vermelho morto; contorno branco); retirado = palmeira cinzenta com ✕ vermelho. O círculo de 2,5 m continua. Teste: `rega-test/teste_v185.py` (FUNDO=sat; LING=en / sw).
+- Mapa › 🥥 Coqueiros: cada coqueiro é uma palmeira (`svgPalmeira(cor, retirado)`, SVG em `divIcon`, 32 px, base do tronco = posição, `iconAnchor` [16, 30]) com as folhas na cor do estado (verde vivo, laranja seco, vermelho morto; contorno branco); retirado = palmeira cinzenta com ✕ vermelho. O círculo de 2,5 m continua. v186: legenda das quatro palmeiras no painel dos coqueiros (`#cq-leg`; a legenda geral do mapa fecha-se no modo 🥥) e a dica diz «Toque numa palmeira». Teste: `rega-test/teste_v185.py` (FUNDO=sat; LING=en / sw).
 
 ## Coqueiros v111 (24/10/2026, áudios do Dalmar, aprovados pelo Valdo)
 - Estado "Retirado" (o coqueiro já não existe; o ponto fica guardado a vermelho e vazio, não conta nos coqueiros existentes). Restrição `coqueiros_estado_check` alargada.

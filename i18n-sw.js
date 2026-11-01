@@ -1005,6 +1005,7 @@ window.I18N_SW_D = {
 "↶ Apagar o último": "↶ Futa wa mwisho",
 "⬇ Excel (.csv)": "⬇ Excel (.csv)",
 "Pare junto ao tronco e carregue em «Marcar». Toque num ponto para ver ou mudar o estado.": "Simama karibu na shina na ubonyeze «Weka». Gusa alama ili kuiona au kubadilisha hali yake.",
+"Pare junto ao tronco e carregue em «Marcar». Toque numa palmeira para ver ou mudar o estado.": "Simama karibu na shina na ubonyeze «Weka». Gusa mnazi ili kuuona au kubadilisha hali yake.",
 "Coqueiro novo": "Mnazi mpya",
 "Coqueiro": "Mnazi",
 "Vivo": "Hai",

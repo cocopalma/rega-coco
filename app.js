@@ -1163,6 +1163,8 @@ function desenharCoq() {
       .on('click', (e) => { L.DomEvent.stop(e); verCoq(c.id); }).addTo(camadaCoq);
   }
   const exist = l.filter((c) => c.estado !== 'retirado'), trat = exist.filter((c) => c.tratamento).length, prod = exist.filter((c) => c.cachos || c.cocos).length;
+  { const lg = $('#cq-leg'); if (lg && !lg.dataset.ok) { lg.dataset.ok = 1;            // v186: legenda das palmeiras no painel dos coqueiros
+    lg.innerHTML = ['viva', 'seca', 'morta', 'retirado'].map((e) => `<span>${svgPalmeira(COR_COQ[e], e === 'retirado')}<span>${TXT_COQ[e]}</span></span>`).join(''); } }
   $('#cq-total').innerHTML = `🥥 <span>Coqueiros fora de campo:</span> <b>${num(exist.length)}</b> <span class="pequeno">(${num(v.viva)} <span>vivos</span> · ${num(v.seca)} <span>secos</span> · ${num(v.morta)} <span>mortos</span>)</span>` +
     (trat || prod || v.retirado ? `<div class="pequeno">${prod ? `🥥 <span>${prod}</span> <span>com cachos ou cocos</span> · ` : ''}${trat ? `🩺 <span>${trat}</span> <span>precisam de tratamento</span> · ` : ''}${v.retirado ? `⭕ <span>${v.retirado}</span> <span>retirados</span>` : ''}</div>` : '');
   const u = escreveCoq() ? l.filter((c) => c.meu || c.porEnviar).reduce((m, c) => (!m || c.marcado_em > m.marcado_em ? c : m), null) : null;

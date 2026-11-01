@@ -52,6 +52,8 @@ with sync_playwright() as p:
     pg.evaluate("verCoq = (id) => window._ab = id"); 
     bx = pg.evaluate("[...document.querySelectorAll('.coq-pt')].map(e => { const r = e.getBoundingClientRect(); return [r.x + r.width/2, r.y + 6]; })")
     for x, y in bx: pg.mouse.click(x, y); pg.wait_for_timeout(150)
+    pg.screenshot(path="/tmp/claude-0/-home-claude/2a67f740-10a3-5b35-b093-4e5b7aa6e992/scratchpad/painel_coq_%s.png" % LING, clip={"x": 0, "y": 500, "width": 390, "height": 344})
+    print("v186 legenda:", pg.inner_text("#cq-leg").replace("\n", " "), "| dica:", pg.inner_text("#coq .pequeno >> nth=-1"))
     print("v185 ícones:", pg.evaluate("document.querySelectorAll('.coq-pt svg').length"), "| tocar nas folhas abre:", pg.evaluate("window._ab"))
     print("ERROS JS:", erros or "nenhum"); b.close(); srv.terminate(); sys.exit()
     print("1b satélite:", pg.inner_text("#b-fundo")); pg.click("#b-fundo"); pg.wait_for_timeout(300); print("   depois:", pg.inner_text("#b-fundo"), "| guardado:", pg.evaluate("LS.get('fundo')"), "| camada:", pg.evaluate("Object.values(mapa._layers).some(l => l._url && l._url.includes('arcgis'))"))
