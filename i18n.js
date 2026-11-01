@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    "Mudar a minha senha ou o meu PIN": "Change my password or PIN",
     "Técnico:": "Technician:",
     "Sem técnico": "No technician",
     "activista": "activist",

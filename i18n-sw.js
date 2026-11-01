@@ -3,6 +3,7 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    "Mudar a minha senha ou o meu PIN": "Badilisha nenosiri au PIN yangu",
     "Técnico:": "Fundi:",
     "Sem técnico": "Hakuna fundi",
     "activista": "mhamasishaji",

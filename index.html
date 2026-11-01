@@ -21,6 +21,7 @@ button{font:inherit}
 header{background:var(--verde);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}
 header h1{font-size:17px;margin:0;flex:1;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 header .sync{font-size:12px;background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:14px;padding:6px 10px}
+header #h-sug,header #h-conf{padding:6px 7px}  /* v181: botões só com ícone mais estreitos, para o nome caber */
 header .sync.pend{background:#ef8f00}
 nav{display:flex;background:#fff;border-bottom:1px solid var(--borda)}
 nav button{flex:1;border:0;background:none;padding:12px 4px;font-weight:600;color:var(--cinza);border-bottom:3px solid transparent}
@@ -176,6 +177,7 @@ td.n,th.n{text-align:right}
     <button class="sync" id="h-sync" title="Sincronizar">…</button>
     <button class="sync" id="h-lingua" onclick="mudarLingua(this)" title="English / Português">EN</button>
     <button class="sync" id="h-sug" title="Sugerir uma melhoria" onclick="ecraSugestao()">💡</button>
+    <button class="sync" id="h-conf" title="Mudar a minha senha ou o meu PIN" onclick="ecraTrocarSenha(false)">⚙️</button>
     <button class="sync" id="h-sair">Sair</button>
   </header>
   <nav id="nav">
@@ -270,12 +272,12 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=180"></script>
-<script src="i18n.js?v=180"></script>
+<script src="i18n-sw.js?v=181"></script>
+<script src="i18n.js?v=181"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=180"></script>
-<script src="app.js?v=180"></script>
+<script src="demo.js?v=181"></script>
+<script src="app.js?v=181"></script>
 </body>
 </html>

@@ -5035,6 +5035,7 @@ function mostrarApp() {
   $('#h-nome').textContent = `${S.perfil.nome}${['activista', 'cliente'].includes(papel) ? '' : ' · ' + (S.perfil.titulo || (papel === 'gestor' ? 'Gestor' : FUNCOES[papel]?.nome || papel))}`;
   $('#h-nome').title = S.perfil.papel === 'activista' ? 'Mudar o meu PIN' : 'Mudar a minha senha';
   $('#h-nome').onclick = () => ecraTrocarSenha(false);
+  { const c = $('#h-conf'); if (c) c.style.display = window.DEMO ? 'none' : ''; }   // v181 (Valdo): botão ⚙️ para mudar a senha/PIN (antes só tocando no nome); escondido na apresentação
   $('#nav-gestao').style.display = papel === 'gestor' ? '' : 'none';
   $('#nav-painel').style.display = VER_PAINEL.includes(papel) ? '' : 'none';
   const opPl = document.querySelector('#f-sit option[value="plantas"]'); if (opPl) opPl.hidden = !PODE_COORD.includes(papel);
