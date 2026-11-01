@@ -3238,7 +3238,7 @@ function cartaoRecontagem(a) {
   if (['encaminhada', 'recusada'].includes(r.estado) && r.oficial_entrou === false) h += `<div class="msg info">⚠️ ${oficial} ainda não entrou na app. O pedido só chega dentro da app: avise-o por WhatsApp ou chamada.</div>`;
   else if (r.estado === 'recusada') h += `<div class="lin"><span>Estado</span><b>Recusada pelo M&E: à espera de nova contagem de ${oficial}</b></div>${papel === 'me' ? `<p class="pequeno">Motivo da recusa: ${esc(r.recusa_motivo || '')}</p>` : ''}`;
   else if (r.estado === 'enviada' && papel === 'me') h += `<div class="lin"><span>Contada por</span><b>${oficial} a ${dataCurta(r.contada_em)}</b></div>${nums}
-      <div class="lin"><span>Oficial confirmou NAVUNA</span><b>${r.navuna ? '✓ Oficial confirmou' : 'Não marcada'}</b></div><p class="pequeno">A app não lê o NAVUNA: confira lá os números antes de validar.</p>
+      <div class="lin"><span>Oficial confirmou que registou no NAVUNA</span><b>${r.navuna ? '✓ Sim' : 'Não marcada'}</b></div><p class="pequeno">A app não lê o NAVUNA: confira lá os números antes de validar.</p>
       ${a.vivas != null ? `<div class="lin"><span>Plantas vivas na base</span><b>${num(a.vivas)}</b></div>` : ''}
       <div class="lin"><span>Local da contagem</span><b>${localContagem(r, a)}</b></div>
       <div class="chips">${foto || '<span class="pequeno">Sem fotografias.</span>'}</div>

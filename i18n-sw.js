@@ -3,8 +3,11 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
-    "Oficial confirmou NAVUNA": "Afisa amethibitisha NAVUNA",
-    "✓ Oficial confirmou": "✓ Afisa amethibitisha",
+    "Oficial confirmou que registou no NAVUNA": "Afisa amethibitisha kurekodi katika NAVUNA",
+    "✓ Sim": "✓ Ndiyo",
+    "Campo fora da lista do activista": "Shamba nje ya orodha ya mhamasishaji",
+    "Destas, sem motivo": "Kati ya hizi, bila sababu",
+    "Campo sem coordenada (GPS não verificado)": "Shamba bila kuratibu (GPS haikuhakikiwa)",
     "A app não lê o NAVUNA: confira lá os números antes de validar.": "Programu haisomi NAVUNA: hakiki idadi huko kabla ya kuthibitisha.",
     "total na rega:": "jumla katika umwagiliaji:",
     "Não regou hoje · falta o motivo": "Hakumwagilia leo · sababu haipo",

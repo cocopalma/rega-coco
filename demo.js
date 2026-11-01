@@ -277,7 +277,7 @@
       inicio: reg.map((r) => r.data).sort()[0] || null, fim: reg.map((r) => r.data).sort().pop() || null,
       areas_regadas: Object.keys(porArea).length, vivas_regadas: Object.keys(porArea).reduce((s, id) => s + (area(id).vivas || 0), 0),
       plantas_regadas_total: reg.reduce((s, r) => s + r.plantas_regadas, 0), pessoas_dia_total: Object.values(eqDia).reduce((s, x) => s + x, 0), registos: reg.length,
-      dias_medios_entre_regas: intervalos.length ? +(intervalos.reduce((s, x) => s + x, 0) / intervalos.length).toFixed(1) : null, alertas: 0, gps_invalido: 0,
+      dias_medios_entre_regas: intervalos.length ? +(intervalos.reduce((s, x) => s + x, 0) / intervalos.length).toFixed(1) : null, alertas: 0, gps_invalido: 0, fora_lista: 0, fora_lista_sem_motivo: 0, gps_sem_coord: 0,
       espera_agua_min: media(comAgua.map((r) => mins(r.entrada_em, r.agua_em))),
       chegada_equipa: chegadas.length ? { hora_combinada: '06:00', dias: chegadas.length, hora_media: (() => { const m = media(chegadas.map((r) => { const d = new Date(r.entrada_em); return d.getHours() * 60 + d.getMinutes(); })); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); })(),
         atraso_min: media(chegadas.map((r) => atraso(r.entrada_em))), depois_hora: chegadas.filter((r) => atraso(r.entrada_em) > 0).length } : null,

@@ -40,8 +40,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
-    "Oficial confirmou NAVUNA": "Officer confirmed NAVUNA",
-    "✓ Oficial confirmou": "✓ Officer confirmed",
+    "Oficial confirmou que registou no NAVUNA": "Officer confirmed recording it in NAVUNA",
+    "✓ Sim": "✓ Yes",
+    "Campo fora da lista do activista": "Field outside the activist's list",
+    "Destas, sem motivo": "Of these, without a reason",
+    "Campo sem coordenada (GPS não verificado)": "Field without coordinates (GPS not checked)",
     "A app não lê o NAVUNA: confira lá os números antes de validar.": "The app does not read NAVUNA: check the numbers there before validating.",
     "total na rega:": "total in watering:",
     "Não regou hoje · falta o motivo": "No watering today · reason missing",
