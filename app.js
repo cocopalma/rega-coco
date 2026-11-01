@@ -1099,7 +1099,7 @@ function abrirCoq() {
   S.coq = { hist: [], lendo: false };
   if (S.fix && Date.now() - S.fix.t < 20000) coqLeitura(S.fix.coords);
   if (!camadaCoq) camadaCoq = L.layerGroup(); camadaCoq.addTo(mapa);
-  $('#b-coq').classList.add('on'); $('#coq').style.display = ''; $('.legenda').style.display = 'none';
+  $('#b-coq').classList.add('on'); verCartaoCoq(true); $('.legenda').style.display = 'none';
   $('#cq-marcar').style.display = escreveCoq() ? '' : 'none';
   desenharCoq(); mostrarSugFixa(); mapa.on('click', cliqueCoqPerto);
   carregarCoq();
@@ -1107,6 +1107,11 @@ function abrirCoq() {
 }
 // v183 (01/11/2026, Valdo: "o georreferenciamento dos coqueiros… está em teste… tem que estar com um botão para esconder"):
 // esconde o botão 🥥 neste aparelho; volta pela legenda do mapa («Mostrar»)
+// v187 (01/11/2026, Valdo: "Quero poder esconder essa legenda"): o cartão dos coqueiros esconde-se e as palmeiras ficam no mapa
+function verCartaoCoq(on) {
+  if (!S.coq) return;
+  $('#coq').style.display = on ? '' : 'none'; $('#cq-mostrar').style.display = on ? 'none' : '';
+}
 function esconderCoq(sim) {
   LS.set('escondeCoq', !!sim);
   if (sim && S.coq) fecharCoq();
@@ -1115,7 +1120,7 @@ function esconderCoq(sim) {
 }
 function fecharCoq() {
   S.coq = null; mapa.off('click', cliqueCoqPerto); if (camadaCoq) { camadaCoq.clearLayers(); mapa.removeLayer(camadaCoq); }
-  $('#b-coq').classList.remove('on'); $('#coq').style.display = 'none'; $('.legenda').style.display = '';
+  $('#b-coq').classList.remove('on'); $('#coq').style.display = 'none'; $('#cq-mostrar').style.display = 'none'; $('.legenda').style.display = '';
   mostrarSugFixa();
 }
 function cliqueCoqPerto(e) {                             // clique no mapa ao lado do ponto: abre o coqueiro a menos de 16 px
@@ -1139,7 +1144,7 @@ function svgPalmeira(cor, retirado) {                // ícone dos coqueiros no 
   const f = retirado ? '#bdbdbd' : cor;
   const folhas = ['M12 8.5Q5 2.5 0.4 8.8Q5.5 9.6 12 8.5Z', 'M12 8.5Q19 2.5 23.6 8.8Q18.5 9.6 12 8.5Z', 'M12 8.5Q10 0.4 3.6 0.8Q7.6 6 12 8.5Z',
     'M12 8.5Q14 0.4 20.4 0.8Q16.4 6 12 8.5Z', 'M12 8.5Q5.6 8.6 3 15.4Q8.6 13.4 12 8.5Z', 'M12 8.5Q18.4 8.6 21 15.4Q15.4 13.4 12 8.5Z'];
-  return `<svg width="32" height="32" viewBox="0 0 24 24" style="display:block;cursor:pointer;overflow:visible${retirado ? ';opacity:.85' : ''}">` +
+  return `<svg width="20" height="20" viewBox="0 0 24 24" style="display:block;cursor:pointer;overflow:visible${retirado ? ';opacity:.85' : ''}">` +
     `<path d="M12 9Q13.8 16 11.4 23" fill="none" stroke="#fff" stroke-width="4.4" stroke-linecap="round"/>` +
     `<path d="M12 9Q13.8 16 11.4 23" fill="none" stroke="${retirado ? '#9e9e9e' : '#7a5232'}" stroke-width="2.6" stroke-linecap="round"/>` +
     folhas.map((d) => `<path d="${d}" fill="${f}" stroke="#fff" stroke-width="1.2" stroke-linejoin="round" paint-order="stroke"/>`).join('') +
@@ -1158,13 +1163,14 @@ function desenharCoq() {
     // v143 (29/10/2026, Valdo: no computador (Safari) tocar no ponto não abria a ficha; no telemóvel abria): o ponto é um elemento
     // da página (divIcon) em vez de um desenho no canvas, para o clique funcionar em todos os navegadores.
     // v185 (01/11/2026, Valdo: o ponto confundia-se com o ponto de um campo): palmeira com a cor do estado nas folhas; retirado = cinzento com ✕.
-    L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'coq-pt', iconSize: [32, 32], iconAnchor: [16, 30],
+    L.marker([c.lat, c.lon], { icon: L.divIcon({ className: 'coq-pt', iconSize: [20, 20], iconAnchor: [10, 19],
       html: svgPalmeira(COR_COQ[c.estado] || '#777', ret) }), keyboard: false })
       .on('click', (e) => { L.DomEvent.stop(e); verCoq(c.id); }).addTo(camadaCoq);
   }
   const exist = l.filter((c) => c.estado !== 'retirado'), trat = exist.filter((c) => c.tratamento).length, prod = exist.filter((c) => c.cachos || c.cocos).length;
   { const lg = $('#cq-leg'); if (lg && !lg.dataset.ok) { lg.dataset.ok = 1;            // v186: legenda das palmeiras no painel dos coqueiros
     lg.innerHTML = ['viva', 'seca', 'morta', 'retirado'].map((e) => `<span>${svgPalmeira(COR_COQ[e], e === 'retirado')}<span>${TXT_COQ[e]}</span></span>`).join(''); } }
+  { const bm = $('#cq-mostrar'); if (bm) bm.innerHTML = `▴ 🥥 <span>Coqueiros</span> (${num(l.filter((c) => c.estado !== 'retirado').length)})`; }
   $('#cq-total').innerHTML = `🥥 <span>Coqueiros fora de campo:</span> <b>${num(exist.length)}</b> <span class="pequeno">(${num(v.viva)} <span>vivos</span> · ${num(v.seca)} <span>secos</span> · ${num(v.morta)} <span>mortos</span>)</span>` +
     (trat || prod || v.retirado ? `<div class="pequeno">${prod ? `🥥 <span>${prod}</span> <span>com cachos ou cocos</span> · ` : ''}${trat ? `🩺 <span>${trat}</span> <span>precisam de tratamento</span> · ` : ''}${v.retirado ? `⭕ <span>${v.retirado}</span> <span>retirados</span>` : ''}</div>` : '');
   const u = escreveCoq() ? l.filter((c) => c.meu || c.porEnviar).reduce((m, c) => (!m || c.marcado_em > m.marcado_em ? c : m), null) : null;

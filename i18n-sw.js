@@ -997,7 +997,7 @@ window.I18N_SW_D = {
 "Só quem marcou (ou o gestor) muda este coqueiro": "Ni aliyeuweka tu (au meneja) anayeweza kubadilisha mnazi huu",
 "Só quem marcou (ou o gestor) remove este coqueiro": "Ni aliyeuweka tu (au meneja) anayeweza kuondoa mnazi huu",
 "🥥 Coqueiros": "🥥 Minazi",
-"Coqueiros fora de campo:": "Minazi nje ya mashamba:",
+"Coqueiros fora de campo:": "Minazi nje ya mashamba:", "Coqueiros": "Minazi",
 "vivos": "hai",
 "secos": "imekauka",
 "mortos": "imekufa",
