@@ -8,7 +8,7 @@ srv = subprocess.Popen([sys.executable, "-m", "http.server", "8813", "--director
 ACT = "11111111-1111-1111-1111-111111111111"
 lat0, lon0 = -10.7000, 40.4700; dy, dx = 1 / 110540, 1 / (111320 * math.cos(math.radians(10.7)))
 areas = [{"id": "PR1-1", "pr": "PR1", "area_n": 1, "comunidade": "Palma", "produtor": "Produtor Um", "instaladas": 140, "vivas": 140, "latitude": lat0 + 60*dy, "longitude": lon0 + 60*dx, "activista_id": ACT, "activista_proposto": None}]
-servidor = [{"id": f"aaaaaaaa-0000-0000-0000-00000000000{i+2}", "n": i+2, "lat": lat0 + 40*dy, "lon": lon0 + (60+i*14)*dx, "precisao_m": 4, "estado": e, "local": "ACE", "observacao": None, "foto_path": "u/a.jpg", "marcado_em": "2026-10-23T10:00:00Z", "marcado_por_nome": "Dalmar Santos", "meu": False} for i, e in enumerate(["seca", "morta", "retirado"])] + [{"id": "aaaaaaaa-0000-0000-0000-000000000001", "n": 1, "lat": lat0 + 40*dy, "lon": lon0 + 40*dx, "precisao_m": 4, "estado": "viva", "local": "ACE", "observacao": None, "foto_path": "u/aaaa.jpg", "marcado_em": "2026-10-23T10:00:00Z", "marcado_por_nome": "Dalmar Santos", "meu": False}]
+servidor = [{"id": f"aaaaaaaa-0000-0000-0000-00000000000{i+2}", "n": i+2, "lat": lat0 + 40*dy, "lon": lon0 + (60+i*14)*dx, "precisao_m": 4, "estado": e, "local": "ACE", "observacao": None, "foto_path": "u/a.jpg", "marcado_em": "2026-10-23T10:00:00Z", "marcado_por_nome": "Dalmar Santos", "meu": False, "tratamento": i == 0, "cachos": i == 0} for i, e in enumerate(["seca", "morta", "retirado"])] + [{"id": "aaaaaaaa-0000-0000-0000-000000000001", "n": 1, "lat": lat0 + 40*dy, "lon": lon0 + 40*dx, "precisao_m": 4, "estado": "viva", "local": "ACE", "observacao": None, "foto_path": "u/aaaa.jpg", "marcado_em": "2026-10-23T10:00:00Z", "marcado_por_nome": "Dalmar Santos", "meu": False}]
 rec = {"rpc": [], "fotos": []}; erros = []; dial = []
 def mock(route):
     r = route.request; u = r.url
@@ -58,6 +58,17 @@ with sync_playwright() as p:
     pg.screenshot(path="/tmp/claude-0/-home-claude/2a67f740-10a3-5b35-b093-4e5b7aa6e992/scratchpad/coq_escondido_%s.png" % LING)
     pg.click("#cq-mostrar"); pg.wait_for_timeout(300); print("v187 mostrar: cartão", pg.is_visible("#coq"), "| botão:", pg.is_visible("#cq-mostrar"))
     pg.screenshot(path="/tmp/claude-0/-home-claude/2a67f740-10a3-5b35-b093-4e5b7aa6e992/scratchpad/coq_cartao_%s.png" % LING)
+    pg.click("#cq-leg .cq-lb >> nth=0"); pg.wait_for_timeout(300)
+    print("v188 lista vivos:", pg.inner_text("#folha-c h2"), "| itens:", pg.evaluate("document.querySelectorAll('#folha-c .cq-item').length"))
+    pg.screenshot(path="/tmp/claude-0/-home-claude/2a67f740-10a3-5b35-b093-4e5b7aa6e992/scratchpad/coq_lista_%s.png" % LING)
+    pg.click("#folha-c .cq-item .chip >> nth=0"); pg.wait_for_timeout(500)
+    c = pg.evaluate("[mapa.getZoom(), mapa.latLngToContainerPoint(coqLista().find(c=>c.estado==='viva')).y, mapa.getSize().y, document.querySelector('#coq').offsetHeight, !!marcaIrCoq, (document.querySelector('#folha')||{}).className]")
+    print("v188 ver no mapa: zoom", c[0], "| y do coqueiro", round(c[1]), "de", c[2], "(cartão", c[3], ") | marca:", c[4], "| folha:", c[5])
+    pg.screenshot(path="/tmp/claude-0/-home-claude/2a67f740-10a3-5b35-b093-4e5b7aa6e992/scratchpad/coq_ir_%s.png" % LING)
+    links = pg.evaluate("[...document.querySelectorAll('#cq-total .cq-lnk')].map(b=>b.innerText)"); print("v188 ligações:", links)
+    pg.click("#cq-total .cq-lnk >> nth=1"); pg.wait_for_timeout(300)
+    print("v188 lista 2:", pg.inner_text("#folha-c h2"), "| itens:", pg.evaluate("document.querySelectorAll('#folha-c .cq-item').length"))
+    pg.evaluate("fecharFolha()"); pg.wait_for_timeout(200)
     print("v186 legenda:", pg.inner_text("#cq-leg").replace("\n", " "), "| dica:", pg.inner_text("#coq .pequeno >> nth=-1"))
     print("v185 ícones:", pg.evaluate("document.querySelectorAll('.coq-pt svg').length"), "| tocar nas folhas abre:", pg.evaluate("window._ab"))
     print("ERROS JS:", erros or "nenhum"); b.close(); srv.terminate(); sys.exit()

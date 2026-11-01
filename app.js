@@ -1168,11 +1168,11 @@ function desenharCoq() {
       .on('click', (e) => { L.DomEvent.stop(e); verCoq(c.id); }).addTo(camadaCoq);
   }
   const exist = l.filter((c) => c.estado !== 'retirado'), trat = exist.filter((c) => c.tratamento).length, prod = exist.filter((c) => c.cachos || c.cocos).length;
-  { const lg = $('#cq-leg'); if (lg && !lg.dataset.ok) { lg.dataset.ok = 1;            // v186: legenda das palmeiras no painel dos coqueiros
-    lg.innerHTML = ['viva', 'seca', 'morta', 'retirado'].map((e) => `<span>${svgPalmeira(COR_COQ[e], e === 'retirado')}<span>${TXT_COQ[e]}</span></span>`).join(''); } }
+  // v186: legenda das palmeiras; v188 (01/11/2026, Valdo): cada item abre a lista desses coqueiros, com «Ver no mapa»
+  { const lg = $('#cq-leg'); if (lg) lg.innerHTML = ['viva', 'seca', 'morta', 'retirado'].map((e) => `<button class="cq-lb" onclick="listaCoq('${e}')">${svgPalmeira(COR_COQ[e], e === 'retirado')}<span>${TXT_COQ[e]}</span> <span class="sem-trad">(${num(v[e] || 0)})</span></button>`).join(''); }
   { const bm = $('#cq-mostrar'); if (bm) bm.innerHTML = `▴ 🥥 <span>Coqueiros</span> (${num(l.filter((c) => c.estado !== 'retirado').length)})`; }
   $('#cq-total').innerHTML = `🥥 <span>Coqueiros fora de campo:</span> <b>${num(exist.length)}</b> <span class="pequeno">(${num(v.viva)} <span>vivos</span> · ${num(v.seca)} <span>secos</span> · ${num(v.morta)} <span>mortos</span>)</span>` +
-    (trat || prod || v.retirado ? `<div class="pequeno">${prod ? `🥥 <span>${prod}</span> <span>com cachos ou cocos</span> · ` : ''}${trat ? `🩺 <span>${trat}</span> <span>precisam de tratamento</span> · ` : ''}${v.retirado ? `⭕ <span>${v.retirado}</span> <span>retirados</span>` : ''}</div>` : '');
+    (trat || prod || v.retirado ? `<div class="pequeno">${prod ? `<button class="cq-lnk" onclick="listaCoq('prod')">🥥 <span>${prod}</span> <span>com cachos ou cocos</span></button> · ` : ''}${trat ? `<button class="cq-lnk" onclick="listaCoq('trat')">🩺 <span>${trat}</span> <span>precisam de tratamento</span></button> · ` : ''}${v.retirado ? `<button class="cq-lnk" onclick="listaCoq('retirado')">⭕ <span>${v.retirado}</span> <span>retirados</span></button>` : ''}</div>` : '');
   const u = escreveCoq() ? l.filter((c) => c.meu || c.porEnviar).reduce((m, c) => (!m || c.marcado_em > m.marcado_em ? c : m), null) : null;
   const bd = $('#cq-desf'); bd.style.display = u ? '' : 'none'; if (u) bd.textContent = u.n ? `↶ Apagar o último (nº ${u.n})` : '↶ Apagar o último';
   $('#cq-csv').style.display = l.length ? '' : 'none';
@@ -1237,6 +1237,36 @@ async function gravarCoq() {
   S.coqFoto = null; fecharFolha(); actSync(); desenharCoq();
   aviso(r.fraco ? `Coqueiro marcado com GPS fraco (±${c.precisao_m} m).` : `Coqueiro marcado (±${c.precisao_m} m).`, r.fraco ? 'info' : 'ok');
   sincronizar(true);
+}
+// v188 (01/11/2026, Valdo: "clicando nessa lista, ia me levar na localização… do coqueiro, com os dados do coqueiro"):
+// lista dos coqueiros de um estado (ou com cachos/cocos, ou que precisam de tratamento), cada um com «Ver no mapa» e «Abrir a ficha»
+const LISTAS_COQ = { viva: 'Coqueiros vivos', seca: 'Coqueiros secos', morta: 'Coqueiros mortos', retirado: 'Coqueiros retirados',
+  prod: 'Coqueiros com cachos ou cocos', trat: 'Coqueiros que precisam de tratamento' };
+function listaCoq(f) {
+  const l = coqLista().filter((c) => (f === 'prod' ? c.estado !== 'retirado' && (c.cachos || c.cocos) : f === 'trat' ? c.estado !== 'retirado' && c.tratamento : c.estado === f))
+    .sort((a, b) => (a.n || 1e9) - (b.n || 1e9) || (a.marcado_em < b.marcado_em ? -1 : 1));
+  const linha = (c) => {
+    const d = S.pos ? metros(S.pos, [c.lat, c.lon]) : null;
+    const marcas = [c.tratamento ? '🩺 <span>Precisa de tratamento</span>' : '', c.cachos ? '🥥 <span>Tem cachos</span>' : '', c.cocos ? '🥥 <span>Tem cocos</span>' : ''].filter(Boolean).join(' · ');
+    return `<div class="cartao cq-item"><div class="cq-cab">${svgPalmeira(COR_COQ[c.estado] || '#777', c.estado === 'retirado')}<b>${c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro'}</b> <span>${TXT_COQ[c.estado] || esc(c.estado)}</span></div>
+      <div class="pequeno">${c.local ? `<span class="sem-trad">${esc(c.local)}</span> · ` : ''}${fmtData(c.marcado_em.slice(0, 10))}${c.marcado_por_nome ? ` · <span class="sem-trad">${esc(c.marcado_por_nome)}</span>` : ''}${d != null ? ` · <span class="sem-trad">📏 ${Math.round(d)} m</span>` : ''}</div>
+      ${marcas ? `<div class="pequeno">${marcas}</div>` : ''}${c.observacao ? `<div class="pequeno sem-trad">${esc(c.observacao)}</div>` : ''}
+      <div class="chips"><button class="chip" onclick="irCoq('${esc(c.id)}')">📍 <span>Ver no mapa</span></button><button class="chip" onclick="verCoq('${esc(c.id)}')"><span>Abrir a ficha</span></button></div></div>`;
+  };
+  folha(`<h2>🥥 <span>${LISTAS_COQ[f]}</span> <span class="sem-trad">(${num(l.length)})</span></h2>
+    ${l.length ? `<p class="pequeno">Toque em «Ver no mapa» para ir até ao coqueiro.</p>${l.map(linha).join('')}` : '<p>Sem coqueiros nesta lista.</p>'}
+    <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
+let marcaIrCoq;
+function irCoq(id) {
+  const c = coqLista().find((x) => x.id === id); if (!c) return;
+  fecharFolha();
+  mapa.setView([c.lat, c.lon], 19, { animate: false });
+  const cart = $('#coq'); if (cart && cart.style.display !== 'none') mapa.panBy([0, Math.round(cart.offsetHeight / 2)], { animate: false });
+  if (marcaIrCoq) mapa.removeLayer(marcaIrCoq);
+  marcaIrCoq = L.circleMarker([c.lat, c.lon], { radius: 18, color: '#1e5bd8', weight: 3, fill: false, interactive: false }).addTo(mapa);
+  setTimeout(() => { if (marcaIrCoq) { mapa.removeLayer(marcaIrCoq); marcaIrCoq = null; } }, 8000);
+  aviso(c.n ? `Coqueiro nº ${c.n}` : 'Coqueiro');
 }
 function verCoq(id) {
   const c = coqLista().find((x) => x.id === id); if (!c) return;
