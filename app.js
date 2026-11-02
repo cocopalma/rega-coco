@@ -2552,7 +2552,7 @@ function aprovarMedicao(id, sim) {
   if (!sim && !confirm('Recusar esta medição? O activista terá de medir de novo.')) return;
   aplicarAprovacao(a, sim); LS.set('areas', S.areas);
   porNaFilaAlt({ tipo: 'aprovar', area_id: id, aprovar: sim });
-  desenharMapa(true); desenharLista();
+  desenharMapa(true); desenharLista(); actHoje();   // v192 (02/11/2026, Nuro): a medição aprovada sai logo do «O meu dia»
   abrirFicha(id, `<div class="msg ok">${sim ? 'Medição aprovada: o limite do campo já vale.' : 'Medição recusada.'}</div>`);
 }
 const porAprovar = () => (S.perfil && PODE_COORD.includes(S.perfil.papel) ? S.areas.filter((a) => a.poligono_proposto) : []);
