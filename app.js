@@ -652,6 +652,7 @@ function iniciarMapa() {
     if (S.coq) coqLeitura(p.coords);
     if (!eu) eu = L.circleMarker(S.pos, { radius: 9, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 }).addTo(mapa);
     else eu.setLatLng(S.pos);
+    if (S.rasto) pontoRasto(p.coords);
     if (S.nav) actualizarNav(false);
     // o ponto saiu do ecrã (a andar ou de carro): o mapa acompanha (16/10/2026, Dalmar). Se a pessoa arrastou o mapa
     // para outro lado (o ponto já estava fora), não puxa de volta.
@@ -1053,6 +1054,7 @@ function desenharMapa(enquadrar = false) {
   $('#b-filtro').textContent = S.filtro === 'meus' ? 'As minhas' : 'Todas';
   $('#b-filtro').style.display = listaPropria() ? '' : 'none';
   $('#b-perc').style.display = podeVerPercursos() ? '' : 'none';
+  $('#b-trilho').style.display = S.perfil && S.perfil.papel !== 'cliente' ? '' : 'none';
   $('#b-coq').style.display = temCoq() && !LS.get('escondeCoq', false) ? '' : 'none';
   { const l = $('#leg-coq'); if (l) l.style.display = temCoq() && LS.get('escondeCoq', false) ? '' : 'none'; }
   const ri = $('#ronda-info');
@@ -1285,21 +1287,22 @@ function irCoq(id) {
 const NAV = { celula: 10, liga: 300, fRecta: 1.4, fora: 40, osmCada: 60000, rastoPasso: 10, rastoPrec: 30, maxOsm: 100 };
 let trilhosMem = null, grafoNav = null, camadaNav = null;
 async function lerTrilhos() {
-  if (!trilhosMem) { try { trilhosMem = (await FOTOS.ler('trilhos')) || {}; } catch { trilhosMem = {}; } }
+  if (!trilhosMem) { try { trilhosMem = (await FOTOS.ler('trilhos2')) || {}; } catch { trilhosMem = {}; } }
   return trilhosMem;
 }
-async function guardarTrilhos() { grafoNav = null; try { await FOTOS.guardar('trilhos', trilhosMem); } catch {} }
+async function guardarTrilhos() { grafoNav = null; try { await FOTOS.guardar('trilhos2', trilhosMem); } catch {} }
 async function carregarTrilhos(forcar) {                  // com rede: só o que mudou desde a última vez
   if (!navigator.onLine || !sb) return;
+  if (!LS.get('trilhosEm2')) { LS.del('trilhosEm'); LS.set('trilhosPedido', 0); try { FOTOS.apagar('trilhos'); } catch {} }
   const ped = LS.get('trilhosPedido') || 0;
   if (Date.now() - ped < (forcar ? 5 : 30) * 60000) return;
   LS.set('trilhosPedido', Date.now());
-  const r = await sb.rpc('trilhos', { p_desde: LS.get('trilhosEm') || null });
+  const r = await sb.rpc('trilhos', { p_desde: LS.get('trilhosEm2') || null });
   if (r.error || !r.data || !r.data.fontes) return;
   const T = await lerTrilhos();
   for (const [k, v] of Object.entries(r.data.fontes)) { if (Array.isArray(v) && v.length) T[k] = v; else delete T[k]; }
   for (const k of Object.keys(T)) if (k[0] === 'l' && T['t' + k.slice(1)]) delete T[k];   // o meu rasto já chegou ao servidor
-  LS.set('trilhosEm', r.data.agora); await guardarTrilhos();
+  LS.set('trilhosEm2', r.data.agora); await guardarTrilhos();
   if (S.nav) recalcularNav(false);
 }
 function grafo() {
@@ -1402,7 +1405,10 @@ async function navegar(tipo, id) {
   if (S.nav) await pararNav(true);
   if (S.regua) fecharRegua();
   if (S.modoPerc) fecharPercurso();
-  S.nav = { tipo, id, rasto: [], andou: 0, chegou: false, arrastou: 0, osmEm: 0, osm: false };
+  if (S.rasto && S.rasto.origem === 'gravado') await pararGravarTrilho();
+  S.nav = { tipo, id, andou: 0, chegou: false, arrastou: 0, osmEm: 0, osm: false };
+  iniciarRasto('nav');
+  if (S.fix && Date.now() - S.fix.t < 20000) pontoRasto(S.fix.coords);
   const x = alvoNav(); if (!x) { S.nav = null; return; }
   if (tipo === 'coq') { $('#coq').style.display = 'none'; $('#cq-mostrar').style.display = 'none'; }
   $('#nav-cx').style.display = ''; mostrarSugFixa();
@@ -1433,7 +1439,8 @@ function recalcularNav(enquadrar) {
 }
 function desenharNav(proj) {
   const N = S.nav; camadaNav.clearLayers();
-  if (N.rasto.length > 1) L.polyline(N.rasto.map((r) => [r[1], r[0]]), { color: '#8e24aa', weight: 4, opacity: .85, interactive: false }).addTo(camadaNav);
+  const R0 = S.rasto ? S.rasto.pontos : [];
+  if (R0.length > 1) L.polyline(R0.map((r) => [r[1], r[0]]), { color: '#8e24aa', weight: 4, opacity: .85, interactive: false }).addTo(camadaNav);
   if (N.rota && proj) {                                   // só o que falta andar
     const R = N.rota.pts, resto = [{ p: proj.q, recta: R[proj.i].recta }, ...R.slice(proj.i)];
     let tr = [resto[0].p], tipo = resto[1] ? resto[1].recta : false;
@@ -1456,11 +1463,7 @@ function actualizarNav(enquadrar) {
     return;
   }
   const prec = S.fix && S.fix.coords ? Math.round(S.fix.coords.accuracy) : null;
-  // o meu rasto (só leituras boas, um ponto a cada 10 m)
-  if (prec != null && prec <= NAV.rastoPrec) {
-    const u = N.rasto[N.rasto.length - 1], pt = [+S.pos[1].toFixed(6), +S.pos[0].toFixed(6), Math.round(Date.now() / 1000), prec];
-    if (!u) N.rasto.push(pt); else { const d = metros([u[1], u[0]], S.pos); if (d >= NAV.rastoPasso) { N.rasto.push(pt); N.andou += d; } }
-  }
+  { const u = S.rasto && S.rasto.pontos[S.rasto.pontos.length - 1]; if (u && N.ultimo !== u) { if (N.ultimo) N.andou += metros([N.ultimo[1], N.ultimo[0]], [u[1], u[0]]); N.ultimo = u; } }
   if (!N.rota) N.rota = rotaNav(S.pos, N.alvo);
   let pj = projectarRota(N.rota, S.pos);
   if (pj.d > Math.max(NAV.fora, prec || 0)) {             // saiu do caminho: procura de novo a partir de onde está
@@ -1502,18 +1505,88 @@ async function pararNav(semCartao) {
   if (camadaNav) { camadaNav.clearLayers(); mapa.removeLayer(camadaNav); }
   if (mapa) mapa.off('dragstart', navArrastou);
   const p = $('#nav-cx'); if (p) p.style.display = 'none';
-  if (N && N.rasto.length >= 5 && N.andou >= 50) {        // o rasto passa a ser um trilho (no telefone já, no servidor quando houver rede)
-    const id = crypto.randomUUID(), T = await lerTrilhos();
-    T['l' + id] = [N.rasto.map((r) => [r[0], r[1]])]; await guardarTrilhos();
-    LS.set('filaTrilho', [...(LS.get('filaTrilho', []) || []), { id, pontos: N.rasto }]);
-    if (navigator.onLine) enviarTrilhos();
-  }
+  if (S.rasto && S.rasto.origem === 'nav') await fecharRasto();
   if (!semCartao && N && N.tipo === 'coq' && S.coq) verCartaoCoq(true);
   mostrarSugFixa();
 }
+// ---------- Rasto: o caminho por onde a pessoa anda (navegação ou «🛤 Gravar trilho») ----------
+// v194 (02/11/2026, Valdo: "os activistas… andam dentro do campo… não é trilho. O caminho é fora"; escolheu "Automático + botão").
+// No servidor (RPC trilhos) saem os pontos gravados durante uma rega e os pontos dentro do limite de um campo; aqui, na cópia
+// do telefone, saem os pontos dentro dos limites dos campos que o telefone conhece. O rasto fica guardado a cada ponto
+// (`rega.rastoAct`) e vai para o servidor de 2 em 2 minutos com rede: não se perde se a app fechar.
+const RASTO_ENVIO_MS = 120000;
+let camadaRasto = null;
+function iniciarRasto(origem) {
+  if (S.rasto) return;
+  S.rasto = { id: crypto.randomUUID(), origem, pontos: [], andou: 0, envEm: Date.now(), ini: new Date().toISOString() };
+  LS.set('rastoAct', S.rasto);
+}
+function pontoRasto(c) {                                  // cada leitura do GPS do mapa
+  const R = S.rasto; if (!R || !c || c.accuracy > NAV.rastoPrec) return;
+  const pt = [+c.longitude.toFixed(6), +c.latitude.toFixed(6), Math.round(Date.now() / 1000), Math.round(c.accuracy)];
+  const u = R.pontos[R.pontos.length - 1];
+  if (u) { const d = metros([u[1], u[0]], [pt[1], pt[0]]); if (d < NAV.rastoPasso) return; R.andou += d; }
+  if (R.pontos.length >= 3000) return;
+  R.pontos.push(pt); LS.set('rastoAct', R);
+  if (navigator.onLine && R.pontos.length >= 2 && Date.now() - R.envEm > RASTO_ENVIO_MS) {
+    R.envEm = Date.now();
+    sb.rpc('gravar_trilho', { p_id: R.id, p_pontos: R.pontos, p_origem: R.origem }).then(() => {}, () => {});
+  }
+  if (R.origem === 'gravado') mostrarGravarTrilho();
+}
+function cortarCampos(pontos) {                           // linhas sem os pontos dentro dos limites dos campos do telefone
+  const pols = [...(S.areas || []), ...((S.manut && S.manut.campos) || [])].filter(temPoligono);
+  const linhas = []; let l = [];
+  for (const p of pontos) {
+    if (pols.some((a) => dentroPoligono(p[1], p[0], a.poligono))) { if (l.length > 1) linhas.push(l); l = []; }
+    else l.push([p[0], p[1]]);
+  }
+  if (l.length > 1) linhas.push(l);
+  return linhas;
+}
+async function fecharRasto(cancelar) {                    // o rasto passa a ser um trilho (no telefone já, no servidor quando houver rede)
+  const R = S.rasto || LS.get('rastoAct'); S.rasto = null; LS.del('rastoAct');
+  if (camadaRasto) camadaRasto.clearLayers();
+  if (!R || cancelar || R.pontos.length < 5 || R.andou < 50) return false;
+  const T = await lerTrilhos(), linhas = cortarCampos(R.pontos);
+  if (linhas.length) { T['l' + R.id] = linhas; await guardarTrilhos(); }
+  LS.set('filaTrilho', [...(LS.get('filaTrilho', []) || []).filter((x) => x.id !== R.id), { id: R.id, pontos: R.pontos, origem: R.origem }]);
+  if (navigator.onLine) enviarTrilhos();
+  return true;
+}
+function recuperarRasto() {                               // a app fechou a meio: guarda o que ficou
+  if (!S.rasto && LS.get('rastoAct')) fecharRasto();
+}
+async function gravarTrilho() {
+  if (S.rasto && S.rasto.origem === 'gravado') { verCartaoTrilho(true); return; }
+  if (S.nav) await pararNav();
+  if (S.regua) fecharRegua();
+  iniciarRasto('gravado');
+  if (S.rasto.origem !== 'gravado') { await fecharRasto(); iniciarRasto('gravado'); }
+  try { if (navigator.wakeLock) travaEcra = await navigator.wakeLock.request('screen'); } catch {}
+  if (!camadaRasto) camadaRasto = L.layerGroup(); camadaRasto.addTo(mapa);
+  $('#b-trilho').classList.add('on'); verCartaoTrilho(true); mostrarSugFixa();
+  if (S.pos) mapa.setView(S.pos, Math.max(mapa.getZoom(), 17));
+  if (S.fix && Date.now() - S.fix.t < 20000) pontoRasto(S.fix.coords);
+  mostrarGravarTrilho();
+}
+function verCartaoTrilho(on) { $('#trilho-cx').style.display = on ? '' : 'none'; }
+function mostrarGravarTrilho() {
+  const R = S.rasto; if (!R || R.origem !== 'gravado') return;
+  const prec = S.fix && S.fix.coords ? Math.round(S.fix.coords.accuracy) : null;
+  $('#tr-info').innerHTML = `<span class="sem-trad">${kmTxt(R.andou)}</span> · <span class="sem-trad">${num(R.pontos.length)}</span> <span>pontos</span>${prec != null ? ` · <span>GPS</span> <span class="sem-trad">±${prec} m</span>${prec > NAV.rastoPrec ? ' · <span>GPS fraco: estes pontos não contam.</span>' : ''}` : ''}`;
+  if (camadaRasto) { camadaRasto.clearLayers(); if (R.pontos.length > 1) L.polyline(R.pontos.map((r) => [r[1], r[0]]), { color: '#8e24aa', weight: 4, opacity: .9, interactive: false }).addTo(camadaRasto); }
+}
+async function pararGravarTrilho(cancelar) {
+  if (cancelar === 'perguntar') { if (!confirm('Apagar este trilho sem o guardar?')) return; cancelar = true; }
+  const ok = await fecharRasto(cancelar === true);
+  if (travaEcra) { travaEcra.release().catch(() => {}); travaEcra = null; }
+  $('#b-trilho').classList.remove('on'); verCartaoTrilho(false); mostrarSugFixa();
+  if (cancelar !== true) aviso(ok ? 'Trilho guardado. Fica para a navegação de todos (sem o que andou dentro dos campos).' : 'Trilho muito curto (menos de 50 m): não foi guardado.', ok ? 'ok' : 'info');
+}
 async function enviarTrilhos() {
   for (const t of LS.get('filaTrilho', []) || []) {
-    const r = await sb.rpc('gravar_trilho', { p_id: t.id, p_pontos: t.pontos.slice(0, 3000) });
+    const r = await sb.rpc('gravar_trilho', { p_id: t.id, p_pontos: t.pontos.slice(0, 3000), p_origem: t.origem || 'nav' });
     if (r.error && !r.error.code) return null;            // sem rede: fica no telefone
     LS.set('filaTrilho', (LS.get('filaTrilho', []) || []).filter((x) => x.id !== t.id));   // enviado (ou recusado: não volta a tentar)
   }
@@ -2927,7 +3000,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (apresentação)</button><p class="pequeno" style="margin:0 0 6px">Só na apresentação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${a.latitude != null || temPoligono(a) ? `<button class="chip" style="margin:6px 0" onclick="navegarCampo('${esc(a.id)}')">🧭 <span>Navegar até ao campo</span></button>` : ''}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (simulação)</button><p class="pequeno" style="margin:0 0 6px">Só na simulação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${a.latitude != null || temPoligono(a) ? `<button class="chip" style="margin:6px 0" onclick="navegarCampo('${esc(a.id)}')">🧭 <span>Navegar até ao campo</span></button>` : ''}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
   S.soVer = false;
   if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
 }
@@ -3427,7 +3500,7 @@ function mostrarSugFixa() {                            // cartão fixo no Mapa (
   const el = $('#sug-mapa'); if (!el) return;
   if (S.planoMapa) return;
   const a = souActivista() || ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) ? sugActual() : null;
-  const tapa = !$('#legenda')?.classList.contains('fechada') || S.regua || S.modoPerc || S.coq || S.nav || modoManut();
+  const tapa = !$('#legenda')?.classList.contains('fechada') || S.regua || S.modoPerc || S.coq || S.nav || S.rasto?.origem === 'gravado' || modoManut();
   if (!a || tapa) { el.style.display = 'none'; return; }
   el.innerHTML = `<div>${textoSugFixa(a)}</div><div class="chips"><button class="chip" onclick="verSugMapa()">Ver no mapa</button><button class="chip" onclick="navegarCampo('${esc(a.id)}')">🧭 <span>Navegar</span></button><button class="chip" onclick="abrirFicha('${esc(a.id)}')">Abrir a ficha</button></div>`;
   el.style.display = '';
@@ -5387,6 +5460,7 @@ function mostrarApp() {
 }
 // formulário que estava aberto quando o telefone fechou a app (ex.: ao abrir a câmara) volta a abrir
 function retomarRascunhos() {
+  recuperarRasto();
   try {
     const rd = rascLer('rascMedir');
     if (rd && rd.a_andar && rd.perfil === S.perfil?.id && rd.pts?.length && areaMedir(rd.area_id)) return ecraMedir(rd.area_id, rd);
@@ -5427,14 +5501,14 @@ const DEMO_FUNCOES = [
 const nomeFuncaoDemo = (p) => (DEMO_FUNCOES.find((f) => f[0] === p) || [p, p])[1];
 function cartaoDemo() {
   if (S.perfil?.papel !== 'gestor' || window.DEMO) return '';
-  return `<div class="cartao" style="border-left:4px solid #6a1b9a"><h2>🎬 Modo apresentação</h2>
+  return `<div class="cartao" style="border-left:4px solid #6a1b9a"><h2>🎬 Modo simulação</h2>
     <p class="pequeno">Para mostrar a app a outras pessoas: escolha uma função e a app passa a mostrar o que essa pessoa vê. Começa do zero: só há campos, equipas e pessoas de exemplo, sem nada registado. O que fizer numa função aparece nas outras. Nada do que fizer é gravado no servidor (nem as sugestões 💡). Os campos de exemplo ficam em Palma; na ficha de cada campo, «🎬 Pôr-me neste campo» leva-o até lá.</p>
     ${DEMO_FUNCOES.map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">Ver como ${n}</div><div class="sub">${d}</div></div></div>`).join('')}</div>`;
 }
 function entrarDemo(papel) {
   const ant = window.DEMO;                                // v150: os campos de exemplo ficam sempre em Palma (não usa a posição de quem apresenta)
   const cfg = { papel, lat: ant ? ant.lat : -10.7353, lon: ant ? ant.lon : 40.4684, desde: ant ? ant.desde : new Date().toISOString() };
-  try { sessionStorage.setItem('rega.demo', JSON.stringify(cfg)); } catch { return aviso('Este navegador não deixa abrir o modo apresentação.', 'erro'); }
+  try { sessionStorage.setItem('rega.demo', JSON.stringify(cfg)); } catch { return aviso('Este navegador não deixa abrir o modo simulação.', 'erro'); }
   if (ant) ant.limparTelefone();                          // outra função: começa limpa no telefone; a base de exemplo continua (o que se fez noutra função aparece)
   location.reload();
 }
@@ -5442,18 +5516,18 @@ function faixaDemo() {
   const f = $('#demo-faixa'); if (!f) return;
   if (!window.DEMO) { f.style.display = 'none'; return; }
   f.style.display = 'flex';
-  f.innerHTML = `<span style="flex:1">🎬 <b>Apresentação</b> · ${esc(nomeFuncaoDemo(DEMO.papel))}</span><button onclick="ecraDemo()">Mudar</button><button onclick="DEMO.terminar()">Terminar</button>`;
+  f.innerHTML = `<span style="flex:1">🎬 <b>Simulação</b> · ${esc(nomeFuncaoDemo(DEMO.papel))}</span><button onclick="ecraDemo()">Mudar</button><button onclick="DEMO.terminar()">Terminar</button>`;
 }
 function ecraDemo() {
-  folha(`<h2>🎬 Modo apresentação</h2><p class="pequeno">Está a ver a app como ${esc(nomeFuncaoDemo(DEMO.papel))}. Nada é gravado no servidor.</p>
-    <p class="pequeno">${DEMO.modo === 'exemplos' ? 'Com exemplos: já há regas, queimadas, recontagens e outros registos de exemplo.' : 'Do zero: só há campos, equipas e pessoas de exemplo. Tudo o que aparece registado foi feito por si nesta apresentação.'}</p><p class="pequeno">O GPS não é verificado: a app faz de conta que está nos campos de exemplo, em Palma.</p><p class="pequeno">Na ficha de cada campo, «🎬 Pôr-me neste campo» leva-o até lá. Ao medir a área, o GPS anda sozinho à volta do campo.</p>
+  folha(`<h2>🎬 Modo simulação</h2><p class="pequeno">Está a ver a app como ${esc(nomeFuncaoDemo(DEMO.papel))}. Nada é gravado no servidor.</p>
+    <p class="pequeno">${DEMO.modo === 'exemplos' ? 'Com exemplos: já há regas, queimadas, recontagens e outros registos de exemplo.' : 'Do zero: só há campos, equipas e pessoas de exemplo. Tudo o que aparece registado foi feito por si nesta simulação.'}</p><p class="pequeno">O GPS não é verificado: a app faz de conta que está nos campos de exemplo, em Palma.</p><p class="pequeno">Na ficha de cada campo, «🎬 Pôr-me neste campo» leva-o até lá. Ao medir a área, o GPS anda sozinho à volta do campo.</p>
     <h3>Ver como outra função</h3>
     ${DEMO_FUNCOES.filter(([k]) => k !== DEMO.papel).map(([k, n, d]) => `<div class="item" onclick="entrarDemo('${k}')"><div><div class="nome">${n}</div><div class="sub">${d}</div></div></div>`).join('')}
     <p class="pequeno">O que fizer numa função aparece nas outras (por exemplo: o oficial conta, o M&E valida).</p>
-    <p class="pequeno">As sugestões (💡) feitas na apresentação ficam só na apresentação (não chegam à Gestão verdadeira).</p>
-    <button class="btn sec" onclick="if (confirm('Apagar tudo o que fez na apresentação e começar do zero (sem exemplos)?')) DEMO.recomecar('zero')">🧹 Começar do zero (sem exemplos)</button>
-    <button class="btn sec" onclick="if (confirm('Apagar o que fez na apresentação e voltar aos dados de exemplo?')) DEMO.recomecar('exemplos')">Recomeçar com exemplos</button>
-    <button class="btn" onclick="DEMO.terminar()">Terminar a apresentação</button>`);
+    <p class="pequeno">As sugestões (💡) feitas na simulação ficam só na simulação (não chegam à Gestão verdadeira).</p>
+    <button class="btn sec" onclick="if (confirm('Apagar tudo o que fez na simulação e começar do zero (sem exemplos)?')) DEMO.recomecar('zero')">🧹 Começar do zero (sem exemplos)</button>
+    <button class="btn sec" onclick="if (confirm('Apagar o que fez na simulação e voltar aos dados de exemplo?')) DEMO.recomecar('exemplos')">Recomeçar com exemplos</button>
+    <button class="btn" onclick="DEMO.terminar()">Terminar a simulação</button>`);
 }
 // sessão do Supabase guardada no telefone (sem pedir nada à rede)
 function sessaoGuardada() {
@@ -5471,6 +5545,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#folha-x').onclick = fecharFolha;
   $('#b-rodar').onclick = alternarRodar; botaoRodar();
   $('#b-regua').onclick = alternarRegua;
+  $('#b-trilho').onclick = gravarTrilho;
   $('#b-coq').onclick = abrirCoq; $('#cq-marcar').onclick = marcarCoq; $('#cq-fechar').onclick = fecharCoq; $('#cq-desf').onclick = apagarUltimoCoq; $('#cq-csv').onclick = descarregarCoq;
   $('#b-perc').onclick = ecraPercursos; $('#pc-fechar').onclick = fecharPercurso;
   setInterval(() => { if (navigator.onLine && percursoPorEnviar()) sincronizar(true); }, 5 * 60 * 1000);

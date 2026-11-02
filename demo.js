@@ -554,7 +554,7 @@
         if ((h.get('Accept') || '').includes('vnd.pgrst.object')) return resp(linhas[0] || null);
         return resp(linhas, 200, { 'Content-Range': `0-${Math.max(0, linhas.length - 1)}/${linhas.length}` });
       }
-    } catch (e) { console.error('[demo]', e); return resp({ message: 'Erro no modo apresentação: ' + e.message }, 500); }
+    } catch (e) { console.error('[demo]', e); return resp({ message: 'Erro no modo simulação: ' + e.message }, 500); }
     return resp([]);
   }
   const fetchReal = window.fetch.bind(window);
@@ -583,7 +583,7 @@
     limparTelefone,
     // v156: «🎬 Pôr-me neste campo» — a posição passa a ser o centro do campo e a ficha volta a abrir
     irPara(id) { const a = area(id); if (a.latitude == null) return; parar(); porPos(a.latitude, a.longitude);
-      setTimeout(() => { if (typeof window.abrirFicha === 'function') window.abrirFicha(id, '<div class="msg ok">🎬 Está agora neste campo (apresentação). Já pode marcar a entrada.</div>'); }, 500); },
+      setTimeout(() => { if (typeof window.abrirFicha === 'function') window.abrirFicha(id, '<div class="msg ok">🎬 Está agora neste campo (simulação). Já pode marcar a entrada.</div>'); }, 500); },
     // v156: medir a área ao vivo: vai para um canto do campo (rectângulo de 60 × 50 m à volta do ponto) e, ao «Começar», anda à volta
     cantoMedir(id) { const a = area(id); if (a.latitude == null) return; parar(); const k = volta(a); porPos(k[0][0], k[0][1]); },
     andarMedir(id) { const a = area(id); if (a.latitude == null) return; parar(); const k = volta(a); let i = 0;
