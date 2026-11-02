@@ -4522,12 +4522,22 @@ async function enviarAcomp() {
   }
   return null;
 }
-function ecraCorrigirPlantas(rid, areaId) {
+// v195 (02/11/2026, sugestão do Raul pelo 💡 às 09:47): ao confirmar uma rega com ⚠️, contou menos plantas vivas do que as regadas
+// e a app mandava "corrigir na ficha", mas não encontrava onde (a lista das regas fica no fim da ficha). Agora abre logo a correcção.
+async function corrigirRegaAgora(rid, areaId, contadas) {
+  const tem = () => (S.regasCampo?.[areaId] || []).some((x) => x.id === rid && x.saida_em);
+  if (!tem() && navigator.onLine) { try { const r = await sb.rpc('regas_campo', { p_area: areaId }); if (!r.error && Array.isArray(r.data)) (S.regasCampo ||= {})[areaId] = r.data; } catch {} }
+  const ar = S.areas.find((x) => x.id === areaId);
+  if (tem() && ar && PODE_CORRIGIR_PLANTAS.includes(S.perfil?.papel) && meuCampo(ar)) return ecraCorrigirPlantas(rid, areaId, contadas);
+  abrirFicha(areaId);
+}
+function ecraCorrigirPlantas(rid, areaId, contadas) {
   const v = (S.regasCampo?.[areaId] || []).find((x) => x.id === rid), a = S.areas.find((x) => x.id === areaId);
   if (!v || !a) return;
   folha(`<h2>Corrigir as plantas regadas</h2><p class="pequeno">${esc(a.produtor)} · ${fmtData(v.data)} · ${fmtHora(v.entrada_em)}–${fmtHora(v.saida_em)} · ${esc(v.quem || '')}</p>
     <div class="lin"><span>Plantas regadas gravadas</span><b>${num(v.plantas_regadas)}</b></div>
     <div class="lin"><span>Na base</span><b>${plantasTxt(a)}</b></div>
+    ${contadas >= 0 ? `<div class="lin"><span>Plantas vivas que contou no campo</span><b>${num(contadas)}</b></div>` : ''}
     <label>Número certo de plantas regadas<input id="cp-n" type="number" inputmode="numeric" min="0"></label>
     <label>Motivo da correcção<textarea id="cp-mot" rows="2" placeholder="Ex.: esqueceu-se de mudar o número"></textarea></label>
     <p class="pequeno">Fica registado quem corrigiu, quando, o número que estava e o motivo. Funciona sem rede.</p>
@@ -4965,7 +4975,7 @@ function cartaoMeuDia() {
     <h3 style="font-size:14px;margin:12px 0 4px">3. <span>Regas com ⚠️ por confirmar</span> (${al.length})</h3>` +
     (al.length ? al.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
       <div class="sub"><span class="sem-trad">${esc(x.equipa)}</span> · ${fmtData(x.data)} · ${x.tipo === 'mais_que_base' ? `${num(x.plantas)} <span>plantas regadas</span>, ${num(x.base)} <span>na base</span>` : `<span>ritmo</span> ${num(x.ritmo)} <span>plantas por pessoa por hora</span>, <span>habitual</span> ${num(x.mediana)}`}</div>
-      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e corrigir</button><button class="chip" onclick="ecraConfirmarRega('${x.registo_id}', '${x.tipo}', ${Number(x.plantas) || 0}, ${Number(x.base) || 0}, '${esc(x.area_id)}')">✓ Está certo</button></div></div>`).join('')
+      <div class="chips"><button class="chip" onclick="corrigirRegaAgora('${esc(x.registo_id)}','${esc(x.area_id)}')">✏️ Corrigir as plantas regadas</button><button class="chip" onclick="ecraConfirmarRega('${x.registo_id}', '${x.tipo}', ${Number(x.plantas) || 0}, ${Number(x.base) || 0}, '${esc(x.area_id)}')">✓ Está certo</button></div></div>`).join('')
       : '<p class="pequeno">Nenhuma.</p>') +
     `<h3 style="font-size:14px;margin:12px 0 4px">4. <span>Campos sem equipa</span>: ${num(d.sem_equipa || 0)}</h3>${d.sem_equipa ? '<button class="chip" onclick="irPorAtribuir()">Atribuir os campos</button>' : ''}` +
     // v138 (29/10/2026, Valdo): medições de área feitas pelos activistas à espera de aprovação (as já aprovadas no telefone saem da lista)
@@ -5019,7 +5029,7 @@ function ecraConfirmarRega(id, tipo, plantas, base, area) {
       v = parseInt($('#cr-vivas').value, 10);
       if (!(v >= 0)) { $('#cr-msg').innerHTML = '<div class="msg erro">Escreva as plantas vivas que contou no campo.</div>'; return; }
       if (v < plantas) { $('#cr-msg').innerHTML = `<div class="msg erro">Contou ${v} plantas vivas, menos do que as ${plantas} regadas. Corrija as plantas regadas na ficha do campo.</div>
-        <button class="chip" onclick="abrirFicha('${esc(area || '')}')">Abrir a ficha e corrigir</button>`; return; }
+        <button class="chip" onclick="corrigirRegaAgora('${esc(id)}','${esc(area || '')}',${v})">✏️ Corrigir as plantas regadas</button>`; return; }
     }
     if (t.length < 3) { $('#cr-msg').innerHTML = '<div class="msg erro">Escreva porque está certo.</div>'; return; }
     if (!navigator.onLine) { $('#cr-msg').innerHTML = '<div class="msg erro">Precisa de rede.</div>'; return; }
@@ -5029,7 +5039,7 @@ function ecraConfirmarRega(id, tipo, plantas, base, area) {
       const m = String(r.error.message || ''), rede = !m || /fetch|network|Load failed|timeout/i.test(m);
       problemaApp('confirmar_rega', m || 'sem mensagem', { id, tipo });
       const txt = rede ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : m;
-      msg(`<div class="msg erro">${esc(txt)}</div>`, txt);
+      msg(`<div class="msg erro">${esc(txt)}</div>` + (/Corrija as plantas regadas/.test(m) && area ? `<button class="chip" onclick="corrigirRegaAgora('${esc(id)}','${esc(area)}',${v ?? -1})">✏️ Corrigir as plantas regadas</button>` : ''), txt);
       if ($('#cr-ok')) { $('#cr-ok').disabled = false; $('#cr-ok').textContent = 'Confirmar'; }
       return;
     }
