@@ -1281,6 +1281,7 @@ function verCoq(id) {
     ${c.estado === 'retirado' ? '<p class="pequeno">Já não existe: o ponto fica guardado, mas não conta nos coqueiros.</p>' : ''}
     ${c.observacao ? `<p class="sem-trad">${esc(c.observacao)}</p>` : ''}</div>
     ${c.porEnviar ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : ''}
+    <div class="chips"><a class="chip cq-nav" href="https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}" target="_blank" rel="noopener">🧭 <span>Localização no Mapa</span></a><button class="chip" onclick="irCoq('${esc(c.id)}')">📍 <span>Ver no mapa</span></button></div>
     <div class="chips">${c.foto_path ? `<button class="chip" onclick="verFoto('coqueiros-fotos','${esc(c.foto_path)}')">📷 ${(c.fotos_extra || []).length ? 'Fotografia 1' : 'Ver a fotografia'}</button>` : ''}${(c.fotos_extra || []).map((f, i) => `<button class="chip" onclick="verFoto('coqueiros-fotos','${esc(f)}')">📷 Fotografia ${i + 2}</button>`).join('')}</div>
     ${mexeCoq(c) ? `<label>Mudar o estado</label><div class="chips">${EST_COQ.map((e) => `<button class="chip${c.estado === e ? ' on' : ''}" onclick="estadoCoq('${esc(c.id)}','${e}')">${TXT_COQ[e]}</button>`).join('')}</div>
       <label>Marque o que se aplica</label><div class="chips">${SIMNAO_COQ.map(([k, t]) => `<button class="chip${c[k] ? ' on' : ''}" onclick="marcaCoq('${esc(c.id)}','${k}')">${t}</button>`).join('')}</div>
