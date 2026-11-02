@@ -388,6 +388,7 @@ async function sincronizarAgora(silencioso) {
   if (!erro && filaMed().length) erro = await enviarMed();
   if (!erro) erro = await enviarGestaoRecontagens();
   if (!erro) erro = await enviarRecontagens();
+  if (!erro && (LS.get('filaTrilho', []) || []).length) await enviarTrilhos();
   if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
   actSync();
   if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
@@ -454,6 +455,7 @@ async function carregarEstado(pronto) {
   LS.set('estado', S.estado); LS.set('estadoEm', new Date().toISOString());
   // v155: os pedidos seguintes saem ao mesmo tempo (antes eram uns atrás dos outros)
   const papel = S.perfil?.papel, tarefas = [];
+  tarefas.push(carregarTrilhos().catch(() => {}));       // v193: trilhos para a navegação (só o que mudou)
   if (!['cliente', 'oficial_me'].includes(papel)) tarefas.push(sb.rpc('planos_lista').then((q) => { if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data); }));
   if (VER_MEMBROS.includes(papel))                       // nomes das pessoas de cada equipa (v135, lista do RH de 23/10/2026)
     tarefas.push(sb.rpc('ausentes_hoje').then((q) => { if (!q.error && Array.isArray(q.data)) LS.set('ausentes', { data: hojeISO(), ids: q.data }); }));   // v171
@@ -650,7 +652,7 @@ function iniciarMapa() {
     if (S.coq) coqLeitura(p.coords);
     if (!eu) eu = L.circleMarker(S.pos, { radius: 9, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 }).addTo(mapa);
     else eu.setLatLng(S.pos);
-    if (S.coq && S.coq.nav) actualizarNav(false);
+    if (S.nav) actualizarNav(false);
     // o ponto saiu do ecrã (a andar ou de carro): o mapa acompanha (16/10/2026, Dalmar). Se a pessoa arrastou o mapa
     // para outro lado (o ponto já estava fora), não puxa de volta.
     if (!S.seguir && $('#e-mapa').classList.contains('on')) {
@@ -1120,7 +1122,7 @@ function esconderCoq(sim) {
   if (sim) aviso('Botão dos coqueiros escondido. Para o voltar a mostrar: ℹ️ Legenda do mapa › «Mostrar».');
 }
 function fecharCoq() {
-  limparNav();
+  if (S.nav && S.nav.tipo === 'coq') pararNav(true);
   S.coq = null; mapa.off('click', cliqueCoqPerto); if (camadaCoq) { camadaCoq.clearLayers(); mapa.removeLayer(camadaCoq); }
   $('#b-coq').classList.remove('on'); $('#coq').style.display = 'none'; $('#cq-mostrar').style.display = 'none'; $('.legenda').style.display = '';
   mostrarSugFixa();
@@ -1270,72 +1272,253 @@ function irCoq(id) {
   setTimeout(() => { if (marcaIrCoq) { mapa.removeLayer(marcaIrCoq); marcaIrCoq = null; } }, 8000);
   aviso(c.n ? `Coqueiro nº ${c.n}` : 'Coqueiro');
 }
-// v191 (02/11/2026, Valdo: "eu queria navegar dentro do próprio aplicativo, não fora. Mostrar um pontinho meu e eu, cada vez
-// que eu ando, aproximar-me e ele reduzir a distância"): navegação até ao coqueiro dentro da app, com o GPS do mapa (sem ligar
-// outro GPS). Linha tracejada do ponto azul ao coqueiro, distância, seta e direcção a cada leitura; aviso ao chegar.
-let navLinha, navAlvo;
-function grausRumo(a, b) {
-  const r = Math.PI / 180, y = Math.sin((b[1] - a[1]) * r) * Math.cos(b[0] * r);
-  const x = Math.cos(a[0] * r) * Math.sin(b[0] * r) - Math.sin(a[0] * r) * Math.cos(b[0] * r) * Math.cos((b[1] - a[1]) * r);
-  return (Math.atan2(y, x) / r + 360) % 360;
+// ---------- Navegação até um coqueiro ou um campo, dentro da app ----------
+// v191 (02/11/2026, Valdo: "navegar dentro do próprio aplicativo… cada vez que eu ando, aproximar-me e ele reduzir a distância").
+// v193 (02/11/2026, Valdo: "não concordo é colocar a seta… a distância… não é uma linha recta"; escolheu "uma mistura do 3 e 4"
+// — estradas e trilhos do OpenStreetMap com rede + trilhos das equipas sem rede, e o rasto de quem anda — "e deve ir
+// actualizando os trilhos à medida que forem a aparecer novos trilhos"; também para os campos).
+// O caminho é procurado numa rede feita com: os percursos GPS das equipas (RPC trilhos, sem nomes nem horas), os rastos de
+// quem já navegou (gravar_trilho) e, com rede, o caminho a pé do OpenStreetMap (routing.openstreetmap.de, guardado no telefone
+// e também usado depois sem rede). Onde não há trilho conhecido, o troço é em linha recta e aparece tracejado a laranja.
+// O troço em linha recta custa NAV.fRecta vezes a distância na escolha do caminho: nas 7 deslocações com GPS completo
+// (24/10–01/11) o caminho real foi 1,07–1,78 vezes a linha recta (mediana 1,15).
+const NAV = { celula: 10, liga: 300, fRecta: 1.4, fora: 40, osmCada: 60000, rastoPasso: 10, rastoPrec: 30, maxOsm: 100 };
+let trilhosMem = null, grafoNav = null, camadaNav = null;
+async function lerTrilhos() {
+  if (!trilhosMem) { try { trilhosMem = (await FOTOS.ler('trilhos')) || {}; } catch { trilhosMem = {}; } }
+  return trilhosMem;
+}
+async function guardarTrilhos() { grafoNav = null; try { await FOTOS.guardar('trilhos', trilhosMem); } catch {} }
+async function carregarTrilhos(forcar) {                  // com rede: só o que mudou desde a última vez
+  if (!navigator.onLine || !sb) return;
+  const ped = LS.get('trilhosPedido') || 0;
+  if (Date.now() - ped < (forcar ? 5 : 30) * 60000) return;
+  LS.set('trilhosPedido', Date.now());
+  const r = await sb.rpc('trilhos', { p_desde: LS.get('trilhosEm') || null });
+  if (r.error || !r.data || !r.data.fontes) return;
+  const T = await lerTrilhos();
+  for (const [k, v] of Object.entries(r.data.fontes)) { if (Array.isArray(v) && v.length) T[k] = v; else delete T[k]; }
+  for (const k of Object.keys(T)) if (k[0] === 'l' && T['t' + k.slice(1)]) delete T[k];   // o meu rasto já chegou ao servidor
+  LS.set('trilhosEm', r.data.agora); await guardarTrilhos();
+  if (S.nav) recalcularNav(false);
+}
+function grafo() {
+  if (grafoNav) return grafoNav;
+  const T = trilhosMem || {}, nos = new Map(), kx = 111320 * Math.cos(10.8 * Math.PI / 180), ky = 110540, c = NAV.celula;
+  const no = (lon, lat) => {
+    const k = Math.round(lon * kx / c) + ',' + Math.round(lat * ky / c);
+    let n = nos.get(k); if (!n) { n = { k, slat: 0, slon: 0, m: 0, viz: new Map() }; nos.set(k, n); }
+    n.slat += lat; n.slon += lon; n.m++; return n;
+  };
+  for (const [sid, linhas] of Object.entries(T)) for (const l of linhas || []) {
+    let ant = null;
+    for (const [lon, lat] of l) { const n = no(lon, lat); if (ant && ant !== n) { ant.viz.set(n.k, sid[0]); n.viz.set(ant.k, sid[0]); } ant = n; }
+  }
+  for (const n of nos.values()) { n.lat = n.slat / n.m; n.lon = n.slon / n.m; }
+  for (const n of nos.values()) {                         // trilhos lado a lado (erro do GPS) ficam ligados
+    const [x, y] = n.k.split(',').map(Number);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      if (!dx && !dy) continue; const m = nos.get((x + dx) + ',' + (y + dy));
+      if (m && !n.viz.has(m.k)) { n.viz.set(m.k, 'j'); m.viz.set(n.k, 'j'); }
+    }
+  }
+  grafoNav = { nos }; return grafoNav;
+}
+// caminho mais curto de «de» até «para» ([lat, lon]): troços por trilho/estrada e troços em linha recta
+function rotaNav(de, para) {
+  const G = grafo(), perto = (p) => { const r = []; for (const n of G.nos.values()) { const d = metros(p, [n.lat, n.lon]); if (d <= NAV.liga) r.push([n, d]); } return r; };
+  const A = perto(de), B = new Map(perto(para).map(([n, d]) => [n.k, d]));
+  const dist = new Map(), ant = new Map(), feito = new Set(), heap = [];
+  const push = (k, d) => { heap.push([d, k]); let i = heap.length - 1; while (i) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+  const pop = () => { const t = heap[0], u = heap.pop(); if (heap.length) { heap[0] = u; let i = 0; for (;;) { const a = 2 * i + 1, b = a + 1; let m = i; if (a < heap.length && heap[a][0] < heap[m][0]) m = a; if (b < heap.length && heap[b][0] < heap[m][0]) m = b; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return t; };
+  const recta = metros(de, para) * NAV.fRecta;
+  dist.set('B', recta); ant.set('B', 'A');
+  for (const [n, d] of A) { const c = d * NAV.fRecta; if (c < (dist.get(n.k) ?? Infinity)) { dist.set(n.k, c); ant.set(n.k, 'A'); push(n.k, c); } }
+  while (heap.length) {
+    const [d, k] = pop(); if (feito.has(k)) continue; feito.add(k);
+    if (d >= (dist.get('B') ?? Infinity)) break;
+    const n = G.nos.get(k);
+    if (B.has(k)) { const c = d + B.get(k) * NAV.fRecta; if (c < dist.get('B')) { dist.set('B', c); ant.set('B', k); } }
+    for (const m of n.viz.keys()) {
+      const v = G.nos.get(m), c = d + metros([n.lat, n.lon], [v.lat, v.lon]);
+      if (c < (dist.get(m) ?? Infinity)) { dist.set(m, c); ant.set(m, k); push(m, c); }
+    }
+  }
+  const ks = []; for (let k = 'B'; k !== 'A'; k = ant.get(k)) ks.unshift(k);
+  const pts = [{ p: de, recta: false }];
+  for (const k of ks) {
+    const p = k === 'B' ? para : [G.nos.get(k).lat, G.nos.get(k).lon];
+    const prev = pts[pts.length - 1].k;
+    pts.push({ p, k, recta: prev === undefined || k === 'B' });   // de «de» ao 1.º nó e do último nó a «para»: linha recta
+  }
+  return linhaRota(pts);
+}
+function linhaRota(pts) {                                 // distâncias acumuladas ao longo do caminho
+  let cum = 0, conhecido = 0, recta = 0;
+  const L = pts.map((x, i) => { if (i) { const d = metros(pts[i - 1].p, x.p); cum += d; if (x.recta) recta += d; else conhecido += d; } return { p: x.p, recta: x.recta, c: cum }; });
+  return { pts: L, total: cum, conhecido, recta };
+}
+// ponto do caminho mais perto de «p»: distância ao caminho e quanto falta a partir daí
+function projectarRota(R, p) {
+  const kx = 111320 * Math.cos(p[0] * Math.PI / 180), ky = 110540;
+  let melhor = { d: Infinity, falta: R.total, i: 1, q: R.pts[0].p };
+  for (let i = 1; i < R.pts.length; i++) {
+    const a = R.pts[i - 1], b = R.pts[i];
+    const ax = (a.p[1] - p[1]) * kx, ay = (a.p[0] - p[0]) * ky, bx = (b.p[1] - p[1]) * kx, by = (b.p[0] - p[0]) * ky;
+    const vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy;
+    const t = l2 ? Math.max(0, Math.min(1, -(ax * vx + ay * vy) / l2)) : 0;
+    const qx = ax + t * vx, qy = ay + t * vy, d = Math.hypot(qx, qy);
+    if (d < melhor.d) melhor = { d, i, t, falta: R.total - (a.c + t * (b.c - a.c)), q: [p[0] + qy / ky, p[1] + qx / kx] };
+  }
+  return melhor;
+}
+async function caminhoOSM(de, para) {                     // caminho a pé do OpenStreetMap; fica guardado como trilho
+  if (!navigator.onLine || window.DEMO) return false;
+  try {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
+    const u = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${de[1].toFixed(6)},${de[0].toFixed(6)};${para[1].toFixed(6)},${para[0].toFixed(6)}?overview=full&geometries=geojson`;
+    const j = await (await fetch(u, { signal: ctl.signal })).json(); clearTimeout(t);
+    const g = j && j.code === 'Ok' && j.routes && j.routes[0] && j.routes[0].geometry && j.routes[0].geometry.coordinates;
+    if (!g || g.length < 2) return false;
+    const T = await lerTrilhos(), k = 'o' + Date.now().toString(36);
+    T[k] = [g.map(([lo, la]) => [+lo.toFixed(6), +la.toFixed(6)])];
+    const os = Object.keys(T).filter((x) => x[0] === 'o'); while (os.length > NAV.maxOsm) delete T[os.shift()];
+    await guardarTrilhos(); return true;
+  } catch { return false; }
+}
+const ROTULO_NAV = { coq: 'Coqueiro', campo: 'Campo' };
+function alvoNav() {                                      // posição do destino agora (o campo pode ter mudado)
+  const N = S.nav; if (!N) return null;
+  if (N.tipo === 'coq') { const c = coqLista().find((x) => x.id === N.id); return c ? { alvo: [c.lat, c.lon], nome: c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro' } : null; }
+  const a = S.areas.find((x) => x.id === N.id); if (!a) return null;
+  let alvo = a.latitude != null ? [a.latitude, a.longitude] : null;
+  if (temPoligono(a) && S.pos) {                         // com limite: o canto do campo mais perto de quem vai
+    let m = Infinity; for (const [lo, la] of a.poligono) { const d = metros(S.pos, [la, lo]); if (d < m) { m = d; alvo = [la, lo]; } }
+  } else if (!alvo && temPoligono(a)) alvo = [a.poligono[0][1], a.poligono[0][0]];
+  return alvo ? { alvo, nome: a.produtor || a.id, a } : null;
+}
+async function navegar(tipo, id) {
+  fecharFolha();
+  if (S.nav) await pararNav(true);
+  if (S.regua) fecharRegua();
+  if (S.modoPerc) fecharPercurso();
+  S.nav = { tipo, id, rasto: [], andou: 0, chegou: false, arrastou: 0, osmEm: 0, osm: false };
+  const x = alvoNav(); if (!x) { S.nav = null; return; }
+  if (tipo === 'coq') { $('#coq').style.display = 'none'; $('#cq-mostrar').style.display = 'none'; }
+  $('#nav-cx').style.display = ''; mostrarSugFixa();
+  $('#nv-tit').innerHTML = `🧭 <span>A caminho de</span> <span class="${tipo === 'campo' ? 'sem-trad' : ''}">${esc(x.nome)}</span>${tipo === 'campo' ? ` <span class="pequeno sem-trad">${esc(x.a.id)}</span>` : ''}`;
+  $('#nv-ficha').onclick = () => (tipo === 'coq' ? verCoq(id) : abrirFicha(id));
+  $('#nv-ficha').textContent = tipo === 'coq' ? 'Abrir a ficha do coqueiro' : 'Abrir a ficha do campo';
+  if (!camadaNav) camadaNav = L.layerGroup(); camadaNav.addTo(mapa);
+  mapa.on('dragstart', navArrastou);
+  await lerTrilhos();
+  recalcularNav(true);
+  carregarTrilhos(true);
+  if (S.pos) pedirOSM();
+}
+function navegarCoq(id) { navegar('coq', id); }
+function navegarCampo(id) { fecharFolha(); mudar('mapa'); setTimeout(() => { mapa.invalidateSize(); navegar('campo', id); }, 80); }
+function navArrastou() { if (S.nav) S.nav.arrastou = Date.now(); }
+async function pedirOSM() {
+  const N = S.nav; if (!N || !S.pos || Date.now() - N.osmEm < NAV.osmCada) return;
+  N.osmEm = Date.now(); const x = alvoNav(); if (!x) return;
+  if (await caminhoOSM(S.pos, x.alvo)) { if (S.nav === N) { N.osm = true; recalcularNav(false); } }
+}
+function recalcularNav(enquadrar) {
+  const N = S.nav; if (!N) return;
+  const x = alvoNav(); if (!x) return pararNav();
+  N.alvo = x.alvo;
+  N.rota = S.pos ? rotaNav(S.pos, x.alvo) : null;
+  actualizarNav(enquadrar);
+}
+function desenharNav(proj) {
+  const N = S.nav; camadaNav.clearLayers();
+  if (N.rasto.length > 1) L.polyline(N.rasto.map((r) => [r[1], r[0]]), { color: '#8e24aa', weight: 4, opacity: .85, interactive: false }).addTo(camadaNav);
+  if (N.rota && proj) {                                   // só o que falta andar
+    const R = N.rota.pts, resto = [{ p: proj.q, recta: R[proj.i].recta }, ...R.slice(proj.i)];
+    let tr = [resto[0].p], tipo = resto[1] ? resto[1].recta : false;
+    const fecha = () => { if (tr.length > 1) L.polyline(tr, tipo ? { color: '#ef6c00', weight: 4, dashArray: '8 8', interactive: false } : { color: '#1e5bd8', weight: 5, interactive: false }).addTo(camadaNav); };
+    for (let i = 1; i < resto.length; i++) {
+      if (resto[i].recta !== tipo) { fecha(); tr = [tr[tr.length - 1]]; tipo = resto[i].recta; }
+      tr.push(resto[i].p);
+    }
+    fecha();
+  }
+  if (N.alvo) L.circleMarker(N.alvo, { radius: 16, color: '#1e5bd8', weight: 3, fill: false, interactive: false }).addTo(camadaNav);
 }
 const kmTxt = (d) => d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km';
-function navegarCoq(id) {
-  const c = coqLista().find((x) => x.id === id); if (!c || !S.coq) return;
-  fecharFolha(); limparNav();
-  S.coq.nav = { id, chegou: false, arrastou: 0 };
-  $('#coq').style.display = 'none'; $('#cq-mostrar').style.display = 'none'; $('#cq-nav').style.display = '';
-  $('#nv-tit').innerHTML = `🧭 <span>A navegar até ao</span> <span>${c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro'}</span>`;
-  $('#nv-ficha').onclick = () => verCoq(c.id);
-  navAlvo = L.circleMarker([c.lat, c.lon], { radius: 16, color: '#1e5bd8', weight: 3, fill: false, interactive: false }).addTo(mapa);
-  mapa.on('dragstart', navArrastou);
-  actualizarNav(true);
-}
-function navArrastou() { if (S.coq && S.coq.nav) S.coq.nav.arrastou = Date.now(); }
-function enquadrarNav(alvo) {
-  const h = ($('#cq-nav').offsetHeight || 160) + 20;
-  if (S.pos && metros(S.pos, alvo) > 3) mapa.fitBounds([S.pos, alvo], { paddingTopLeft: [50, 70], paddingBottomRight: [50, h], maxZoom: 19, animate: false });
-  else mapa.setView(alvo, 19, { animate: false });
-}
 function actualizarNav(enquadrar) {
-  const N = S.coq && S.coq.nav; if (!N) return;
-  const c = coqLista().find((x) => x.id === N.id); if (!c) return pararNav();
-  const alvo = [c.lat, c.lon];
+  const N = S.nav; if (!N) return;
+  if (!N.alvo) { const x = alvoNav(); if (!x) return pararNav(); N.alvo = x.alvo; }
   if (!S.pos) {
-    $('#nv-dist').textContent = '—'; $('#nv-dir').textContent = 'À espera do GPS…'; $('#nv-seta').innerHTML = ''; $('#nv-gps').textContent = '';
-    if (enquadrar) mapa.setView(alvo, 18, { animate: false });
+    $('#nv-dist').textContent = '—'; $('#nv-info').textContent = 'À espera do GPS…'; $('#nv-gps').textContent = '';
+    desenharNav(null); if (enquadrar) mapa.setView(N.alvo, 17, { animate: false });
     return;
   }
-  const d = metros(S.pos, alvo), g = grausRumo(S.pos, alvo);
   const prec = S.fix && S.fix.coords ? Math.round(S.fix.coords.accuracy) : null;
-  if (!navLinha) navLinha = L.polyline([S.pos, alvo], { color: '#1e5bd8', weight: 4, dashArray: '8 8', interactive: false }).addTo(mapa);
-  else navLinha.setLatLngs([S.pos, alvo]);
-  const raio = Math.max(4, Math.min(prec || 0, 10));
-  const rot = (g + (S.rumoMapa || 0)) % 360;              // com o mapa a rodar (🧭 Rodar), a seta acompanha o mapa
-  $('#nv-seta').innerHTML = `<svg viewBox="0 0 48 48" width="48" height="48" style="transform:rotate(${rot.toFixed(0)}deg);transition:transform .4s"><circle cx="24" cy="24" r="22" fill="#e8eefc" stroke="#1e5bd8" stroke-width="2"/><path d="M24 7 L35 33 L24 27 L13 33 Z" fill="#1e5bd8"/></svg>`;
-  $('#nv-dist').innerHTML = `<span class="sem-trad">${kmTxt(d)}</span>`;
-  $('#nv-dir').innerHTML = d > raio ? `<span>Para</span> <span>${rumo(S.pos, alvo)}</span> · <span class="sem-trad">~${Math.max(1, Math.round(d / 60))} min</span> <span>a pé</span>` : '';
-  $('#nv-gps').innerHTML = prec != null ? `<span>GPS</span> <span class="sem-trad">±${prec} m</span>${prec > 15 && prec > d / 2 ? ' · <span>GPS fraco: procure o coqueiro à volta.</span>' : ''}` : '';
-  const ch = $('#nv-chegou');
-  if (d <= raio) {
-    if (!N.chegou) { N.chegou = true; if (navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch {} }
-    ch.innerHTML = `✓ <span>Chegou ao</span> <span>${c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro'}</span>`; ch.style.display = '';
-  } else if (d > raio * 2) { N.chegou = false; ch.style.display = 'none'; }
-  // o mapa mostra sempre o ponto azul e o coqueiro, menos nos 20 s a seguir a a pessoa arrastar o mapa
-  if (enquadrar) enquadrarNav(alvo);
-  else if (Date.now() - N.arrastou > 20000) {
-    const b = mapa.getBounds().pad(-0.1);
-    if (!b.contains(S.pos) || !b.contains(alvo)) enquadrarNav(alvo);
+  // o meu rasto (só leituras boas, um ponto a cada 10 m)
+  if (prec != null && prec <= NAV.rastoPrec) {
+    const u = N.rasto[N.rasto.length - 1], pt = [+S.pos[1].toFixed(6), +S.pos[0].toFixed(6), Math.round(Date.now() / 1000), prec];
+    if (!u) N.rasto.push(pt); else { const d = metros([u[1], u[0]], S.pos); if (d >= NAV.rastoPasso) { N.rasto.push(pt); N.andou += d; } }
   }
+  if (!N.rota) N.rota = rotaNav(S.pos, N.alvo);
+  let pj = projectarRota(N.rota, S.pos);
+  if (pj.d > Math.max(NAV.fora, prec || 0)) {             // saiu do caminho: procura de novo a partir de onde está
+    N.rota = rotaNav(S.pos, N.alvo); pj = projectarRota(N.rota, S.pos);
+    if (navigator.onLine) pedirOSM();
+  }
+  const R = N.rota, falta = pj.falta;
+  let fRecta = 0; for (let i = Math.max(1, pj.i); i < R.pts.length; i++) if (R.pts[i].recta) fRecta += R.pts[i].c - R.pts[i - 1].c;
+  if (pj.i < R.pts.length && R.pts[pj.i].recta) fRecta -= (R.pts[pj.i].c - R.pts[pj.i - 1].c) * (pj.t || 0);
+  fRecta = Math.max(0, Math.min(fRecta, falta));
+  const x = alvoNav(), dCampo = N.tipo === 'campo' && x && x.a ? distCampo(x.a, S.pos) : null;
+  const raio = N.tipo === 'coq' ? Math.max(4, Math.min(prec || 0, 10)) : temPoligono(x?.a || {}) ? 5 : Math.max(10, Math.min(prec || 0, 25));
+  const perto = N.tipo === 'campo' && dCampo != null ? dCampo <= raio : metros(S.pos, N.alvo) <= raio;
+  $('#nv-dist').innerHTML = perto ? '✓' : `<span class="sem-trad">${kmTxt(falta)}</span> <span class="nv-pelo">pelo caminho</span>`;
+  $('#nv-info').innerHTML = perto ? '' : [
+    falta - fRecta > 1 ? `<span class="nv-c">━</span> <span>Por trilho ou estrada:</span> <span class="sem-trad">${kmTxt(falta - fRecta)}</span>` : '',
+    fRecta > 1 ? `<span class="nv-r">┅</span> <span>Sem trilho conhecido (linha recta):</span> <span class="sem-trad">${kmTxt(fRecta)}</span>` : '',
+    `<span class="nv-a">━</span> <span>Já andou:</span> <span class="sem-trad">${kmTxt(N.andou)}</span> · <span class="sem-trad">~${Math.max(1, Math.round(falta / 60))} min</span> <span>a pé</span>`,
+  ].filter(Boolean).join('<br>');
+  $('#nv-gps').innerHTML = (prec != null ? `<span>GPS</span> <span class="sem-trad">±${prec} m</span>${prec > 15 && prec > falta / 2 ? ' · <span>GPS fraco: procure à volta.</span>' : ''}` : '')
+    + (N.osm ? ' · <span class="pequeno">Estradas: © OpenStreetMap</span>' : '');
+  const ch = $('#nv-chegou');
+  if (perto) {
+    if (!N.chegou) { N.chegou = true; if (navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch {} }
+    ch.innerHTML = N.tipo === 'coq' ? `✓ <span>Chegou ao</span> <span>${esc(x.nome)}</span>` : `✓ <span>Chegou ao campo</span>`; ch.style.display = '';
+  } else if (!N.chegou || falta > raio * 2) { N.chegou = false; ch.style.display = 'none'; }
+  desenharNav(perto ? null : pj);
+  // o mapa mostra o ponto azul e o destino, menos nos 20 s a seguir a a pessoa arrastar o mapa
+  const enq = () => {
+    const h = ($('#nav-cx').offsetHeight || 180) + 20;
+    if (metros(S.pos, N.alvo) > 3) mapa.fitBounds([S.pos, N.alvo], { paddingTopLeft: [40, 40], paddingBottomRight: [140, h], maxZoom: 19, animate: false });   // à direita ficam os botões do mapa
+    else mapa.setView(N.alvo, 19, { animate: false });
+  };
+  if (enquadrar) enq();
+  else if (Date.now() - N.arrastou > 20000) { const b = mapa.getBounds().pad(-0.1); if (!b.contains(S.pos) || !b.contains(N.alvo)) enq(); }
 }
-function limparNav() {
-  if (navLinha) { mapa.removeLayer(navLinha); navLinha = null; }
-  if (navAlvo) { mapa.removeLayer(navAlvo); navAlvo = null; }
+async function pararNav(semCartao) {
+  const N = S.nav; S.nav = null;
+  if (camadaNav) { camadaNav.clearLayers(); mapa.removeLayer(camadaNav); }
   if (mapa) mapa.off('dragstart', navArrastou);
-  const p = $('#cq-nav'); if (p) p.style.display = 'none';
-  if (S.coq) S.coq.nav = null;
+  const p = $('#nav-cx'); if (p) p.style.display = 'none';
+  if (N && N.rasto.length >= 5 && N.andou >= 50) {        // o rasto passa a ser um trilho (no telefone já, no servidor quando houver rede)
+    const id = crypto.randomUUID(), T = await lerTrilhos();
+    T['l' + id] = [N.rasto.map((r) => [r[0], r[1]])]; await guardarTrilhos();
+    LS.set('filaTrilho', [...(LS.get('filaTrilho', []) || []), { id, pontos: N.rasto }]);
+    if (navigator.onLine) enviarTrilhos();
+  }
+  if (!semCartao && N && N.tipo === 'coq' && S.coq) verCartaoCoq(true);
+  mostrarSugFixa();
 }
-function pararNav() { limparNav(); verCartaoCoq(true); }
+async function enviarTrilhos() {
+  for (const t of LS.get('filaTrilho', []) || []) {
+    const r = await sb.rpc('gravar_trilho', { p_id: t.id, p_pontos: t.pontos.slice(0, 3000) });
+    if (r.error && !r.error.code) return null;            // sem rede: fica no telefone
+    LS.set('filaTrilho', (LS.get('filaTrilho', []) || []).filter((x) => x.id !== t.id));   // enviado (ou recusado: não volta a tentar)
+  }
+  return null;
+}
 function verCoq(id) {
   const c = coqLista().find((x) => x.id === id); if (!c) return;
   const d = S.pos ? metros(S.pos, [c.lat, c.lon]) : null;
@@ -2744,7 +2927,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (apresentação)</button><p class="pequeno" style="margin:0 0 6px">Só na apresentação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (apresentação)</button><p class="pequeno" style="margin:0 0 6px">Só na apresentação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${a.latitude != null || temPoligono(a) ? `<button class="chip" style="margin:6px 0" onclick="navegarCampo('${esc(a.id)}')">🧭 <span>Navegar até ao campo</span></button>` : ''}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
   S.soVer = false;
   if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
 }
@@ -3244,9 +3427,9 @@ function mostrarSugFixa() {                            // cartão fixo no Mapa (
   const el = $('#sug-mapa'); if (!el) return;
   if (S.planoMapa) return;
   const a = souActivista() || ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) ? sugActual() : null;
-  const tapa = !$('#legenda')?.classList.contains('fechada') || S.regua || S.modoPerc || S.coq || modoManut();
+  const tapa = !$('#legenda')?.classList.contains('fechada') || S.regua || S.modoPerc || S.coq || S.nav || modoManut();
   if (!a || tapa) { el.style.display = 'none'; return; }
-  el.innerHTML = `<div>${textoSugFixa(a)}</div><div class="chips"><button class="chip" onclick="verSugMapa()">Ver no mapa</button><button class="chip" onclick="abrirFicha('${esc(a.id)}')">Abrir a ficha</button></div>`;
+  el.innerHTML = `<div>${textoSugFixa(a)}</div><div class="chips"><button class="chip" onclick="verSugMapa()">Ver no mapa</button><button class="chip" onclick="navegarCampo('${esc(a.id)}')">🧭 <span>Navegar</span></button><button class="chip" onclick="abrirFicha('${esc(a.id)}')">Abrir a ficha</button></div>`;
   el.style.display = '';
 }
 function cartaoSugHoje() {
