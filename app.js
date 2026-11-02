@@ -3152,7 +3152,7 @@ function marcarAgua(jaEstava) {
   const ent = LS.get('emCurso'); if (!ent) return;
   ent.agua_em = jaEstava ? ent.entrada_em : new Date().toISOString();
   let nota = '';
-  if (!jaEstava && ent.fotos?.rega && ent.fotos.rega < ent.agua_em) { delete ent.fotos.rega; nota = `<div class="msg erro">A fotografia da rega foi tirada antes de chegar a água. Tire-a outra vez, agora com água.</div>`; }
+  if (!jaEstava && ent.fotos?.rega && ent.fotos.rega < ent.agua_em) { delete ent.fotos.rega; if (ent.fotos_meta) delete ent.fotos_meta.rega; nota = `<div class="msg erro">A fotografia da rega foi tirada antes de chegar a água. Tire-a outra vez, agora com água.</div>`; }
   LS.set('emCurso', ent);
   abrirFicha(ent.area_id, nota);
 }
@@ -3161,12 +3161,15 @@ function marcarAgua(jaEstava) {
 // Cada fotografia fica logo no telefone (IndexedDB) com o id do registo; vai para o bucket rega-fotos com o registo.
 const FOTOS_REGA = { entrada: 'Fotografia da entrada', rega: 'Fotografia da rega (evidência)', saida: 'Fotografia da saída' };
 const FALTA_FOTO = { entrada: 'Tire a fotografia da entrada.', rega: 'Tire a fotografia da rega (evidência).', saida: 'Tire a fotografia da saída.' };
-async function guardarFotoRega(tipo, foto) {
+async function guardarFotoRega(tipo, foto, meta) {
   const ent = LS.get('emCurso'); if (!ent || !foto) return false;
   ent.reg_id ||= crypto.randomUUID();
   const k = `${ent.reg_id}-${tipo}`;
+  const m = meta || { origem: null, tirada: null, fonte: null };
+  try { foto = await carimbarFoto(foto, m); } catch {}                 // sem carimbo se o telefone não conseguir desenhar
   try { await FOTOS.guardar(k, foto); } catch { S.fotosMem = { ...(S.fotosMem || {}), [k]: foto }; }
-  ent.fotos = { ...(ent.fotos || {}), [tipo]: new Date().toISOString() }; LS.set('emCurso', ent); LS.del('rascFotoRega');
+  ent.fotos = { ...(ent.fotos || {}), [tipo]: new Date().toISOString() };
+  ent.fotos_meta = { ...(ent.fotos_meta || {}), [tipo]: m }; LS.set('emCurso', ent); LS.del('rascFotoRega');
   return true;
 }
 function cartaoFotosRega(ent) {
@@ -3188,9 +3191,9 @@ function ecraFotoRega(tipo, nota = '', r = null) {
     ${campoFoto('fr-foto', FOTOS_REGA[tipo])}
     <button class="btn sec" onclick="LS.del('rascFotoRega');abrirFicha('${esc(ent.area_id)}')">${tipo === 'entrada' ? 'Tirar depois' : 'Voltar'}</button>`);
   rascGuardar('rascFotoRega', { perfil: S.perfil?.id, tipo, camara: false });
-  ligarFoto('fr-foto', 'rascFotoRega', async (foto) => {
+  ligarFoto('fr-foto', 'rascFotoRega', async (foto, meta) => {
     if (!foto) return;
-    await guardarFotoRega(tipo, foto);
+    await guardarFotoRega(tipo, foto, meta);
     abrirFicha(ent.area_id, `<div class="msg ok">${FOTOS_REGA[tipo]} guardada.</div>`);
   });
 }
@@ -3244,8 +3247,8 @@ function ecraSaida(msg = '') {
   // o número vem vazio (v85, 20/10/2026, Valdo): o activista escreve-o; fica guardado se o Android fechar o Chrome na fotografia
   $('#s-plantas').oninput = (e) => { const x = LS.get('emCurso'); if (x) { x.plantas_escritas = e.target.value; LS.set('emCurso', x); } avisoFalta(a); };
   avisoFalta(a);
-  ligarFoto('s-foto', 'rascFotoRega', async (foto) => {
-    if (!foto || !(await guardarFotoRega('saida', foto))) return;
+  ligarFoto('s-foto', 'rascFotoRega', async (foto, meta) => {
+    if (!foto || !(await guardarFotoRega('saida', foto, meta))) return;
     $('#s-foto-ok').innerHTML = `<span style="color:var(--ok,#2e7d32)">✓ Fotografia da saída às ${fmtHora(LS.get('emCurso').fotos.saida)}</span>`;
   });
 }
@@ -3300,7 +3303,7 @@ async function marcarSaida() {
   const antes = actId ? rondaInfo(actId) : null;
   const reg = {
     ronda: antes ? antes.n : null, pessoas, agua_em: ent.agua_em || null,
-    id: ent.reg_id || crypto.randomUUID(), fotos: ent.fotos, area_id: a.id, activista_id: S.perfil.activista_id || a.activista_id, data: hojeISO(),
+    id: ent.reg_id || crypto.randomUUID(), fotos: ent.fotos, fotos_origem: ent.fotos_meta || null, area_id: a.id, activista_id: S.perfil.activista_id || a.activista_id, data: hojeISO(),
     entrada_em: ent.entrada_em, saida_em: new Date().toISOString(), entrada_lat: ent.entrada_lat, entrada_lon: ent.entrada_lon,
     saida_lat: g.lat, saida_lon: g.lon, gps_precisao_m: Math.max(ent.gps_precisao_m || 0, g.precisao),
     distancia_area_m: ent.distancia_area_m, gps_valido: ent.gps_valido, plantas_regadas: plantas,
@@ -3849,7 +3852,7 @@ function cartaoRecontagensHoje() {
   const por = l.filter((r) => r.estado === 'por_encaminhar'), val = l.filter((r) => r.estado === 'enviada'), curso = l.filter((r) => ['encaminhada', 'recusada'].includes(r.estado));
   const desde = new Date(Date.now() - 30 * 864e5).toISOString(), feitas = l.filter((r) => r.estado === 'validada' && (r.validada_em || '') >= desde);
   const botao = podePedirRec() ? '<button class="btn sec" onclick="ecraPedirVarias()">📋 Pedir recontagens das plantas</button>' : '';
-  const ajuda = podePedirRec() ? `<p class="pequeno">${gereRecont() ? 'Escolha um ou mais campos no botão abaixo (ou abra o campo no Mapa ou em Campos). Cada queimada registada também pede uma, de forma automática.' : 'Peça a recontagem no botão abaixo (ou na ficha do campo). O M&E encaminha o pedido a um oficial. Cada queimada registada também pede uma, de forma automática.'}</p>` : '';
+  const ajuda = podePedirRec() ? `<p class="pequeno">${gereRecont() ? 'Escolha um ou mais campos no botão abaixo (ou abra o campo no Mapa ou em Campos). Cada queimada registada com plantas afectadas ou mortas também pede uma, de forma automática.' : 'Peça a recontagem no botão abaixo (ou na ficha do campo). O M&E encaminha o pedido a um oficial. Cada queimada registada com plantas afectadas ou mortas também pede uma, de forma automática.'}</p>` : '';
   const pedido = (r) => (r.pedido_por_nome ? ' · pedida por ' + esc(r.pedido_por_nome) : '');
   return `<div class="cartao" style="border-left:4px solid #6d4c41"><h2>📋 Recontagens das plantas</h2>
     ${!por.length && !val.length && !curso.length ? '<p>Sem recontagens em curso.</p>' : ''}
@@ -4173,14 +4176,69 @@ function ligarFoto(id, rasc, aoLer) {
   $(`#${id}-cambtn`).onclick = async () => {
     const doSistema = () => { abrir(); $(`#${id}-cam`)?.click(); };   // câmara do telefone
     const ok = await camaraNaApp(async (b) => { if (!b) return aviso('Não foi possível ler a fotografia. Tire outra.', 'erro');
-      try { await aoLer(await reduzirFoto(b)); } catch { aoLer(null); aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); } }, doSistema);
+      try { await aoLer(await reduzirFoto(b), { origem: 'camara_app', tirada: localISO(Date.now()), fonte: 'agora' }); } catch { aoLer(null); aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); } }, doSistema);
     if (!ok) doSistema();                                         // sem câmara na página: câmara do sistema
   };
   for (const i of [$(`#${id}-cam`), $(`#${id}`)]) i.onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = ''; if (!f) return;   // limpar: deixa escolher a mesma imagem outra vez
     if (rasc) rascGuardar(rasc, { camara: false });
-    try { await aoLer(await reduzirFoto(f)); } catch { aoLer(null); aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); }
+    // v198: a data da fotografia lê-se do ficheiro original (EXIF) antes de ser reduzida (a redução apaga o EXIF)
+    let meta = null;
+    try { const ex = await dataExif(f); meta = { origem: i.id.endsWith('-cam') ? 'camara_tel' : 'galeria', tirada: ex || (f.lastModified ? localISO(f.lastModified) : null), fonte: ex ? 'exif' : 'ficheiro' }; } catch {}
+    try { await aoLer(await reduzirFoto(f), meta); } catch { aoLer(null); aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); }
   };
+}
+// ---------- v198 (02/11/2026, Valdo): origem e data das fotografias da rega + carimbo na fotografia ----------
+const localISO = (ms) => new Date(ms).toLocaleString('sv-SE', { timeZone: 'Africa/Maputo' }).replace(' ', 'T');
+const fmtTirada = (s) => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)} ${s.slice(11, 16)}` : '?');
+const ORIGEM_FOTO = { camara_app: 'câmara da app', camara_tel: 'câmara do telefone', galeria: 'galeria' };
+// data em que a fotografia foi tirada, do EXIF do JPEG (DateTimeOriginal, senão DateTimeDigitized, senão DateTime); null sem EXIF
+async function dataExif(f) {
+  if (!f || !/jpe?g/i.test(f.type || '') && !/\.jpe?g$/i.test(f.name || '')) return null;
+  const v = new DataView(await f.slice(0, 262144).arrayBuffer());
+  if (v.byteLength < 4 || v.getUint16(0) !== 0xFFD8) return null;
+  let p = 2;
+  while (p + 4 <= v.byteLength) {
+    const m = v.getUint16(p), len = v.getUint16(p + 2);
+    if ((m & 0xFF00) !== 0xFF00 || m === 0xFFDA) return null;
+    if (m === 0xFFE1 && p + 10 <= v.byteLength && v.getUint32(p + 4) === 0x45786966) {     // "Exif"
+      const t = p + 10; if (t + 8 > v.byteLength) return null;
+      const le = v.getUint16(t) === 0x4949, u16 = (o) => v.getUint16(t + o, le), u32 = (o) => v.getUint32(t + o, le);
+      const txt = (o) => { let r = ''; for (let k = 0; k < 19 && t + o + k < v.byteLength; k++) r += String.fromCharCode(v.getUint8(t + o + k)); return r; };
+      const ler = (ifd, tags) => { const out = {}; if (t + ifd + 2 > v.byteLength) return out; const n = u16(ifd);
+        for (let k = 0; k < n; k++) { const e = ifd + 2 + k * 12; if (t + e + 12 > v.byteLength) break; const tag = u16(e); if (tags.includes(tag)) out[tag] = u32(e + 8); }
+        return out; };
+      const ifd0 = ler(u32(4), [0x0132, 0x8769]);
+      const exif = ifd0[0x8769] ? ler(ifd0[0x8769], [0x9003, 0x9004]) : {};
+      for (const o of [exif[0x9003], exif[0x9004], ifd0[0x0132]]) {
+        if (o == null) continue; const d = txt(o);
+        const r = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(d);
+        if (r && r[1] !== '0000') return `${r[1]}-${r[2]}-${r[3]}T${r[4]}:${r[5]}:${r[6]}`;
+      }
+      return null;
+    }
+    p += 2 + len;
+  }
+  return null;
+}
+// carimbo em baixo da fotografia: data e hora, origem e GPS (o texto fica na imagem que vai para o servidor)
+async function carimbarFoto(foto, meta) {
+  let img;
+  try { img = await createImageBitmap(foto); }
+  catch { img = await new Promise((ok, falha) => { const i = new Image(); i.onload = () => ok(i); i.onerror = falha; i.src = URL.createObjectURL(foto); }); }
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  const agora = localISO(Date.now()), o = meta?.origem;
+  const l1 = o === 'galeria' ? `Galeria · fotografia de ${meta.tirada ? fmtTirada(meta.tirada) : 'data desconhecida'} · posta a ${fmtTirada(agora)}`
+    : `${fmtTirada(o === 'camara_tel' && meta.tirada ? meta.tirada : agora)} · ${ORIGEM_FOTO[o] || 'fotografia'}`;
+  const fx = S.fix && Date.now() - S.fix.t < 120000 ? S.fix.coords : null;
+  const l2 = fx ? `GPS ${fx.latitude.toFixed(5)}, ${fx.longitude.toFixed(5)} ±${Math.round(fx.accuracy || 0)} m` : 'GPS: sem leitura';
+  const fs = Math.max(12, Math.round(c.width / 38)), h = Math.round(fs * 2.9);
+  g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, c.height - h, c.width, h);
+  g.fillStyle = '#fff'; g.font = `${fs}px sans-serif`; g.textBaseline = 'middle';
+  g.fillText(l1, Math.round(fs * 0.5), c.height - h + Math.round(fs * 0.95), c.width - fs);
+  g.fillText(l2, Math.round(fs * 0.5), c.height - h + Math.round(fs * 2.05), c.width - fs);
+  return await new Promise((ok, falha) => c.toBlob((b) => (b ? ok(b) : falha(new Error('foto'))), 'image/jpeg', 0.6));
 }
 const AVISO_CAMARA = '<div class="msg info">O telefone fechou a app ao abrir a câmara. Os dados foram recuperados. Se voltar a acontecer, tire a fotografia com a câmara do telefone e use «Escolher da galeria».</div>';
 // primeiro o GPS: só depois se sabe a comunidade
@@ -5008,8 +5066,8 @@ function cartaoMeuDia() {
      ${d.monitoria_falhas_ontem ? `<div class="msg erro">❌ ${num(d.monitoria_falhas_ontem)} <span>campos sorteados ficaram por verificar ontem. Contam como falha na sua avaliação.</span></div>` : ''}
     <h3 style="font-size:14px;margin:12px 0 4px">3. <span>Regas com ⚠️ por confirmar</span> (${al.length})</h3>` +
     (al.length ? al.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
-      <div class="sub"><span class="sem-trad">${esc(x.equipa)}</span> · ${fmtData(x.data)} · ${x.tipo === 'mais_que_base' ? `${num(x.plantas)} <span>plantas regadas</span>, ${num(x.base)} <span>na base</span>` : `<span>ritmo</span> ${num(x.ritmo)} <span>plantas por pessoa por hora</span>, <span>habitual</span> ${num(x.mediana)}`}</div>
-      <div class="chips"><button class="chip" onclick="corrigirRegaAgora('${esc(x.registo_id)}','${esc(x.area_id)}')">✏️ Corrigir as plantas regadas</button><button class="chip" onclick="ecraConfirmarRega('${x.registo_id}', '${x.tipo}', ${Number(x.plantas) || 0}, ${Number(x.base) || 0}, '${esc(x.area_id)}')">✓ Está certo</button></div></div>`).join('')
+      <div class="sub"><span class="sem-trad">${esc(x.equipa)}</span> · ${fmtData(x.data)} · ${x.tipo === 'foto_data' ? linhaFotoData(x) : x.tipo === 'mais_que_base' ? `${num(x.plantas)} <span>plantas regadas</span>, ${num(x.base)} <span>na base</span>` : `<span>ritmo</span> ${num(x.ritmo)} <span>plantas por pessoa por hora</span>, <span>habitual</span> ${num(x.mediana)}`}</div>
+      <div class="chips">${x.tipo === 'foto_data' ? `<button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">📷 Abrir a ficha e ver as fotografias</button>` : `<button class="chip" onclick="corrigirRegaAgora('${esc(x.registo_id)}','${esc(x.area_id)}')">✏️ Corrigir as plantas regadas</button>`}<button class="chip" onclick="ecraConfirmarRega('${x.registo_id}', '${x.tipo}', ${Number(x.plantas) || 0}, ${Number(x.base) || 0}, '${esc(x.area_id)}')">✓ Está certo</button></div></div>`).join('')
       : '<p class="pequeno">Nenhuma.</p>') +
     `<h3 style="font-size:14px;margin:12px 0 4px">4. <span>Campos sem equipa</span>: ${num(d.sem_equipa || 0)}</h3>${d.sem_equipa ? '<button class="chip" onclick="irPorAtribuir()">Atribuir os campos</button>' : ''}` +
     // v138 (29/10/2026, Valdo): medições de área feitas pelos activistas à espera de aprovação (as já aprovadas no telefone saem da lista)
@@ -5053,9 +5111,16 @@ async function fecharDia() {
 }
 // v159 (31/10/2026, Valdo): numa rega com mais plantas do que a base, «Está certo» exige as plantas vivas contadas.
 // Contadas < regadas → o servidor recusa (corrigir as plantas regadas); contadas ≠ base → pedido de recontagem ao M&E.
+// v198: fotografias de outro dia (data da fotografia diferente do dia da rega). Não bloqueia: o técnico/supervisor vê e confirma.
+function linhaFotoData(x) {
+  const f = x.fotos || {};
+  const fora = ['entrada', 'rega', 'saida'].filter((t) => f[t]?.tirada && String(f[t].tirada).slice(0, 10) !== String(x.data).slice(0, 10));
+  return `📷 <span>Fotografia de outro dia</span>: ` + fora.map((t) => `<span>${{ entrada: 'Entrada', rega: 'Rega', saida: 'Saída' }[t]}</span> (<span>${ORIGEM_FOTO[f[t].origem] || '?'}</span>, ${fmtTirada(f[t].tirada)})`).join(' · ');
+}
 function ecraConfirmarRega(id, tipo, plantas, base, area) {
   const conta = tipo === 'mais_que_base';
-  folha(`<h2>✓ Esta rega está certa</h2>
+  folha(`<h2>${tipo === 'foto_data' ? '✓ As fotografias desta rega estão certas' : '✓ Esta rega está certa'}</h2>
+    ${tipo === 'foto_data' ? '<p class="pequeno">A data de uma fotografia é diferente do dia da rega. Confirme só se viu as fotografias e sabe porquê (por exemplo, a data do telefone estava errada).</p>' : ''}
     ${conta ? `<p class="pequeno"><span>Plantas regadas</span>: <b>${num(plantas)}</b> · <span>na base</span>: <b>${num(base)}</b> <span>vivas</span>.</p>
       <label><span>Plantas vivas que contou no campo</span> <input id="cr-vivas" type="number" min="0" inputmode="numeric"></label>
       <p class="pequeno">Se o número for diferente da base, a app pede uma recontagem ao M&amp;E.</p>` : ''}
@@ -5075,7 +5140,7 @@ function ecraConfirmarRega(id, tipo, plantas, base, area) {
     if (t.length < 3) { $('#cr-msg').innerHTML = '<div class="msg erro">Escreva porque está certo.</div>'; return; }
     if (!navigator.onLine) { $('#cr-msg').innerHTML = '<div class="msg erro">Precisa de rede.</div>'; return; }
     const bt = $('#cr-ok'); if (bt.disabled) return; bt.disabled = true; bt.textContent = 'A gravar…'; $('#cr-msg').innerHTML = '';
-    let r; try { r = conta ? await sb.rpc('confirmar_rega2', { p_id: id, p_nota: t, p_vivas: v }) : await sb.rpc('confirmar_rega', { p_id: id, p_nota: t }); } catch (e) { r = { error: { message: String(e?.message || e) } }; }
+    let r; try { r = conta ? await sb.rpc('confirmar_rega2', { p_id: id, p_nota: t, p_vivas: v }) : tipo === 'foto_data' ? await sb.rpc('confirmar_foto_rega', { p_id: id, p_nota: t }) : await sb.rpc('confirmar_rega', { p_id: id, p_nota: t }); } catch (e) { r = { error: { message: String(e?.message || e) } }; }
     if (r.error) {
       const m = String(r.error.message || ''), rede = !m || /fetch|network|Load failed|timeout/i.test(m);
       problemaApp('confirmar_rega', m || 'sem mensagem', { id, tipo });

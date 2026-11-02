@@ -410,7 +410,9 @@
             criado_em: d.criado_em, por_confirmar: d.papel_quem === 'activista' && !d.confirmado_em, confirmado_nome: d.confirmado_nome || null, confirmado_em: d.confirmado_em || null })) }; });
       const base = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
       const alertas = reais().filter((r) => ids.includes(r.activista_id) && !r.alerta_confirmado_em && !r.plantas_corrigidas_em && r.plantas_regadas > base(area(r.area_id)))
-        .map((r) => ({ registo_id: r.id, data: r.data, area_id: r.area_id, produtor: area(r.area_id).produtor, equipa: nomeAct(r.activista_id), plantas: r.plantas_regadas, base: base(area(r.area_id)), ritmo: null, mediana: null, tipo: 'mais_que_base' }));
+        .map((r) => ({ registo_id: r.id, data: r.data, area_id: r.area_id, produtor: area(r.area_id).produtor, equipa: nomeAct(r.activista_id), plantas: r.plantas_regadas, base: base(area(r.area_id)), ritmo: null, mediana: null, tipo: 'mais_que_base' }))
+        .concat(reais().filter((r) => ids.includes(r.activista_id) && !r.foto_confirmada_em && r.fotos_origem && Object.values(r.fotos_origem).some((f) => f && f.tirada && String(f.tirada).slice(0, 10) !== r.data))
+          .map((r) => ({ registo_id: r.id, data: r.data, area_id: r.area_id, produtor: area(r.area_id).produtor, equipa: nomeAct(r.activista_id), plantas: r.plantas_regadas, base: base(area(r.area_id)), ritmo: null, mediana: null, tipo: 'foto_data', fotos: r.fotos_origem })));
       const comunidades = papel === 'tecnico' ? ['Exemplo Norte'] : ['Exemplo Norte', 'Exemplo Sul'];
       return { data: hoje, hora_chegada: '06:00', fechado_em: (DB.fechos || {})[EU + hoje] || null, equipas: eqs, alertas,
         monitoria_hoje: DB.amostras.filter((m) => m.verificador_id === EU && m.data_rega >= dia(1) && !DB.monitorias.some((o) => o.amostra_id === m.id)).length, monitoria_falhas_ontem: 0,
@@ -429,6 +431,7 @@
       if (v != null && v !== base) { if (DB.recontagens.some((x) => x.area_id === r.area_id && ['por_encaminhar', 'encaminhada', 'enviada', 'recusada'].includes(x.estado))) rc = 'ja_havia';
         else { DB.recontagens.push({ id: uid(), area_id: r.area_id, motivo: `Rega com ${r.plantas_regadas} plantas regadas: contou ${v} plantas vivas; a base tem ${base}.`, estado: 'por_encaminhar', pedido_em: new Date().toISOString(), pedido_por: EU, oficial_id: null }); rc = 'pedida'; } }
       return { recontagem: rc }; },
+    confirmar_foto_rega: (a) => { const r = DB.registos.find((x) => x.id === a.p_id); if (r) { r.foto_confirmada_em = new Date().toISOString(); r.foto_confirmada_nota = a.p_nota; } return null; },
     confirmar_rega: (a) => { const r = DB.registos.find((x) => x.id === a.p_id); if (r) { r.alerta_confirmado_em = new Date().toISOString(); r.alerta_confirmado_nota = a.p_nota; } return null; },
     // v156: medir a área: o activista deixa a área por aprovar; técnico, supervisor e gestor gravam o limite
     gravar_poligono: (a) => { const ar = area(a.p_area); if (!ar.id || !Array.isArray(a.p_pontos)) return null; const m2 = areaM2(a.p_pontos);
