@@ -997,7 +997,7 @@ window.I18N_SW_D = {
 "Só quem marcou (ou o gestor) muda este coqueiro": "Ni aliyeuweka tu (au meneja) anayeweza kubadilisha mnazi huu",
 "Só quem marcou (ou o gestor) remove este coqueiro": "Ni aliyeuweka tu (au meneja) anayeweza kuondoa mnazi huu",
 "🥥 Coqueiros": "🥥 Minazi",
-"Coqueiros fora de campo:": "Minazi nje ya mashamba:", "Coqueiros": "Minazi", "Coqueiros vivos": "Minazi hai", "Coqueiros secos": "Minazi iliyokauka", "Coqueiros mortos": "Minazi iliyokufa", "Coqueiros retirados": "Minazi iliyoondolewa", "Coqueiros com cachos ou cocos": "Minazi yenye vishada au nazi", "Coqueiros que precisam de tratamento": "Minazi inayohitaji matibabu", "Toque em «Ver no mapa» para ir até ao coqueiro.": "Gusa «Ona kwenye ramani» kwenda kwenye mnazi.", "Sem coqueiros nesta lista.": "Hakuna minazi katika orodha hii.",
+"Coqueiros fora de campo:": "Minazi nje ya mashamba:", "Coqueiros": "Minazi", "Coqueiros vivos": "Minazi hai", "Coqueiros secos": "Minazi iliyokauka", "Coqueiros mortos": "Minazi iliyokufa", "Coqueiros retirados": "Minazi iliyoondolewa", "Coqueiros com cachos ou cocos": "Minazi yenye vishada au nazi", "Coqueiros que precisam de tratamento": "Minazi inayohitaji matibabu", "Toque em «Ver no mapa» para ir até ao coqueiro.": "Gusa «Ona kwenye ramani» kwenda kwenye mnazi.", "Sem coqueiros nesta lista.": "Hakuna minazi katika orodha hii.", "Localização no Mapa": "Mahali kwenye ramani",
 "vivos": "hai",
 "secos": "imekauka",
 "mortos": "imekufa",

@@ -1251,7 +1251,7 @@ function listaCoq(f) {
     return `<div class="cartao cq-item"><div class="cq-cab">${svgPalmeira(COR_COQ[c.estado] || '#777', c.estado === 'retirado')}<b>${c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro'}</b> <span>${TXT_COQ[c.estado] || esc(c.estado)}</span></div>
       <div class="pequeno">${c.local ? `<span class="sem-trad">${esc(c.local)}</span> · ` : ''}${fmtData(c.marcado_em.slice(0, 10))}${c.marcado_por_nome ? ` · <span class="sem-trad">${esc(c.marcado_por_nome)}</span>` : ''}${d != null ? ` · <span class="sem-trad">📏 ${Math.round(d)} m</span>` : ''}</div>
       ${marcas ? `<div class="pequeno">${marcas}</div>` : ''}${c.observacao ? `<div class="pequeno sem-trad">${esc(c.observacao)}</div>` : ''}
-      <div class="chips"><button class="chip" onclick="irCoq('${esc(c.id)}')">📍 <span>Ver no mapa</span></button><button class="chip" onclick="verCoq('${esc(c.id)}')"><span>Abrir a ficha</span></button></div></div>`;
+      <div class="chips"><button class="chip" onclick="irCoq('${esc(c.id)}')">📍 <span>Ver no mapa</span></button><button class="chip" onclick="verCoq('${esc(c.id)}')"><span>Abrir a ficha</span></button><a class="chip" href="https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}" target="_blank" rel="noopener">🧭 <span>Localização no Mapa</span></a></div></div>`;
   };
   folha(`<h2>🥥 <span>${LISTAS_COQ[f]}</span> <span class="sem-trad">(${num(l.length)})</span></h2>
     ${l.length ? `<p class="pequeno">Toque em «Ver no mapa» para ir até ao coqueiro.</p>${l.map(linha).join('')}` : '<p>Sem coqueiros nesta lista.</p>'}

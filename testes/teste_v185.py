@@ -61,6 +61,7 @@ with sync_playwright() as p:
     pg.click("#cq-leg .cq-lb >> nth=0"); pg.wait_for_timeout(300)
     print("v188 lista vivos:", pg.inner_text("#folha-c h2"), "| itens:", pg.evaluate("document.querySelectorAll('#folha-c .cq-item').length"))
     pg.screenshot(path="/tmp/claude-0/-home-claude/2a67f740-10a3-5b35-b093-4e5b7aa6e992/scratchpad/coq_lista_%s.png" % LING)
+    print("v189 Google Maps:", pg.evaluate("[...document.querySelectorAll('#folha-c .cq-item a.chip')].map(a=>a.innerText+' | '+a.getAttribute('href'))"))
     pg.click("#folha-c .cq-item .chip >> nth=0"); pg.wait_for_timeout(500)
     c = pg.evaluate("[mapa.getZoom(), mapa.latLngToContainerPoint(coqLista().find(c=>c.estado==='viva')).y, mapa.getSize().y, document.querySelector('#coq').offsetHeight, !!marcaIrCoq, (document.querySelector('#folha')||{}).className]")
     print("v188 ver no mapa: zoom", c[0], "| y do coqueiro", round(c[1]), "de", c[2], "(cartão", c[3], ") | marca:", c[4], "| folha:", c[5])
