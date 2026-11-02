@@ -349,7 +349,7 @@
 
   // ---------- 5. respostas aos pedidos da app ----------
   const RPC = {
-    estado_ronda: () => estadoRonda(), estado_ronda2: () => estadoRonda(), estado_ronda3: () => estadoRonda(), regas_outra_equipa: () => [], trilhos: () => ({ agora: new Date().toISOString(), fontes: {} }), gravar_trilho: () => null,
+    estado_ronda: () => estadoRonda(), estado_ronda2: () => estadoRonda(), estado_ronda3: () => estadoRonda(), regas_outra_equipa: () => [], trilhos: () => ({ agora: new Date().toISOString(), fontes: {} }), gravar_trilho: () => null, correccoes_nome_lista: () => [], confirmar_correccao_nome: () => null,
     lista_comunidades: () => [...new Set(DB.areas.map((a) => a.comunidade))].sort(),
     pontos_comunidades: () => (papel === 'oficial_me' ? [] : DB.areas.map((a) => ({ comunidade: a.comunidade, zona: a.zona, lat: a.latitude, lon: a.longitude }))),
     recontagens_lista: () => recontagensLista(),

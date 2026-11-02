@@ -4918,7 +4918,39 @@ const somaDias = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(
 const MEU_DIA = () => ['tecnico', 'supervisor'].includes(S.perfil?.papel) && !S.perfil?.ve_tudo;
 async function carregarMeuDia() {
   if (!MEU_DIA() || !navigator.onLine) return;
-  const r = await sb.rpc('meu_dia'); if (!r.error) LS.set('meuDia', { em: new Date().toISOString(), d: r.data || null, dia: hojeISO() });
+  const [r, cn] = await Promise.all([sb.rpc('meu_dia'), sb.rpc('correccoes_nome_lista')]);
+  if (!r.error) LS.set('meuDia', { em: new Date().toISOString(), d: r.data || null, dia: hojeISO() });
+  if (!cn.error) LS.set('corrNome', Array.isArray(cn.data) ? cn.data : []);
+}
+// v197 (02/11/2026, Valdo: "Muda, mas o técnico e supervisor devem confirmar. Cria esta confirmação obrigatória"): correcção do nome
+// do produtor pedida ao gestor (ex.: pelo 💡); o nome só muda quando o técnico E o supervisor da equipa confirmam (servidor).
+function ecraCorrNome(id) {
+  const x = (LS.get('corrNome', []) || []).find((y) => y.id === id); if (!x) return;
+  folha(`<h2>✏️ <span>Nome do produtor</span></h2>
+    <p><b class="sem-trad">${esc(x.area_id)}</b>${x.equipa ? ` · <span class="sem-trad">${esc(x.equipa)}</span>` : ''}${x.comunidade ? ` · <span class="sem-trad">${esc(x.comunidade)}</span>` : ''}</p>
+    <div class="msg info"><span>Na base</span>: <b class="sem-trad">${esc(x.nome_antigo)}</b><br><span>Nome novo</span>: <b class="sem-trad">${esc(x.nome_novo)}</b>${x.motivo ? `<div class="pequeno sem-trad">${esc(x.motivo)}</div>` : ''}</div>
+    <p class="pequeno">Confirme com o produtor ou com o documento dele. O nome só muda quando o técnico e o supervisor da equipa confirmarem.</p>
+    <label><span>Se não está certo, escreva porquê</span><textarea id="cn-mot" rows="2"></textarea></label><div id="cn-msg"></div>
+    <button class="btn" id="cn-ok">✓ O nome novo está certo</button>
+    <button class="btn sec" id="cn-nao">✗ Não está certo</button>
+    <button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  const enviar = async (sim) => {
+    const mot = $('#cn-mot').value.trim();
+    if (!sim && mot.length < 3) { $('#cn-msg').innerHTML = '<div class="msg erro">Escreva porque o nome não está certo.</div>'; $('#cn-mot').focus(); return; }
+    if (!navigator.onLine) { $('#cn-msg').innerHTML = '<div class="msg erro">Precisa de rede.</div>'; return; }
+    $('#cn-ok').disabled = $('#cn-nao').disabled = true;
+    let r; try { r = await sb.rpc('confirmar_correccao_nome', { p_id: id, p_confirmar: sim, p_motivo: mot || null }); } catch (e) { r = { error: { message: String(e?.message || e) } }; }
+    if (r.error) { $('#cn-msg').innerHTML = `<div class="msg erro">${esc(r.error.message || 'Sem ligação ao servidor. Tente de novo quando tiver rede.')}</div>`; $('#cn-ok').disabled = $('#cn-nao').disabled = false; return; }
+    const est = r.data && r.data.estado;
+    if (est === 'aplicada') {
+      S.areas.forEach((a) => { if (a.id === x.area_id || (x.pr && a.pr === x.pr)) a.produtor = x.nome_novo; }); LS.set('areas', S.areas);
+    }
+    fecharFolha();
+    aviso(est === 'aplicada' ? 'Confirmado. O nome do produtor mudou.' : est === 'falta_supervisor' ? 'Confirmado. Falta o supervisor confirmar.'
+      : est === 'falta_tecnico' ? 'Confirmado. Falta o técnico confirmar.' : est === 'recusada' ? 'Recusado. O nome fica como estava.' : 'Este pedido já foi tratado.', 'ok');
+    await carregarMeuDia(); actHoje();
+  };
+  $('#cn-ok').onclick = () => enviar(true); $('#cn-nao').onclick = () => enviar(false);
 }
 // v165 (31/10/2026, Valdo: "Pode avançar"): o motivo registado pelo activista é confirmado pelo técnico ou pelo supervisor; quem responde
 // primeiro fecha; se os dois responderem sem rede, fica o do supervisor (servidor). Funciona sem rede (fila 'conf_dsr').
@@ -4998,6 +5030,13 @@ function cartaoMeuDia() {
     (pt.length ? '<p class="pequeno">A rega ficou a meio por falta de água ou avaria. Confirme que a equipa começa o próximo dia por estes campos.</p>' + pt.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
       <div class="sub"><span class="sem-trad">${esc(x.equipa || '')}</span> · <span>Faltam</span> ${num(Math.max(0, (x.base || 0) - (x.regadas || 0)))} <span>de</span> ${num(x.base || 0)} <span>plantas</span>${x.data ? ` · <span>rega a meio a</span> ${fmtData(x.data)}` : ''}</div>
       <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha</button></div></div>`).join('') : '<p class="pequeno">Nenhum.</p>');
+  // v197: nomes de produtores por confirmar (só aparece quando há pedidos; não bloqueia o «Fechar o dia»)
+  const cn = (LS.get('corrNome', []) || []).filter((x) => x.estado === 'por_confirmar');
+  if (cn.length) h += `<h3 style="font-size:14px;margin:12px 0 4px">8. <span>Nomes de produtores por confirmar</span> (${cn.length})</h3>
+    <p class="pequeno">O nome só muda quando o técnico e o supervisor da equipa confirmarem.</p>` + cn.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.area_id)}${x.equipa ? ' · ' + esc(x.equipa) : ''}</div>
+      <div class="sub"><span>Na base</span>: <b class="sem-trad">${esc(x.nome_antigo)}</b> → <span>Nome novo</span>: <b class="sem-trad">${esc(x.nome_novo)}</b></div>
+      <div class="sub"><span>Técnico</span>: ${x.tecnico_em ? `✓ <span class="sem-trad">${esc(x.tecnico_nome || '')}</span>` : '<span>por confirmar</span>'} · <span>Supervisor</span>: ${x.supervisor_em ? `✓ <span class="sem-trad">${esc(x.supervisor_nome || '')}</span>` : '<span>por confirmar</span>'}</div>
+      ${x.posso ? `<div class="chips"><button class="chip" onclick="ecraCorrNome('${esc(x.id)}')">✓ Confirmar ou recusar</button></div>` : ''}</div>`).join('');
   // v183 (01/11/2026, Valdo: "não vi onde é que o supervisor e o técnico fecham o dia"): o botão aparece sempre; fica desactivado
   // enquanto faltar alguma equipa sem rega nem motivo ou motivos por confirmar, com a razão por cima
   h += d.fechado_em ? '' : falta.length ? `<p class="pequeno" style="margin-top:12px"><span>Para fechar o dia, todas as equipas têm de ter rega ou motivo. Faltam:</span> ${falta.length}</p><button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button>`
