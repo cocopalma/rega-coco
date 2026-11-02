@@ -4567,7 +4567,9 @@ async function carregarAvisos() {
   if (!r.error && Array.isArray(r.data)) { S.avisos = r.data; LS.set('avisos', S.avisos); }
 }
 const avisos = () => (Array.isArray(S.avisos) ? S.avisos : LS.get('avisos', []) || []);
-const textoAviso = (v) => `${v.sem_rega} de ${v.plantas_obs} plantas da amostra sem solo húmido · nota ${Number(v.nota).toLocaleString(LOC)}`;
+// v196 (02/11/2026, sugestão do Nuro): as plantas mortas não contam no aviso (o servidor já não as conta em sem_rega).
+const mortasAviso = (v) => (Number(v.mortas_sem) > 0 ? ` · mortas não contam: ${v.mortas_sem}` : '');
+const textoAviso = (v) => `${v.sem_rega} de ${v.plantas_obs} plantas da amostra sem solo húmido${mortasAviso(v)} · nota ${Number(v.nota).toLocaleString(LOC)}`;
 // Aviso a quem ainda não fez nenhuma rega de teste (v92, 21/10/2026, sugestão aceite pelo Valdo): técnico e supervisor.
 // Desaparece logo que haja uma rega de teste (no servidor, na fila do telefone ou em curso).
 // ---------- dia sem rega: constrangimento da equipa (v116, 26/10/2026, Valdo: "É preciso ter um campo de constrangimentos para
@@ -4823,7 +4825,7 @@ function sugFeitaVista(id) {
 function cartaoAvisos() {
   const L = avisos(); if (!L.length) return '';
   const varias = S.perfil.papel !== 'activista';
-  return `<div class="cartao"><h2>Avisos da monitoria</h2><p class="pequeno">Plantas sem água na verificação feita depois da rega. Na próxima rega, dê atenção a estas plantas.</p>` +
+  return `<div class="cartao"><h2>Avisos da monitoria</h2><p class="pequeno"><span>Plantas sem água na verificação feita depois da rega. Na próxima rega, dê atenção a estas plantas.</span> <span>As plantas mortas não contam neste aviso.</span></p>` +
     L.map((v) => { const a = S.areas.find((x) => x.id === v.area_id) || { produtor: v.area_id };
       return `<div class="item" onclick="abrirFicha('${esc(v.area_id)}')"><div><div class="nome">${esc(a.produtor)}</div>
         <div class="sub">${esc(a.pr || '')}${varias ? ' · ' + esc(nomeAct(v.activista_id)) : ''} · rega de ${fmtData(v.data_rega)} · ${textoAviso(v)}</div></div>
@@ -4831,7 +4833,7 @@ function cartaoAvisos() {
 }
 function avisoCampo(id) {
   const v = avisos().find((x) => x.area_id === id); if (!v) return '';
-  return `<div class="msg ${v.solo_regado ? 'info' : 'erro'}"><b>Monitoria (rega de ${fmtData(v.data_rega)}):</b> <span>${v.sem_rega} de ${v.plantas_obs} plantas da amostra sem solo húmido</span> · <span>nota ${Number(v.nota).toLocaleString(LOC)}</span>.<span>${v.solo_regado ? ' Campo regado. Na próxima rega, dê atenção às plantas sem água.' : ' Campo considerado não regado (menos de 80% das plantas com solo húmido).'}</span>${v.observacao ? `<br><span>Observação: ${esc(v.observacao)}</span>` : ''}</div>`;
+  return `<div class="msg ${v.solo_regado ? 'info' : 'erro'}"><b>Monitoria (rega de ${fmtData(v.data_rega)}):</b> <span>${v.sem_rega} de ${v.plantas_obs} plantas da amostra sem solo húmido</span>${Number(v.mortas_sem) > 0 ? ` · <span>mortas não contam: ${v.mortas_sem}</span>` : ''} · <span>nota ${Number(v.nota).toLocaleString(LOC)}</span>.<span>${v.solo_regado ? ' Campo regado. Na próxima rega, dê atenção às plantas sem água.' : ' Campo considerado não regado (menos de 80% das plantas com solo húmido).'}</span>${v.observacao ? `<br><span>Observação: ${esc(v.observacao)}</span>` : ''}</div>`;
 }
 
 // ---------- monitoria por amostragem (técnico e supervisor) ----------

@@ -1702,6 +1702,7 @@ window.I18N_SW_D = {
 "Plantas sem água na verificação feita depois da rega. Na próxima rega, dê atenção a estas plantas.": "Mimea isiyo na maji katika ukaguzi baada ya kumwagilia. Katika umwagiliaji ujao, zingatia mimea hii.",
 " Campo regado. Na próxima rega, dê atenção às plantas sem água.": " Shamba limemwagiliwa. Katika umwagiliaji ujao, zingatia mimea isiyo na maji.",
 "Campo regado. Na próxima rega, dê atenção às plantas sem água.": "Shamba limemwagiliwa. Katika umwagiliaji ujao, zingatia mimea isiyo na maji.",
+"As plantas mortas não contam neste aviso.": "Mimea iliyokufa haihesabiwi katika onyo hili.",
 "Campo não regado": "Shamba halijamwagiliwa",
 "Resultado LQAS": "Matokeo ya LQAS",
 "em curso": "inaendelea",
@@ -2060,4 +2061,6 @@ window.I18N_SW_R = (tr) => [
     [/^Terminar o apoio de (.+) a (.+)\? Os campos que faltam voltam só para a equipa de (.+)\.$/, 'Maliza msaada wa $1 kwa $2? Mashamba yaliyobaki yanarudi kwa timu ya $3 tu.'],
     [/^Este campo já foi regado nesta ronda da equipa de (.+)\.$/, 'Shamba hili tayari limemwagiliwa katika mzunguko huu wa timu ya $1.'],
     [/^Campos que não são da equipa apoiada ou ficam a mais de (.+) km dos campos da equipa que ajuda: (.+)$/, 'Mashamba ambayo si ya timu inayosaidiwa au yako zaidi ya km $1 kutoka mashamba ya timu inayosaidia: $2'],
+
+    [/^mortas não contam: (\d+)$/, 'mimea iliyokufa haihesabiwi: $1'],
   ];
