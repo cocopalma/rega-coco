@@ -4158,8 +4158,20 @@ async function camaraNaApp(aoFoto, semCam) {
     }
     if (st) { stream = st; lado = novo; }
     else { try { stream = await abrirCam(lado); } catch { fechar(); return aviso('Não foi possível abrir a câmara. Use «Escolher da galeria».', 'erro'); }
-      problemaApp('camara', 'Virar a câmara não funcionou'); aviso('Este telefone não deixou mudar de câmara.', 'erro'); }
+      let nCam = null; try { nCam = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput').length; } catch {}
+      problemaApp('camara', 'Virar a câmara não funcionou', { cameras: nCam, para: novo });
+      // v199 (02/11/2026): em vez de tentar de novo (Ibraimo tocou 43 vezes), oferece a câmara do telefone, que tem o seu botão de virar
+      falhaVirar(); }
     v.srcObject = stream; espelho();
+  };
+  const falhaVirar = () => {
+    const b = ov.querySelector('#cam-virar'); if (!b) return;
+    b.id = 'cam-sis'; b.textContent = '📱 Abrir a câmara do telefone';
+    const n = document.createElement('div'); n.id = 'cam-nota';
+    n.style.cssText = 'color:#ffd27a;font-size:13px;text-align:center;max-width:340px';
+    n.textContent = 'Este telefone não deixa virar a câmara dentro da app. Para a câmara da frente, abra a câmara do telefone e vire-a lá.';
+    b.parentNode.parentNode.insertBefore(n, b.parentNode);
+    b.onclick = () => { fechar(); if (semCam) semCam(); else aviso('Use «Escolher da galeria».', 'erro'); };
   };
   try { const n = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput').length; if (n === 1) ov.querySelector('#cam-virar').style.display = 'none'; } catch {}
   ov.querySelector('#cam-ok').onclick = () => {

@@ -3,6 +3,8 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    // v199
+    "📱 Abrir a câmara do telefone": "📱 Fungua kamera ya simu", "Este telefone não deixa virar a câmara dentro da app. Para a câmara da frente, abra a câmara do telefone e vire-a lá.": "Simu hii haiiruhusu programu kubadilisha kamera. Kwa kamera ya mbele, fungua kamera ya simu na uibadilishe huko.",
     "Escondido no painel:": "Imefichwa kwenye dashibodi:",
     "📏 Medições com a vara (teste)": "📏 Vipimo kwa fimbo ya m 1 (jaribio)",
     "🥥 Coqueiros (teste)": "🥥 Minazi (jaribio)",

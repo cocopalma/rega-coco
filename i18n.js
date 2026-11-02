@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    // v199
+    "📱 Abrir a câmara do telefone": "📱 Open the phone camera", "Este telefone não deixa virar a câmara dentro da app. Para a câmara da frente, abra a câmara do telefone e vire-a lá.": "This phone does not let the app switch cameras. For the front camera, open the phone camera and switch it there.",
     "Escondido no painel:": "Hidden in the dashboard:",
     "📏 Medições com a vara (teste)": "📏 Measurements with the 1 m stick (test)",
     "🥥 Coqueiros (teste)": "🥥 Coconut trees (test)",
