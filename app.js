@@ -650,6 +650,7 @@ function iniciarMapa() {
     if (S.coq) coqLeitura(p.coords);
     if (!eu) eu = L.circleMarker(S.pos, { radius: 9, color: '#fff', weight: 3, fillColor: '#1565c0', fillOpacity: 1 }).addTo(mapa);
     else eu.setLatLng(S.pos);
+    if (S.coq && S.coq.nav) actualizarNav(false);
     // o ponto saiu do ecrã (a andar ou de carro): o mapa acompanha (16/10/2026, Dalmar). Se a pessoa arrastou o mapa
     // para outro lado (o ponto já estava fora), não puxa de volta.
     if (!S.seguir && $('#e-mapa').classList.contains('on')) {
@@ -1119,6 +1120,7 @@ function esconderCoq(sim) {
   if (sim) aviso('Botão dos coqueiros escondido. Para o voltar a mostrar: ℹ️ Legenda do mapa › «Mostrar».');
 }
 function fecharCoq() {
+  limparNav();
   S.coq = null; mapa.off('click', cliqueCoqPerto); if (camadaCoq) { camadaCoq.clearLayers(); mapa.removeLayer(camadaCoq); }
   $('#b-coq').classList.remove('on'); $('#coq').style.display = 'none'; $('#cq-mostrar').style.display = 'none'; $('.legenda').style.display = '';
   mostrarSugFixa();
@@ -1251,7 +1253,7 @@ function listaCoq(f) {
     return `<div class="cartao cq-item"><div class="cq-cab">${svgPalmeira(COR_COQ[c.estado] || '#777', c.estado === 'retirado')}<b>${c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro'}</b> <span>${TXT_COQ[c.estado] || esc(c.estado)}</span></div>
       <div class="pequeno">${c.local ? `<span class="sem-trad">${esc(c.local)}</span> · ` : ''}${fmtData(c.marcado_em.slice(0, 10))}${c.marcado_por_nome ? ` · <span class="sem-trad">${esc(c.marcado_por_nome)}</span>` : ''}${d != null ? ` · <span class="sem-trad">📏 ${Math.round(d)} m</span>` : ''}</div>
       ${marcas ? `<div class="pequeno">${marcas}</div>` : ''}${c.observacao ? `<div class="pequeno sem-trad">${esc(c.observacao)}</div>` : ''}
-      <div class="chips"><button class="chip" onclick="irCoq('${esc(c.id)}')">📍 <span>Ver no mapa</span></button><button class="chip" onclick="verCoq('${esc(c.id)}')"><span>Abrir a ficha</span></button><a class="chip" href="https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}" target="_blank" rel="noopener">🧭 <span>Localização no Mapa</span></a></div></div>`;
+      <div class="chips"><button class="chip" onclick="irCoq('${esc(c.id)}')">📍 <span>Ver no mapa</span></button><button class="chip" onclick="verCoq('${esc(c.id)}')"><span>Abrir a ficha do coqueiro</span></button><button class="chip" onclick="navegarCoq('${esc(c.id)}')">🧭 <span>Navegar até ao coqueiro</span></button></div></div>`;
   };
   folha(`<h2>🥥 <span>${LISTAS_COQ[f]}</span> <span class="sem-trad">(${num(l.length)})</span></h2>
     ${l.length ? `<p class="pequeno">Toque em «Ver no mapa» para ir até ao coqueiro.</p>${l.map(linha).join('')}` : '<p>Sem coqueiros nesta lista.</p>'}
@@ -1268,6 +1270,72 @@ function irCoq(id) {
   setTimeout(() => { if (marcaIrCoq) { mapa.removeLayer(marcaIrCoq); marcaIrCoq = null; } }, 8000);
   aviso(c.n ? `Coqueiro nº ${c.n}` : 'Coqueiro');
 }
+// v191 (02/11/2026, Valdo: "eu queria navegar dentro do próprio aplicativo, não fora. Mostrar um pontinho meu e eu, cada vez
+// que eu ando, aproximar-me e ele reduzir a distância"): navegação até ao coqueiro dentro da app, com o GPS do mapa (sem ligar
+// outro GPS). Linha tracejada do ponto azul ao coqueiro, distância, seta e direcção a cada leitura; aviso ao chegar.
+let navLinha, navAlvo;
+function grausRumo(a, b) {
+  const r = Math.PI / 180, y = Math.sin((b[1] - a[1]) * r) * Math.cos(b[0] * r);
+  const x = Math.cos(a[0] * r) * Math.sin(b[0] * r) - Math.sin(a[0] * r) * Math.cos(b[0] * r) * Math.cos((b[1] - a[1]) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+const kmTxt = (d) => d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km';
+function navegarCoq(id) {
+  const c = coqLista().find((x) => x.id === id); if (!c || !S.coq) return;
+  fecharFolha(); limparNav();
+  S.coq.nav = { id, chegou: false, arrastou: 0 };
+  $('#coq').style.display = 'none'; $('#cq-mostrar').style.display = 'none'; $('#cq-nav').style.display = '';
+  $('#nv-tit').innerHTML = `🧭 <span>A navegar até ao</span> <span>${c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro'}</span>`;
+  $('#nv-ficha').onclick = () => verCoq(c.id);
+  navAlvo = L.circleMarker([c.lat, c.lon], { radius: 16, color: '#1e5bd8', weight: 3, fill: false, interactive: false }).addTo(mapa);
+  mapa.on('dragstart', navArrastou);
+  actualizarNav(true);
+}
+function navArrastou() { if (S.coq && S.coq.nav) S.coq.nav.arrastou = Date.now(); }
+function enquadrarNav(alvo) {
+  const h = ($('#cq-nav').offsetHeight || 160) + 20;
+  if (S.pos && metros(S.pos, alvo) > 3) mapa.fitBounds([S.pos, alvo], { paddingTopLeft: [50, 70], paddingBottomRight: [50, h], maxZoom: 19, animate: false });
+  else mapa.setView(alvo, 19, { animate: false });
+}
+function actualizarNav(enquadrar) {
+  const N = S.coq && S.coq.nav; if (!N) return;
+  const c = coqLista().find((x) => x.id === N.id); if (!c) return pararNav();
+  const alvo = [c.lat, c.lon];
+  if (!S.pos) {
+    $('#nv-dist').textContent = '—'; $('#nv-dir').textContent = 'À espera do GPS…'; $('#nv-seta').innerHTML = ''; $('#nv-gps').textContent = '';
+    if (enquadrar) mapa.setView(alvo, 18, { animate: false });
+    return;
+  }
+  const d = metros(S.pos, alvo), g = grausRumo(S.pos, alvo);
+  const prec = S.fix && S.fix.coords ? Math.round(S.fix.coords.accuracy) : null;
+  if (!navLinha) navLinha = L.polyline([S.pos, alvo], { color: '#1e5bd8', weight: 4, dashArray: '8 8', interactive: false }).addTo(mapa);
+  else navLinha.setLatLngs([S.pos, alvo]);
+  const raio = Math.max(4, Math.min(prec || 0, 10));
+  const rot = (g + (S.rumoMapa || 0)) % 360;              // com o mapa a rodar (🧭 Rodar), a seta acompanha o mapa
+  $('#nv-seta').innerHTML = `<svg viewBox="0 0 48 48" width="48" height="48" style="transform:rotate(${rot.toFixed(0)}deg);transition:transform .4s"><circle cx="24" cy="24" r="22" fill="#e8eefc" stroke="#1e5bd8" stroke-width="2"/><path d="M24 7 L35 33 L24 27 L13 33 Z" fill="#1e5bd8"/></svg>`;
+  $('#nv-dist').innerHTML = `<span class="sem-trad">${kmTxt(d)}</span>`;
+  $('#nv-dir').innerHTML = d > raio ? `<span>Para</span> <span>${rumo(S.pos, alvo)}</span> · <span class="sem-trad">~${Math.max(1, Math.round(d / 60))} min</span> <span>a pé</span>` : '';
+  $('#nv-gps').innerHTML = prec != null ? `<span>GPS</span> <span class="sem-trad">±${prec} m</span>${prec > 15 && prec > d / 2 ? ' · <span>GPS fraco: procure o coqueiro à volta.</span>' : ''}` : '';
+  const ch = $('#nv-chegou');
+  if (d <= raio) {
+    if (!N.chegou) { N.chegou = true; if (navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch {} }
+    ch.innerHTML = `✓ <span>Chegou ao</span> <span>${c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro'}</span>`; ch.style.display = '';
+  } else if (d > raio * 2) { N.chegou = false; ch.style.display = 'none'; }
+  // o mapa mostra sempre o ponto azul e o coqueiro, menos nos 20 s a seguir a a pessoa arrastar o mapa
+  if (enquadrar) enquadrarNav(alvo);
+  else if (Date.now() - N.arrastou > 20000) {
+    const b = mapa.getBounds().pad(-0.1);
+    if (!b.contains(S.pos) || !b.contains(alvo)) enquadrarNav(alvo);
+  }
+}
+function limparNav() {
+  if (navLinha) { mapa.removeLayer(navLinha); navLinha = null; }
+  if (navAlvo) { mapa.removeLayer(navAlvo); navAlvo = null; }
+  if (mapa) mapa.off('dragstart', navArrastou);
+  const p = $('#cq-nav'); if (p) p.style.display = 'none';
+  if (S.coq) S.coq.nav = null;
+}
+function pararNav() { limparNav(); verCartaoCoq(true); }
 function verCoq(id) {
   const c = coqLista().find((x) => x.id === id); if (!c) return;
   const d = S.pos ? metros(S.pos, [c.lat, c.lon]) : null;
@@ -1281,7 +1349,7 @@ function verCoq(id) {
     ${c.estado === 'retirado' ? '<p class="pequeno">Já não existe: o ponto fica guardado, mas não conta nos coqueiros.</p>' : ''}
     ${c.observacao ? `<p class="sem-trad">${esc(c.observacao)}</p>` : ''}</div>
     ${c.porEnviar ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : ''}
-    <div class="chips"><a class="chip cq-nav" href="https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}" target="_blank" rel="noopener">🧭 <span>Localização no Mapa</span></a><button class="chip" onclick="irCoq('${esc(c.id)}')">📍 <span>Ver no mapa</span></button></div>
+    <div class="chips"><button class="chip cq-nav" onclick="navegarCoq('${esc(c.id)}')">🧭 <span>Navegar até ao coqueiro</span></button><button class="chip" onclick="irCoq('${esc(c.id)}')">📍 <span>Ver no mapa</span></button></div>
     <div class="chips">${c.foto_path ? `<button class="chip" onclick="verFoto('coqueiros-fotos','${esc(c.foto_path)}')">📷 ${(c.fotos_extra || []).length ? 'Fotografia 1' : 'Ver a fotografia'}</button>` : ''}${(c.fotos_extra || []).map((f, i) => `<button class="chip" onclick="verFoto('coqueiros-fotos','${esc(f)}')">📷 Fotografia ${i + 2}</button>`).join('')}</div>
     ${mexeCoq(c) ? `<label>Mudar o estado</label><div class="chips">${EST_COQ.map((e) => `<button class="chip${c.estado === e ? ' on' : ''}" onclick="estadoCoq('${esc(c.id)}','${e}')">${TXT_COQ[e]}</button>`).join('')}</div>
       <label>Marque o que se aplica</label><div class="chips">${SIMNAO_COQ.map(([k, t]) => `<button class="chip${c[k] ? ' on' : ''}" onclick="marcaCoq('${esc(c.id)}','${k}')">${t}</button>`).join('')}</div>

@@ -51,7 +51,7 @@ with sync_playwright() as p:
     pg.screenshot(path="/tmp/claude-0/-home-claude/2a67f740-10a3-5b35-b093-4e5b7aa6e992/scratchpad/palmeiras_%s.png" % LING, clip={"x": 0, "y": 60, "width": 390, "height": 500})
     pg.evaluate("verCoq(coqLista()[0].id)"); pg.wait_for_timeout(300)
     print("v190 ficha:", pg.evaluate("[...document.querySelectorAll('#folha-c .chips')][0].innerText.replace(/\\n/g,' | ')"), "|", pg.evaluate("(document.querySelector('#folha-c a.cq-nav')||{}).href"))
-    pg.click("#folha-c .chips >> nth=0 >> button"); pg.wait_for_timeout(400); print("v190 ver no mapa da ficha: zoom", pg.evaluate("mapa.getZoom()"), "| folha:", pg.evaluate("document.querySelector('#folha').className"))
+    pg.click("#folha-c .chips >> nth=0 >> button >> nth=1"); pg.wait_for_timeout(400); print("v190 ver no mapa da ficha: zoom", pg.evaluate("mapa.getZoom()"), "| folha:", pg.evaluate("document.querySelector('#folha').className"))
     pg.evaluate("verCoq = (id) => window._ab = id"); 
     bx = pg.evaluate("[...document.querySelectorAll('.coq-pt')].map(e => { const r = e.getBoundingClientRect(); return [r.x + r.width/2, r.y + 6]; })")
     for x, y in bx: pg.mouse.click(x, y); pg.wait_for_timeout(150)
