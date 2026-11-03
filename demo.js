@@ -431,6 +431,7 @@
       if (v != null && v !== base) { if (DB.recontagens.some((x) => x.area_id === r.area_id && ['por_encaminhar', 'encaminhada', 'enviada', 'recusada'].includes(x.estado))) rc = 'ja_havia';
         else { DB.recontagens.push({ id: uid(), area_id: r.area_id, motivo: `Rega com ${r.plantas_regadas} plantas regadas: contou ${v} plantas vivas; a base tem ${base}.`, estado: 'por_encaminhar', pedido_em: new Date().toISOString(), pedido_por: EU, oficial_id: null }); rc = 'pedida'; } }
       return { recontagem: rc }; },
+    anular_aprovacao_plano: () => null,
     confirmar_foto_rega: (a) => { const r = DB.registos.find((x) => x.id === a.p_id); if (r) { r.foto_confirmada_em = new Date().toISOString(); r.foto_confirmada_nota = a.p_nota; } return null; },
     confirmar_rega: (a) => { const r = DB.registos.find((x) => x.id === a.p_id); if (r) { r.alerta_confirmado_em = new Date().toISOString(); r.alerta_confirmado_nota = a.p_nota; } return null; },
     // v156: medir a área: o activista deixa a área por aprovar; técnico, supervisor e gestor gravam o limite

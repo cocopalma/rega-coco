@@ -22,6 +22,9 @@ select jsonb_build_object(
   'regas', (select coalesce(jsonb_agg(jsonb_build_object('area_id', g.area_id, 'data', g.data, 'ronda', g.ronda, 'entrada_em', g.entrada_em, 'saida_em', g.saida_em,
       'entrada_lat', g.entrada_lat, 'entrada_lon', g.entrada_lon, 'plantas_regadas', g.plantas_regadas, 'pessoas', g.pessoas) order by g.entrada_em), '[]')
       from public.registos_rega g where g.activista_id = ac.id and not g.teste and g.ronda = :ronda),
+  -- 03/11/2026 (Valdo): o ritmo aprende-se com todas as regas reais da equipa nos últimos 30 dias (não só a ronda)
+  'regas_ritmo', (select coalesce(jsonb_agg(jsonb_build_object('entrada_em', g.entrada_em, 'saida_em', g.saida_em, 'plantas_regadas', g.plantas_regadas, 'pessoas', g.pessoas)), '[]')
+      from public.registos_rega g where g.activista_id = ac.id and not g.teste and g.saida_em is not null and g.data >= current_date - 30),
   'jornadas', (select coalesce(jsonb_agg(jsonb_build_object('data', j.data, 'pessoas', j.pessoas)), '[]') from public.jornadas j where j.activista_id = ac.id and not j.teste
       and j.data in (select data from public.registos_rega where activista_id = ac.id and not teste and ronda = :ronda)),
   'percursos', (select coalesce(jsonb_agg(jsonb_build_object('data', p.data, 'pontos', p.pontos)), '[]') from public.percursos p where p.activista_id = ac.id and not p.teste

@@ -2011,7 +2011,7 @@ function ecraPlano(id) {
       <div class="lin"><span>Pessoas por dia</span><b>${ap.pessoas ?? '—'}</b></div>
       <div class="lin"><span>Plantas por dia</span><b>${ap.plantas_por_dia != null ? num(ap.plantas_por_dia) : '—'}</b></div>
       <div class="lin"><span>Início e fim do dia</span><b>${ap.hora_inicio || '—'} – ${ap.hora_fim || '—'}</b></div>
-      <div class="lin"><span>Tempo por 100 plantas</span><b>${ap.min_por_planta != null ? Math.round(ap.min_por_planta * 100) + ' min' : '—'}</b></div></div>
+      <div class="lin"><span>Tempo da equipa por planta</span><b>${ap.min_por_planta != null ? Math.round(ap.min_por_planta * 60) + ' s' : '—'}</b></div></div>
     <div class="msg info"><span>Meta:</span> ${num(p.capacidade)} <span>plantas por dia</span> (140 × ${p.pessoas} <span>pessoas</span>) · ${(p.dias || []).length} <span>dias</span></div>
     ${p.notas ? `<p class="pequeno">${esc(p.notas)}</p>` : ''}
     ${(p.dias || []).map((d) => `<div class="cartao"><div class="lin"><b>Dia ${d.n}</b><span>${num(d.plantas)} plantas · ${(d.dist_m / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km · ${h(d.minutos)}</span></div>
@@ -2019,7 +2019,22 @@ function ecraPlano(id) {
     <div class="chips"><button class="chip" onclick="verPlanoMapa('${esc(p.id)}')">Ver no mapa</button></div>
     ${esperaPorMim(p) ? `<label>Motivo (obrigatório para recusar)<textarea id="pl-mot" rows="2"></textarea></label>
       <button class="btn" onclick="aprovarPlano('${esc(p.id)}', true)">✓ Aprovar</button><button class="btn aviso" onclick="aprovarPlano('${esc(p.id)}', false)">✗ Recusar</button>` : ''}
+    ${podeAnularPlano(p) ? `<label>Motivo para anular a aprovação (obrigatório)<textarea id="pl-anul" rows="2"></textarea></label>
+      <button class="btn sec" onclick="anularAprovacaoPlano('${esc(p.id)}')">↩️ Anular a minha aprovação</button>
+      <p class="pequeno">O plano volta a ficar por aprovar por si. ${p.estado === 'aprovado' ? 'O activista deixa de ver o itinerário até nova decisão.' : ''}</p>` : ''}
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
+// v201 (03/11/2026, Valdo: "Se eu quiser voltar atrás numa aprovação… não está previsto"): o gestor principal anula um plano
+// aprovado (volta a «por aprovar pelo gestor»); o supervisor anula a sua aprovação enquanto o gestor ainda não decidiu.
+const podeAnularPlano = (p) => (p.estado === 'aprovado' && souAprovadorGestor()) || (p.estado === 'por_gestor' && S.perfil?.papel === 'supervisor' && !S.perfil?.ve_tudo);
+async function anularAprovacaoPlano(id) {
+  const mot = $('#pl-anul')?.value.trim() || '';
+  if (mot.length < 3) { alert('Escreva o motivo para anular a aprovação.'); return; }
+  if (!navigator.onLine) { aviso('Precisa de rede para anular a aprovação.', 'erro'); return; }
+  const r = await sb.rpc('anular_aprovacao_plano', { p_id: id, p_motivo: mot });
+  if (r.error) { aviso(r.error.message, 'erro'); return; }
+  const q = await sb.rpc('planos_lista'); if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data);
+  aviso('Aprovação anulada. O plano voltou a ficar por aprovar.', 'ok'); ecraPlano(id); if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
 }
 async function aprovarPlano(id, sim) {
   const mot = $('#pl-mot')?.value.trim() || null;

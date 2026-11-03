@@ -35,6 +35,24 @@ def med(v, d=None):
     return median(v) if v else d
 
 
+def tempo_por_planta(regas):
+    """Minutos da equipa por planta (entrada → saída ÷ plantas), mediana das regas. 03/11/2026 (Valdo, plano do Lesso:
+    previa 2 h 25 para um dia que levou 5 h 27): ficam de fora as regas com ritmo irreal, como nos avisos ⚠️ da app
+    (plantas por pessoa por hora acima de 3× ou abaixo de 1/3 da mediana da equipa, com 3 ou mais regas)."""
+    rs = []
+    for r in regas:
+        p, s, e = r.get('plantas_regadas') or 0, t(r.get('saida_em')), t(r.get('entrada_em'))
+        if p <= 0 or not s or not e or s <= e: continue
+        m = (s - e).total_seconds() / 60
+        rs.append((m / p, p / ((r.get('pessoas') or 1) * m / 60)))
+    if not rs: return None, 0, 0
+    ok = rs
+    if len(rs) >= 3:
+        mr = median(x[1] for x in rs)
+        ok = [x for x in rs if mr / 3 <= x[1] <= 3 * mr] or rs
+    return median(x[0] for x in ok), len(ok), len(rs) - len(ok)
+
+
 def aprender(dados):
     """O que a equipa fez na ronda: grupos por dia, pessoas, ritmo e deslocações."""
     ronda = dados['ronda']
@@ -55,9 +73,6 @@ def aprender(dados):
         e0, s1 = t(rs[0]['entrada_em']), t(rs[-1].get('saida_em') or rs[-1]['entrada_em'])
         mz = lambda x: (x.hour * 60 + x.minute + 120) % 1440   # hora de Maputo (UTC+2)
         ini.append(mz(e0)); fim.append(mz(s1)); janelas.append((s1 - e0).total_seconds() / 60)
-        for r in rs:
-            if r.get('saida_em') and (r.get('plantas_regadas') or 0) > 0:
-                min_planta.append((t(r['saida_em']) - t(r['entrada_em'])).total_seconds() / 60 / r['plantas_regadas'])
         for a, b in zip(rs, rs[1:]):
             if not a.get('saida_em') or a['area_id'] not in pos or b['area_id'] not in pos: continue
             gap = (t(b['entrada_em']) - t(a['saida_em'])).total_seconds() / 60
@@ -67,7 +82,8 @@ def aprender(dados):
                 pts = [q for q in perc.get(d, []) if t(a['saida_em']).timestamp() <= q[2] <= t(b['entrada_em']).timestamp()]
                 if len(pts) >= 2:
                     cam = sum(metros((p1[1], p1[0]), (p2[1], p2[0])) for p1, p2 in zip(pts, pts[1:]))
-                    if cam > dist * 0.8: fac.append(min(3.0, cam / dist))
+                    if cam > dist * 0.8: fac.append(min(3.0, max(1.0, cam / dist)))   # o caminho nunca é mais curto do que a linha recta
+    min_planta, n_ritmo, n_fora = tempo_por_planta(dados.get('regas_ritmo') or regas)
     primeiro = [por_dia[d][0] for d in sorted(por_dia)]
     inicio_pt = None
     lats = [r['entrada_lat'] for r in primeiro if r.get('entrada_lat') is not None]
@@ -77,7 +93,7 @@ def aprender(dados):
     return {
         'ronda': ronda, 'dias_trabalhados': len(grupos), 'grupos': grupos,
         'pessoas': med(pessoas), 'plantas_por_dia': med(plantas_dia),
-        'min_por_planta': med(min_planta), 'vel_m_min': med(vel), 'factor_caminho': med(fac),
+        'min_por_planta': min_planta, 'n_regas_ritmo': n_ritmo, 'n_regas_fora': n_fora, 'vel_m_min': med(vel), 'factor_caminho': med(fac),
         'hora_inicio': hm(med(ini)), 'hora_fim': hm(med(fim)), 'minutos_dia': med(janelas),
         'n_deslocacoes': len(vel), 'n_caminhos_gps': len(fac), 'inicio': inicio_pt,
     }
