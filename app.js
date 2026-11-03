@@ -2968,8 +2968,12 @@ function abrirFicha(id, nota = '') {
   let acc = '';
   if (emCurso && emCurso.area_id === a.id) acc = (emCurso.motivo_tecnico ? `<div class="msg info">🤝 <span>Rega pela equipa: conta na ronda da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>.</div>` : '') + (emCurso.agua_em
       ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>`
+      : emCurso.sem_vivas
+      ? `<div class="msg info">🥀 <span>Sem plantas vivas para regar: tire a fotografia das plantas mortas ou secas e marque a saída com 0 plantas regadas.</span></div>
+         <button class="btn sec" onclick="semVivas(false)">Afinal há plantas vivas para regar</button>`
       : `<button class="btn" onclick="marcarAgua(false)">💧 Chegou a água (tuk-tuk) agora</button>
-         <button class="btn sec" onclick="marcarAgua(true)">A água já estava no campo quando chegámos</button>`) + cartaoFotosRega(emCurso) +
+         <button class="btn sec" onclick="marcarAgua(true)">A água já estava no campo quando chegámos</button>
+         <button class="btn sec" onclick="semVivas(true)">🥀 Não há plantas vivas para regar (mudas mortas ou secas)</button>`) + cartaoFotosRega(emCurso) +
     `<button class="btn aviso" onclick="ecraSaida()">Terminei — marcar saída</button>
      <button class="btn sec" onclick="ecraNaoRegou()">🚫 Não houve rega neste campo</button>` +
     (!emCurso.fotos?.rega && Date.now() - new Date(emCurso.entrada_em) < 3600e3 ? `<button class="btn sec" onclick="entradaEngano()">↩️ Marquei a entrada no campo errado</button>` : '');
@@ -3157,6 +3161,19 @@ function marcarAgua(jaEstava) {
   abrirFicha(ent.area_id, nota);
 }
 
+// v200 (03/11/2026, Valdo: "Corrigir a app"; sugestões do Selemane de 03/11): campo com todas as mudas mortas ou secas.
+// Sem água nem rega: a 2.ª fotografia é a das plantas mortas, a saída grava 0 plantas regadas com «Mudas secas ou mortas»
+// e o número de mortas; o campo fecha na ronda e o servidor pede a recontagem ao M&E (gatilho recontagem_mudas_mortas).
+function semVivas(v) {
+  const ent = LS.get('emCurso'); if (!ent || ent.agua_em) return;
+  if (v && !confirm('Confirma que neste campo não há nenhuma planta viva para regar? A saída fica com 0 plantas regadas e a app pede ao M&E uma recontagem deste campo.')) return;
+  ent.sem_vivas = !!v;
+  if (ent.fotos?.rega) { delete ent.fotos.rega; if (ent.fotos_meta) delete ent.fotos_meta.rega; }
+  if (ent.rascSaida) delete ent.rascSaida; delete ent.plantas_escritas;
+  LS.set('emCurso', ent); abrirFicha(ent.area_id);
+}
+const tituloFotoRega = (tipo, ent) => (tipo === 'rega' && ent?.sem_vivas ? 'Fotografia das plantas mortas ou secas' : FOTOS_REGA[tipo]);
+
 // ---------- fotografias da rega (15/10/2026, Valdo): entrada, evidência da rega e saída, todas obrigatórias ----------
 // Cada fotografia fica logo no telefone (IndexedDB) com o id do registo; vai para o bucket rega-fotos com o registo.
 const FOTOS_REGA = { entrada: 'Fotografia da entrada', rega: 'Fotografia da rega (evidência)', saida: 'Fotografia da saída' };
@@ -3175,7 +3192,7 @@ async function guardarFotoRega(tipo, foto, meta) {
 function cartaoFotosRega(ent) {
   const f = ent.fotos || {};
   return `<div class="cartao" style="margin:8px 0"><div class="lin"><span><b>Fotografias</b></span><span class="pequeno">obrigatórias</span></div>` +
-    ['entrada', 'rega'].map((t) => `<div class="lin"><span>📷 ${FOTOS_REGA[t]}</span><b>${t === 'rega' && !ent.agua_em && !f[t]
+    ['entrada', 'rega'].map((t) => `<div class="lin"><span>📷 ${tituloFotoRega(t, ent)}</span><b>${t === 'rega' && !ent.agua_em && !ent.sem_vivas && !f[t]
       ? `<span class="pequeno">Depois da chegada da água</span>`
       : f[t]
       ? `<span style="color:var(--ok,#2e7d32)">✓ ${fmtHora(f[t])}</span> <button class="chip" onclick="ecraFotoRega('${t}')">Tirar outra</button>`
@@ -3185,16 +3202,17 @@ function cartaoFotosRega(ent) {
 function ecraFotoRega(tipo, nota = '', r = null) {
   const ent = LS.get('emCurso'); if (!ent) return;
   // v173 (01/11/2026, Valdo): a rega começa quando há água; a fotografia da rega só depois de marcar a chegada da água (tuk-tuk)
-  if (tipo === 'rega' && !ent.agua_em) { alert('Marque primeiro a chegada da água (tuk-tuk). A rega só começa quando há água no campo.'); return abrirFicha(ent.area_id); }
-  const ajuda = { entrada: 'Fotografia da equipa a chegar ao campo.', rega: 'Fotografia da equipa a regar as plantas.', saida: 'Fotografia do campo regado, ao sair.' }[tipo];
-  folha(`${nota}${r?.camara ? AVISO_CAMARA : ''}<h2>${FOTOS_REGA[tipo]}</h2><p class="pequeno">${ajuda} Obrigatória.</p>
-    ${campoFoto('fr-foto', FOTOS_REGA[tipo])}
+  if (tipo === 'rega' && !ent.agua_em && !ent.sem_vivas) { alert('Marque primeiro a chegada da água (tuk-tuk). A rega só começa quando há água no campo.'); return abrirFicha(ent.area_id); }
+  const ajuda = tipo === 'rega' && ent.sem_vivas ? 'Fotografia das plantas mortas ou secas, no campo.' : { entrada: 'Fotografia da equipa a chegar ao campo.', rega: 'Fotografia da equipa a regar as plantas.', saida: 'Fotografia do campo regado, ao sair.' }[tipo];
+  const tit = tituloFotoRega(tipo, ent);
+  folha(`${nota}${r?.camara ? AVISO_CAMARA : ''}<h2>${tit}</h2><p class="pequeno">${ajuda} Obrigatória.</p>
+    ${campoFoto('fr-foto', tit)}
     <button class="btn sec" onclick="LS.del('rascFotoRega');abrirFicha('${esc(ent.area_id)}')">${tipo === 'entrada' ? 'Tirar depois' : 'Voltar'}</button>`);
   rascGuardar('rascFotoRega', { perfil: S.perfil?.id, tipo, camara: false });
   ligarFoto('fr-foto', 'rascFotoRega', async (foto, meta) => {
     if (!foto) return;
     await guardarFotoRega(tipo, foto, meta);
-    abrirFicha(ent.area_id, `<div class="msg ok">${FOTOS_REGA[tipo]} guardada.</div>`);
+    abrirFicha(ent.area_id, `<div class="msg ok">${tit} guardada.</div>`);
   });
 }
 
@@ -3219,11 +3237,12 @@ const contaRonda = (a) => (souActivista() || porEquipa(a)) && hojeISO() >= POR_T
 function ecraSaida(msg = '') {
   const ent = LS.get('emCurso'), a = S.areas.find((x) => x.id === ent.area_id);
   folha(`${msg}<h2>${esc(a.produtor)}</h2><p class="pequeno">Entrada às ${fmtHora(ent.entrada_em)}</p>
-   <label>Plantas regadas neste campo<input id="s-plantas" type="number" inputmode="numeric" min="0" value="${ent.plantas_escritas ?? ''}"></label>
-   <p class="pequeno">Na base: ${plantasTxt(a)}. Escreva o número de plantas que regou.</p>
+   ${ent.sem_vivas ? `<div class="msg info">🥀 <span>Sem plantas vivas para regar: 0 plantas regadas. Escreva quantas plantas encontrou mortas ou secas.</span></div>` : ''}
+   <label>Plantas regadas neste campo<input id="s-plantas" type="number" inputmode="numeric" min="0" value="${ent.sem_vivas ? 0 : ent.plantas_escritas ?? ''}"${ent.sem_vivas ? ' readonly' : ''}></label>
+   ${ent.sem_vivas ? '' : `<p class="pequeno">Na base: ${plantasTxt(a)}. Escreva o número de plantas que regou.</p>`}
    ${(() => { const b = baseSaida(a); return b.ja ? `<div class="msg info">⏳ <span>Campo por terminar: já se regaram</span> ${num(b.ja)} <span>plantas nesta ronda. Faltam</span> ${num(b.resta)}. <span>Escreva só as plantas que regou agora.</span></div>` : ''; })()}
    <label>Pessoas que regaram este campo<input id="s-pessoas" type="number" inputmode="numeric" min="1" max="30" value="${(ent.motivo_tecnico && presTec(a.activista_id) ? presTec(a.activista_id).pessoas || '' : jornadaHoje()?.pessoas) ?? ''}"></label>
-   ${ent.agua_em ? `<p class="pequeno">Água no campo às ${fmtHora(ent.agua_em)}.</p>`
+   ${ent.sem_vivas ? '' : ent.agua_em ? `<p class="pequeno">Água no campo às ${fmtHora(ent.agua_em)}.</p>`
      : `<label>Hora a que chegou a água (tuk-tuk)<input id="s-agua" type="time"></label><p class="pequeno">Obrigatória: entre a entrada (${fmtHora(ent.entrada_em)}) e a fotografia da rega${ent.fotos?.rega ? ` (${fmtHora(ent.fotos.rega)})` : ''}. Se não chegou água, volte e use «🚫 Não houve rega neste campo».</p>`}
    <label>O que dificultou a rega neste campo?</label><p class="pequeno">Pode escolher mais do que um. Se nada dificultou, não escolha nenhum.</p>
    <div id="s-falta"></div>
@@ -3239,6 +3258,7 @@ function ecraSaida(msg = '') {
   const verMortas = () => { $('#s-mortas-box').style.display = document.querySelector('#s-chips .chip.on[data-k="mudas_secas"]') ? '' : 'none'; };
   document.querySelectorAll('#s-chips .chip').forEach((b) => b.onclick = () => { b.classList.toggle('on'); verMortas(); avisoFalta(a); });
   const rs = ent.rascSaida;
+  if (ent.sem_vivas) { const b = document.querySelector('#s-chips .chip[data-k="mudas_secas"]'); if (b) b.classList.add('on'); }
   if (rs) { if (rs.pessoas) $('#s-pessoas').value = rs.pessoas; if (rs.obs) $('#s-obs').value = rs.obs; if (rs.agua && $('#s-agua')) $('#s-agua').value = rs.agua;
     if (rs.mortas != null) $('#s-mortas').value = rs.mortas;
     document.querySelectorAll('#s-chips .chip').forEach((b) => b.classList.toggle('on', (rs.tipos || []).includes(b.dataset.k))); }
@@ -3271,7 +3291,7 @@ async function marcarSaida() {
   const ent = LS.get('emCurso'), a = S.areas.find((x) => x.id === ent.area_id);
   const semFoto = ['entrada', 'rega', 'saida'].find((t) => !ent.fotos?.[t]);
   if (semFoto) { alert(FALTA_FOTO[semFoto]); if (semFoto !== 'saida') ecraFotoRega(semFoto); return; }
-  const plantas = parseInt($('#s-plantas').value, 10);
+  const plantas = ent.sem_vivas ? 0 : parseInt($('#s-plantas').value, 10);
   if (!(plantas >= 0)) { alert('Escreva o número de plantas regadas.'); return; }
   const lim = baseSaida(a).resta;                                // v167: qualquer número acima da base pede confirmação
   if (lim > 0 && plantas > lim && !confirm(`Escreveu ${plantas} plantas, mas este campo só tem ${lim} plantas por regar na base. Confirma que contou bem? A rega fica com um aviso para o técnico e o supervisor.`)) return;
@@ -3294,6 +3314,7 @@ async function marcarSaida() {
   if (tipos.includes('outro') && obs.length < 3) { alert('Escolheu «Outro»: escreva o que aconteceu.'); $('#s-obs').focus(); return; }
   const mortas = tipos.includes('mudas_secas') ? parseInt($('#s-mortas').value, 10) : null;
   if (tipos.includes('mudas_secas') && !(mortas >= 0 && mortas <= 20000)) { alert('Escreva quantas plantas encontrou secas ou mortas.'); $('#s-mortas').focus(); return; }
+  if (ent.sem_vivas && !(tipos.includes('mudas_secas') && mortas > 0)) { alert('Sem plantas vivas: escolha «Mudas secas ou mortas» e escreva quantas plantas encontrou mortas ou secas.'); return; }
   ent.plantas_escritas = String(plantas); ent.rascSaida = { pessoas, tipos, obs, agua: hAgua || '', mortas }; LS.set('emCurso', ent);   // se o GPS falhar, o ecrã volta preenchido
   folha(FOLHA_GPS('A confirmar que ainda está no campo.'));
   // v118 (Razaque: "quando tento gravar volta para a página anterior"): a razão fica escrita no ecrã, não num aviso que desaparece
@@ -3313,7 +3334,7 @@ async function marcarSaida() {
     motivo_repetir: ent.motivo_repetir || null, motivo_tecnico: ent.motivo_tecnico || null,
     criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista' && !porEquipa(a), observacao: obs || null,
     // v154: false = rega a meio (faltam plantas e o motivo não é só mudas secas/mortas): o campo continua por terminar na ronda
-    campo_fechado: hojeISO() < POR_TERMINAR_INICIO ? null : ent.motivo_repetir ? true : !(base > 0 && plantas < base && !tipos.every((t) => FECHA_COM.includes(t))),
+    campo_fechado: hojeISO() < POR_TERMINAR_INICIO ? null : ent.motivo_repetir || ent.sem_vivas ? true : !(base > 0 && plantas < base && !tipos.every((t) => FECHA_COM.includes(t))),
     constr: tipos.map((t) => ({ id: crypto.randomUUID(), tipo: t, descricao: obs || null, plantas: t === 'mudas_secas' ? mortas : null })),
   };
   porNaFila(reg); LS.del('emCurso'); LS.del('rascFotoRega'); actSync(); desenharMapa(); desenharLista();
