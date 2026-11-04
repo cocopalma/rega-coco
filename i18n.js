@@ -237,7 +237,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'O solo mostra sinais de rega?': 'Does the soil show signs of watering?', 'Sim': 'Yes', 'Não': 'No', 'Estado das mudas': 'Seedling condition',
     'Vivas': 'Alive', 'Secas': 'Dry', 'Mortas': 'Dead', 'Nota (0 a 10)': 'Score (0 to 10)', 'Fotografia do campo': 'Photo of the field',
     'Observação (opcional)': 'Note (optional)', 'Gravar verificação': 'Save check', 'Responda às duas perguntas e escolha a nota.': 'Answer both questions and choose the score.',
-    'Tire a fotografia do campo.': 'Take the photo of the field.', 'Não foi possível ler a fotografia. Tire outra.': 'Could not read the photo. Take another one.',
+    'Tire a fotografia do campo.': 'Take the photo of the field.', 'Não foi possível ler a fotografia. Tire outra.': 'Could not read the photo. Take another one.', 'O ecrã da fotografia já fechou. Abra-o outra vez e tire a fotografia.': 'The photo screen has already closed. Open it again and take the photo.',
     'Verificação guardada.': 'Check saved.', 'Verificação guardada no telefone (será enviada quando houver rede).': 'Check saved on the phone (it will be sent when there is network).',
     'Cada técnico e supervisor recebe, a partir das 18:00, uma lista de campos regados nesse dia para verificar. Listas diferentes para cada pessoa, campos sorteados.': 'From 18:00 each technician and supervisor receives a list of fields watered that day to check. Different lists for each person, fields drawn at random.',
     'Campos por dia, por pessoa': 'Fields per day, per person',

@@ -1551,6 +1551,7 @@ window.I18N_SW_D = {
 "Responda às duas perguntas e escolha a nota.": "Jibu maswali yote mawili na uchague alama.",
 "Tire a fotografia do campo.": "Piga picha ya shamba.",
 "Não foi possível ler a fotografia. Tire outra.": "Imeshindikana kusoma picha. Piga nyingine.",
+"O ecrã da fotografia já fechou. Abra-o outra vez e tire a fotografia.": "Skrini ya picha imeshafungwa. Ifungue tena na upige picha.",
 "Verificação guardada.": "Ukaguzi umehifadhiwa.",
 "Verificação guardada no telefone (será enviada quando houver rede).": "Ukaguzi umehifadhiwa kwenye simu (utatumwa kukiwa na mtandao).",
 "Cada técnico e supervisor recebe, a partir das 18:00, uma lista de campos regados nesse dia para verificar. Listas diferentes para cada pessoa, campos sorteados.": "Kuanzia saa 18:00 kila fundi na msimamizi anapokea orodha ya mashamba yaliyomwagiliwa siku hiyo ili ayakague. Orodha tofauti kwa kila mtu, mashamba yamechaguliwa kwa bahati nasibu.",

@@ -4219,12 +4219,17 @@ async function camaraNaApp(aoFoto, semCam) {
   return true;
 }
 function ligarFoto(id, rasc, aoLer) {
+  // v202 (04/11/2026, erro registado no telefone do Gelson): se o ecrã da fotografia já fechou quando a fotografia chega, não a usa (antes dava erro)
+  const lerFoto = async (b, meta) => {
+    if (!document.getElementById(id)) return aviso('O ecrã da fotografia já fechou. Abra-o outra vez e tire a fotografia.', 'erro');
+    try { await aoLer(await reduzirFoto(b), meta); } catch { try { aoLer(null); } catch {} aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); }
+  };
   const abrir = () => { if (rasc) rascGuardar(rasc, { camara: true }); };
   document.querySelectorAll(`label[for="${id}"]`).forEach((l) => l.addEventListener('click', abrir));
   $(`#${id}-cambtn`).onclick = async () => {
     const doSistema = () => { abrir(); $(`#${id}-cam`)?.click(); };   // câmara do telefone
     const ok = await camaraNaApp(async (b) => { if (!b) return aviso('Não foi possível ler a fotografia. Tire outra.', 'erro');
-      try { await aoLer(await reduzirFoto(b), { origem: 'camara_app', tirada: localISO(Date.now()), fonte: 'agora' }); } catch { aoLer(null); aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); } }, doSistema);
+      await lerFoto(b, { origem: 'camara_app', tirada: localISO(Date.now()), fonte: 'agora' }); }, doSistema);
     if (!ok) doSistema();                                         // sem câmara na página: câmara do sistema
   };
   for (const i of [$(`#${id}-cam`), $(`#${id}`)]) i.onchange = async (e) => {
@@ -4233,7 +4238,7 @@ function ligarFoto(id, rasc, aoLer) {
     // v198: a data da fotografia lê-se do ficheiro original (EXIF) antes de ser reduzida (a redução apaga o EXIF)
     let meta = null;
     try { const ex = await dataExif(f); meta = { origem: i.id.endsWith('-cam') ? 'camara_tel' : 'galeria', tirada: ex || (f.lastModified ? localISO(f.lastModified) : null), fonte: ex ? 'exif' : 'ficheiro' }; } catch {}
-    try { await aoLer(await reduzirFoto(f), meta); } catch { aoLer(null); aviso('Não foi possível ler a fotografia. Tire outra.', 'erro'); }
+    await lerFoto(f, meta);
   };
 }
 // ---------- v198 (02/11/2026, Valdo): origem e data das fotografias da rega + carimbo na fotografia ----------
