@@ -2853,15 +2853,17 @@ function ecraRetirar(id) {
     <p><b class="sem-trad">${esc(a.produtor)} · ${esc(a.pr)}</b>${a.activista_id ? ` · <span>equipa de</span> <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span>` : ''}</p>
     <p class="pequeno">O campo sai da lista de rega. Só com um destes dois motivos:</p>
     <div class="chips" id="rt-mot">${MOTIVOS_RETIRAR.map(([k, t]) => `<button class="chip" data-k="${k}">${t}</button>`).join('')}</div>
-    <label>Observação (opcional)<textarea id="rt-obs" rows="2" placeholder="Ex.: o caminho ficou cortado; as mudas secaram todas"></textarea></label>
+    <label>Justificação (obrigatória)<textarea id="rt-obs" rows="2" placeholder="Ex.: o caminho ficou cortado; as mudas secaram todas"></textarea></label>
+    <p class="pequeno">Diga o que viu no campo, para o supervisor e o gestor perceberem porque o campo saiu da rega.</p>
     <p class="pequeno">Para voltar a pôr o campo na rega: Campos › «➕ Voltar a pôr um campo na rega».</p>
     <div id="rt-msg"></div>
     <button class="btn aviso" id="rt-ok">🗑 Retirar da rega</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
   document.querySelectorAll('#rt-mot .chip').forEach((b) => (b.onclick = () => { mot = b.dataset.k; document.querySelectorAll('#rt-mot .chip').forEach((c) => c.classList.toggle('on', c === b)); }));
   $('#rt-ok').onclick = () => {
     if (!mot) return ($('#rt-msg').innerHTML = '<div class="msg erro">Escolha o motivo.</div>');
+    if ($('#rt-obs').value.trim().length < 3) return ($('#rt-msg').innerHTML = '<div class="msg erro">Escreva a justificação.</div>');
     if (!confirm('Retirar este campo da rega?')) return;
-    porNaFilaAlt({ tipo: 'retirar', area_id: id, motivo: mot, obs: $('#rt-obs').value.trim() || null, em: new Date().toISOString() });
+    porNaFilaAlt({ tipo: 'retirar', area_id: id, motivo: mot, obs: $('#rt-obs').value.trim(), em: new Date().toISOString() });
     S.areas = S.areas.filter((x) => x.id !== id); LS.set('areas', S.areas);
     fecharFolha(); desenharMapa(); desenharLista(); if ($('#e-hoje').classList.contains('on')) desenharHoje();
     aviso(navigator.onLine ? 'Campo retirado da rega.' : 'Campo retirado da rega. Será enviado quando houver rede.', 'ok');
