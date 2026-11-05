@@ -656,7 +656,7 @@ window.I18N_SW_D = {
 "Escreva o que pode melhorar na app ou o problema que encontrou no campo. Pode juntar até 3 fotografias ou capturas do ecrã.": "Andika kinachoweza kuboreshwa kwenye programu au tatizo ulilokutana nalo shambani. Unaweza kuongeza hadi picha 3 au picha za skrini.",
 "Fotografias ou capturas do ecrã (opcional, até 3)": "Picha au picha za skrini (si lazima, hadi 3)",
 "📷 Guardar imagem dos indicadores": "📷 Hifadhi picha ya viashiria",
-"campos com equipa, na ronda actual de cada uma": "mashamba yenye timu, katika mzunguko wa sasa wa kila timu",
+"campos com equipa, na ronda actual de cada uma": "mashamba yenye timu, katika mzunguko wa sasa wa kila timu", "campos na rega já receberam pelo menos uma rega": "mashamba ya umwagiliaji yamepata angalau umwagiliaji mmoja",
 "com pelo menos uma rega no período": "yenye angalau umwagiliaji mmoja katika kipindi",
 "Campos na rega:": "Mashamba kwenye orodha ya umwagiliaji:",
 "campos com equipa já regados na ronda actual de cada equipa": "mashamba yenye timu yaliyokwisha kumwagiliwa katika mzunguko wa sasa wa kila timu",
