@@ -350,6 +350,14 @@
   // ---------- 5. respostas aos pedidos da app ----------
   const RPC = {
     estado_ronda: () => estadoRonda(), estado_ronda2: () => estadoRonda(), estado_ronda3: () => estadoRonda(), regas_outra_equipa: () => [], trilhos: () => ({ agora: new Date().toISOString(), fontes: {} }), gravar_trilho: () => null, correccoes_nome_lista: () => [], confirmar_correccao_nome: () => null,
+    // v204: autorizações do supervisor para regar um campo já regado (só na simulação, guardadas na base de exemplo)
+    autorizacoes_rega_lista: () => (DB.autoriz || []).filter((z) => z.para_data >= dia(0)), campos_fechados_sem_plantas: () => [],
+    autorizar_rega: (a) => { const d = new Date(); d.setDate(d.getDate() + (d.getDay() === 6 ? 2 : 1)); const pd = d.toLocaleDateString('sv-SE');
+      const ar = DB.areas.find((x) => x.id === a.p_area); DB.autoriz ||= [];
+      let z = DB.autoriz.find((x) => x.area_id === a.p_area && x.para_data === pd);
+      if (!z) { z = { id: uid(), area_id: a.p_area, activista_id: ar?.activista_id || null, para_data: pd, motivo: a.p_motivo, quem: 'Supervisor Exemplo', posso: true, autorizado_em: new Date().toISOString() }; DB.autoriz.push(z); }
+      return { id: z.id, para_data: pd }; },
+    cancelar_autorizacao_rega: (a) => { DB.autoriz = (DB.autoriz || []).filter((x) => x.id !== a.p_id); return null; },
     lista_comunidades: () => [...new Set(DB.areas.map((a) => a.comunidade))].sort(),
     pontos_comunidades: () => (papel === 'oficial_me' ? [] : DB.areas.map((a) => ({ comunidade: a.comunidade, zona: a.zona, lat: a.latitude, lon: a.longitude }))),
     recontagens_lista: () => recontagensLista(),

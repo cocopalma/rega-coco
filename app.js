@@ -268,7 +268,7 @@ const testeEquipa = (id) => (VER_TESTES_EQ.includes(S.perfil?.papel) ? (S.testes
 const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a', terminar: '#f9a825' };
 // borda do campo no mapa (16/10/2026, Dalmar via Valdo): azul = já recebeu rega nesta ronda, vermelho = ainda não (ver bordaAzul)
 const BORDA = { regado: '#1e5bd8', nunca: '#c62828' };
-const COLS_AREAS = 'id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em,n_regas_origem,ultima_rega_origem,datas_rega_origem,plantas_regadas_origem,regas_origem_por_pr';
+const COLS_AREAS = 'id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em,n_regas_origem,ultima_rega_origem,datas_rega_origem,plantas_regadas_origem,regas_origem_por_pr,wa_ultima,wa_n,wa_por_pr';
 // regas do campo: antes da app (ficheiro do Dalmar, dados até CFG.dataOrigem) + na app (servidor e as que ainda estão no telefone)
 function regasDoCampoInfo(a) {
   const e = S.estado[a.id] || {}, fila = filaRegistos().filter((r) => r.area_id === a.id && !r.teste && r.plantas_regadas > 0);
@@ -282,6 +282,38 @@ const jaRegado = (a) => regasDoCampoInfo(a).total > 0;
 // borda azul = já recebeu rega NESTA ronda (16/10/2026, Valdo: "zera em cada ronda"). Na 1.ª ronda contam também as regas
 // de antes da app (ficheiro do Dalmar); a partir da 2.ª ronda só conta a rega da ronda (interior verde).
 const bordaAzul = (a, s = situacao(a)) => s.cod === 'feita' || ((s.n || 1) === 1 && jaRegado(a));
+// v204 (05/11/2026, Valdo: "priorizar… os que ainda não receberam água nem uma vez"): primeiro os campos que nunca receberam
+// água, nem na app nem no WhatsApp (ficheiro do Dalmar, areas.wa_ultima). Registo do WhatsApp só por produtor (wa_por_pr,
+// regas_origem_por_pr): não se sabe que campo foi regado, conta como nunca regado (Valdo: o KMZ de 04/11 também não diz).
+// Enquanto a equipa tiver campos destes, um campo que já recebeu água só se rega com autorização do supervisor, dada para
+// o dia de rega seguinte (autorizacoes_rega). Os campos por terminar e os de apoio entre equipas não ficam presos.
+function nuncaAgua(a) {
+  if (!a || (S.estado[a.id]?.n || 0) > 0) return false;
+  if (a.wa_ultima && !a.wa_por_pr) return false;
+  if (!a.regas_origem_por_pr && (a.n_regas_origem || 0) > 0) return false;
+  return !regadosNoTelefone().has(a.id);
+}
+let _regTel = null;                                    // campos com rega real no telefone (fila + equipa), guardado 0,5 s
+function regadosNoTelefone() {
+  if (_regTel && Date.now() - _regTel.t < 500) return _regTel.s;
+  const s = new Set(S.fechSemPl || []);                 // rega real sem plantas vivas (v200) também conta
+  for (const r of filaRegistos()) if (!r.teste && (r.plantas_regadas > 0 || r.campo_fechado)) s.add(r.area_id);
+  for (const r of meusRegistos()) s.add(r.area_id);
+  _regTel = { t: Date.now(), s }; return s;
+}
+const ultimaAgua = (a) => [ultimaRega(a), a.wa_ultima && !a.wa_por_pr ? a.wa_ultima : null].filter(Boolean).sort().pop() || null;
+const nuncaDaEquipa = (act) => (act ? S.areas.filter((x) => x.activista_id === act && nuncaAgua(x)) : []);
+const autorizacao = (id, dia = hojeISO()) => (S.autoriz || []).find((z) => z.area_id === id && z.para_data === dia) || null;
+const autorizacoesDe = (id) => (S.autoriz || []).filter((z) => z.area_id === id && z.para_data >= hojeISO());
+const podeAutorizar = (a) => !!(a?.activista_id && !S.perfil?.so_teste && (S.perfil?.papel === 'gestor' || (S.perfil?.papel === 'supervisor' && !S.perfil?.ve_tudo && meuCampo(a))));
+// dia de rega seguinte: amanhã (sábado → segunda; não há rega ao domingo), como privado.dia_verif no servidor
+function diaRegaSeguinte() { const d = new Date(); d.setDate(d.getDate() + (d.getDay() === 6 ? 2 : 1)); return d.toLocaleDateString('sv-SE'); }
+// campos nunca regados da equipa que impedem a entrada neste campo (ou null)
+function bloqueioAgua(a) {
+  if (!a?.activista_id || nuncaAgua(a) || infoTerminar(a) || apoioMeu(a.id) || autorizacao(a.id)) return null;
+  const l = nuncaDaEquipa(a.activista_id);
+  return l.length ? l : null;
+}
 const plantasTxt = (a) => (a.vivas > 0 ? `${num(a.vivas)} plantas vivas` : `${num(a.instaladas)} mudas plantadas`);
 const plantasN = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
 const nomeAct = (id) => (S.activistas.find((x) => x.id === id) || {}).nome || '(por atribuir)';
@@ -295,7 +327,7 @@ const visiveis = () => (S.filtro === 'meus' && S.perfil?.papel === 'activista' ?
 
 // ---------- fila offline ----------
 const filaRegistos = () => LS.get('fila', []);
-function porNaFila(reg) { const f = filaRegistos(); f.push(reg); LS.set('fila', f); }
+function porNaFila(reg) { const f = filaRegistos(); f.push(reg); LS.set('fila', f); _regTel = null; }
 let aSincronizar = false;
 async function sincronizar(silencioso = false) {
   if (aSincronizar) return; aSincronizar = true;
@@ -475,13 +507,17 @@ async function carregarEstado(pronto) {
   if (PODE_REGAR.includes(papel)) { carregarSemMotivo().catch(() => {}); carregarDiasSemRega().catch(() => {}); tarefas.push(carregarApoios()); }
   if (!['oficial_me'].includes(papel))                // v163: regas de outra equipa feitas antes de o campo passar para esta equipa
     tarefas.push(sb.rpc('regas_outra_equipa').then((q) => { if (!q.error && Array.isArray(q.data)) { S.outras = q.data; LS.set('outras', q.data); } }));
+  if (!['cliente', 'oficial_me'].includes(papel)) {       // v204: autorizações do supervisor e campos fechados sem plantas
+    tarefas.push(sb.rpc('autorizacoes_rega_lista').then((q) => { if (!q.error && Array.isArray(q.data)) { S.autoriz = q.data; LS.set('autoriz', q.data); } }));
+    tarefas.push(sb.rpc('campos_fechados_sem_plantas').then((q) => { if (!q.error && Array.isArray(q.data)) { S.fechSemPl = q.data.map((x) => (typeof x === 'string' ? x : x.campos_fechados_sem_plantas || x.area_id)); LS.set('fechSemPl', S.fechSemPl); } }));
+  }
   if (VER_TESTES_EQ.includes(papel))
     tarefas.push(sb.rpc('testes_equipa').then((q) => { if (!q.error && Array.isArray(q.data)) { S.testesEq = Object.fromEntries(q.data.map((x) => [x.area_id, { data: x.data, n: x.n, quem: x.quem }])); LS.set('testesEquipa', S.testesEq); } }));
   await Promise.all(tarefas.map((t) => Promise.resolve(t).catch(() => {})));
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []); S.autoriz = LS.get('autoriz', []); S.fechSemPl = LS.get('fechSemPl', []);
   return !!(S.perfil && S.areas.length);
 }
 
@@ -571,7 +607,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -2351,7 +2387,7 @@ function desenharLista() {
   if (com) { const [c, z] = com.split('|'); L2 = L2.filter((a) => a.comunidade === c && (z === undefined || (a.zona || '') === z)); }
   if (txt) L2 = L2.filter((a) => (a.produtor || '').toLowerCase().includes(txt) || a.pr.toLowerCase().includes(txt));
   let linhas = L2.map((a) => ({ a, s: situacao(a), d: S.pos ? distCampo(a, S.pos) : null }));
-  if (sit === 'nunca') linhas = linhas.filter((x) => !jaRegado(x.a));
+  if (sit === 'nunca') linhas = linhas.filter((x) => nuncaAgua(x.a));   // v204: nem na app, nem no WhatsApp
   else if (sit === 'queimada') linhas = linhas.filter((x) => queimadaDe(x.a.id));
   else if (sit === 'plantas') linhas = linhas.filter((x) => nPlantas(x.a.id));
   else if (sit === 'semcoord') linhas = linhas.filter((x) => semCoord(x.a));
@@ -2359,18 +2395,20 @@ function desenharLista() {
   else if (sit === 'teste') linhas = linhas.filter((x) => testeEm(x.a.id));
   else if (sit === 'testeq') linhas = linhas.filter((x) => testeEm(x.a.id) || testeEquipa(x.a.id));
   else if (sit) linhas = linhas.filter((x) => x.s.cod === sit);
-  const ordem = (c) => (c === 'terminar' ? 0 : c === 'feita' ? 2 : 1);   // por terminar primeiro (v154), regados no fim
-  linhas.sort((x, y) => ordem(x.s.cod) - ordem(y.s.cod) || (x.d ?? 1e12) - (y.d ?? 1e12));
+  // v204: primeiro os que nunca receberam água, depois os por terminar (v154), depois os há mais tempo sem água; regados no fim
+  for (const x of linhas) { x.nun = x.s.cod !== 'feita' && nuncaAgua(x.a); x.ua = x.nun ? '' : ultimaAgua(x.a) || ''; }
+  const ordem = (x) => (x.nun ? 0 : x.s.cod === 'terminar' ? 1 : x.s.cod === 'feita' ? 3 : 2);
+  linhas.sort((x, y) => ordem(x) - ordem(y) || (ordem(x) === 2 ? x.ua.localeCompare(y.ua) : 0) || (x.d ?? 1e12) - (y.d ?? 1e12));
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
     (porAprovar().length ? `<div class="msg info">${porAprovar().length} medições de área por aprovar. <button class="chip" onclick="ecraPorAprovar()">Ver</button></div>` : '') +
     avisoSemLimite(sit) +
     (porAtribuir().length && sit !== 'sem' ? `<div class="msg info">${porAtribuir().length} campos por atribuir. <button class="chip" onclick="$('#f-sit').value='sem';desenharLista()">Ver</button></div>` : '') +
     (sit ? `<div class="msg info">Filtro: ${esc($('#f-sit').selectedOptions[0]?.textContent || '')}. <button class="chip" onclick="$('#f-sit').value='';desenharLista()">← Ver todos os campos</button></div>` : '') +
     (['supervisor', 'gestor', 'tecnico'].includes(S.perfil?.papel) ? `<button class="btn sec" onclick="ecraVoltarRega()">➕ Voltar a pôr um campo na rega</button>` : '') +
-    `<p class="pequeno">${linhas.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` +
-    linhas.slice(0, 300).map(({ a, s, d }) => `<div class="item" data-id="${esc(a.id)}"><div>
+    `<p class="pequeno">${linhas.length} <span>campos</span> · <span>primeiro os que nunca receberam água, depois os que estão há mais tempo sem água</span></p>` +
+    linhas.slice(0, 300).map(({ a, s, d, nun }) => `<div class="item" data-id="${esc(a.id)}"><div>
       <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
-      </div>${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${apoioDoCampo(a.id) ? `<span class="tag t-outra">🤝 <span>Apoio de</span> <span class="sem-trad">${esc(nomeAct(apoioDoCampo(a.id).ajuda_activista_id))}</span></span>` : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}<span class="tag t-${s.cod}">${s.txt}</span>${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
+      </div>${nun ? '<span class="tag t-nunca">💧 <span>Nunca recebeu água</span></span>' : ''}${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${apoioDoCampo(a.id) ? `<span class="tag t-outra">🤝 <span>Apoio de</span> <span class="sem-trad">${esc(nomeAct(apoioDoCampo(a.id).ajuda_activista_id))}</span></span>` : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}<span class="tag t-${s.cod}">${s.txt}</span>${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
 }
 
 // ---------- mapa de plantas (15/10/2026, pedido do Dalmar; teste com gestor/director, supervisores e técnicos) ----------
@@ -2996,8 +3034,11 @@ function abrirFicha(id, nota = '') {
   else if (podeRegar && meuCampo(a)) {
     S.motTec = null;                                             // v166: a escolha «pela equipa» faz-se de novo a cada entrada
     const sem = porEquipa(a), pela = !sem && podeTecEquipa(a);
+    const bl = (souActivista() && a.activista_id === S.perfil.activista_id) || sem ? bloqueioAgua(a) : null;   // v204
     acc = (sem ? `<div class="msg info">📵 <span>${esc(nomeAct(a.activista_id))} não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele.</span></div>` : '') +
-      `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>` +
+      (bl ? `<div class="msg erro">💧 <span>Este campo já recebeu água. A equipa ainda tem</span> <b>${bl.length}</b> <span>campos que nunca receberam água: regue esses primeiro. Para regar este campo, o supervisor tem de autorizar (vale para o dia de rega seguinte).</span></div>
+        <button class="btn" onclick="ecraBloqueioAgua('${esc(a.id)}')">💧 Ver os campos que nunca receberam água</button>`
+        : `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`) +
       (pela ? `<p class="pequeno" style="margin:2px 0 6px">Rega de teste: não conta para a equipa.</p><button class="btn sec" onclick="ecraRegaPelaEquipa('${esc(a.id)}')">🤝 Regar pela equipa (conta na ronda)</button>` : '');
   }
   const alheio = !meuCampo(a); S.soVer = alheio;
@@ -3009,7 +3050,9 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Activista</span><b>${esc(nomeAct(a.activista_id))}</b></div>
     ${a.activista_id ? `<div class="lin"><span>Técnico</span><b class="sem-trad">${esc(tecDe(a) || '—')}</b></div><div class="lin"><span>Supervisor</span><b class="sem-trad">${esc(supDe(a) || '—')}</b></div>` : ''}
     ${a.instaladas != null ? `<div class="lin"><span>Plantas instaladas</span><b>${num(a.instaladas)}</b></div>` : ''}<div class="lin"><span>Plantas vivas</span><b>${a.vivas != null ? num(a.vivas) : '—'}</b></div>${a.instaladas != null && a.vivas != null && a.instaladas >= a.vivas ? `<div class="lin"><span>Plantas mortas</span><b>${num(a.instaladas - a.vivas)}</b></div>` : ''}
-    <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div>
+    <div class="lin"><span>Última rega</span><b>${fmtData(ultimaAgua(a) || s.u)}</b></div>
+    ${a.wa_ultima ? `<div class="lin"><span>Registo do WhatsApp</span><b>${a.wa_por_pr ? '<span>só por produtor (não diz o campo)</span>' : `${fmtData(a.wa_ultima)} · ${a.wa_n || 1} ${a.wa_n > 1 ? '<span>regas</span>' : '<span>rega</span>'}`}</b></div>` : ''}
+    ${nuncaAgua(a) ? '<div class="msg erro">💧 <span>Este campo nunca recebeu água (nem na app, nem no registo do WhatsApp).</span></div>' : ''}
     ${linhasRegasCampo(a)}
     <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
     ${linhaOutraEquipa(a, s)}
@@ -3019,7 +3062,7 @@ function abrirFicha(id, nota = '') {
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (simulação)</button><p class="pequeno" style="margin:0 0 6px">Só na simulação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${a.latitude != null || temPoligono(a) ? `<button class="chip" style="margin:6px 0" onclick="navegarCampo('${esc(a.id)}')">🧭 <span>Navegar até ao campo</span></button>` : ''}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${cartaoAutorizacao(a, alheio)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (simulação)</button><p class="pequeno" style="margin:0 0 6px">Só na simulação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${a.latitude != null || temPoligono(a) ? `<button class="chip" style="margin:6px 0" onclick="navegarCampo('${esc(a.id)}')">🧭 <span>Navegar até ao campo</span></button>` : ''}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
   S.soVer = false;
   if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
 }
@@ -3126,6 +3169,9 @@ async function marcarEntrada(id, motivoIt = null, motivoSug = null) {
   const a = S.areas.find((x) => x.id === id);
   const minha = souActivista() && a.activista_id === S.perfil.activista_id, apoio = apoioMeu(id);
   if (apoio && situacao(a).cod === 'feita') return abrirFicha(id, `<div class="msg erro">Este campo já foi regado nesta ronda da equipa de ${esc(nomeAct(a.activista_id))}.</div>`);
+  if ((souActivista() && minha) || porEquipa(a)) {             // v204: primeiro os campos que nunca receberam água
+    const bl = bloqueioAgua(a); if (bl) return ecraBloqueioAgua(id);
+  }
   if ((souActivista() && minha) || porEquipa(a)) {             // regra da ronda: não repetir antes de acabar a lista
     const ri = rondaInfo(a.activista_id);
     if (ri.feitas.has(id) && S.motRep?.id !== id) return ecraMotivoRepetir(id, ri);   // v164: pode voltar a regar, com motivo
@@ -3135,6 +3181,7 @@ async function marcarEntrada(id, motivoIt = null, motivoSug = null) {
   const it = minha ? itinerarioHoje() : null;               // plano da equipa aprovado (23/10/2026, Valdo): sugestão; fora dele, diz porquê
   if (motRep && motivoIt == null) motivoIt = motRep;          // v164: o motivo de voltar a regar já explica; não pergunta de novo
   if (motRep && motivoSug == null) motivoSug = motRep;
+  if (it && !it.campos.includes(id) && motivoIt == null && nuncaAgua(a)) motivoIt = 'Campo que nunca recebeu água (prioridade)';   // v204
   if (it && !it.campos.includes(id) && motivoIt == null) return ecraMotivoItinerario(id, it);
   const sh = minha && !it ? sugHoje() : null, sa = sh && sh.area_id !== id ? S.areas.find((x) => x.id === sh.area_id) : null;
   if (sa && situacao(sa).cod !== 'feita' && motivoSug == null) return ecraMotivoSugestao(id, sa, motivoIt);
@@ -3475,6 +3522,7 @@ function sugerirProximo(feito, nota = '', regId = null) {
     cand = por.filter((a) => a.latitude != null);
     // v154: os campos por terminar vêm primeiro (antes do itinerário), o mais perto entre eles
     var term = cand.filter((a) => sits.get(a.id) === 'terminar');
+    var nun = souActivista() || porEquipa(feito) ? cand.filter((a) => nuncaAgua(a)) : [];   // v204: primeiro os que nunca receberam água
     Object.assign(log, { n_lista: lista.length, n_por: por.length, n_sem_coord: por.length - cand.length, n_candidatos: cand.length, origem_pos: S.pos ? 'gps' : de ? 'campo' : null });
   } catch (e) {
     registarSugProx({ ...log, mostrada: false, motivo: 'erro: ' + (e?.message || e) }); return semSug();
@@ -3488,8 +3536,11 @@ function sugerirProximo(feito, nota = '', regId = null) {
   const it = souActivista() ? itinerarioHoje() : null;
   const pIt = it ? it.campos.map((i) => S.areas.find((x) => x.id === i)).find((x) => x && x.id !== feito.id && !it.feitas.has(x.id) && x.latitude != null) : null;
   term.sort((x, y) => metros(de, [x.latitude, x.longitude]) - metros(de, [y.latitude, y.longitude]));
-  const p = term[0] || pIt || cand[0], d = metros(de, [p.latitude, p.longitude]), s = situacao(p);
-  if (term[0]) log.motivo = 'por_terminar'; else if (pIt) log.motivo = 'itinerario';
+  nun.sort((x, y) => metros(de, [x.latitude, x.longitude]) - metros(de, [y.latitude, y.longitude]));
+  // v204: depois dos nunca regados e dos por terminar, o que está há mais tempo sem água (o mais perto, se a data for igual)
+  const velho = [...cand].sort((x, y) => String(ultimaAgua(x) || '').localeCompare(String(ultimaAgua(y) || '')) || metros(de, [x.latitude, x.longitude]) - metros(de, [y.latitude, y.longitude]))[0];
+  const p = nun[0] || term[0] || pIt || velho, d = metros(de, [p.latitude, p.longitude]), s = situacao(p);
+  if (nun[0]) log.motivo = 'nunca_regado'; else if (term[0]) log.motivo = 'por_terminar'; else if (pIt) log.motivo = 'itinerario'; else log.motivo = 'mais_tempo_sem_agua';
   LS.set('sugestao', { area_id: p.id, em: new Date().toISOString() });
   registarSugProx({ ...log, mostrada: true, area_sugerida_id: p.id, distancia_m: Math.round(d) });
   mostrarSugFixa();
@@ -3497,7 +3548,7 @@ function sugerirProximo(feito, nota = '', regId = null) {
     <h2>Próximo campo sugerido</h2>
     <div class="cartao"><div class="lin"><span>Produtor</span><b>${esc(p.produtor)}</b></div>
      <div class="lin"><span>PR</span><b>${esc(p.pr)}</b></div><div class="lin"><span>Plantas</span><b>${plantasTxt(p)}</b></div>
-     <div class="lin"><span>Última rega</span><b>${fmtData(s.u)}</b></div><div class="lin"><span>Ronda</span><span class="tag t-${s.cod}">${s.txt}</span></div>
+     <div class="lin"><span>Última rega</span><b>${nuncaAgua(p) ? '💧 <span>Nunca recebeu água</span>' : fmtData(ultimaAgua(p))}</b></div><div class="lin"><span>Ronda</span><span class="tag t-${s.cod}">${s.txt}</span></div>
      <div class="lin"><span>Distância</span><b>${d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km'} · ${rumo(de, [p.latitude, p.longitude])}</b></div></div>
     <p class="pequeno">É só uma sugestão. Pode escolher outro campo. Fica no Mapa e no Hoje até marcar a próxima entrada.</p>
     <button class="btn" onclick="fecharFolha();verSugMapa()">Ver no mapa</button>
@@ -3512,14 +3563,16 @@ function sugActual() {                                 // a sugestão guardada, 
       const a = S.areas.find((x) => x.id === g.area_id); if (a && a.latitude != null) return a;
     }
   }
-  // v154: sem sugestão de hoje, o campo por terminar mais perto é o primeiro a regar
+  // v204: sem sugestão de hoje, primeiro o campo nunca regado mais perto; v154: depois o por terminar mais perto
+  const n0 = souActivista() ? nuncaDaEquipa(S.perfil.activista_id).filter((a) => a.latitude != null) : [];
+  if (n0.length) { if (S.pos) n0.sort((x, y) => metros(S.pos, [x.latitude, x.longitude]) - metros(S.pos, [y.latitude, y.longitude])); return n0[0]; }
   const l = porTerminarMeus().map((x) => x.a).filter((a) => a.latitude != null);
   if (S.pos) l.sort((x, y) => metros(S.pos, [x.latitude, x.longitude]) - metros(S.pos, [y.latitude, y.longitude]));
   return l[0] || null;
 }
 function textoSugFixa(a) {
   const dist = S.pos ? metros(S.pos, [a.latitude, a.longitude]) : null, pt = infoTerminar(a);
-  return `➡️ <span>Próximo campo sugerido</span>: <b class="sem-trad">${esc(a.produtor)}</b> · <span class="sem-trad">${esc(a.pr)}</span>${dist != null ? ` · <span class="sem-trad">${dist < 1000 ? Math.round(dist) + ' m' : (dist / 1000).toFixed(1) + ' km'}</span> · <span>${rumo(S.pos, [a.latitude, a.longitude])}</span>` : ''}${pt ? ` · ⏳ <span>${`Por terminar (faltam ${pt.falta} plantas)`}</span>` : ''}`;
+  return `➡️ <span>Próximo campo sugerido</span>: <b class="sem-trad">${esc(a.produtor)}</b> · <span class="sem-trad">${esc(a.pr)}</span>${dist != null ? ` · <span class="sem-trad">${dist < 1000 ? Math.round(dist) + ' m' : (dist / 1000).toFixed(1) + ' km'}</span> · <span>${rumo(S.pos, [a.latitude, a.longitude])}</span>` : ''}${pt ? ` · ⏳ <span>${`Por terminar (faltam ${pt.falta} plantas)`}</span>` : ''}${nuncaAgua(a) ? ' · 💧 <span>Nunca recebeu água</span>' : ''}`;
 }
 // v154: campos da minha equipa com a rega a meio nesta ronda (activista)
 function porTerminarMeus() {
@@ -3534,6 +3587,90 @@ function cartaoPorTerminar() {
     l.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.a.produtor)} · ${esc(x.a.pr)}</div>
       <div class="sub"><span>Faltam</span> ${num(x.falta)} <span>de</span> ${num(plantasN(x.a))} <span>plantas</span>${x.data ? ` · <span>rega a meio a</span> ${fmtData(x.data)}` : ''}</div>
       <div class="chips">${x.a.latitude != null ? `<button class="chip" onclick="mudar('mapa');setTimeout(()=>{mapa.invalidateSize();mapa.setView([${x.a.latitude},${x.a.longitude}],16)},50)">Ver no mapa</button>` : ''}<button class="chip" onclick="abrirFicha('${esc(x.a.id)}')">Abrir a ficha</button></div></div>`).join('') + '</div>';
+}
+// ---------- v204: primeiro os campos que nunca receberam água (05/11/2026, Valdo) ----------
+const textoDist = (d) => (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km');
+function itemNunca(x) {
+  const d = S.pos && x.latitude != null ? metros(S.pos, [x.latitude, x.longitude]) : null, sitio = x.latitude != null || temPoligono(x);
+  return `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor)} · ${esc(x.pr)}</div>
+    <div class="sub">${plantasTxt(x)}${d != null ? ' · ' + textoDist(d) : ''}${sitio ? '' : ' · <span>sem coordenada</span>'}</div>
+    <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.id)}')">Abrir a ficha</button>${sitio ? `<button class="chip" onclick="navegarCampo('${esc(x.id)}')">🧭 <span>Navegar</span></button>` : ''}</div></div>`;
+}
+const pertoPrimeiro = (l) => [...l].sort((x, y) => (S.pos && x.latitude != null ? metros(S.pos, [x.latitude, x.longitude]) : 1e12) - (S.pos && y.latitude != null ? metros(S.pos, [y.latitude, y.longitude]) : 1e12));
+// a entrada num campo que já recebeu água, com campos nunca regados na equipa e sem autorização para hoje
+function ecraBloqueioAgua(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  const l = pertoPrimeiro(nuncaDaEquipa(a.activista_id)), u = ultimaAgua(a), z = autorizacoesDe(a.id)[0];
+  folha(`<h2>Primeiro os campos que nunca receberam água</h2>
+    <div class="msg erro"><span>Este campo já recebeu água</span>${u ? ` (<span>última rega</span>: ${fmtData(u)})` : ''}. <span>A equipa ainda tem</span> <b>${l.length}</b> <span>campos que nunca receberam água. Regue esses campos primeiro.</span></div>
+    ${z ? `<div class="msg info">✅ <span>Rega deste campo autorizada para</span> ${fmtData(z.para_data)}.</div>` : '<p class="pequeno">Para regar este campo antes de acabar os campos que nunca receberam água, peça ao supervisor. A autorização vale para o dia de rega seguinte, não para hoje.</p>'}
+    <h3><span>Campos que nunca receberam água</span> (${l.length})</h3>
+    ${l.slice(0, 15).map(itemNunca).join('')}
+    ${l.length > 15 ? `<p class="pequeno"><span>Mais campos:</span> ${l.length - 15}. <span>Veja todos em Campos › «💧 Nunca recebeu água».</span></p>` : ''}
+    <button class="btn sec" onclick="abrirFicha('${esc(a.id)}')">Voltar à ficha</button>`);
+}
+// ficha do campo: autorizações do supervisor e o botão para autorizar
+function cartaoAutorizacao(a, alheio = false) {
+  const z = autorizacoesDe(a.id), pode = podeAutorizar(a) && !alheio, dia = diaRegaSeguinte();
+  let h = z.map((x) => `<div class="msg ok">✅ <span>Rega autorizada para</span> ${fmtData(x.para_data)} <span>por</span> <b class="sem-trad">${esc(x.quem || '?')}</b>${x.motivo ? `: <span class="sem-trad">${esc(x.motivo)}</span>` : ''}${pode && x.posso !== false ? ` <button class="chip" onclick="cancelarAutorizacao('${esc(x.id)}','${esc(a.id)}')">Cancelar</button>` : ''}</div>`).join('');
+  if (pode && !z.some((x) => x.para_data === dia) && !nuncaAgua(a) && nuncaDaEquipa(a.activista_id).length)
+    h += `<div class="msg info"><span>A equipa ainda tem</span> <b>${nuncaDaEquipa(a.activista_id).length}</b> <span>campos que nunca receberam água: este campo só se rega com a sua autorização.</span></div>
+      <button class="btn sec" onclick="ecraAutorizar('${esc(a.id)}')">✅ <span>Autorizar a rega deste campo para</span> ${fmtData(dia)}</button>`;
+  return h;
+}
+function ecraAutorizar(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  const dia = diaRegaSeguinte(), n = nuncaDaEquipa(a.activista_id).length;
+  folha(`<h2>Autorizar a rega deste campo</h2>
+    <p><b class="sem-trad">${esc(a.produtor)} · ${esc(a.pr)}</b> · <span>equipa de</span> <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span></p>
+    <div class="msg info"><span>Este campo já recebeu água e a equipa ainda tem</span> <b>${n}</b> <span>campos que nunca receberam água.</span> <span>A autorização vale só para</span> <b>${fmtData(dia)}</b> <span>(dia de rega seguinte).</span></div>
+    <label>Porque autoriza? (obrigatório)<textarea id="az-motivo" rows="3" placeholder="Ex.: plantas a secar; os campos nunca regados estão sem acesso"></textarea></label>
+    <div id="az-msg"></div>
+    <button class="btn" id="az-ok">✅ Autorizar</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
+  $('#az-ok').onclick = async () => {
+    const m = $('#az-motivo').value.trim();
+    if (m.length < 3) return ($('#az-msg').innerHTML = '<div class="msg erro">Escreva o motivo.</div>');
+    if (!navigator.onLine) return ($('#az-msg').innerHTML = '<div class="msg erro">Precisa de rede para autorizar.</div>');
+    $('#az-ok').disabled = true;
+    const q = await sb.rpc('autorizar_rega', { p_area: id, p_motivo: m });
+    if (q.error) { $('#az-ok').disabled = false; return ($('#az-msg').innerHTML = `<div class="msg erro">${esc(q.error.message)}</div>`); }
+    S.autoriz = [...(S.autoriz || []).filter((x) => x.id !== q.data?.id), { id: q.data?.id, area_id: id, activista_id: a.activista_id, para_data: q.data?.para_data || dia, motivo: m, quem: S.perfil.nome, posso: true }];
+    LS.set('autoriz', S.autoriz);
+    abrirFicha(id, `<div class="msg ok"><span>Rega autorizada para</span> ${fmtData(q.data?.para_data || dia)}. <span>Avise o activista: o telefone dele recebe a autorização quando abrir a app com rede.</span></div>`);
+  };
+}
+async function cancelarAutorizacao(zid, id) {
+  if (!confirm('Cancelar esta autorização?')) return;
+  if (!navigator.onLine) return aviso('Precisa de rede.', 'erro');
+  const q = await sb.rpc('cancelar_autorizacao_rega', { p_id: zid });
+  if (q.error) return aviso(q.error.message, 'erro');
+  S.autoriz = (S.autoriz || []).filter((x) => x.id !== zid); LS.set('autoriz', S.autoriz);
+  abrirFicha(id, '<div class="msg ok">Autorização cancelada.</div>');
+}
+function verNunca(act) {
+  mudar('lista');
+  if (act && $('#f-act') && [...$('#f-act').options].some((o) => o.value === act)) $('#f-act').value = act;
+  $('#f-sit').value = 'nunca'; desenharLista();
+}
+// Hoje: activista (e técnico/supervisor de uma equipa sem telemóvel) vê os seus campos nunca regados; técnico, supervisor e
+// gestor vêem quantos tem cada equipa da sua lista
+function cartaoNuncaAgua() {
+  if (souActivista() && S.perfil.activista_id) {
+    const l = pertoPrimeiro(nuncaDaEquipa(S.perfil.activista_id)), hoje = (S.autoriz || []).filter((z) => z.para_data === hojeISO());
+    if (!l.length && !hoje.length) return '';
+    return `<div class="cartao" id="hoje-nunca" style="border-left:5px solid #c62828"><h2>💧 <span>Campos que nunca receberam água</span> (${l.length})</h2>
+      ${l.length ? '<p class="pequeno">Regue estes campos primeiro. Enquanto houver campos destes na sua lista, um campo que já recebeu água só se rega com autorização do supervisor.</p>' + l.slice(0, 8).map(itemNunca).join('') + (l.length > 8 ? `<button class="chip" onclick="verNunca()"><span>Ver todos</span> (${l.length})</button>` : '') : ''}
+      ${hoje.length ? '<p class="pequeno"><b>Autorizados hoje pelo supervisor:</b></p>' + hoje.map((z) => { const a = S.areas.find((x) => x.id === z.area_id); return a ? `<div class="sub">✅ <span class="sem-trad">${esc(a.produtor)} · ${esc(a.pr)}</span> <button class="chip" onclick="abrirFicha('${esc(a.id)}')">Abrir a ficha</button></div>` : ''; }).join('') : ''}</div>`;
+  }
+  if (!['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel)) return '';
+  const base = listaPropria() ? meusCampos() : S.areas, por = {};
+  for (const a of base) if (a.activista_id && nuncaAgua(a)) (por[a.activista_id] ??= []).push(a);
+  const eq = Object.entries(por).sort((x, y) => y[1].length - x[1].length);
+  if (!eq.length) return '';
+  const tot = eq.reduce((t, [, l]) => t + l.length, 0);
+  return `<div class="cartao" id="hoje-nunca" style="border-left:5px solid #c62828"><h2>💧 <span>Campos que nunca receberam água</span> (${tot})</h2>
+    <p class="pequeno">As equipas regam estes campos primeiro. Um campo que já recebeu água só se rega com autorização do supervisor, para o dia de rega seguinte (ficha do campo › «✅ Autorizar a rega»).</p>
+    ${eq.map(([act, l]) => `<div class="item"><div><div class="nome sem-trad">${esc(nomeAct(act))}</div><div class="sub">${l.length} <span>campos</span> · ${num(l.reduce((t, a) => t + plantasN(a), 0))} <span>plantas</span></div></div><button class="chip" onclick="verNunca('${esc(act)}')">Ver</button></div>`).join('')}</div>`;
 }
 function mostrarSugFixa() {                            // cartão fixo no Mapa (em baixo)
   const el = $('#sug-mapa'); if (!el) return;
@@ -4524,7 +4661,7 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoApoioAct() + cartaoPorTerminar() + cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoDiaSemRega() + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  html = cartaoNuncaAgua() + cartaoApoioAct() + cartaoPorTerminar() + cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoDiaSemRega() + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
   html = (veRecontagens() ? abasHoje('rega') : '') + html;
