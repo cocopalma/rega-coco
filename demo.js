@@ -357,6 +357,7 @@
       let z = DB.autoriz.find((x) => x.area_id === a.p_area && x.para_data === pd);
       if (!z) { z = { id: uid(), area_id: a.p_area, activista_id: ar?.activista_id || null, para_data: pd, motivo: a.p_motivo, quem: 'Supervisor Exemplo', posso: true, autorizado_em: new Date().toISOString() }; DB.autoriz.push(z); }
       return { id: z.id, para_data: pd }; },
+    retirar_da_rega: (a) => { const ar = DB.areas.find((x) => x.id === a.p_area); if (!ar) return null; if (!ar.activa) return 'ja_retirado'; ar.activa = false; return 'retirado'; },   // v205
     cancelar_autorizacao_rega: (a) => { DB.autoriz = (DB.autoriz || []).filter((x) => x.id !== a.p_id); return null; },
     lista_comunidades: () => [...new Set(DB.areas.map((a) => a.comunidade))].sort(),
     pontos_comunidades: () => (papel === 'oficial_me' ? [] : DB.areas.map((a) => ({ comunidade: a.comunidade, zona: a.zona, lat: a.latitude, lon: a.longitude }))),

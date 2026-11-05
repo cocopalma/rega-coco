@@ -391,6 +391,7 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'dia_sem_rega' ? await enviarDiaSemRega(x.d)
         : x.tipo === 'dia_sem_rega_rem' ? await sb.rpc('remover_dia_sem_rega', { p_id: x.dsr_id })
         : x.tipo === 'conf_dsr' ? await sb.rpc('confirmar_dia_sem_rega', { p_id: x.dsr_id, p_nota: x.nota || null })
+        : x.tipo === 'retirar' ? await sb.rpc('retirar_da_rega', { p_area: x.area_id, p_motivo: x.motivo, p_obs: x.obs || null, p_em: x.em })   // v205
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
       if (r4.error) aviso(`Não foi gravado (${x.area_id || x.sug_id || x.activista_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
@@ -2833,11 +2834,38 @@ function botoesCampo(a) {
   if (PODE_REGAR.includes(S.perfil.papel)) h += `<button class="btn sec" onclick="ecraQueimada('${esc(a.id)}')">🔥 ${queimadaDe(a.id) ? 'Registar outra queimada' : 'Marcar queimada nesta machamba'}</button>`;
   if (podeAtribuir(a)) h += `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">👤 ${a.activista_id ? 'Mudar o activista deste campo' : 'Atribuir a um activista'}</button>`;
   if (['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel)) h += `<button class="btn sec" onclick="ecraComunidade('${esc(a.id)}')">🏘 Mudar a comunidade</button>`;
+  if (podeRetirar(a)) h += `<button class="btn sec" onclick="ecraRetirar('${esc(a.id)}')">🗑 Retirar da rega (mudas mortas ou sem acesso)</button>`;
   if (['gestor', 'supervisor'].includes(S.perfil.papel) && zonasDe(a.comunidade).length) h += `<button class="btn sec" onclick="ecraZona('${esc(a.id)}')">🗂 ${a.zona ? 'Mudar a zona' : 'Definir a zona'}</button>`;
   if (gestor && (a.latitude != null || temPoligono(a)))
     h += a.limites_abertos ? `<button class="btn sec" onclick="mudarLimites('${esc(a.id)}', false)">🔒 Fechar a correcção da coordenada e da área</button>`
       : `<button class="btn sec" onclick="mudarLimites('${esc(a.id)}', true)">🔓 Deixar o supervisor/técnico corrigir a coordenada e medir de novo</button>`;
   return h;
+}
+// v205 (05/11/2026, Valdo: "vou habilitar-lhes a removerem campos da rega com motivo de… todas as mudas mortas e falta de
+// acesso para o campo"): técnico, supervisor e gestor retiram um campo da sua lista com um destes dois motivos; funciona sem
+// rede (fila filaAlt tipo 'retirar' → RPC retirar_da_rega). Volta pela lista: «➕ Voltar a pôr um campo na rega».
+const MOTIVOS_RETIRAR = [['mudas_mortas', '🥀 Todas as mudas mortas'], ['sem_acesso', '🚧 Sem acesso ao campo']];
+const podeRetirar = (a) => !!(a && PODE_COORD.includes(S.perfil?.papel) && !S.perfil?.so_teste && meuCampo(a) && LS.get('emCurso')?.area_id !== a.id);
+function ecraRetirar(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a || !podeRetirar(a)) return;
+  let mot = null;
+  folha(`<h2>Retirar este campo da rega</h2>
+    <p><b class="sem-trad">${esc(a.produtor)} · ${esc(a.pr)}</b>${a.activista_id ? ` · <span>equipa de</span> <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span>` : ''}</p>
+    <p class="pequeno">O campo sai da lista de rega. Só com um destes dois motivos:</p>
+    <div class="chips" id="rt-mot">${MOTIVOS_RETIRAR.map(([k, t]) => `<button class="chip" data-k="${k}">${t}</button>`).join('')}</div>
+    <label>Observação (opcional)<textarea id="rt-obs" rows="2" placeholder="Ex.: o caminho ficou cortado; as mudas secaram todas"></textarea></label>
+    <p class="pequeno">Para voltar a pôr o campo na rega: Campos › «➕ Voltar a pôr um campo na rega».</p>
+    <div id="rt-msg"></div>
+    <button class="btn aviso" id="rt-ok">🗑 Retirar da rega</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
+  document.querySelectorAll('#rt-mot .chip').forEach((b) => (b.onclick = () => { mot = b.dataset.k; document.querySelectorAll('#rt-mot .chip').forEach((c) => c.classList.toggle('on', c === b)); }));
+  $('#rt-ok').onclick = () => {
+    if (!mot) return ($('#rt-msg').innerHTML = '<div class="msg erro">Escolha o motivo.</div>');
+    if (!confirm('Retirar este campo da rega?')) return;
+    porNaFilaAlt({ tipo: 'retirar', area_id: id, motivo: mot, obs: $('#rt-obs').value.trim() || null, em: new Date().toISOString() });
+    S.areas = S.areas.filter((x) => x.id !== id); LS.set('areas', S.areas);
+    fecharFolha(); desenharMapa(); desenharLista(); if ($('#e-hoje').classList.contains('on')) desenharHoje();
+    aviso(navigator.onLine ? 'Campo retirado da rega.' : 'Campo retirado da rega. Será enviado quando houver rede.', 'ok');
+  };
 }
 function cartaoProposta(a) {
   return `<div class="cartao" style="border-left:4px solid #0b6e8a"><h3 style="margin:0 0 6px;font-size:15px">Área medida pelo activista — por aprovar</h3>
@@ -3006,10 +3034,11 @@ function aplicarPendentes(lista) {                          // o que ainda não 
     else if (x.tipo === 'poligono' && x.proposta) { a.poligono_proposto = x.pontos; a.area_m2_proposta = x.area_m2; a.proposta_em = x.medido_em; }
     else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
     else if (x.tipo === 'plantas_rega') {}                          // correcção das plantas de uma rega: não muda o campo
-    else if (['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem'].includes(x.tipo)) {}           // resposta a uma sugestão, comunidade do activista: não mudam o campo
+    else if (['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'retirar'].includes(x.tipo)) {}           // resposta a uma sugestão, comunidade do activista: não mudam o campo
     else if (!String(x.tipo).startsWith('planta')) a.activista_id = x.activista_id; }
   for (const x of LS.get('filaRecG', [])) if (x.op === 'validar' && x.sim) { const a = lista.find((y) => y.id === x.area_id); if (a) a.vivas = x.vivas; }   // validação por enviar
-  return lista;
+  const fora = new Set(LS.get('filaAlt', []).filter((x) => x.tipo === 'retirar').map((x) => x.area_id));   // v205: retirados por enviar
+  return fora.size ? lista.filter((a) => !fora.has(a.id)) : lista;
 }
 
 function abrirFicha(id, nota = '') {
