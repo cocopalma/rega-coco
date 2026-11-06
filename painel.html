@@ -246,10 +246,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=207"></script>
-<script src="i18n.js?v=207"></script>
+<script src="i18n-sw.js?v=208"></script>
+<script src="i18n.js?v=208"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=207"></script>
+<script src="demo.js?v=208"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -843,8 +843,8 @@ function desenharManut() {
   const pc = (v, n) => (!n ? 0 : v >= n ? 100 : Math.min(99, Math.round(v * 100 / n))) + '%';
   $('#k-man').innerHTML = C.map((c) => kpi(esc(c.comunidade), `${num(c.feitos)} <span style="font-size:15px">de</span> ${num(c.campos)}`,
     `campos feitos · cava-roda ${pc(c.cavaroda, c.plantas)} · mulching ${pc(c.mulching, c.plantas)}`)).join('');
-  tabela('#t-man-com', [['Comunidade'], ['Campos', 1], ['Feitos', 1], ['Completos por confirmar', 1], ['Em curso', 1], ['Por fazer', 1], ['Plantas', 1], ['Com cava-roda', 1], ['Com mulching', 1]],
-    C.map((c) => [esc(c.comunidade), num(c.campos), num(c.feitos), num(c.completos), num(c.em_curso), num(c.por_fazer), num(c.plantas), `${num(c.cavaroda)} (${pc(c.cavaroda, c.plantas)})`, `${num(c.mulching)} (${pc(c.mulching, c.plantas)})`]));
+  tabela('#t-man-com', [['Comunidade'], ['Campos', 1], ['Feitos', 1], ['Completos por confirmar', 1], ['Em curso', 1], ['Por fazer', 1], ['Sem plantas', 1], ['Plantas', 1], ['Com cava-roda', 1], ['Com mulching', 1]],
+    C.map((c) => [esc(c.comunidade), num(c.campos), num(c.feitos), num(c.completos), num(c.em_curso), num(c.por_fazer), num(c.sem_plantas || 0), num(c.plantas), `${num(c.cavaroda)} (${pc(c.cavaroda, c.plantas)})`, `${num(c.mulching)} (${pc(c.mulching, c.plantas)})`]));
   const D2 = M.por_dia || [];
   if (!D2.length) { $('#t-man-dia').innerHTML = '<div class="vazio">Ainda sem registos no período.</div>'; return; }
   tabela('#t-man-dia', [['Dia'], ['Campos com registo', 1], ['Plantas com cava-roda feita', 1], ['Plantas com mulching feito', 1], ['Sazonais', 1]],

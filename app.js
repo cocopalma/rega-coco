@@ -2108,8 +2108,8 @@ function fecharPlanoMapa() { S.planoMapa = false; if (camadaPlano) { camadaPlano
 // campos das duas comunidades (na rega ou fora). O supervisor regista quantas plantas TÊM cava-roda e quantas TÊM mulching
 // (totais do campo); 100% quando o número bate com as plantas do campo; "Feito" só quando o supervisor marca e as duas estão
 // a 100% (Valdo). Funciona sem rede (fila "filaMan", fotografia no telefone até haver rede).
-const COR_MAN = { por: '#9e9e9e', curso: '#f9a825', completo: '#8d6e63', feito: '#4e342e' };
-const TXT_MAN = { por: 'Por fazer', curso: 'Em curso', completo: 'Completo, por confirmar', feito: 'Feito' };
+const COR_MAN = { por: '#9e9e9e', curso: '#f9a825', completo: '#8d6e63', feito: '#4e342e', sem: '#cfd8dc' };
+const TXT_MAN = { por: 'Por fazer', curso: 'Em curso', completo: 'Completo, por confirmar', feito: 'Feito', sem: 'Sem plantas' };
 const temManut = () => !!S.manut?.acesso;
 const escreveManut = () => S.manut?.acesso === 'escreve';                 // supervisor das comunidades e gestor: registam e marcam "Feito"
 const registaManut = () => ['escreve', 'regista'].includes(S.manut?.acesso);   // + técnico dessas equipas (v99): só regista
@@ -2139,6 +2139,7 @@ function camposManut() {   // campos do servidor com o que está na fila do tele
 }
 function estadoMan(c) {
   if (c.feito) return 'feito';
+  if (c.sem_plantas) return 'sem';                       // v208: campo sem plantas (ex.: PR693500-1, vandalizadas por macacos)
   if (c.cavaroda == null) return 'por';
   if (c.plantas > 0 && c.cavaroda >= c.plantas && c.mulching >= c.plantas) return 'completo';
   return 'curso';
@@ -2165,7 +2166,7 @@ function setModo(m) {
 }
 // número e % de campos em cada situação na legenda (v135, 28/10/2026, Valdo)
 function legendaManut() {
-  const l = camposManut(), n = l.length, c = { por: 0, curso: 0, completo: 0, feito: 0 };
+  const l = camposManut(), n = l.length, c = { por: 0, curso: 0, completo: 0, feito: 0, sem: 0 };
   for (const x of l) c[estadoMan(x)]++;
   for (const k of Object.keys(c)) { const e = $('#lm-' + k); if (e) e.textContent = n ? `${num(c[k])} (${Math.round(100 * c[k] / n)}%)` : ''; }
   const sc = l.filter((x) => x.latitude == null).length, t = $('#lm-total');
@@ -2208,11 +2209,11 @@ function desenharListaManut() {
   const base = todos.filter((c) => !f.com || c.comunidade === f.com);
   const L2 = base.filter((c) => (!f.est || (f.est === 'semcoord' ? c.latitude == null : estadoMan(c) === f.est)) && (!txt || (c.produtor || '').toLowerCase().includes(txt) || c.id.toLowerCase().includes(txt)))
     .map((c) => ({ c, s: estadoMan(c), d: S.pos && c.latitude != null ? metros(S.pos, [c.latitude, c.longitude]) : null }));
-  const ORD = { por: 0, curso: 1, completo: 2, feito: 3 };
+  const ORD = { por: 0, curso: 1, completo: 2, feito: 3, sem: 4 };
   L2.sort((x, y) => (S.pos ? (x.d ?? 1e12) - (y.d ?? 1e12) : ORD[x.s] - ORD[y.s] || String(x.c.produtor).localeCompare(String(y.c.produtor))));
   const cnt = (k) => base.filter((c) => estadoMan(c) === k).length;
   const pl = base.reduce((s, c) => s + (c.plantas || 0), 0), cr = base.reduce((s, c) => s + Math.min(c.cavaroda || 0, c.plantas || 0), 0), mu = base.reduce((s, c) => s + Math.min(c.mulching || 0, c.plantas || 0), 0);
-  $('#man-resumo').innerHTML = `<p class="pequeno"><b>${num(cnt('feito'))}</b> <span>feitos</span> · <b>${num(cnt('completo'))}</b> <span>completos por confirmar</span> · <b>${num(cnt('curso'))}</b> <span>em curso</span> · <b>${num(cnt('por'))}</b> <span>por fazer</span>${base.some((c) => c.latitude == null) ? ` · <b>${num(base.filter((c) => c.latitude == null).length)}</b> <span>sem coordenada</span>` : ''}<br>
+  $('#man-resumo').innerHTML = `<p class="pequeno"><b>${num(cnt('feito'))}</b> <span>feitos</span> · <b>${num(cnt('completo'))}</b> <span>completos por confirmar</span> · <b>${num(cnt('curso'))}</b> <span>em curso</span> · <b>${num(cnt('por'))}</b> <span>por fazer</span>${cnt('sem') ? ` · <b>${num(cnt('sem'))}</b> <span>sem plantas</span>` : ''}${base.some((c) => c.latitude == null) ? ` · <b>${num(base.filter((c) => c.latitude == null).length)}</b> <span>sem coordenada</span>` : ''}<br>
     <span>Plantas com cava-roda</span> ${pctMan(cr, pl)}% · <span>com mulching</span> ${pctMan(mu, pl)}% (${num(pl)} <span>plantas</span>)</p>`;
   $('#man-lista').innerHTML = `<p class="pequeno">${L2.length} campos${S.pos ? ' · ordenados pela distância' : ''}</p>` + L2.slice(0, 300).map(({ c, s, d }) => `<div class="item" data-mid="${esc(c.id)}"><div>
       <div class="nome">${esc(c.produtor || '—')}</div><div class="sub">${esc(c.id)} · ${esc(c.comunidade)} · ${num(c.plantas)} <span>plantas</span>${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}${c.latitude == null ? ' · <span>sem coordenada</span>' : ''}</div>
@@ -2234,10 +2235,11 @@ function abrirFichaManut(id, nota = '') {
       ${c.ultima ? `<div class="lin"><span>Último registo</span><b>${fmtData(c.ultima)}</b></div>` : ''}
       ${c.feito ? `<div class="lin"><span>Marcado como feito</span><b>${c.feito_em ? fmtData(String(c.feito_em).slice(0, 10)) : ''}${c.feito_por ? ' · ' + esc(c.feito_por) : ''}</b></div>` : ''}
       ${c.pendente ? '<p class="pequeno">No telefone: é enviado quando houver rede.</p>' : ''}
+      ${c.sem_plantas ? `<div class="msg info sem-trad">${esc(c.sem_plantas)}</div>` : ''}
     </div>
-    ${registaManut() ? `<button class="btn" onclick="ecraRegManut('${esc(id)}')">➕ Registar o trabalho</button>` : ''}
+    ${registaManut() && !c.sem_plantas ? `<button class="btn" onclick="ecraRegManut('${esc(id)}')">➕ Registar o trabalho</button>` : ''}
     ${esc_ && s === 'completo' ? `<button class="btn" onclick="marcarFeitoManut('${esc(id)}', true)">✓ Marcar como feito</button>` : ''}
-    ${esc_ && s !== 'completo' && s !== 'feito' ? `<p class="pequeno">Para marcar como feito, todas as ${num(n)} plantas têm de ter cava-roda e mulching.</p>` : ''}
+    ${esc_ && s !== 'completo' && s !== 'feito' && s !== 'sem' ? `<p class="pequeno">Para marcar como feito, todas as ${num(n)} plantas têm de ter cava-roda e mulching.</p>` : ''}
     ${esc_ && s === 'feito' ? `<button class="btn sec" onclick="marcarFeitoManut('${esc(id)}', false)">Desfazer «Feito»</button>` : ''}
     ${!esc_ && registaManut() && s === 'completo' ? '<p class="pequeno">Completo. Só o supervisor pode marcar como feito.</p>' : ''}
     ${podeMedirManut(c) ? `${c.latitude == null ? '<div class="msg info">Este campo ainda não tem coordenada. Vá ao campo com o produtor ou o activista e meça a área: o campo passa a aparecer no mapa.</div>' : ''}<button class="btn sec" onclick="ecraMedir('${esc(id)}')">📐 Medir a área (andar à volta do campo)</button>` : ''}
@@ -2850,7 +2852,8 @@ function botoesCampo(a) {
 // v205 (05/11/2026, Valdo: "vou habilitar-lhes a removerem campos da rega com motivo de… todas as mudas mortas e falta de
 // acesso para o campo"): técnico, supervisor e gestor retiram um campo da sua lista com um destes dois motivos; funciona sem
 // rede (fila filaAlt tipo 'retirar' → RPC retirar_da_rega). Volta pela lista: «➕ Voltar a pôr um campo na rega».
-const MOTIVOS_RETIRAR = [['mudas_mortas', '🥀 Todas as mudas mortas'], ['sem_acesso', '🚧 Sem acesso ao campo']];
+// v208 (06/11/2026, Valdo): também «O campo não existe» (sugestão do Raul: PR973938 tem um só campo) e «Outro motivo» (Nuro)
+const MOTIVOS_RETIRAR = [['mudas_mortas', '🥀 Todas as mudas mortas'], ['sem_acesso', '🚧 Sem acesso ao campo'], ['nao_existe', '❓ O campo não existe'], ['outro', '✏️ Outro motivo']];
 const podeRetirar = (a) => !!(a && PODE_COORD.includes(S.perfil?.papel) && !S.perfil?.so_teste && meuCampo(a) && LS.get('emCurso')?.area_id !== a.id);
 function ecraRetirar(id) {
   // v207 (06/11/2026, Valdo: "selecionar múltiplos campos que tenham a mesma justificação"): aceita um campo ou uma lista
@@ -2862,14 +2865,15 @@ function ecraRetirar(id) {
   folha(`<h2>${um ? 'Retirar este campo da rega' : `Retirar ${L.length} campos da rega`}</h2>
     ${um ? `<p><b class="sem-trad">${esc(a.produtor)} · ${esc(a.pr)}</b>${a.activista_id ? ` · <span>equipa de</span> <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span>` : ''}</p>`
       : `<div class="cartao pequeno sem-trad" style="max-height:30vh;overflow:auto">${L.map((x) => `${esc(x.produtor)} · ${esc(x.pr)}${x.activista_id ? ' · ' + esc(nomeAct(x.activista_id)) : ''}`).join('<br>')}</div>`}
-    <p class="pequeno">${um ? 'O campo sai da lista de rega.' : 'Os campos saem da lista de rega, todos com o mesmo motivo e a mesma justificação.'} Só com um destes dois motivos:</p>
+    <p class="pequeno">${um ? 'O campo sai da lista de rega.' : 'Os campos saem da lista de rega, todos com o mesmo motivo e a mesma justificação.'} Escolha o motivo:</p>
     <div class="chips" id="rt-mot">${MOTIVOS_RETIRAR.map(([k, t]) => `<button class="chip" data-k="${k}">${t}</button>`).join('')}</div>
     <label>Justificação (obrigatória)<textarea id="rt-obs" rows="2" placeholder="Ex.: o caminho ficou cortado; as mudas secaram todas"></textarea></label>
     <p class="pequeno">Diga o que viu no campo, para o supervisor e o gestor perceberem porque o campo saiu da rega.</p>
+    <p class="pequeno" id="rt-nx" style="display:none">«O campo não existe»: o campo não volta à rega sem o gestor, e o pagamento de incentivo é avisado para confirmar se o campo existe na base de incentivo.</p>
     <p class="pequeno">Para voltar a pôr o campo na rega: Campos › «➕ Voltar a pôr um campo na rega».</p>
     <div id="rt-msg"></div>
     <button class="btn aviso" id="rt-ok">🗑 ${um ? 'Retirar da rega' : `Retirar os ${L.length} campos da rega`}</button><button class="btn sec" onclick="${um ? `abrirFicha('${esc(a.id)}')` : 'fecharFolha()'}">Cancelar</button>`);
-  document.querySelectorAll('#rt-mot .chip').forEach((b) => (b.onclick = () => { mot = b.dataset.k; document.querySelectorAll('#rt-mot .chip').forEach((c) => c.classList.toggle('on', c === b)); }));
+  document.querySelectorAll('#rt-mot .chip').forEach((b) => (b.onclick = () => { mot = b.dataset.k; document.querySelectorAll('#rt-mot .chip').forEach((c) => c.classList.toggle('on', c === b)); $('#rt-nx').style.display = mot === 'nao_existe' ? '' : 'none'; }));
   $('#rt-ok').onclick = () => {
     if (!mot) return ($('#rt-msg').innerHTML = '<div class="msg erro">Escolha o motivo.</div>');
     if ($('#rt-obs').value.trim().length < 3) return ($('#rt-msg').innerHTML = '<div class="msg erro">Escreva a justificação.</div>');
@@ -3093,7 +3097,7 @@ function abrirFicha(id, nota = '') {
     const sem = porEquipa(a), pela = !sem && podeTecEquipa(a);
     const bl = (souActivista() && a.activista_id === S.perfil.activista_id) || sem ? bloqueioAgua(a) : null;   // v204
     acc = (sem ? `<div class="msg info">📵 <span>${esc(nomeAct(a.activista_id))} não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele.</span></div>` : '') +
-      (bl ? `<div class="msg erro">💧 <span>Este campo já recebeu água. A equipa ainda tem</span> <b>${bl.length}</b> <span>campos que nunca receberam água: regue esses primeiro. Para regar este campo, o supervisor tem de autorizar (vale para o dia de rega seguinte).</span></div>
+      (bl ? `<div class="msg erro">💧 <span>Este campo já recebeu água. A equipa ainda tem</span> <b>${bl.length}</b> <span>campos que nunca receberam água: regue esses primeiro. Para regar este campo, o supervisor tem de autorizar (pode ser já para hoje).</span></div>
         <button class="btn" onclick="ecraBloqueioAgua('${esc(a.id)}')">💧 Ver os campos que nunca receberam água</button>`
         : `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`) +
       (pela ? `<p class="pequeno" style="margin:2px 0 6px">Rega de teste: não conta para a equipa.</p><button class="btn sec" onclick="ecraRegaPelaEquipa('${esc(a.id)}')">🤝 Regar pela equipa (conta na ronda)</button>` : '');
@@ -3660,7 +3664,7 @@ function ecraBloqueioAgua(id) {
   const l = pertoPrimeiro(nuncaDaEquipa(a.activista_id)), u = ultimaAgua(a), z = autorizacoesDe(a.id)[0];
   folha(`<h2>Primeiro os campos que nunca receberam água</h2>
     <div class="msg erro"><span>Este campo já recebeu água</span>${u ? ` (<span>última rega</span>: ${fmtData(u)})` : ''}. <span>A equipa ainda tem</span> <b>${l.length}</b> <span>campos que nunca receberam água. Regue esses campos primeiro.</span></div>
-    ${z ? `<div class="msg info">✅ <span>Rega deste campo autorizada para</span> ${fmtData(z.para_data)}.</div>` : '<p class="pequeno">Para regar este campo antes de acabar os campos que nunca receberam água, peça ao supervisor. A autorização vale para o dia de rega seguinte, não para hoje.</p>'}
+    ${z ? `<div class="msg info">✅ <span>Rega deste campo autorizada para</span> ${fmtData(z.para_data)}.</div>` : '<p class="pequeno">Para regar este campo antes de acabar os campos que nunca receberam água, peça ao supervisor: ele pode autorizar já para hoje. Depois abra a app com rede para receber a autorização.</p>'}
     <h3><span>Campos que nunca receberam água</span> (${l.length})</h3>
     ${l.slice(0, 15).map(itemNunca).join('')}
     ${l.length > 15 ? `<p class="pequeno"><span>Mais campos:</span> ${l.length - 15}. <span>Veja todos em Campos › «💧 Nunca recebeu água».</span></p>` : ''}
@@ -3670,26 +3674,42 @@ function ecraBloqueioAgua(id) {
 function cartaoAutorizacao(a, alheio = false) {
   const z = autorizacoesDe(a.id), pode = podeAutorizar(a) && !alheio, dia = diaRegaSeguinte();
   let h = z.map((x) => `<div class="msg ok">✅ <span>Rega autorizada para</span> ${fmtData(x.para_data)} <span>por</span> <b class="sem-trad">${esc(x.quem || '?')}</b>${x.motivo ? `: <span class="sem-trad">${esc(x.motivo)}</span>` : ''}${pode && x.posso !== false ? ` <button class="chip" onclick="cancelarAutorizacao('${esc(x.id)}','${esc(a.id)}')">Cancelar</button>` : ''}</div>`).join('');
-  if (pode && !z.some((x) => x.para_data === dia) && !nuncaAgua(a) && nuncaDaEquipa(a.activista_id).length)
+  if (pode && !z.some((x) => x.para_data === dia || x.para_data === hojeISO()) && !nuncaAgua(a) && nuncaDaEquipa(a.activista_id).length)
     h += `<div class="msg info"><span>A equipa ainda tem</span> <b>${nuncaDaEquipa(a.activista_id).length}</b> <span>campos que nunca receberam água: este campo só se rega com a sua autorização.</span></div>
-      <button class="btn sec" onclick="ecraAutorizar('${esc(a.id)}')">✅ <span>Autorizar a rega deste campo para</span> ${fmtData(dia)}</button>`;
+      <button class="btn sec" onclick="ecraAutorizar('${esc(a.id)}')">✅ <span>Autorizar a rega deste campo</span></button>`;
   return h;
+}
+// v208 (06/11/2026, Valdo, sugestão do Nuro): a autorização pode valer já hoje (a equipa está no campo); o supervisor vê
+// quando o campo recebeu água pela última vez e confirma que o campo precisa de ser regado (obrigatório).
+function textoUltimaAgua(a) {
+  const app = ultimaRega(a), wa = a.wa_ultima && !a.wa_por_pr ? a.wa_ultima : null, antes = !a.regas_origem_por_pr && a.ultima_rega_origem ? a.ultima_rega_origem : null;
+  const l = [app ? `${fmtData(app)} (app)` : '', wa ? `${fmtData(wa)} (WhatsApp)` : '', !app && !wa && antes ? `${fmtData(antes)} (antes da app)` : ''].filter(Boolean);
+  return l.length ? l.join(' · ') : 'sem registo';
 }
 function ecraAutorizar(id) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
-  const dia = diaRegaSeguinte(), n = nuncaDaEquipa(a.activista_id).length;
+  const amanha = diaRegaSeguinte(), hoje = hojeISO(), n = nuncaDaEquipa(a.activista_id).length, u = ultimaAgua(a) || (!a.regas_origem_por_pr && a.ultima_rega_origem) || null;
+  const dias = u ? Math.round((new Date(hoje) - new Date(u)) / 864e5) : null;
+  let quando = 'hoje';
   folha(`<h2>Autorizar a rega deste campo</h2>
     <p><b class="sem-trad">${esc(a.produtor)} · ${esc(a.pr)}</b> · <span>equipa de</span> <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span></p>
-    <div class="msg info"><span>Este campo já recebeu água e a equipa ainda tem</span> <b>${n}</b> <span>campos que nunca receberam água.</span> <span>A autorização vale só para</span> <b>${fmtData(dia)}</b> <span>(dia de rega seguinte).</span></div>
+    <div class="cartao"><div class="lin"><span>Última vez que recebeu água</span><b class="sem-trad">${textoUltimaAgua(a)}</b></div>${dias != null ? `<div class="lin"><span>Dias sem água</span><b>${num(dias)}</b></div>` : ''}<div class="lin"><span>Plantas</span><b>${plantasTxt(a)}</b></div></div>
+    <div class="msg info"><span>Este campo já recebeu água e a equipa ainda tem</span> <b>${n}</b> <span>campos que nunca receberam água.</span></div>
+    <p class="pequeno">Para quando?</p>
+    <div class="chips" id="az-q"><button class="chip on" data-q="hoje"><span>Hoje</span> (${fmtData(hoje)})</button><button class="chip" data-q="amanha"><span>Dia de rega seguinte</span> (${fmtData(amanha)})</button></div>
+    <label><input type="checkbox" id="az-conf" style="width:auto"> <span>Confirmo que este campo precisa de ser regado.</span></label>
     <label>Porque autoriza? (obrigatório)<textarea id="az-motivo" rows="3" placeholder="Ex.: plantas a secar; os campos nunca regados estão sem acesso"></textarea></label>
     <div id="az-msg"></div>
     <button class="btn" id="az-ok">✅ Autorizar</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
+  document.querySelectorAll('#az-q .chip').forEach((b) => (b.onclick = () => { quando = b.dataset.q; document.querySelectorAll('#az-q .chip').forEach((c) => c.classList.toggle('on', c === b)); }));
   $('#az-ok').onclick = async () => {
     const m = $('#az-motivo').value.trim();
+    if (!$('#az-conf').checked) return ($('#az-msg').innerHTML = '<div class="msg erro">Confirme que o campo precisa de ser regado.</div>');
     if (m.length < 3) return ($('#az-msg').innerHTML = '<div class="msg erro">Escreva o motivo.</div>');
     if (!navigator.onLine) return ($('#az-msg').innerHTML = '<div class="msg erro">Precisa de rede para autorizar.</div>');
     $('#az-ok').disabled = true;
-    const q = await sb.rpc('autorizar_rega', { p_area: id, p_motivo: m });
+    const dia = quando === 'hoje' ? hoje : amanha;
+    const q = await sb.rpc('autorizar_rega', { p_area: id, p_motivo: m, p_hoje: quando === 'hoje', p_confirmado: true, p_ultima: u || null });
     if (q.error) { $('#az-ok').disabled = false; return ($('#az-msg').innerHTML = `<div class="msg erro">${esc(q.error.message)}</div>`); }
     S.autoriz = [...(S.autoriz || []).filter((x) => x.id !== q.data?.id), { id: q.data?.id, area_id: id, activista_id: a.activista_id, para_data: q.data?.para_data || dia, motivo: m, quem: S.perfil.nome, posso: true }];
     LS.set('autoriz', S.autoriz);
@@ -3726,7 +3746,7 @@ function cartaoNuncaAgua() {
   if (!eq.length) return '';
   const tot = eq.reduce((t, [, l]) => t + l.length, 0);
   return `<div class="cartao" id="hoje-nunca" style="border-left:5px solid #c62828"><h2>💧 <span>Campos que nunca receberam água</span> (${tot})</h2>
-    <p class="pequeno">As equipas regam estes campos primeiro. Um campo que já recebeu água só se rega com autorização do supervisor, para o dia de rega seguinte (ficha do campo › «✅ Autorizar a rega»).</p>
+    <p class="pequeno">As equipas regam estes campos primeiro. Um campo que já recebeu água só se rega com autorização do supervisor, que pode valer já para hoje (ficha do campo › «✅ Autorizar a rega»).</p>
     ${eq.map(([act, l]) => `<div class="item"><div><div class="nome sem-trad">${esc(nomeAct(act))}</div><div class="sub">${l.length} <span>campos</span> · ${num(l.reduce((t, a) => t + plantasN(a), 0))} <span>plantas</span></div></div><button class="chip" onclick="verNunca('${esc(act)}')">Ver</button></div>`).join('')}</div>`;
 }
 function mostrarSugFixa() {                            // cartão fixo no Mapa (em baixo)
