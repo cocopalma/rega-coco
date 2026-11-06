@@ -64,4 +64,5 @@ Se não houver sugestões nem problemas, não enviar nada.
 - Não enviar mensagens a activistas, técnicos ou supervisores (só a resposta dentro da app).
 - Não criar acessos, não mudar senhas nem PIN, não mexer na função `gestor-activistas`.
 - Não apagar dados. Não correr SQL destrutivo.
+- Pagamento de incentivo (Valdo, 06/11/2026): só se envia a nota do passo 4b (registo no painel do Notion, linha «Pagamento de incentivo»). Não mexer em mais nada do incentivo: ficheiros, bases, repositório, Notion da sessão ou dados.
 - Se o Supabase ou o GitHub não responderem, terminar com o erro no relatório, sem tentar outras vias.
