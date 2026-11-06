@@ -45,6 +45,13 @@ update sugestoes set estado = :estado, nota = :mensagem, avaliada_por = '8a1b936
 - Mensagem em português simples, sem termos técnicos, até 4 frases. Não prometer nada que não esteja feito.
 - As sugestões do tipo C ficam como estão (`nova`).
 
+## 4b. Campos que não existem → nota para o pagamento de incentivo
+Valdo (06/11/2026): "sempre que aparecer um campo que se diz que não existe, envia uma nota para a secção de incentivo a perguntar se este campo existe na base de dados de incentivo, porque não se pode estar a pagar incentivo a um campo que não existe."
+1. Procurar: `select a.id, a.pr, a.produtor, a.comunidade, a.retirado_em, p.nome quem, al.motivo from areas a left join perfis p on p.id = a.retirado_por left join lateral (select motivo from alteracoes_areas x where x.area_id = a.id and x.campo = 'activa' order by em desc limit 1) al on true where a.nao_existe and a.incentivo_avisado_em is null;`
+2. Para cada campo, criar no Notion (painel «Integração do Projecto Coco», data source Registos `collection://780e6e2c-c0d6-49ac-ae1f-c5b849c086b2`) um registo com Título «Incentivo: o campo [PR-N] ([produtor], [comunidade]) foi retirado da rega por não existir — existe na base de incentivo? Se não existe, não pagar incentivo por ele.», Tipo «Parado», Estado «Aberto», Data = hoje, «Projecto ou Sessão» = linha «Pagamento de incentivo» (https://app.notion.com/3f85e4c2b2a081f48e89e4d4da2f9d51); no texto da página: quem retirou, quando e a justificação.
+3. Depois de criado o registo: `update areas set incentivo_avisado_em = now() where id = :id;` (só esta coluna).
+4. No relatório ao Valdo, uma linha: «Nota ao pagamento de incentivo: PR…».
+
 ## 5. Relatório ao Valdo
 No fim, uma mensagem curta (é a que chega por notificação) e o mesmo texto por email (conector Gmail, `send_message`, para etevaldo.cheveia@jfs.co.mz, assunto "Rega Coco — sugestões aplicadas DD/MM/AAAA (vNNN)"):
 1. Aplicadas: versão publicada e, por sugestão, quem pediu e o que mudou.
