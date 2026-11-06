@@ -2400,14 +2400,20 @@ function desenharLista() {
   for (const x of linhas) { x.nun = x.s.cod !== 'feita' && nuncaAgua(x.a); x.ua = x.nun ? '' : ultimaAgua(x.a) || ''; }
   const ordem = (x) => (x.nun ? 0 : x.s.cod === 'terminar' ? 1 : x.s.cod === 'feita' ? 3 : 2);
   linhas.sort((x, y) => ordem(x) - ordem(y) || (ordem(x) === 2 ? x.ua.localeCompare(y.ua) : 0) || (x.d ?? 1e12) - (y.d ?? 1e12));
+  if (S.selRet) S.ultLista = linhas.slice(0, 300).map((x) => x.a).filter(podeRetirar).map((a) => a.id);
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
     (porAprovar().length ? `<div class="msg info">${porAprovar().length} medições de área por aprovar. <button class="chip" onclick="ecraPorAprovar()">Ver</button></div>` : '') +
     avisoSemLimite(sit) +
     (porAtribuir().length && sit !== 'sem' ? `<div class="msg info">${porAtribuir().length} campos por atribuir. <button class="chip" onclick="$('#f-sit').value='sem';desenharLista()">Ver</button></div>` : '') +
     (sit ? `<div class="msg info">Filtro: ${esc($('#f-sit').selectedOptions[0]?.textContent || '')}. <button class="chip" onclick="$('#f-sit').value='';desenharLista()">← Ver todos os campos</button></div>` : '') +
     (['supervisor', 'gestor', 'tecnico'].includes(S.perfil?.papel) ? `<button class="btn sec" onclick="ecraVoltarRega()">➕ Voltar a pôr um campo na rega</button>` : '') +
+    (podeRetirarVarios() && !S.selRet ? `<button class="btn sec" onclick="retirarVarios(true)">🗑 Retirar vários campos da rega</button>` : '') +
+    (S.selRet ? `<div class="msg info" id="sel-ret" style="background:#fff6e5;color:#5d3a00;position:sticky;top:0;z-index:5"><b>🗑 Retirar vários campos da rega</b><br><span>Toque nos campos para os escolher. Todos ficam com o mesmo motivo e a mesma justificação.</span><br>
+      <b>${S.selRet.size}</b> <span>campos escolhidos</span>
+      <div class="chips" style="margin-top:6px"><button class="chip" onclick="retirarTodosMostrados()">Escolher todos os da lista</button>${S.selRet.size ? '<button class="chip" onclick="S.selRet=new Set();desenharLista()">Limpar</button>' : ''}</div>
+      <button class="btn aviso" ${S.selRet.size ? '' : 'disabled'} onclick="ecraRetirar([...S.selRet])">Continuar</button><button class="btn sec" onclick="retirarVarios(false)">Cancelar</button></div>` : '') +
     `<p class="pequeno">${linhas.length} <span>campos</span> · <span>primeiro os que nunca receberam água, depois os que estão há mais tempo sem água</span></p>` +
-    linhas.slice(0, 300).map(({ a, s, d, nun }) => `<div class="item" data-id="${esc(a.id)}"><div>
+    linhas.slice(0, 300).map(({ a, s, d, nun }) => `<div class="item${S.selRet && S.selRet.has(a.id) ? ' sel-ret' : ''}" data-id="${esc(a.id)}">${S.selRet ? (podeRetirar(a) ? `<input type="checkbox" class="cx-ret" ${S.selRet.has(a.id) ? 'checked' : ''} tabindex="-1">` : '<span class="cx-ret-no" title="Fora da sua lista">—</span>') : ''}<div>
       <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
       </div>${nun ? '<span class="tag t-nunca">💧 <span>Nunca recebeu água</span></span>' : ''}${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${apoioDoCampo(a.id) ? `<span class="tag t-outra">🤝 <span>Apoio de</span> <span class="sem-trad">${esc(nomeAct(apoioDoCampo(a.id).ajuda_activista_id))}</span></span>` : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}<span class="tag t-${s.cod}">${s.txt}</span>${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
 }
@@ -2847,28 +2853,48 @@ function botoesCampo(a) {
 const MOTIVOS_RETIRAR = [['mudas_mortas', '🥀 Todas as mudas mortas'], ['sem_acesso', '🚧 Sem acesso ao campo']];
 const podeRetirar = (a) => !!(a && PODE_COORD.includes(S.perfil?.papel) && !S.perfil?.so_teste && meuCampo(a) && LS.get('emCurso')?.area_id !== a.id);
 function ecraRetirar(id) {
-  const a = S.areas.find((x) => x.id === id); if (!a || !podeRetirar(a)) return;
+  // v207 (06/11/2026, Valdo: "selecionar múltiplos campos que tenham a mesma justificação"): aceita um campo ou uma lista
+  const ids = Array.isArray(id) ? id : [id];
+  const L = ids.map((x) => S.areas.find((a) => a.id === x)).filter(podeRetirar);
+  if (!L.length) return;
+  const um = L.length === 1, a = L[0];
   let mot = null;
-  folha(`<h2>Retirar este campo da rega</h2>
-    <p><b class="sem-trad">${esc(a.produtor)} · ${esc(a.pr)}</b>${a.activista_id ? ` · <span>equipa de</span> <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span>` : ''}</p>
-    <p class="pequeno">O campo sai da lista de rega. Só com um destes dois motivos:</p>
+  folha(`<h2>${um ? 'Retirar este campo da rega' : `Retirar ${L.length} campos da rega`}</h2>
+    ${um ? `<p><b class="sem-trad">${esc(a.produtor)} · ${esc(a.pr)}</b>${a.activista_id ? ` · <span>equipa de</span> <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span>` : ''}</p>`
+      : `<div class="cartao pequeno sem-trad" style="max-height:30vh;overflow:auto">${L.map((x) => `${esc(x.produtor)} · ${esc(x.pr)}${x.activista_id ? ' · ' + esc(nomeAct(x.activista_id)) : ''}`).join('<br>')}</div>`}
+    <p class="pequeno">${um ? 'O campo sai da lista de rega.' : 'Os campos saem da lista de rega, todos com o mesmo motivo e a mesma justificação.'} Só com um destes dois motivos:</p>
     <div class="chips" id="rt-mot">${MOTIVOS_RETIRAR.map(([k, t]) => `<button class="chip" data-k="${k}">${t}</button>`).join('')}</div>
     <label>Justificação (obrigatória)<textarea id="rt-obs" rows="2" placeholder="Ex.: o caminho ficou cortado; as mudas secaram todas"></textarea></label>
     <p class="pequeno">Diga o que viu no campo, para o supervisor e o gestor perceberem porque o campo saiu da rega.</p>
     <p class="pequeno">Para voltar a pôr o campo na rega: Campos › «➕ Voltar a pôr um campo na rega».</p>
     <div id="rt-msg"></div>
-    <button class="btn aviso" id="rt-ok">🗑 Retirar da rega</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
+    <button class="btn aviso" id="rt-ok">🗑 ${um ? 'Retirar da rega' : `Retirar os ${L.length} campos da rega`}</button><button class="btn sec" onclick="${um ? `abrirFicha('${esc(a.id)}')` : 'fecharFolha()'}">Cancelar</button>`);
   document.querySelectorAll('#rt-mot .chip').forEach((b) => (b.onclick = () => { mot = b.dataset.k; document.querySelectorAll('#rt-mot .chip').forEach((c) => c.classList.toggle('on', c === b)); }));
   $('#rt-ok').onclick = () => {
     if (!mot) return ($('#rt-msg').innerHTML = '<div class="msg erro">Escolha o motivo.</div>');
     if ($('#rt-obs').value.trim().length < 3) return ($('#rt-msg').innerHTML = '<div class="msg erro">Escreva a justificação.</div>');
-    if (!confirm('Retirar este campo da rega?')) return;
-    porNaFilaAlt({ tipo: 'retirar', area_id: id, motivo: mot, obs: $('#rt-obs').value.trim(), em: new Date().toISOString() });
-    S.areas = S.areas.filter((x) => x.id !== id); LS.set('areas', S.areas);
+    if (!confirm(um ? 'Retirar este campo da rega?' : `Retirar ${L.length} campos da rega?`)) return;
+    const obs = $('#rt-obs').value.trim(), em = new Date().toISOString(), f = LS.get('filaAlt', []);
+    for (const x of L) f.push({ id: crypto.randomUUID(), tipo: 'retirar', area_id: x.id, motivo: mot, obs, em });
+    LS.set('filaAlt', f);
+    const fora = new Set(L.map((x) => x.id));
+    S.areas = S.areas.filter((x) => !fora.has(x.id)); LS.set('areas', S.areas);
+    S.selRet = null;
     fecharFolha(); desenharMapa(); desenharLista(); if ($('#e-hoje').classList.contains('on')) desenharHoje();
-    aviso(navigator.onLine ? 'Campo retirado da rega.' : 'Campo retirado da rega. Será enviado quando houver rede.', 'ok');
+    actSync(); sincronizar(true);
+    const n = L.length;
+    aviso(n === 1 ? (navigator.onLine ? 'Campo retirado da rega.' : 'Campo retirado da rega. Será enviado quando houver rede.')
+      : (navigator.onLine ? `${n} campos retirados da rega.` : `${n} campos retirados da rega. Serão enviados quando houver rede.`), 'ok');
   };
 }
+// v207: escolher vários campos na lista (Campos) para os retirar com o mesmo motivo e a mesma justificação
+const podeRetirarVarios = () => PODE_COORD.includes(S.perfil?.papel) && !S.perfil?.so_teste;
+function retirarVarios(on) { S.selRet = on ? new Set() : null; desenharLista(); }
+function marcarRetirar(id) {
+  if (!S.selRet) return; const a = S.areas.find((x) => x.id === id); if (!podeRetirar(a)) return;
+  S.selRet.has(id) ? S.selRet.delete(id) : S.selRet.add(id); desenharLista();
+}
+function retirarTodosMostrados() { if (!S.selRet) return; for (const id of S.ultLista || []) S.selRet.add(id); desenharLista(); }
 function cartaoProposta(a) {
   return `<div class="cartao" style="border-left:4px solid #0b6e8a"><h3 style="margin:0 0 6px;font-size:15px">Área medida pelo activista — por aprovar</h3>
     <div class="lin"><span>Área</span><b>${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}</b></div>
@@ -5899,7 +5925,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#lista').onclick = (e) => {
     const b = e.target.closest('button[data-acc]');
     if (b) { if (b.dataset.acc === 'confirmar') confirmarProposta(b.dataset.id); else ecraAtribuir(b.dataset.id); return; }
-    const it = e.target.closest('.item'); if (it) { if (it.dataset.mid) abrirFichaManut(it.dataset.mid); else abrirFicha(it.dataset.id); }
+    const it = e.target.closest('.item'); if (it) { if (it.dataset.mid) abrirFichaManut(it.dataset.mid); else if (S.selRet) marcarRetirar(it.dataset.id); else abrirFicha(it.dataset.id); }
   };
   window.addEventListener('online', () => sincronizar(true));
   window.addEventListener('offline', actSync);
