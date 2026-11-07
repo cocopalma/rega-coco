@@ -2,6 +2,8 @@
 # galeria; data do EXIF lida antes da redução), carimbo com data, hora e GPS na fotografia, e ⚠️ «Fotografia de outro dia»
 # no «O meu dia» (não bloqueia; «Está certo» → confirmar_foto_rega). LING=en / sw.
 import json, subprocess, time, sys, os, datetime
+SEC = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}]") if pg.locator(f"#meu-dia details[data-k={k}]").count() else "(sem linha "+k+")")
+NB = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}] .nb") if pg.locator(f"#meu-dia details[data-k={k}] .nb").count() else "(sem linha)")
 LING = os.environ.get("LING", "pt")
 from playwright.sync_api import sync_playwright
 NM = "/home/claude/rega-test/node_modules"; D = "/home/claude/rega-test/v198"
@@ -79,7 +81,7 @@ with sync_playwright() as p:
     pg.goto("http://localhost:8898/"); pg.wait_for_selector("#l-entrar", state="visible")
     pg.fill("#l-user", "tec"); pg.fill("#l-pin", "segredo12"); pg.click("#l-entrar"); pg.wait_for_selector("#app", state="visible"); pg.wait_for_timeout(1800)
     pg.click("nav button[data-e=hoje]"); pg.wait_for_selector("#meu-dia", timeout=10000); pg.wait_for_timeout(600)
-    t = pg.inner_text("#meu-dia"); s3 = t.split("3.")[1].split("4.")[0] if "3." in t else "(sem 3)"
+    s3 = SEC(pg, "al")
     print("4 secção 3:", s3.replace("\n", " | ")[:400])
     pg.click("#meu-dia button[onclick*=\"'foto_data'\"]"); pg.wait_for_timeout(400)
     print("5 ecrã:", pg.inner_text("#folha-c").replace("\n", " | ")[:300])

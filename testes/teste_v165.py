@@ -1,5 +1,7 @@
 # v165 (31/10/2026, Valdo): confirmação dos motivos, equipa que começou o dia, comentários obrigatórios, repetir até. LING=en / sw.
 import json, subprocess, time, sys, os, datetime
+SEC = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}]") if pg.locator(f"#meu-dia details[data-k={k}]").count() else "(sem linha "+k+")")
+NB = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}] .nb") if pg.locator(f"#meu-dia details[data-k={k}] .nb").count() else "(sem linha)")
 from playwright.sync_api import sync_playwright
 NM = "/home/claude/rega-test/node_modules"
 srv = subprocess.Popen([sys.executable, "-m", "http.server", "8865", "--directory", "/home/claude/rega-coco"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(1)
@@ -51,8 +53,8 @@ with sync_playwright() as p:
     pg.fill("#l-user", "tec"); pg.fill("#l-pin", "segredo12"); pg.click("#l-entrar"); pg.wait_for_selector("#app", state="visible"); pg.wait_for_timeout(1800)
     pg.click("nav button[data-e=hoje]"); pg.wait_for_selector("#meu-dia", timeout=10000); pg.wait_for_timeout(500)
     pg.screenshot(path="/home/claude/rega-test/v165_meu_dia.png", full_page=True)
-    print("1 equipas:", pg.inner_text("#meu-dia").split("2.")[0].replace("\n", " | ")[:900])
-    print("1b fechar:", pg.locator("#meu-dia button.btn").count(), "|", pg.inner_text("#meu-dia").split("7.")[1].replace("\n", " | ")[-260:])
+    print("1 equipas:", SEC(pg, "eq").replace("\n", " | ")[:900])
+    print("1b fechar:", pg.locator("#meu-dia button.btn").count(), "|", pg.inner_text("#meu-dia").replace("\n", " | ")[-260:])
     pg.click("#meu-dia button.chip[onclick*=ecraConfirmarDsr]"); pg.wait_for_selector("#cd-ok")
     print("2 ecrã:", pg.inner_text("#folha-c").replace("\n", " | ")[:400])
     pg.click("#cd-ok"); pg.wait_for_timeout(200); print("2a sem nota:", dial[-1:])

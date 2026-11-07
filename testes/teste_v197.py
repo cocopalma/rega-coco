@@ -1,6 +1,8 @@
 # v197 (02/11/2026, Valdo: "Muda, mas o técnico e supervisor devem confirmar. Cria esta confirmação obrigatória"):
 # «O meu dia» › 8. Nomes de produtores por confirmar; o nome só muda quando o técnico E o supervisor confirmam. LING=en / sw.
 import json, subprocess, time, sys, os, datetime
+SEC = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}]") if pg.locator(f"#meu-dia details[data-k={k}]").count() else "(sem linha "+k+")")
+NB = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}] .nb") if pg.locator(f"#meu-dia details[data-k={k}] .nb").count() else "(sem linha)")
 from playwright.sync_api import sync_playwright
 NM = "/home/claude/rega-test/node_modules"
 srv = subprocess.Popen([sys.executable, "-m", "http.server", "8897", "--directory", "/home/claude/rega-coco"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(1)
@@ -44,7 +46,7 @@ with sync_playwright() as p:
     pg.goto("http://localhost:8897/"); pg.wait_for_selector("#l-entrar", state="visible")
     pg.fill("#l-user", "tec"); pg.fill("#l-pin", "segredo12"); pg.click("#l-entrar"); pg.wait_for_selector("#app", state="visible"); pg.wait_for_timeout(1800)
     pg.click("nav button[data-e=hoje]"); pg.wait_for_selector("#meu-dia", timeout=10000); pg.wait_for_timeout(600)
-    t = pg.inner_text("#meu-dia"); s8 = t.split("8.")[1] if "8." in t else "(sem secção 8)"
+    s8 = SEC(pg, "cn")
     print("1 secção 8:", s8.replace("\n", " | ")[:300])
     pg.click("#meu-dia button[onclick*=ecraCorrNome]"); pg.wait_for_timeout(500)
     print("2 ecrã:", pg.inner_text("#folha-c").replace("\n", " | ")[:400])
@@ -53,6 +55,6 @@ with sync_playwright() as p:
     pg.click("#cn-ok"); pg.wait_for_timeout(1500)
     print("4 confirmar:", rec[-1] if rec else None, "| aviso:", pg.evaluate("(document.querySelector('#aviso')||{}).innerText||''"))
     print("5 nome no telefone:", pg.evaluate("S.areas.find(a=>a.id==='PR1-1').produtor"))
-    t = pg.inner_text("#meu-dia"); print("6 secção 8 depois:", "sem secção 8 (OK)" if "8." not in t else t.split("8.")[1][:120])
+    print("6 secção 8 depois:", "sem secção 8 (OK)" if pg.locator("#meu-dia details[data-k=cn]").count() == 0 or NB(pg, "cn") == "0" else SEC(pg, "cn")[:120])
     print("ERROS JS:", erros or "nenhum"); b.close()
 srv.terminate()

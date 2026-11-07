@@ -1,5 +1,7 @@
 # v195 (02/11/2026, Raul pelo 💡): «Esta rega está certa» recusada (contou menos vivas do que as regadas) → «✏️ Corrigir as plantas regadas» abre logo a correcção. LING=en / sw.
 import json, subprocess, time, sys, os, datetime
+SEC = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}]") if pg.locator(f"#meu-dia details[data-k={k}]").count() else "(sem linha "+k+")")
+NB = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}] .nb") if pg.locator(f"#meu-dia details[data-k={k}] .nb").count() else "(sem linha)")
 from playwright.sync_api import sync_playwright
 NM = "/home/claude/rega-test/node_modules"
 srv = subprocess.Popen([sys.executable, "-m", "http.server", "8862", "--directory", "/home/claude/rega-coco"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(1)
@@ -55,8 +57,8 @@ with sync_playwright() as p:
     pg.fill("#l-user", "tec"); pg.fill("#l-pin", "segredo12"); pg.click("#l-entrar"); pg.wait_for_selector("#app", state="visible"); pg.wait_for_timeout(1800)
     pg.click("nav button[data-e=hoje]"); pg.wait_for_selector("#meu-dia", timeout=10000); pg.wait_for_timeout(500)
     print("1 meu dia:", pg.inner_text("#meu-dia").replace("\n", " | ")[:700])
-    print("1c por aprovar:", pg.inner_text("#meu-dia").split("5.")[1].replace("\n", " | ")[:250] if "5." in pg.inner_text("#meu-dia") else "(sem secção 5)")
-    t = pg.inner_text("#meu-dia"); print("1d chegadas:", t.split("6.")[1].split("Para fechar")[0].replace("\n", " | ")[:200] if "6." in t else "(sem secção 6)")
+    print("1c por aprovar:", SEC(pg, "me").replace("\n", " | ")[:250])
+    print("1d chegadas:", SEC(pg, "ch").replace("\n", " | ")[:200])
     print("1b monitoria:", pg.inner_text("#hoje .cartao >> nth=1").replace("\n", " | ")[:300])
     pg.screenshot(path="/home/claude/rega-test/meu_dia.png", full_page=True)
     pg.click("#meu-dia button.chip[onclick*=ecraConfirmarRega]"); pg.wait_for_selector("#cr-nota")

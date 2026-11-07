@@ -30,7 +30,7 @@ with sync_playwright() as p:
     erros = []; pg = ctx.new_page(); pg.on("pageerror", lambda e: erros.append(str(e)))
     pg.goto("http://localhost:8814/"); pg.wait_for_selector("#l-entrar", state="visible")
     pg.evaluate("modoEntrada('escritorio')"); pg.fill("#le-user", "g"); pg.fill("#le-senha", "x-senha-1"); pg.click("#le-entrar"); pg.wait_for_selector("#app", state="visible"); pg.wait_for_timeout(1500)
-    pg.click("nav button[data-e=hoje]"); pg.wait_for_selector("#hoje-abas"); pg.wait_for_timeout(1000)
+    pg.evaluate("fecharFolha()"); pg.click("nav button[data-e=hoje]"); pg.wait_for_selector("#hoje-abas"); pg.wait_for_timeout(1000)
     pg.evaluate("window.__lento = 3000")
     for v, alvo in [("rec", "Por encaminhar a um oficial"), ("rega", "Hoje ·"), ("rec", "Por encaminhar a um oficial"), ("rega", "Hoje ·")]:
         t0 = time.time(); pg.click(f"#hoje-abas [data-v={v}]")

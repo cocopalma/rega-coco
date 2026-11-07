@@ -4,6 +4,8 @@
 # (aprovada/recusada, sem rede na Gestão), estado da app junto da sugestão, câmara bloqueada (ajuda + câmara do telefone),
 # "Virar a câmara" por deviceId, aviso do navegador da Xiaomi, Sair com aviso, PIN de 5 algarismos. LING=en / sw.
 import json, subprocess, time, sys, os
+SEC = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}]") if pg.locator(f"#meu-dia details[data-k={k}]").count() else "(sem linha "+k+")")
+NB = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}] .nb") if pg.locator(f"#meu-dia details[data-k={k}] .nb").count() else "(sem linha)")
 from playwright.sync_api import sync_playwright
 NM = "/home/claude/rega-test/node_modules"; LING = os.environ.get("LING", "pt")
 srv = subprocess.Popen([sys.executable, "-m", "http.server", "8854", "--directory", "/home/claude/rega-coco"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(1)
@@ -130,7 +132,7 @@ with sync_playwright() as p:
     entrar(pg); pg.wait_for_selector("#app", state="visible"); pg.wait_for_timeout(2000); pg.evaluate("fecharFolha()")
     print("11 técnico situação PR2-1:", pg.evaluate("situacao(S.areas.find(a => a.id === 'PR2-1')).txt"))
     pg.click("nav button[data-e=hoje]"); pg.wait_for_selector("#meu-dia", timeout=10000); pg.wait_for_timeout(500)
-    t = pg.inner_text("#meu-dia"); print("12 meu dia:", t.split("7.")[1].split("Para fechar")[0].replace("\n", " | ")[:260] if "7." in t else "(sem secção 7)")
+    print("12 meu dia:", SEC(pg, "pt").replace("\n", " | ")[:260])
     pg.evaluate("abrirFicha('PR2-1')"); pg.wait_for_timeout(500)
     print("13 ficha:", [l for l in pg.inner_text("#folha-c").split("\n") if "⏳" in l or "terminar" in l.lower() or "finish" in l.lower() or "maliz" in l.lower()][:3])
     ctx.close()

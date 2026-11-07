@@ -19,13 +19,29 @@ html,body{margin:0;height:100%;background:var(--fundo);color:var(--texto);font:1
 button{font:inherit}
 .app{display:flex;flex-direction:column;height:100%}
 header{background:var(--verde);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}
-header h1{font-size:17px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header h1{font-size:16px;line-height:1.2;margin:0;flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
 header .sync{font-size:12px;background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:14px;padding:6px 10px}
-header #h-sug,header #h-conf{padding:6px 7px}  /* v181: botões só com ícone mais estreitos, para o nome caber */
+header #h-sug,header #h-conf{padding:6px 9px;font-size:16px}  /* v212: só 💡 e ⚙ no topo (a língua e o Sair passaram para o ⚙) */
 header .sync.pend{background:#ef8f00}
-nav{display:flex;background:#fff;border-bottom:1px solid var(--borda)}
-nav button{flex:1;border:0;background:none;padding:12px 4px;font-weight:600;color:var(--cinza);border-bottom:3px solid transparent}
-nav button.on{color:var(--verde);border-bottom-color:var(--verde)}
+/* v212 (07/11/2026, Valdo, G1): menu em baixo, mais perto do polegar, com o Hoje primeiro */
+nav{display:flex;background:#fff;border-top:1px solid var(--borda);padding-bottom:env(safe-area-inset-bottom);order:9}
+nav button{flex:1;border:0;background:none;padding:7px 2px 6px;font-size:12px;font-weight:600;color:var(--cinza);display:flex;flex-direction:column;align-items:center;gap:2px;border-top:3px solid transparent;min-height:56px}
+nav button svg{width:22px;height:22px;pointer-events:none}nav button span{pointer-events:none}
+nav button.on{color:var(--verde);border-top-color:var(--verde)}
+/* v212 (H1–H4): Hoje do técnico e do supervisor como lista de tarefas */
+.tar{border-top:1px solid #eceee9}.tar:first-of-type{border-top:0}
+.tar>summary{list-style:none;display:flex;align-items:center;gap:10px;min-height:50px;cursor:pointer;font-weight:600;font-size:15px}
+.tar>summary::-webkit-details-marker{display:none}
+.tar>summary .tt{flex:1}.tar>summary .tt small{display:block;font-weight:400;font-size:12.5px;color:var(--cinza)}
+.tar>summary .nb{min-width:26px;text-align:center;border-radius:999px;padding:3px 8px;font-size:13px;font-weight:700;color:#fff;background:#1e5bd8}
+.tar>summary .nb.v{background:#c62828}.tar>summary .nb.a{background:#b45309}.tar>summary .nb.z{background:#e3e7e1;color:#5b6168}
+.tar>summary .ch{width:18px;height:18px;flex:none;transition:transform .15s;color:#8a9089}.tar[open]>summary .ch{transform:rotate(90deg)}
+.tar>.tc{padding:0 0 10px}
+.cartao-in{padding:0}.cartao-in>h2:first-child{display:none}
+.mais-tit{font-size:13px;font-weight:700;color:var(--cinza);margin:16px 4px 6px;letter-spacing:.02em}
+details.ajuda{display:inline}details.ajuda>summary{list-style:none;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1.5px solid #8a9089;color:#5b6168;font-size:13px;font-weight:700;cursor:pointer;vertical-align:middle}
+details.ajuda>summary::-webkit-details-marker{display:none}details.ajuda[open]>summary{background:#eef3f8}
+details.ajuda[open]{display:block}
 main{flex:1;overflow:auto;position:relative}
 #mapa{position:absolute;inset:0}
 .ecra{display:none;height:100%}.ecra.on{display:block}
@@ -176,18 +192,9 @@ td.n,th.n{text-align:right}
   <header>
     <h1 id="h-nome">Rega Coco</h1>
     <button class="sync" id="h-sync" title="Sincronizar">…</button>
-    <button class="sync" id="h-lingua" onclick="mudarLingua(this)" title="English / Português">EN</button>
-    <button class="sync" id="h-sug" title="Sugerir uma melhoria" onclick="ecraSugestao()">💡</button>
-    <button class="sync" id="h-conf" title="Mudar a minha senha ou o meu PIN" onclick="ecraTrocarSenha(false)">⚙️</button>
-    <button class="sync" id="h-sair">Sair</button>
+    <button class="sync" id="h-sug" title="Sugerir uma melhoria" aria-label="Sugerir uma melhoria" onclick="ecraSugestao()">💡</button>
+    <button class="sync" id="h-conf" title="Língua, senha e sair" aria-label="Língua, senha e sair" onclick="ecraDefinicoes()">⚙️</button>
   </header>
-  <nav id="nav">
-    <button data-e="mapa" class="on">Mapa</button>
-    <button data-e="lista">Campos</button>
-    <button data-e="hoje">Hoje</button>
-    <button data-e="painel" id="nav-painel" style="display:none">Painel</button>
-    <button data-e="gestao" id="nav-gestao" style="display:none">Gestão</button>
-  </nav>
   <div id="gps-neg" onclick="ajudaGps(true)" style="display:none;background:#c62828;color:#fff;padding:8px 12px;font-size:14px;font-weight:600;cursor:pointer">📍 <span>Localização bloqueada no Chrome. Toque aqui para ver como resolver.</span></div>
   <main>
     <section class="ecra on" id="e-mapa">
@@ -291,16 +298,23 @@ td.n,th.n{text-align:right}
     <section class="ecra" id="e-painel"><iframe id="painel-f" title="Painel geral" style="border:0;width:100%;height:100%;display:block"></iframe></section>
     <section class="ecra" id="e-gestao"><div class="pad"><div id="gestao-demo"></div><div id="gestao"></div></div></section>
   </main>
+  <nav id="nav">
+    <button data-e="hoje"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Hoje</span></button>
+    <button data-e="mapa" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z"/><path d="M8 2v16M16 6v16"/></svg><span>Mapa</span></button>
+    <button data-e="lista"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>Campos</span></button>
+    <button data-e="painel" id="nav-painel" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg><span>Painel</span></button>
+    <button data-e="gestao" id="nav-gestao" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg><span>Gestão</span></button>
+  </nav>
 </div>
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=211"></script>
-<script src="i18n.js?v=211"></script>
+<script src="i18n-sw.js?v=212"></script>
+<script src="i18n.js?v=212"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=211"></script>
-<script src="app.js?v=211"></script>
+<script src="demo.js?v=212"></script>
+<script src="app.js?v=212"></script>
 </body>
 </html>

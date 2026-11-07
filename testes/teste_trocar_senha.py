@@ -51,7 +51,7 @@ with sync_playwright() as p:
     pg.fill("#ts-nova", "482913"); pg.fill("#ts-rep", "482914"); pg.click("#ts-gravar"); print("3 diferentes:", pg.inner_text("#ts-msg"))
     pg.fill("#ts-rep", "482913"); pg.click("#ts-gravar"); pg.wait_for_timeout(1500)
     print("4 gravado:", rec["put"], "| rpc:", rec["rpc"], "| folha aberta:", pg.is_visible("#folha.on"), "| impressão mudou:", pg.evaluate("JSON.parse(localStorage.getItem('rega.acessoOff')||'{}').imp") != imp0)
-    pg.click("#h-conf"); pg.wait_for_selector("#ts-actual"); print("5 voluntário:", pg.inner_text("#folha-c h2"), "| X:", pg.is_visible("#folha-x"))
+    pg.click("#h-conf"); pg.click("#folha-c button[onclick*=ecraTrocarSenha]"); pg.wait_for_selector("#ts-actual"); print("5 voluntário:", pg.inner_text("#folha-c h2"), "| X:", pg.is_visible("#folha-x"))
     pg.fill("#ts-actual", "999999"); pg.fill("#ts-nova", "570264"); pg.fill("#ts-rep", "570264"); pg.click("#ts-gravar"); pg.wait_for_timeout(800); print("6 actual errado:", pg.inner_text("#ts-msg"))
     pg.click("#ts-ver"); print("7 mostrar:", pg.get_attribute("#ts-nova", "type"))
     pg.screenshot(path="/home/claude/rega-test/trocar_senha.png")

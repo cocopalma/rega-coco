@@ -600,6 +600,17 @@ async function entrar() {
   try { localStorage.setItem('rega.entrada', papel === 'activista' ? 'activista' : ['tecnico', 'supervisor', 'oficial_me'].includes(papel) ? 'tecnico' : 'escritorio'); } catch {}
   mostrarApp();
 }
+// v212 (07/11/2026, Valdo, G2): no topo ficam o nome inteiro, o 💡 e o ⚙. A língua, a senha/PIN e o Sair estão no ⚙.
+function ecraDefinicoes() {
+  const act = souActivista(), L = typeof LINGUAS !== 'undefined' ? LINGUAS : ['pt', 'en', 'sw'], atual = typeof LINGUA !== 'undefined' ? LINGUA : 'pt';
+  const nomes = typeof NOMES_LINGUA !== 'undefined' ? NOMES_LINGUA : { pt: 'Português', en: 'English', sw: 'Kiswahili' };
+  folha(`<h2>⚙️ <span>Definições</span></h2>
+    <p class="pequeno sem-trad">${esc(S.perfil?.nome || '')}</p>
+    <label>Língua</label><div class="chips sem-trad">${L.map((l) => `<button class="chip${l === atual ? ' on' : ''}" onclick="escolherLingua('${l}')">${nomes[l]}${l === atual ? ' ✓' : ''}</button>`).join('')}</div>
+    ${window.DEMO ? '' : `<button class="btn sec" onclick="ecraTrocarSenha(false)">🔑 <span>${act ? 'Mudar o meu PIN' : 'Mudar a minha senha'}</span></button>`}
+    <button class="btn sec" style="border-color:#b42318;color:#b42318" onclick="sair()">${window.DEMO ? 'Terminar a simulação' : 'Sair'}</button>
+    ${window.DEMO ? '' : `<p class="pequeno">${act ? 'Não é preciso sair no fim do dia: pode só fechar a app.' : 'Para voltar a entrar vai precisar do utilizador e da senha.'}</p>`}`);
+}
 async function sair() {
   if (window.DEMO) return ecraDemo();                     // modo apresentação: "Sair" termina a apresentação
   // v164 (Atoquei, 30/10: regas que não chegaram): uma rega com entrada marcada perdia-se sem aviso ao sair
@@ -4777,7 +4788,7 @@ async function desenharHoje() {
   }
   // dois botões no topo do Hoje: "Rega hoje" e "Recontagens das plantas" (18/10/2026, Valdo); a escolha fica no telefone
   let abas = '';
-  if (veRecontagens()) {
+  if (veRecontagens() && !MEU_DIA()) {
     const vista = vistaActual();
     if (vista === 'rec') {
       $('#hoje').innerHTML = abasHoje('rec') + cartaoRecontagensHoje();
@@ -4791,7 +4802,7 @@ async function desenharHoje() {
     }).catch(() => {});
   }
   if (['activista', 'tecnico', 'supervisor', 'gestor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarAvisos(); }
-  if (veRecontagens() && vistaActual() !== 'rega') return;     // mudou de vista enquanto esperava
+  if (veRecontagens() && !MEU_DIA() && vistaActual() !== 'rega') return;     // mudou de vista enquanto esperava
   if (S.perfil.papel === 'activista') {
     let serv = [];
     if (navigator.onLine) { const r = await sb.from('registos_rega').select('id,area_id,entrada_em,saida_em,plantas_regadas,alerta,agua_em').eq('data', h).order('entrada_em'); serv = r.data || []; }
@@ -4805,7 +4816,8 @@ async function desenharHoje() {
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
     if (VER_APOIO.includes(S.perfil.papel) && navigator.onLine) await carregarApoios();
-    if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await Promise.all([carregarMonitoria(), carregarMeuDia()]); html = cartaoMeuDia() + cartaoApoio() + cartaoMonitoria() + html; }
+    if (MEU_DIA()) { if (navigator.onLine) await Promise.all([carregarMonitoria(), carregarMeuDia(), carregarRecontagens().catch(() => {})]); }
+    else if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await Promise.all([carregarMonitoria(), carregarMeuDia()]); html = cartaoMeuDia() + cartaoApoio() + cartaoMonitoria() + html; }
     else if (VER_APOIO.includes(S.perfil.papel)) html = cartaoApoio() + html;
     const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
     if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste') + (percursoActivo() || pontosPercursoHoje() ? linhaPercurso() : '');
@@ -4837,10 +4849,12 @@ async function desenharHoje() {
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
-  html = cartaoNuncaAgua() + cartaoApoioAct() + cartaoPorTerminar() + cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoDiaSemRega() + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
+  // v212 (H1–H4): técnico e supervisor — «O meu dia» como lista de tarefas no topo e o resto em «Mais»
+  if (MEU_DIA()) html = cartaoSugFeitas() + cartaoPrimeiroTeste() + cartaoMeuDia() + cartaoMaisHoje(html);
+  else html = cartaoNuncaAgua() + cartaoApoioAct() + cartaoPorTerminar() + cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoDiaSemRega() + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
-  if (veRecontagens() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
-  html = (veRecontagens() ? abasHoje('rega') : '') + html;
+  if (veRecontagens() && !MEU_DIA() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
+  html = (veRecontagens() && !MEU_DIA() ? abasHoje('rega') : '') + html;
   $('#hoje').innerHTML = html;
   if (navigator.onLine) LS.set('hojeHtml', { d: h, p: S.perfil.papel, html });
 }
@@ -5401,6 +5415,23 @@ function ecraConfirmarDsr(eqId, dsrId) {
     setTimeout(async () => { if (navigator.onLine) { await carregarMeuDia(); if ($('#e-hoje')?.classList.contains('on')) desenharHoje(); } }, 2500);
   };
 }
+// v212 (07/11/2026, Valdo, H1–H4): o Hoje do técnico e do supervisor passa a ser uma lista de tarefas. Cada linha tem o número
+// e abre ao tocar (o detalhe é o que antes estava sempre aberto); as que têm alguma coisa por tratar vêm primeiro; «Fechar o dia»
+// fica logo a seguir. As linhas abertas continuam abertas quando o Hoje se actualiza (S.tarAbertas).
+const CHEV = '<svg class="ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+function marcaTar(el) { S.tarAbertas ||= new Set(); if (el.open) S.tarAbertas.add(el.dataset.k); else S.tarAbertas.delete(el.dataset.k); }
+function linhaTar(k, titulo, n, cor, conteudo, sub = '') {
+  const ab = S.tarAbertas?.has(k) || window.__TAR_ABERTAS ? ' open' : '';   // __TAR_ABERTAS: só nos testes (abre todas as linhas)
+  return `<details class="tar" data-k="${k}"${ab} ontoggle="marcaTar(this)"><summary><span class="tt">${/</.test(titulo) ? titulo : `<span>${titulo}</span>`}${sub ? `<small>${sub}</small>` : ''}</span>${n == null ? '' : `<span class="nb ${n ? cor : 'z'}">${num(n)}</span>`}${CHEV}</summary><div class="tc">${conteudo}</div></details>`;
+}
+// G3: explicações longas num «ⓘ» que abre ao tocar
+const info = (txt) => `<details class="ajuda"><summary aria-label="Mais informação">i</summary><div class="pequeno" style="margin-top:6px">${txt}</div></details>`;
+// o conteúdo de um cartão sem a moldura nem o título (vai para dentro de uma linha)
+const dentroCartao = (h) => String(h || '').replace(/^\s*<div class="cartao"/, '<div class="cartao-in"');
+function contaNunca() {
+  if (!['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel)) return 0;
+  return (listaPropria() ? meusCampos() : S.areas).filter((a) => a.activista_id && nuncaAgua(a)).length;
+}
 function cartaoMeuDia() {
   if (!MEU_DIA()) return '';
   const c = LS.get('meuDia'); if (c && c.d === null && c.dia === hojeISO()) return '';
@@ -5415,10 +5446,10 @@ function cartaoMeuDia() {
         : m.confirmado_nome && m.papel_quem === 'activista' ? ` · ✓ <span>confirmado por</span> <span class="sem-trad">${esc(m.confirmado_nome)}</span>${m.pendente ? ' (<span>por enviar</span>)' : ''}` : ''}</div>`;
   const pa = (d.por_aprovar || []).filter((x) => { const a = S.areas.find((y) => y.id === x.area_id); return !a || a.poligono_proposto; });
   const nomeMot = (m) => String(m || '').split(', ').map(nomeMotivoDsr).join(', ');
-  let h = `<div class="cartao" id="meu-dia"><h2>📋 <span>O meu dia</span> · ${fmtData(d.data)}</h2>
-    ${d.fechado_em ? `<div class="msg ok">✓ <span>Dia fechado às</span> ${fmtHora(d.fechado_em)}</div>` : ''}
-    <h3 style="font-size:14px;margin:8px 0 4px">1. <span>Equipas</span>: ${eqs.length - falta.length} / ${eqs.length} <span>com rega, a trabalhar ou com motivo</span></h3>
-    ${porConf ? `<div class="msg erro">${num(porConf)} <span>motivos registados pelos activistas por confirmar. Basta um de vós (técnico ou supervisor) confirmar.</span></div>` : ''}` +
+  const L = [];                                         // [chave, título, número, cor, conteúdo, subtítulo]
+  // 1. equipas
+  L.push(['eq', 'Equipas sem rega nem motivo', falta.length + porConf, 'v',
+    (porConf ? `<div class="msg erro">${num(porConf)} <span>motivos registados pelos activistas por confirmar. Basta um de vós (técnico ou supervisor) confirmar.</span></div>` : '') +
     eqs.map((e) => { const ms = motivosDe(e);
       const tec = S.perfil.papel !== 'tecnico' ? tecDe({ activista_id: e.id }) : '';   // v178: o supervisor vê o técnico de cada equipa
       return `<div class="lin"><span><span class="sem-trad">${esc(e.nome)}</span>${tec ? `<br><span class="pequeno">👷 <span class="sem-trad">${esc(tec)}</span></span>` : ''}</span><b>${e.regas ? `✓ ${num(e.regas)} <span>campos</span> · ${num(e.plantas)} <span>plantas</span>`
@@ -5426,48 +5457,77 @@ function cartaoMeuDia() {
         : ms.length ? `<span>Sem rega</span>: ${esc(nomeMot(ms.map((m) => m.motivo).join(', ')))}`
         : cedo ? `<span style="color:var(--suave,#777)">Ainda sem rega · pode regar até às 18:00</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`
         : `<span style="color:var(--erro,#c62828)">Não regou hoje · falta o motivo</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`}</b></div>` + ms.filter((m) => m.id).map((m) => linhaMot(e, m)).join(''); }).join('') +
-    `<p class="pequeno">🟢 = <span>a equipa começou o dia na app (rega em curso ou ainda por enviar). Se a equipa estiver sem rede, o início só chega quando o telefone tiver rede; se até ao fim do dia nada chegar, registe «A equipa regou, mas não registou na app».</span></p>` +
-    `<h3 style="font-size:14px;margin:12px 0 4px">2. <span>Monitoria</span></h3>
-     <p class="pequeno">${d.monitoria_hoje ? `${num(d.monitoria_hoje)} <span>campos para verificar hoje.</span>` : 'Nenhum campo por verificar hoje.'}</p>
-     ${d.monitoria_falhas_ontem ? `<div class="msg erro">❌ ${num(d.monitoria_falhas_ontem)} <span>campos sorteados ficaram por verificar ontem. Contam como falha na sua avaliação.</span></div>` : ''}
-    <h3 style="font-size:14px;margin:12px 0 4px">3. <span>Regas com ⚠️ por confirmar</span> (${al.length})</h3>` +
-    (al.length ? al.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
+    `<div class="pequeno" style="margin:6px 0">🟢 = <span>a equipa começou o dia na app</span> ${info('<span>A equipa começou o dia na app (rega em curso ou ainda por enviar). Se a equipa estiver sem rede, o início só chega quando o telefone tiver rede; se até ao fim do dia nada chegar, registe «A equipa regou, mas não registou na app».</span>')}</div>`,
+    `${eqs.length - falta.length} / ${eqs.length} <span>com rega, a trabalhar ou com motivo</span>${porConf ? ` · ${num(porConf)} <span>motivos por confirmar</span>` : ''}`]);
+  // 2. regas com aviso
+  L.push(['al', 'Regas com ⚠️ por confirmar', al.length, 'a',
+    al.length ? al.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
       <div class="sub"><span class="sem-trad">${esc(x.equipa)}</span> · ${fmtData(x.data)} · ${x.tipo === 'foto_data' ? linhaFotoData(x) : x.tipo === 'mais_que_base' ? `${num(x.plantas)} <span>plantas regadas</span>, ${num(x.base)} <span>na base</span>` : `<span>ritmo</span> ${num(x.ritmo)} <span>plantas por pessoa por hora</span>, <span>habitual</span> ${num(x.mediana)}`}</div>
       <div class="chips">${x.tipo === 'foto_data' ? `<button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">📷 Abrir a ficha e ver as fotografias</button>` : `<button class="chip" onclick="corrigirRegaAgora('${esc(x.registo_id)}','${esc(x.area_id)}')">✏️ Corrigir as plantas regadas</button>`}<button class="chip" onclick="ecraConfirmarRega('${x.registo_id}', '${x.tipo}', ${Number(x.plantas) || 0}, ${Number(x.base) || 0}, '${esc(x.area_id)}')">✓ Está certo</button></div></div>`).join('')
-      : '<p class="pequeno">Nenhuma.</p>') +
-    `<h3 style="font-size:14px;margin:12px 0 4px">4. <span>Campos sem equipa</span>: ${num(d.sem_equipa || 0)}</h3>${d.sem_equipa ? '<button class="chip" onclick="irPorAtribuir()">Atribuir os campos</button>' : ''}` +
-    // v138 (29/10/2026, Valdo): medições de área feitas pelos activistas à espera de aprovação (as já aprovadas no telefone saem da lista)
-    `<h3 style="font-size:14px;margin:12px 0 4px">5. <span>Medições de área por aprovar</span> (${pa.length})</h3>` +
-    (pa.length ? pa.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
+      : '<p class="pequeno">Nenhuma.</p>']);
+  // 3. campos sem equipa (antes também havia um cartão à parte no topo: saiu, era repetido)
+  L.push(['se', 'Campos sem equipa', d.sem_equipa || 0, 'a', d.sem_equipa ? '<button class="chip" onclick="irPorAtribuir()">Atribuir os campos</button>' : '<p class="pequeno">Nenhum.</p>']);
+  // 4. medições por aprovar (v138)
+  L.push(['me', 'Medições de área por aprovar', pa.length, 'b',
+    pa.length ? pa.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
       <div class="sub"><span class="sem-trad">${esc(x.equipa || '')}</span> · ${esc(x.comunidade || '')} · ${x.proposta_em ? fmtData(x.proposta_em) : ''}${x.area_m2 ? ' · ' + textoArea(x.area_m2) : ''}${x.quem ? ` · <span>medida por</span> <span class="sem-trad">${esc(x.quem)}</span>` : ''}</div>
-      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e aprovar</button></div></div>`).join('') : '<p class="pequeno">Nenhuma.</p>');
-  // v153 (30/10/2026, Valdo): equipas que chegaram ao 1.º campo depois da hora combinada (config.hora_chegada_equipa), para o técnico perguntar porquê
+      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e aprovar</button></div></div>`).join('') : '<p class="pequeno">Nenhuma.</p>']);
+  // 5. monitoria (o cartão da monitoria passou para dentro desta linha)
+  L.push(['mo', 'Monitoria: verificar hoje', d.monitoria_hoje || 0, 'b',
+    (d.monitoria_falhas_ontem ? `<div class="msg erro">❌ ${num(d.monitoria_falhas_ontem)} <span>campos sorteados ficaram por verificar ontem. Contam como falha na sua avaliação.</span></div>` : '') + dentroCartao(cartaoMonitoria()),
+    d.monitoria_falhas_ontem ? `<span style="color:#c62828">${num(d.monitoria_falhas_ontem)} <span>por verificar ontem</span></span>` : '']);
+  // 6. campos que nunca receberam água (v204; antes cartão à parte)
+  { const n = contaNunca(); L.push(['na', 'Campos que nunca receberam água', n, 'b', n ? dentroCartao(cartaoNuncaAgua()) : '<p class="pequeno">Nenhum.</p>']); }
+  // 7. recontagens das plantas (antes um botão no topo do Hoje)
+  if (veRecontagens()) L.push(['rc', 'Recontagens das plantas', contaRecHoje(), 'b', dentroCartao(cartaoRecontagensHoje())]);
+  // 8. chegadas tardias (v153)
   const hc = d.hora_chegada || '06:00', hMz = (t) => new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour: '2-digit', minute: '2-digit', hour12: false });
   const tarde = eqs.filter((e) => e.chegada && hMz(e.chegada) > hc).sort((a, b) => a.chegada < b.chegada ? -1 : 1);
   const minAtraso = (e) => { const [a, b] = hMz(e.chegada).split(':').map(Number), [x, y] = hc.split(':').map(Number); return (a * 60 + b) - (x * 60 + y); };
-  h += `<h3 style="font-size:14px;margin:12px 0 4px">6. <span>Chegaram ao 1.º campo depois das</span> ${esc(hc)} (${tarde.length})</h3>` +
-    (tarde.length ? '<p class="pequeno">Pergunte a cada equipa porque chegou tarde.</p>' + tarde.map((e) => `<div class="lin"><span class="sem-trad">${esc(e.nome)}</span><b>${hMz(e.chegada)} · +${num(minAtraso(e))} min</b></div>`).join('')
-      : `<p class="pequeno">${eqs.some((e) => e.chegada) ? 'Todas as equipas que regaram chegaram a tempo.' : 'Ainda nenhuma equipa marcou entrada hoje.'}</p>`);
-  // v154 (30/10/2026, Valdo): campos com a rega a meio (água/avaria) — são os primeiros a regar no dia seguinte
+  L.push(['ch', `<span>Chegaram ao 1.º campo depois das</span> ${esc(hc)}`, tarde.length, 'a',
+    tarde.length ? '<p class="pequeno">Pergunte a cada equipa porque chegou tarde.</p>' + tarde.map((e) => `<div class="lin"><span class="sem-trad">${esc(e.nome)}</span><b>${hMz(e.chegada)} · +${num(minAtraso(e))} min</b></div>`).join('')
+      : `<p class="pequeno">${eqs.some((e) => e.chegada) ? 'Todas as equipas que regaram chegaram a tempo.' : 'Ainda nenhuma equipa marcou entrada hoje.'}</p>`]);
+  // 9. campos por terminar (v154)
   const pt = d.por_terminar || [];
-  h += `<h3 style="font-size:14px;margin:12px 0 4px">7. <span>Campos por terminar</span> (${pt.length})</h3>` +
-    (pt.length ? '<p class="pequeno">A rega ficou a meio por falta de água ou avaria. Confirme que a equipa começa o próximo dia por estes campos.</p>' + pt.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
+  L.push(['pt', 'Campos por terminar', pt.length, 'a',
+    pt.length ? '<p class="pequeno">A rega ficou a meio por falta de água ou avaria. Confirme que a equipa começa o próximo dia por estes campos.</p>' + pt.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
       <div class="sub"><span class="sem-trad">${esc(x.equipa || '')}</span> · <span>Faltam</span> ${num(Math.max(0, (x.base || 0) - (x.regadas || 0)))} <span>de</span> ${num(x.base || 0)} <span>plantas</span>${x.data ? ` · <span>rega a meio a</span> ${fmtData(x.data)}` : ''}</div>
-      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha</button></div></div>`).join('') : '<p class="pequeno">Nenhum.</p>');
-  // v197: nomes de produtores por confirmar (só aparece quando há pedidos; não bloqueia o «Fechar o dia»)
+      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha</button></div></div>`).join('') : '<p class="pequeno">Nenhum.</p>']);
+  // 10. nomes de produtores por confirmar (v197; só aparece com pedidos)
   const cn = (LS.get('corrNome', []) || []).filter((x) => x.estado === 'por_confirmar');
-  if (cn.length) h += `<h3 style="font-size:14px;margin:12px 0 4px">8. <span>Nomes de produtores por confirmar</span> (${cn.length})</h3>
-    <p class="pequeno">O nome só muda quando o técnico e o supervisor da equipa confirmarem.</p>` + cn.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.area_id)}${x.equipa ? ' · ' + esc(x.equipa) : ''}</div>
+  if (cn.length) L.push(['cn', 'Nomes de produtores por confirmar', cn.length, 'b',
+    '<p class="pequeno">O nome só muda quando o técnico e o supervisor da equipa confirmarem.</p>' + cn.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.area_id)}${x.equipa ? ' · ' + esc(x.equipa) : ''}</div>
       <div class="sub"><span>Na base</span>: <b class="sem-trad">${esc(x.nome_antigo)}</b> → <span>Nome novo</span>: <b class="sem-trad">${esc(x.nome_novo)}</b></div>
       <div class="sub"><span>Técnico</span>: ${x.tecnico_em ? `✓ <span class="sem-trad">${esc(x.tecnico_nome || '')}</span>` : '<span>por confirmar</span>'} · <span>Supervisor</span>: ${x.supervisor_em ? `✓ <span class="sem-trad">${esc(x.supervisor_nome || '')}</span>` : '<span>por confirmar</span>'}</div>
-      ${x.posso ? `<div class="chips"><button class="chip" onclick="ecraCorrNome('${esc(x.id)}')">✓ Confirmar ou recusar</button></div>` : ''}</div>`).join('');
-  // v183 (01/11/2026, Valdo: "não vi onde é que o supervisor e o técnico fecham o dia"): o botão aparece sempre; fica desactivado
-  // enquanto faltar alguma equipa sem rega nem motivo ou motivos por confirmar, com a razão por cima
-  h += d.fechado_em ? '' : falta.length ? `<p class="pequeno" style="margin-top:12px"><span>Para fechar o dia, todas as equipas têm de ter rega ou motivo. Faltam:</span> ${falta.length}</p><button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button>`
-    : porConf ? `<p class="pequeno" style="margin-top:12px"><span>Para fechar o dia, confirme os motivos dos activistas. Faltam:</span> ${porConf}</p><button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button>`
+      ${x.posso ? `<div class="chips"><button class="chip" onclick="ecraCorrNome('${esc(x.id)}')">✓ Confirmar ou recusar</button></div>` : ''}</div>`).join('')]);
+  // primeiro as linhas com alguma coisa por tratar (pela ordem acima), depois as outras
+  const ord = [...L.filter((x) => x[2] > 0), ...L.filter((x) => !(x[2] > 0))], porTratar = L.filter((x) => x[2] > 0).length;
+  let h = `<div class="cartao" id="meu-dia"><h2 style="margin-bottom:2px">📋 <span>O meu dia</span> · ${fmtData(d.data)}</h2>
+    <p class="pequeno" style="margin:0 0 6px">${d.fechado_em ? `✓ <span>Dia fechado às</span> ${fmtHora(d.fechado_em)}` : porTratar ? `${porTratar} <span>${porTratar === 1 ? 'lista por tratar' : 'listas por tratar'}</span> · <span>fechar o dia até às 18:00</span>` : '<span>Nada por tratar</span> · <span>fechar o dia até às 18:00</span>'}</p>` +
+    ord.map((x) => linhaTar(...x)).join('');
+  // v183: o botão aparece sempre; fica desactivado, com a razão, enquanto faltar alguma equipa sem rega nem motivo ou motivos por confirmar
+  h += d.fechado_em ? '' : falta.length ? `<button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button><p class="pequeno" style="text-align:center;color:#8a4b00;margin:6px 0 0"><span>Para fechar o dia, todas as equipas têm de ter rega ou motivo. Faltam:</span> ${falta.length}</p>`
+    : porConf ? `<button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button><p class="pequeno" style="text-align:center;color:#8a4b00;margin:6px 0 0"><span>Para fechar o dia, confirme os motivos dos activistas. Faltam:</span> ${porConf}</p>`
     : `<button class="btn" style="margin-top:12px" onclick="fecharDia()">🔒 Fechar o dia</button>`;
-  h += `<p class="pequeno">Feche o dia até às 18:00. Os dias fechados a tempo, a monitoria no prazo, as regas com ⚠️ confirmadas e as equipas sem motivo contam no cumprimento de cada técnico e supervisor (painel).</p>${c.em && !navigator.onLine ? `<p class="pequeno"><span>Sem rede: dados de</span> ${fmtHora(c.em)}</p>` : ''}</div>`;
+  h += `<div class="pequeno" style="margin-top:8px"><span>Feche o dia até às 18:00.</span> ${info('Os dias fechados a tempo, a monitoria no prazo, as regas com ⚠️ confirmadas e as equipas sem motivo contam no cumprimento de cada técnico e supervisor (painel).')}</div>${c.em && !navigator.onLine ? `<p class="pequeno"><span>Sem rede: dados de</span> ${fmtHora(c.em)}</p>` : ''}</div>`;
   return h;
+}
+// «Mais» (H4): o que não é tarefa do dia fica fechado numa lista; abre ao tocar
+function cartaoMaisHoje(hojeCard) {
+  const L = [];
+  const add = (k, titulo, html, n = null, sub = '') => { if (html && String(html).trim()) L.push(linhaTar(k, titulo, n, 'b', dentroCartao(html), sub)); };
+  const eq = cartaoEquipas().replace(/^\s*<div class="cartao"><details><summary>[\s\S]*?<\/summary>/, '<div class="cartao-in"><div>').replace(/<\/details><\/div>\s*$/, '</div></div>');
+  add('m-eq', 'As minhas equipas', eq, (S.activistas || []).filter((t) => t.activo !== false && (S.visiveis || []).includes(t.id)).length);
+  add('m-hj', 'Regas de hoje e chuva', hojeCard);
+  add('m-dsr', 'Dia sem rega', cartaoDiaSemRega());
+  add('m-ap', 'Apoio entre equipas', cartaoApoio());
+  { const pl = cartaoPlanos(); add('m-pl', 'Planos das equipas', pl, pl ? planos().filter(esperaPorMim).length : null); }
+  add('m-av', 'Avisos da monitoria', cartaoAvisos(), avisos().length || null);
+  add('m-tel', 'Activistas sem telemóvel', cartaoSemTelefone());
+  add('m-man', 'Manutenção', cartaoManutHoje());
+  add('m-sug', 'Próximo campo sugerido', cartaoSugHoje());
+  if (!L.length) return '';
+  return `<div class="mais-tit">MAIS</div><div class="cartao" style="padding:2px 14px">${L.join('')}</div>`;
 }
 async function fecharDia() {
   if (!navigator.onLine) return aviso('Fechar o dia precisa de rede.', 'erro');
@@ -5904,7 +5964,7 @@ function mostrarApp() {
   $('#h-nome').textContent = `${S.perfil.nome}${['activista', 'cliente'].includes(papel) ? '' : ' · ' + (S.perfil.titulo || (papel === 'gestor' ? 'Gestor' : FUNCOES[papel]?.nome || papel))}`;
   $('#h-nome').title = $('#h-nome').textContent;   // v182: a dica mostra o nome completo (o nome já não abre a mudança de senha)
   // v182 (Valdo): tocar no nome já não abre nada; mudar a senha/PIN só pelo ⚙️
-  { const c = $('#h-conf'); if (c) c.style.display = window.DEMO ? 'none' : ''; }   // v181 (Valdo): botão ⚙️ para mudar a senha/PIN (antes só tocando no nome); escondido na apresentação
+  { const c = $('#h-conf'); if (c) c.style.display = ''; }   // v212 (G2): o ⚙ tem a língua, a senha/PIN e o Sair (na simulação: língua e terminar)
   $('#nav-gestao').style.display = papel === 'gestor' ? '' : 'none';
   $('#nav-painel').style.display = VER_PAINEL.includes(papel) ? '' : 'none';
   const opPl = document.querySelector('#f-sit option[value="plantas"]'); if (opPl) opPl.hidden = !PODE_COORD.includes(papel);
@@ -6021,9 +6081,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   ['input', 'focus', 'blur'].forEach((ev) => $('#l-pin').addEventListener(ev, pinCaixas));
   $('#l-mostrar').onclick = () => { const i = $('#l-senha'); i.type = i.type === 'password' ? 'text' : 'password'; $('#l-mostrar').textContent = i.type === 'password' ? 'Mostrar' : 'Esconder'; };
   modoEntrada();
-  $('#nav').onclick = (e) => { if (e.target.dataset.e) mudar(e.target.dataset.e); };
+  $('#nav').onclick = (e) => { const b = e.target.closest('button[data-e]'); if (b) mudar(b.dataset.e); };
   $('#h-sync').onclick = () => sincronizar();
-  $('#h-sair').onclick = () => sair();
   $('#folha-x').onclick = fecharFolha;
   $('#b-rodar').onclick = alternarRodar; botaoRodar();
   $('#b-regua').onclick = alternarRegua;

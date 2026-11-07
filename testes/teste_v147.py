@@ -81,7 +81,7 @@ with sync_playwright() as p:
     print("O1 folha aberta:", pg.is_visible("#folha"), "| ✕ visível:", pg.is_visible("#folha-x"), "| cancelar:", pg.locator("#folha-c button.sec").count())
     print("O1 texto:", pg.inner_text("#folha-c").replace(chr(10), " | ")[-200:])
     pg.screenshot(path="/home/claude/rega-test/v147_obrig_%s.png" % L)
-    pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(1500); print("O2 depois de tocar no Hoje, folha aberta:", pg.is_visible("#folha"))
+    pg.evaluate("mudar('hoje')"); pg.wait_for_timeout(1500); print("O2 depois de tocar no Hoje, folha aberta:", pg.is_visible("#folha"))
     pg.click("#esc-dias .chip[data-v='4']"); pg.click("#esc-ok"); pg.wait_for_timeout(800); print("O3 erro:", pg.inner_text("#esc-msg")[:80], "| aberta:", pg.is_visible("#folha"))
     pg.click("#esc-dias .chip[data-v='5']"); pg.click("#esc-ok"); pg.wait_for_timeout(1500)
     print("O4 gravado:", rec.get("esc"), "| folha aberta:", pg.is_visible("#folha"), "| ✕ estilo:", pg.evaluate("document.querySelector('#folha-x').style.display"))

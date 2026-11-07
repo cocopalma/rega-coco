@@ -1,5 +1,7 @@
 # v192 (02/11/2026, Nuro): a medição aprovada na ficha sai logo do «O meu dia». Baseado em teste_meu_dia.py (v133–v134 (28/10/2026, Valdo): "O meu dia", "Fechar o dia", confirmar regas com ⚠️ e monitoria só no dia seguinte. LING=en / sw.
 import json, subprocess, time, sys, os, datetime
+SEC = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}]") if pg.locator(f"#meu-dia details[data-k={k}]").count() else "(sem linha "+k+")")
+NB = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}] .nb") if pg.locator(f"#meu-dia details[data-k={k}] .nb").count() else "(sem linha)")
 from playwright.sync_api import sync_playwright
 NM = "/home/claude/rega-test/node_modules"
 srv = subprocess.Popen([sys.executable, "-m", "http.server", "8892", "--directory", "/home/claude/rega-coco"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(1)
@@ -55,17 +57,17 @@ with sync_playwright() as p:
     pg.fill("#l-user", "tec"); pg.fill("#l-pin", "segredo12"); pg.click("#l-entrar"); pg.wait_for_selector("#app", state="visible"); pg.wait_for_timeout(1800)
     pg.click("nav button[data-e=hoje]"); pg.wait_for_selector("#meu-dia", timeout=10000); pg.wait_for_timeout(500)
     print("1 meu dia:", pg.inner_text("#meu-dia").replace("\n", " | ")[:700])
-    print("1c por aprovar:", pg.inner_text("#meu-dia").split("5.")[1].replace("\n", " | ")[:250] if "5." in pg.inner_text("#meu-dia") else "(sem secção 5)")
-    t = pg.inner_text("#meu-dia"); print("1d chegadas:", t.split("6.")[1].split("Para fechar")[0].replace("\n", " | ")[:200] if "6." in t else "(sem secção 6)")
+    print("1c por aprovar:", SEC(pg, "me").replace("\n", " | ")[:250])
+    print("1d chegadas:", SEC(pg, "ch").replace("\n", " | ")[:200])
     print("1b monitoria:", pg.inner_text("#hoje .cartao >> nth=1").replace("\n", " | ")[:300])
     pg.click("#meu-dia button.chip[onclick*='PR2-1']"); pg.wait_for_timeout(800)
     print("5 ficha aberta:", pg.inner_text("#folha h2"), "| cartão por aprovar:", pg.locator("#folha-c", has_text="por aprovar").count() > 0 or pg.locator("#folha-c", has_text="awaiting approval").count() > 0 or pg.locator("#folha-c", has_text="kuidhinishwa").count() > 0)
-    sec5 = lambda: pg.inner_text("#meu-dia").split("5.")[1].split("\n")[0]
+    sec5 = lambda: NB(pg, "me")
     print("6 antes de aprovar:", sec5())
     pg.click("#folha-c button[onclick*=\"aprovarMedicao('PR2-1',true)\"], #folha-c button[onclick*=\"aprovarMedicao('PR2-1', true)\"]"); pg.wait_for_timeout(1500)
     print("6b ficha:", pg.inner_text("#folha-c .msg.ok >> nth=0") if pg.locator("#folha-c .msg.ok").count() else "—")
     pg.evaluate("fecharFolha()"); pg.wait_for_timeout(800)
     print("7a telefone:", pg.evaluate("S.areas.find(a=>a.id==='PR2-1').poligono_proposto"), "| hoje on:", pg.evaluate("$('#e-hoje').classList.contains('on')"), "| servidor:", "aprovar" in rec)
-    print("7 depois de aprovar (O meu dia):", sec5(), "| OK" if "(0)" in sec5() else "| FALHOU")
+    print("7 depois de aprovar (O meu dia):", sec5(), "| OK" if sec5() in ("0", "(sem linha)") else "| FALHOU")
     print("ERROS JS:", erros or "nenhum"); b.close()
 srv.terminate()
