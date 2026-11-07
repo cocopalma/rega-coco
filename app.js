@@ -268,7 +268,7 @@ const testeEquipa = (id) => (VER_TESTES_EQ.includes(S.perfil?.papel) ? (S.testes
 const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a', terminar: '#f9a825' };
 // borda do campo no mapa (16/10/2026, Dalmar via Valdo): azul = já recebeu rega nesta ronda, vermelho = ainda não (ver bordaAzul)
 const BORDA = { regado: '#1e5bd8', nunca: '#c62828' };
-const COLS_AREAS = 'id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em,n_regas_origem,ultima_rega_origem,datas_rega_origem,plantas_regadas_origem,regas_origem_por_pr,wa_ultima,wa_n,wa_por_pr';
+const COLS_AREAS = 'id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em,recusa_medicao_motivo,recusa_medicao_em,recusa_medicao_por,n_regas_origem,ultima_rega_origem,datas_rega_origem,plantas_regadas_origem,regas_origem_por_pr,wa_ultima,wa_n,wa_por_pr';
 // regas do campo: antes da app (ficheiro do Dalmar, dados até CFG.dataOrigem) + na app (servidor e as que ainda estão no telefone)
 function regasDoCampoInfo(a) {
   const e = S.estado[a.id] || {}, fila = filaRegistos().filter((r) => r.area_id === a.id && !r.teste && r.plantas_regadas > 0);
@@ -376,7 +376,7 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'zona' ? await sb.rpc('definir_zona', { p_area: x.area_id, p_zona: x.zona })
         : x.tipo === 'comunidade' ? await sb.rpc('definir_comunidade', { p_area: x.area_id, p_comunidade: x.comunidade })
         : x.tipo === 'limites' ? await sb.rpc('abrir_limites', { p_area: x.area_id, p_abrir: x.abrir })
-        : x.tipo === 'aprovar' ? await sb.rpc('aprovar_poligono', { p_area: x.area_id, p_aprovar: x.aprovar })
+        : x.tipo === 'aprovar' ? await sb.rpc('aprovar_poligono', { p_area: x.area_id, p_aprovar: x.aprovar, p_motivo: x.motivo || null })
         : x.tipo === 'poligono' ? await sb.rpc('gravar_poligono', { p_area: x.area_id, p_pontos: x.pontos, p_precisao: x.precisao, p_medido_em: x.medido_em })
         : x.tipo === 'planta' ? await sb.rpc('gravar_planta', { p_id: x.planta.id, p_area: x.area_id, p_n: x.planta.n, p_lat: x.planta.lat, p_lon: x.planta.lon, p_precisao: x.planta.precisao_m, p_em: x.planta.marcada_em, p_estado: x.planta.estado, p_cavaroda: x.planta.cavaroda, p_mulching: x.planta.mulching })
         : x.tipo === 'planta_est' ? await sb.rpc('estado_planta', { p_id: x.planta_id, p_estado: x.estado, p_cavaroda: x.cavaroda, p_mulching: x.mulching, p_em: x.em })
@@ -2828,6 +2828,7 @@ function botoesCampo(a) {
   const gestor = S.perfil.papel === 'gestor', aberto = gestor || a.limites_abertos;
   // área medida pelo activista à espera de aprovação (técnico, supervisor ou gestor aprovam; 15/10/2026, Valdo)
   if (a.poligono_proposto && PODE_COORD.includes(S.perfil.papel)) h += cartaoProposta(a);
+  if ((PODE_COORD.includes(S.perfil.papel) || S.perfil.papel === 'activista') && !a.poligono_proposto) h += linhaRecusaMed(a);
   if (S.perfil.papel === 'activista' && a.activista_id === S.perfil.activista_id && (!temPoligono(a) || a.limites_abertos || a.poligono_proposto))
     h += a.poligono_proposto ? `<div class="msg info">Área medida: ${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}. À espera de aprovação do técnico ou do supervisor.</div>`
       : `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 ${temPoligono(a) ? 'Medir a área de novo (andar à volta)' : 'Medir a área (andar à volta do campo)'}</button>`;
@@ -2908,19 +2909,42 @@ function cartaoProposta(a) {
     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="margin:0" onclick="aprovarMedicao('${esc(a.id)}', true)">✓ Aprovar</button><button class="btn sec" style="margin:0" onclick="aprovarMedicao('${esc(a.id)}', false)">✗ Recusar</button></div>
     ${temPoligono(a) && !a.limites_abertos ? '<p class="pequeno">Este campo já tem limite: só o gestor pode substituí-lo.</p>' : ''}</div>`;
 }
-function aplicarAprovacao(a, sim) {
+// v210 (07/11/2026, Valdo: "Deve passar a pedir motivo de recusa"): recusar a medição pede o motivo; o activista vê-o na ficha
+function linhaRecusaMed(a) {
+  if (!a.recusa_medicao_em) return '';
+  return `<div class="msg erro"><b>Medição recusada</b> · <span>${fmtData(String(a.recusa_medicao_em).slice(0, 10))}</span>${a.recusa_medicao_por ? ` · <span>por</span> <span class="sem-trad">${esc(a.recusa_medicao_por)}</span>` : ''}<br>
+    <span class="sem-trad">${esc(a.recusa_medicao_motivo || '')}</span><br><span>Meça a área de novo.</span></div>`;
+}
+function ecraRecusarMedicao(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  folha(`<h2>Recusar a medição da área</h2>
+    <p class="pequeno"><span class="sem-trad">${esc(a.produtor)} · ${esc(a.pr)}-${esc(a.area_n)}</span></p>
+    <label>Porque recusa esta medição? (obrigatório)</label>
+    <textarea id="rm-mot" rows="3" placeholder="Ex.: o limite não é deste produtor; faltou um lado do campo"></textarea>
+    <p class="pequeno">O activista vê este motivo na ficha do campo e mede de novo.</p>
+    <div id="rm-msg"></div>
+    <button class="btn" id="rm-ok">✗ Recusar a medição</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
+  $('#rm-ok').onclick = () => {
+    const m = $('#rm-mot').value.trim();
+    if (m.replace(/\s/g, '').length < 3) { $('#rm-msg').innerHTML = '<div class="msg erro">Escreva o motivo da recusa.</div>'; return; }
+    aprovarMedicao(id, false, m);
+  };
+}
+function aplicarAprovacao(a, sim, motivo) {
+  if (sim) { a.recusa_medicao_motivo = null; a.recusa_medicao_em = null; a.recusa_medicao_por = null; }
+  else if (motivo && a.poligono_proposto) { a.recusa_medicao_motivo = motivo; a.recusa_medicao_em = new Date().toISOString(); a.recusa_medicao_por = S.perfil.nome || null; }
   if (sim && a.poligono_proposto) {
     a.poligono = a.poligono_proposto; a.area_m2 = a.area_m2_proposta || areaPontos(a.poligono_proposto); a.limites_abertos = false;
     if (a.latitude == null) { const c = centroPontos(a.poligono); a.latitude = c[1]; a.longitude = c[0]; }
   }
   a.poligono_proposto = null; a.area_m2_proposta = null; a.proposta_em = null;
 }
-function aprovarMedicao(id, sim) {
+function aprovarMedicao(id, sim, motivo) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   if (sim && temPoligono(a) && !a.limites_abertos && S.perfil.papel !== 'gestor') return aviso('Este campo já tem limite. Só o gestor pode substituí-lo.', 'erro');
-  if (!sim && !confirm('Recusar esta medição? O activista terá de medir de novo.')) return;
-  aplicarAprovacao(a, sim); LS.set('areas', S.areas);
-  porNaFilaAlt({ tipo: 'aprovar', area_id: id, aprovar: sim });
+  if (!sim && !motivo) return ecraRecusarMedicao(id);
+  aplicarAprovacao(a, sim, motivo); LS.set('areas', S.areas);
+  porNaFilaAlt({ tipo: 'aprovar', area_id: id, aprovar: sim, motivo: sim ? null : motivo });
   desenharMapa(true); desenharLista(); actHoje();   // v192 (02/11/2026, Nuro): a medição aprovada sai logo do «O meu dia»
   abrirFicha(id, `<div class="msg ok">${sim ? 'Medição aprovada: o limite do campo já vale.' : 'Medição recusada.'}</div>`);
 }
@@ -3062,7 +3086,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
     else if (x.tipo === 'comunidade') { a.comunidade = x.comunidade; a.zona = null; }
     else if (x.tipo === 'limites') a.limites_abertos = x.abrir;
     else if (x.tipo === 'recontagem') {}                            // tipo antigo (v64–v66): já não muda nada
-    else if (x.tipo === 'aprovar') aplicarAprovacao(a, x.aprovar);
+    else if (x.tipo === 'aprovar') aplicarAprovacao(a, x.aprovar, x.motivo);
     else if (x.tipo === 'poligono' && x.proposta) { a.poligono_proposto = x.pontos; a.area_m2_proposta = x.area_m2; a.proposta_em = x.medido_em; }
     else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
     else if (x.tipo === 'plantas_rega') {}                          // correcção das plantas de uma rega: não muda o campo

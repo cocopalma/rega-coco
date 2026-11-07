@@ -3,6 +3,8 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    // v210
+    "Recusar a medição da área": "Kataa kipimo cha eneo", "Porque recusa esta medição? (obrigatório)": "Kwa nini unakataa kipimo hiki? (lazima)", "Ex.: o limite não é deste produtor; faltou um lado do campo": "Mf.: mpaka si wa mkulima huyu; upande mmoja wa shamba umekosekana", "O activista vê este motivo na ficha do campo e mede de novo.": "Mhamasishaji anaona sababu hii kwenye kadi ya shamba na anapima tena.", "✗ Recusar a medição": "✗ Kataa kipimo", "Escreva o motivo da recusa.": "Andika sababu ya kukataa.", "Medição recusada": "Kipimo kimekataliwa", "Meça a área de novo.": "Pima eneo tena.",
     // v209
     "Está na área medida pelo activista neste campo, que ainda está à espera de aprovação. A entrada usa o limite antigo do campo.": "Uko ndani ya eneo lililopimwa na mhamasishaji katika shamba hili, ambalo bado linasubiri kuidhinishwa. Kuingia kunatumia mpaka wa zamani wa shamba.", "Aprove a medição no cartão «Área medida pelo activista — por aprovar» desta ficha; depois a entrada fica aceite.": "Idhinisha kipimo kwenye kadi «Eneo lililopimwa na mhamasishaji — linasubiri kuidhinishwa» ya shamba hili; kisha kuingia kutakubaliwa.", "Peça ao técnico ou ao supervisor para aprovar a sua medição deste campo. Depois de aprovada, pode marcar a entrada.": "Mwombe fundi au msimamizi aidhinishe kipimo chako cha shamba hili. Kikishaidhinishwa, unaweza kuingia.",
     // v205

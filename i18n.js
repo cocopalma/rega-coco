@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    // v210
+    "Recusar a medição da área": "Reject the area measurement", "Porque recusa esta medição? (obrigatório)": "Why are you rejecting this measurement? (required)", "Ex.: o limite não é deste produtor; faltou um lado do campo": "E.g.: the boundary is not this farmer's; one side of the field is missing", "O activista vê este motivo na ficha do campo e mede de novo.": "The activist sees this reason on the field card and measures again.", "✗ Recusar a medição": "✗ Reject the measurement", "Escreva o motivo da recusa.": "Write the reason for rejecting.", "Medição recusada": "Measurement rejected", "Meça a área de novo.": "Measure the area again.",
     // v209
     "Está na área medida pelo activista neste campo, que ainda está à espera de aprovação. A entrada usa o limite antigo do campo.": "You are inside the area the activist measured for this field, which is still waiting for approval. Check-in uses the field's old boundary.", "Aprove a medição no cartão «Área medida pelo activista — por aprovar» desta ficha; depois a entrada fica aceite.": "Approve the measurement in the «Area measured by the activist — to approve» card on this field card; then check-in will be accepted.", "Peça ao técnico ou ao supervisor para aprovar a sua medição deste campo. Depois de aprovada, pode marcar a entrada.": "Ask the technician or the supervisor to approve your measurement of this field. Once it is approved, you can check in.",
     // v205
