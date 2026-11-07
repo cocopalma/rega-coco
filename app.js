@@ -1101,6 +1101,9 @@ function desenharMapa(enquadrar = false) {
       .on('click', (e) => clicarCampo(e, a)).addTo(camada);
     if (queimadaDe(a.id)) L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-fogo', html: '🔥', iconSize: [22, 22], iconAnchor: [11, 26] }) })
       .on('click', (e) => clicarCampo(e, a)).addTo(camada);
+    // v217 (07/11/2026, Valdo): 🚱 = nunca recebeu água (nem na app nem no WhatsApp); a cor e a borda só falam da ronda actual
+    if (a.activista_id && nuncaAgua(a)) L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-fogo', html: '🚱', iconSize: [22, 22], iconAnchor: [26, 26] }) })
+      .on('click', (e) => clicarCampo(e, a)).addTo(camada);
     if (verPlantas() && nPlantas(a.id)) L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-fogo', html: '🌴', iconSize: [22, 22], iconAnchor: [-4, 26] }) })
       .on('click', (e) => clicarCampo(e, a)).addTo(camada);
     pts.push([a.latitude, a.longitude]);

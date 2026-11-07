@@ -468,6 +468,9 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 ## Versão da app nas Definições (v216, 07/11/2026, Valdo: "dentro da engrenagem")
 - ⚙️ Definições › no fim «ℹ️ Versão da app: vN» (`#def-versao`, `versaoApp()` = `?v=` do app.js; todos os papéis, também na simulação). Teste: `rega-test/teste_v216.py` (LING=en / sw).
 
+## 🚱 no mapa: campos que nunca receberam água (v217, 07/11/2026, Valdo: "Sim")
+- Caso: PR2467285-1 (Selemane) regado 2× na ronda 1 aparecia vermelho na ronda 2 como um campo nunca regado: a cor e a borda só falam da ronda actual. Agora o mapa põe 🚱 junto ao ponto dos campos com activista e `nuncaAgua(a)` (nem na app nem no WhatsApp; à esquerda do 🔥, `iconAnchor` [26, 26]); legenda «🚱 Nunca recebeu água (nem na app nem no WhatsApp)». Não é 💧 (já é o poço). Todos os papéis. Teste: `rega-test/teste_v217.py` (LING=en / sw).
+
 ## Plantas mortas fora dos avisos da monitoria (v196, 02/11/2026, sugestão do Nuro pelo 💡 às 12:59)
 - Nuro (monitoria de PR228768-1 e PR228599-1, método diagonal): as mudas marcadas mortas na amostra (sem humidade porque estão mortas) davam o aviso «dê atenção às plantas sem água». Agora `avisos_monitoria` (migração `avisos_monitoria_sem_mortas`) não conta as mortas em `sem_rega`, devolve `mortas_sem` e só lista o campo se houver plantas vivas/secas sem água ou se o campo ficou não regado (PR228599-1 e PR228177-1 saíram dos avisos). App: "… · mortas não contam: N" no Hoje e na ficha; o cartão diz "As plantas mortas não contam neste aviso." A % de solo húmido, a nota, o "campo regado (≥ 80 %)" e o LQAS continuam a contar as mortas (para o Valdo decidir). Teste: `rega-test/teste_v196.py` (LING=en / sw).
 
