@@ -2459,6 +2459,55 @@ function avisoSemLimite(sit) {
     <span>Meça-os no campo: ficha do campo › «📐 Medir a área».</span>
     <div class="chips">${nc ? `<button class="chip" onclick="$('#f-sit').value='semcoord';desenharLista()">📍 Ver sem coordenada</button>` : ''}${np ? `<button class="chip" onclick="$('#f-sit').value='semlimite';desenharLista()">📐 Ver só com o ponto</button>` : ''}</div></div>`;
 }
+// v213 (07/11/2026, Valdo, proposta de visual C1–C5): procura + «Filtros» (as 4 listas abrem numa folha), filtros rápidos com o
+// número, os avisos numa só linha que abre a lista, «Voltar a pôr na rega» e «Retirar vários» no menu ⋯, nome numa linha e
+// etiquetas por baixo. Os <select> continuam os mesmos (#f-ambito, #f-com, #f-act, #f-sit): só mudam de sítio.
+function devolverFiltros() { const m = $('#f-mais'), g = $('#f-guarda'); if (m && g && m.parentNode !== g) g.appendChild(m); }
+function nFiltros() {
+  let n = 0;
+  if ($('#f-ambito').style.display !== 'none' && $('#f-ambito').value === 'todas') n++;
+  if ($('#f-com').value) n++;
+  if ($('#f-act').style.display !== 'none' && $('#f-act').value) n++;
+  if ($('#f-sit').value && !RAPIDOS.includes($('#f-sit').value)) n++;
+  return n;
+}
+function ecraFiltros() {
+  folha(`<h2>Filtros</h2><div id="f-folha"></div>
+    <button class="btn" id="f-ver" onclick="fecharFolha()">Ver os campos</button>
+    <button class="btn sec" onclick="limparFiltros()">Limpar os filtros</button>`);
+  $('#f-folha').appendChild($('#f-mais')); actVerFiltros();
+}
+function actVerFiltros() { const b = $('#f-ver'); if (b) b.innerHTML = `<span>Ver os campos</span> (${num(S.nLista ?? 0)})`; }
+function limparFiltros() {
+  $('#f-com').value = ''; $('#f-act').value = ''; $('#f-sit').value = ''; $('#f-txt').value = '';
+  if ($('#f-ambito').style.display !== 'none' && listaPropria()) { S.filtro = 'meus'; LS.set('filtroSup', 'meus'); $('#f-ambito').value = 'meus'; desenharMapa(true); }
+  desenharLista(); actVerFiltros();
+}
+const podeVoltarRega = () => ['supervisor', 'gestor', 'tecnico'].includes(S.perfil?.papel);
+function ecraAccoesLista() {
+  folha(`<h2>Campos · mais acções</h2>
+    ${podeVoltarRega() ? `<button class="btn sec" onclick="ecraVoltarRega()">➕ Voltar a pôr um campo na rega</button>` : ''}
+    ${podeRetirarVarios() ? `<button class="btn sec" onclick="fecharFolha();retirarVarios(true)">🗑 Retirar vários campos da rega</button>` : ''}`);
+}
+const RAPIDOS = ['por', 'nunca', 'terminar', 'nolim'];
+function filtroRapido(v) { $('#f-sit').value = v; desenharLista(); }
+// avisos da lista: medições por aprovar, campos sem limite, campos por atribuir
+function avisosLista(sit) {
+  const r = [];
+  if (porAprovar().length) r.push({ n: porAprovar().length, t: porAprovar().length === 1 ? 'medição por aprovar' : 'medições por aprovar', k: 'apr' });
+  if (verLimites() && sit !== 'semcoord' && sit !== 'semlimite' && sit !== 'nolim') {
+    const base = listaPropria() && $('#f-ambito').value === 'meus' ? meusCampos() : S.areas;
+    const n = base.filter((a) => semCoord(a) || soPonto(a)).length; if (n) r.push({ n, t: 'sem limite medido', k: 'lim' });
+  }
+  if (porAtribuir().length && sit !== 'sem') r.push({ n: porAtribuir().length, t: 'por atribuir', k: 'atr' });
+  return r;
+}
+function ecraAvisosLista() {
+  const sit = $('#f-sit').value, r = avisosLista(sit);
+  const passo = (k) => k === 'apr' ? `<button class="chip" onclick="ecraPorAprovar()">Ver</button>` : k === 'atr' ? `<button class="chip" onclick="fecharFolha();filtroRapido('sem')">Ver</button>` : '';
+  folha(`<h2>Avisos</h2>` + r.map((x) => x.k === 'lim' ? avisoSemLimite('').replace(/onclick="\$\('#f-sit'\)/g, `onclick="fecharFolha();$('#f-sit')`) :
+    `<div class="msg info"><b>${num(x.n)}</b> <span>${x.t}</span>. ${passo(x.k)}</div>`).join(''));
+}
 function desenharLista() {
   if (modoManut()) return desenharListaManut();
   const amb = $('#f-ambito').value, com = $('#f-com').value, sit = $('#f-sit').value, txt = $('#f-txt').value.trim().toLowerCase();
@@ -2466,35 +2515,40 @@ function desenharLista() {
   const fa = $('#f-act').value; if (fa) L2 = L2.filter((a) => (fa === '__sem' ? !a.activista_id : a.activista_id === fa));
   if (com) { const [c, z] = com.split('|'); L2 = L2.filter((a) => a.comunidade === c && (z === undefined || (a.zona || '') === z)); }
   if (txt) L2 = L2.filter((a) => (a.produtor || '').toLowerCase().includes(txt) || a.pr.toLowerCase().includes(txt));
-  let linhas = L2.map((a) => ({ a, s: situacao(a), d: S.pos ? distCampo(a, S.pos) : null }));
-  if (sit === 'nunca') linhas = linhas.filter((x) => nuncaAgua(x.a));   // v204: nem na app, nem no WhatsApp
-  else if (sit === 'queimada') linhas = linhas.filter((x) => queimadaDe(x.a.id));
-  else if (sit === 'plantas') linhas = linhas.filter((x) => nPlantas(x.a.id));
-  else if (sit === 'semcoord') linhas = linhas.filter((x) => semCoord(x.a));
-  else if (sit === 'semlimite') linhas = linhas.filter((x) => soPonto(x.a));
-  else if (sit === 'teste') linhas = linhas.filter((x) => testeEm(x.a.id));
-  else if (sit === 'testeq') linhas = linhas.filter((x) => testeEm(x.a.id) || testeEquipa(x.a.id));
-  else if (sit) linhas = linhas.filter((x) => x.s.cod === sit);
+  const todas = L2.map((a) => ({ a, s: situacao(a), d: S.pos ? distCampo(a, S.pos) : null }));
+  const filtra = (v, L) => v === 'nunca' ? L.filter((x) => nuncaAgua(x.a))   // v204: nem na app, nem no WhatsApp
+    : v === 'queimada' ? L.filter((x) => queimadaDe(x.a.id)) : v === 'plantas' ? L.filter((x) => nPlantas(x.a.id))
+    : v === 'semcoord' ? L.filter((x) => semCoord(x.a)) : v === 'semlimite' ? L.filter((x) => soPonto(x.a)) : v === 'nolim' ? L.filter((x) => semCoord(x.a) || soPonto(x.a))
+    : v === 'teste' ? L.filter((x) => testeEm(x.a.id)) : v === 'testeq' ? L.filter((x) => testeEm(x.a.id) || testeEquipa(x.a.id))
+    : v ? L.filter((x) => x.s.cod === v) : L;
+  let linhas = filtra(sit, todas);
   // v204: primeiro os que nunca receberam água, depois os por terminar (v154), depois os há mais tempo sem água; regados no fim
   for (const x of linhas) { x.nun = x.s.cod !== 'feita' && nuncaAgua(x.a); x.ua = x.nun ? '' : ultimaAgua(x.a) || ''; }
   const ordem = (x) => (x.nun ? 0 : x.s.cod === 'terminar' ? 1 : x.s.cod === 'feita' ? 3 : 2);
   linhas.sort((x, y) => ordem(x) - ordem(y) || (ordem(x) === 2 ? x.ua.localeCompare(y.ua) : 0) || (x.d ?? 1e12) - (y.d ?? 1e12));
   if (S.selRet) S.ultLista = linhas.slice(0, 300).map((x) => x.a).filter(podeRetirar).map((a) => a.id);
+  S.nLista = linhas.length; actVerFiltros();
+  // C2: filtros rápidos com o número (o número conta com a procura e os outros filtros)
+  const rap = [['', 'Todos'], ['por', 'Por regar'], ['nunca', 'Nunca recebeu água'], ['terminar', 'Por terminar']].concat(verLimites() ? [['nolim', 'Sem limite']] : []);
+  let hr = rap.map(([v, t]) => { const n = filtra(v, todas).length; return (!v || n || sit === v) ? `<button class="${sit === v ? 'on' : ''}" onclick="filtroRapido('${v}')"><span>${t}</span><b>${num(n)}</b></button>` : ''; }).join('');
+  if (sit && !RAPIDOS.includes(sit)) hr += `<button class="on" onclick="filtroRapido('')"><span class="sem-trad">${esc($('#f-sit').selectedOptions[0]?.textContent || '')}</span> ✕</button>`;
+  $('#f-rap').innerHTML = hr;
+  const nf = nFiltros(); $('#f-n').textContent = nf ? String(nf) : '';
+  $('#f-acc').style.display = podeVoltarRega() || podeRetirarVarios() ? '' : 'none';
+  // C3: os avisos numa só linha
+  const av = avisosLista(sit);
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
-    (porAprovar().length ? `<div class="msg info">${porAprovar().length} medições de área por aprovar. <button class="chip" onclick="ecraPorAprovar()">Ver</button></div>` : '') +
-    avisoSemLimite(sit) +
-    (porAtribuir().length && sit !== 'sem' ? `<div class="msg info">${porAtribuir().length} campos por atribuir. <button class="chip" onclick="$('#f-sit').value='sem';desenharLista()">Ver</button></div>` : '') +
-    (sit ? `<div class="msg info">Filtro: ${esc($('#f-sit').selectedOptions[0]?.textContent || '')}. <button class="chip" onclick="$('#f-sit').value='';desenharLista()">← Ver todos os campos</button></div>` : '') +
-    (['supervisor', 'gestor', 'tecnico'].includes(S.perfil?.papel) ? `<button class="btn sec" onclick="ecraVoltarRega()">➕ Voltar a pôr um campo na rega</button>` : '') +
-    (podeRetirarVarios() && !S.selRet ? `<button class="btn sec" onclick="retirarVarios(true)">🗑 Retirar vários campos da rega</button>` : '') +
+    (av.length ? `<button class="av-linha" id="av-lista" onclick="ecraAvisosLista()"><span>${av.map((x) => `<b>${num(x.n)}</b> <span>${x.t}</span>`).join(' · ')}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>` : '') +
     (S.selRet ? `<div class="msg info" id="sel-ret" style="background:#fff6e5;color:#5d3a00;position:sticky;top:0;z-index:5"><b>🗑 Retirar vários campos da rega</b><br><span>Toque nos campos para os escolher. Todos ficam com o mesmo motivo e a mesma justificação.</span><br>
       <b>${S.selRet.size}</b> <span>campos escolhidos</span>
       <div class="chips" style="margin-top:6px"><button class="chip" onclick="retirarTodosMostrados()">Escolher todos os da lista</button>${S.selRet.size ? '<button class="chip" onclick="S.selRet=new Set();desenharLista()">Limpar</button>' : ''}</div>
       <button class="btn aviso" ${S.selRet.size ? '' : 'disabled'} onclick="ecraRetirar([...S.selRet])">Continuar</button><button class="btn sec" onclick="retirarVarios(false)">Cancelar</button></div>` : '') +
     `<p class="pequeno">${linhas.length} <span>campos</span> · <span>primeiro os que nunca receberam água, depois os que estão há mais tempo sem água</span></p>` +
-    linhas.slice(0, 300).map(({ a, s, d, nun }) => `<div class="item${S.selRet && S.selRet.has(a.id) ? ' sel-ret' : ''}" data-id="${esc(a.id)}">${S.selRet ? (podeRetirar(a) ? `<input type="checkbox" class="cx-ret" ${S.selRet.has(a.id) ? 'checked' : ''} tabindex="-1">` : '<span class="cx-ret-no" title="Fora da sua lista">—</span>') : ''}<div>
-      <div class="nome">${esc(a.produtor)}</div><div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
-      </div>${nun ? '<span class="tag t-nunca">💧 <span>Nunca recebeu água</span></span>' : ''}${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${apoioDoCampo(a.id) ? `<span class="tag t-outra">🤝 <span>Apoio de</span> <span class="sem-trad">${esc(nomeAct(apoioDoCampo(a.id).ajuda_activista_id))}</span></span>` : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}<span class="tag t-${s.cod}">${s.txt}</span>${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
+    linhas.slice(0, 300).map(({ a, s, d, nun }) => `<div class="item${S.selRet && S.selRet.has(a.id) ? ' sel-ret' : ''}" data-id="${esc(a.id)}">${S.selRet ? (podeRetirar(a) ? `<input type="checkbox" class="cx-ret" ${S.selRet.has(a.id) ? 'checked' : ''} tabindex="-1">` : '<span class="cx-ret-no" title="Fora da sua lista">—</span>') : ''}<div class="it-c">
+      <div class="it-cab"><div class="nome">${esc(a.produtor)}</div><span class="tag t-${s.cod}">${s.txt}</span></div>
+      <div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
+      <div class="it-tags">${nun ? '<span class="tag t-nunca">💧 <span>Nunca recebeu água</span></span>' : ''}${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${apoioDoCampo(a.id) ? `<span class="tag t-outra">🤝 <span>Apoio de</span> <span class="sem-trad">${esc(nomeAct(apoioDoCampo(a.id).ajuda_activista_id))}</span></span>` : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}</div>
+      </div>${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
 }
 
 // ---------- mapa de plantas (15/10/2026, pedido do Dalmar; teste com gestor/director, supervisores e técnicos) ----------
@@ -2893,9 +2947,9 @@ async function voltarRega(i) {
 // ---------- ficha do campo ----------
 function folha(html) {
   if (S.trocaObrig && !html.includes('id="ts-nova"')) return;   // escolher a senha/PIN vem primeiro (18/10/2026)
-  S.trocaAberta = false; $('#folha-x').style.display = ''; $('#folha-c').innerHTML = html; $('#folha').classList.add('on');
+  devolverFiltros(); S.trocaAberta = false; $('#folha-x').style.display = ''; $('#folha-c').innerHTML = html; $('#folha').classList.add('on');
 }
-function fecharFolha() { pararVigia(); $('#folha').classList.remove('on'); }
+function fecharFolha() { pararVigia(); $('#folha').classList.remove('on'); devolverFiltros(); }
 // ---------- coordenada e atribuição de campos (técnico, supervisor, gestor) ----------
 const PODE_COORD = ['tecnico', 'supervisor', 'gestor'];
 const podeAtribuir = () => ['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel);   // técnico: com motivo se o campo já tem activista (24/10/2026, Valdo)
@@ -4199,9 +4253,18 @@ const actHoje = () => { if ($('#e-hoje').classList.contains('on')) desenharHoje(
 // cartões do Hoje
 function cartaoRecontagensHoje() {
   // extra: texto simples a seguir ao motivo; a linha vermelha (recusada) vai à parte para a tradução apanhar cada texto
-  const l = recontagens(), item = (r, extra = '') => { const a = S.areas.find((x) => x.id === r.area_id) || {};
-    return `<div class="item" onclick="abrirFicha('${esc(r.area_id)}')"><div><div class="nome">${esc(a.produtor || r.produtor || '')}</div><div class="sub">${esc(a.pr || r.pr || '')} · ${esc(a.comunidade || r.comunidade || '')} · ${esc(r.motivo)}${extra}</div>${r.estado === 'recusada' ? `<div class="sub" style="color:#b42318;font-weight:700">${souOficial() ? 'Recusada pelo M&E: fazer de novo' : 'Recusada pelo M&E'}</div>` : ''}</div></div>`; };
+  const l = recontagens(), item = (r, extra = '', semCom = false) => { const a = S.areas.find((x) => x.id === r.area_id) || {};
+    return `<div class="item" onclick="abrirFicha('${esc(r.area_id)}')"><div><div class="nome">${esc(a.produtor || r.produtor || '')}</div><div class="sub">${esc(a.pr || r.pr || '')}${semCom ? '' : ' · ' + esc(a.comunidade || r.comunidade || '')} · ${esc(r.motivo)}${extra}</div>${r.estado === 'recusada' ? `<div class="sub" style="color:#b42318;font-weight:700">${souOficial() ? 'Recusada pelo M&E: fazer de novo' : 'Recusada pelo M&E'}</div>` : ''}</div></div>`; };
   const sec = (tit, rs, f) => rs.length ? `<h3 style="margin:10px 0 4px;font-size:15px">${tit} (${rs.length})</h3>${rs.map((r) => item(r, f ? f(r) : '')).join('')}` : '';
+  // v213 (07/11/2026, Valdo: "Aqui deve estar apresentado por comunidade"): M&E, gestor, técnico e supervisor vêem cada estado
+  // dividido por comunidade; cada comunidade é uma linha que abre ao tocar, com o número (124 por encaminhar a 07/11)
+  const comDe = (r) => (S.areas.find((x) => x.id === r.area_id) || {}).comunidade || r.comunidade || '';
+  const secCom = (k, tit, rs, f, cor = '') => {
+    if (!rs.length) return '';
+    const g = {}; for (const r of rs) (g[comDe(r)] ||= []).push(r);
+    const coms = Object.keys(g).sort((x, y) => g[y].length - g[x].length || x.localeCompare(y));
+    return `<h3 style="margin:10px 0 4px;font-size:15px">${tit} (${rs.length})</h3>` + coms.map((c) => linhaTar(`rc-${k}-${esc(c)}`, `<span class="sem-trad">${esc(c || '—')}</span>`, g[c].length, cor, g[c].map((r) => item(r, f ? f(r) : '', true)).join(''))).join('');
+  };
   if (souOficial()) {
     const fazer = l.filter((r) => ['encaminhada', 'recusada'].includes(r.estado)), env = l.filter((r) => r.estado === 'enviada');
     if (!fazer.length && !env.length) return '<div class="cartao"><h2>Recontagens</h2><p>Sem recontagens para fazer.</p></div>';
@@ -4216,10 +4279,10 @@ function cartaoRecontagensHoje() {
   const pedido = (r) => (r.pedido_por_nome ? ' · pedida por ' + esc(r.pedido_por_nome) : '');
   return `<div class="cartao" style="border-left:4px solid #6d4c41"><h2>📋 Recontagens das plantas</h2>
     ${!por.length && !val.length && !curso.length ? '<p>Sem recontagens em curso.</p>' : ''}
-    ${sec(gereRecont() ? 'Por encaminhar a um oficial' : 'À espera do M&E (por encaminhar)', por, pedido)}
-    ${sec('Com o oficial', curso, (r) => ' · ' + esc(r.oficial || '') + (r.oficial_entrou === false ? ' · ⚠️ ainda não entrou na app' : ''))}
-    ${S.perfil.papel === 'me' ? sec('Por validar', val, (r) => ' · ' + esc(r.oficial || '')) : sec('Feitas, em validação pelo M&E', val)}
-    ${sec('Validadas nos últimos 30 dias', feitas, (r) => ` · ${num(r.vivas)} vivas`)}
+    ${secCom('por', gereRecont() ? 'Por encaminhar a um oficial' : 'À espera do M&E (por encaminhar)', por, pedido, gereRecont() ? 'a' : '')}
+    ${secCom('cur', 'Com o oficial', curso, (r) => ' · ' + esc(r.oficial || '') + (r.oficial_entrou === false ? ' · ⚠️ ainda não entrou na app' : ''))}
+    ${S.perfil.papel === 'me' ? secCom('val', 'Por validar', val, (r) => ' · ' + esc(r.oficial || ''), 'a') : secCom('val', 'Feitas, em validação pelo M&E', val)}
+    ${secCom('fei', 'Validadas nos últimos 30 dias', feitas, (r) => ` · ${num(r.vivas)} vivas`)}
     ${ajuda}${botao}</div>`;
 }
 // contador no botão "Recontagens das plantas" do Hoje: o que espera por quem está a ver

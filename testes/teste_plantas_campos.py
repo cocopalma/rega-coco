@@ -63,7 +63,7 @@ with sync_playwright() as p:
     print("2 etiquetas:", pg.locator("#lista .tag.t-plantas").all_inner_texts(), "| opção do filtro escondida:", pg.evaluate("document.querySelector('#f-sit option[value=plantas]').hidden"))
     if PAPEL != "activista":
         pg.select_option("#f-sit", "plantas"); pg.wait_for_timeout(300)
-        print("3 filtro:", pg.locator("#lista .item .nome").all_inner_texts(), "|", pg.inner_text("#lista .msg.info >> nth=-1")[:60])
+        print("3 filtro:", pg.locator("#lista .item .nome").all_inner_texts(), "|", pg.inner_text("#f-rap")[-60:].replace(chr(10)," "))
     pg.evaluate("abrirFicha('PR1-1')"); pg.wait_for_timeout(300)
     print("4 ficha:", [l for l in pg.inner_text("#folha-c").split(chr(10)) if "🌴" in l or "base" in l.lower() or "database" in l.lower() or "hifadhidata" in l.lower()][:3])
     print("ERROS JS:", erros or "nenhum"); b.close()

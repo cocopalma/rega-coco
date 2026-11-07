@@ -75,6 +75,15 @@ label{display:block;margin-top:12px;font-weight:600}
 .item.sel-ret{border-color:#ef8f00;background:#fff6e5}.cx-ret{width:22px;height:22px;margin:0;flex:none;pointer-events:none}.cx-ret-no{width:22px;text-align:center;color:#9e9e9e;flex:none}.item .nome{font-weight:600}.item .sub{font-size:13px;color:var(--cinza)}.item>div{flex:1}
 .filtros{display:flex;gap:8px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--borda);flex-wrap:wrap}
 .filtros select{width:auto;margin:0;padding:8px}
+.filtros{flex-direction:column;flex-wrap:nowrap;gap:8px}.f-linha{display:flex;gap:8px;align-items:center}
+.f-proc{flex:1;display:flex;align-items:center;gap:8px;border:1px solid #cfd5cc;border-radius:12px;padding:0 10px;height:44px;background:#fff;margin:0;font-weight:400}.f-proc svg{width:18px;height:18px;flex:none;color:var(--cinza)}.f-proc input{border:0;outline:0;margin:0;padding:0;font-size:15px;width:100%;background:transparent;min-width:0}
+.f-bt{flex:none;height:44px;display:flex;align-items:center;gap:6px;border:1px solid #cfd5cc;border-radius:12px;background:#fff;padding:0 12px;font-size:15px;font-weight:600;color:var(--texto,#1b1f1d)}.f-bt svg{width:18px;height:18px}#f-acc{padding:0 10px}
+#f-n:not(:empty){background:var(--verde);color:#fff;border-radius:10px;font-size:12px;padding:1px 7px;margin-left:2px}
+.f-rap{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -14px;padding:0 14px}.f-rap::-webkit-scrollbar{display:none}.f-rap:empty{display:none}
+.f-rap button{flex:none;height:36px;border-radius:18px;border:1px solid #cfd5cc;background:#fff;padding:0 12px;font-size:14px;white-space:nowrap}.f-rap button.on{background:var(--verde);border-color:var(--verde);color:#fff;font-weight:600}.f-rap button b{font-weight:700;margin-left:4px}
+#f-mais .f-camp{margin-bottom:10px}#f-mais label{display:block;font-size:13px;color:var(--cinza);margin-bottom:4px}#f-mais select{width:100%;margin:0}.f-camp:has(select[style*="none"]){display:none}
+.av-linha{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:#e8f0fb;color:#173f7a;border:0;border-radius:12px;padding:10px 12px;font-size:14px;margin:0 0 8px}.av-linha>span{flex:1}.av-linha svg{width:18px;height:18px;flex:none}
+.item .it-c{flex:1;min-width:0}.it-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}.it-cab .nome{font-size:16px}.it-cab .tag{flex:none}.it-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.it-tags:empty{display:none}
 .legenda{position:absolute;z-index:500;left:8px;bottom:8px;background:rgba(255,255,255,.95);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.7}
 .legenda i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .legenda i.b{background:transparent;border:3px solid;border-radius:3px;width:9px;height:9px}
@@ -286,12 +295,19 @@ td.n,th.n{text-align:right}
     <section class="ecra" id="e-lista">
       <div class="modo-sw lista" id="modo-lista" style="display:none"><button data-m="rega" onclick="setModo('rega')">💧 Rega</button><button data-m="manut" onclick="setModo('manut')">🌱 Manutenção</button></div>
       <div class="filtros">
-        <select id="f-ambito"><option value="meus">As minhas áreas</option><option value="todas">Todas as áreas</option></select>
-        <select id="f-com"><option value="">Todas as comunidades</option></select>
-        <select id="f-act" style="display:none"><option value="">Todos os activistas</option></select>
-        <select id="f-sit"><option value="">Todas as situações</option><option value="por">Por regar nesta ronda</option><option value="terminar">⏳ Por terminar (rega a meio)</option><option value="feita">Regada nesta ronda</option><option value="sem">Por atribuir (sem activista)</option><option value="teste">Regado em teste (por si)</option><option value="testeq">Regado em teste (equipa)</option><option value="nunca">💧 Nunca recebeu água</option><option value="queimada">Com queimada</option><option value="semcoord" class="op-coord">📍 Sem coordenada (nem limite)</option><option value="semlimite" class="op-coord">📐 Com ponto, sem limite</option><option value="plantas">🌴 Com plantas marcadas</option></select>
-        <input id="f-txt" placeholder="Procurar produtor ou PR" style="flex:1;min-width:160px;margin:0;padding:8px">
+        <div class="f-linha">
+          <label class="f-proc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="f-txt" placeholder="Produtor ou PR" aria-label="Procurar produtor ou PR"></label>
+          <button id="f-btn" class="f-bt" onclick="ecraFiltros()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 5h18M6 12h12M10 19h4"/></svg><span>Filtros</span><b id="f-n"></b></button>
+          <button id="f-acc" class="f-bt" onclick="ecraAccoesLista()" aria-label="Mais acções" title="Mais acções" style="display:none"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+        </div>
+        <div class="f-rap" id="f-rap"></div>
       </div>
+      <div id="f-guarda" hidden><div id="f-mais">
+        <div class="f-camp"><label for="f-ambito">Campos</label><select id="f-ambito"><option value="meus">As minhas áreas</option><option value="todas">Todas as áreas</option></select></div>
+        <div class="f-camp"><label for="f-com">Comunidade</label><select id="f-com"><option value="">Todas as comunidades</option></select></div>
+        <div class="f-camp"><label for="f-act">Activista</label><select id="f-act" style="display:none"><option value="">Todos os activistas</option></select></div>
+        <div class="f-camp"><label for="f-sit">Situação</label><select id="f-sit"><option value="">Todas as situações</option><option value="por">Por regar nesta ronda</option><option value="terminar">⏳ Por terminar (rega a meio)</option><option value="feita">Regada nesta ronda</option><option value="sem">Por atribuir (sem activista)</option><option value="teste">Regado em teste (por si)</option><option value="testeq">Regado em teste (equipa)</option><option value="nunca">💧 Nunca recebeu água</option><option value="queimada">Com queimada</option><option value="nolim" class="op-coord">📐 Sem limite medido</option><option value="semcoord" class="op-coord">📍 Sem coordenada (nem limite)</option><option value="semlimite" class="op-coord">📐 Com ponto, sem limite</option><option value="plantas">🌴 Com plantas marcadas</option></select></div>
+      </div></div>
       <div class="pad" id="lista"></div>
     </section>
     <section class="ecra" id="e-hoje"><div class="pad" id="hoje"></div></section>
@@ -309,12 +325,12 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=212"></script>
-<script src="i18n.js?v=212"></script>
+<script src="i18n-sw.js?v=213"></script>
+<script src="i18n.js?v=213"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=212"></script>
-<script src="app.js?v=212"></script>
+<script src="demo.js?v=213"></script>
+<script src="app.js?v=213"></script>
 </body>
 </html>
