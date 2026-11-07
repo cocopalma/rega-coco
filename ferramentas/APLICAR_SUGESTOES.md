@@ -50,6 +50,8 @@ Valdo (06/11/2026): "sempre que aparecer um campo que se diz que não existe, en
 1. Procurar: `select a.id, a.pr, a.produtor, a.comunidade, a.retirado_em, p.nome quem, al.motivo from areas a left join perfis p on p.id = a.retirado_por left join lateral (select motivo from alteracoes_areas x where x.area_id = a.id and x.campo = 'activa' order by em desc limit 1) al on true where a.nao_existe and a.incentivo_avisado_em is null;`
 2. Para cada campo, criar no Notion (painel «Integração do Projecto Coco», data source Registos `collection://780e6e2c-c0d6-49ac-ae1f-c5b849c086b2`) um registo com Título «Incentivo: o campo [PR-N] ([produtor], [comunidade]) foi retirado da rega por não existir — existe na base de incentivo? Se não existe, não pagar incentivo por ele.», Tipo «Parado», Estado «Aberto», Data = hoje, «Projecto ou Sessão» = linha «Pagamento de incentivo» (https://app.notion.com/3f85e4c2b2a081f48e89e4d4da2f9d51); no texto da página: quem retirou, quando e a justificação.
 3. Depois de criado o registo: `update areas set incentivo_avisado_em = now() where id = :id;` (só esta coluna).
+3b. Ordem para a sessão de incentivo (Valdo, 07/11/2026): além da nota no Notion, um ponto novo em `pagamento de incentivo/_Rega/ORDEM_RegaCoco_AAAA-MM-DD.md` no Mac do Valdo (circuito em `_Rega/LEIA-ME_Rega.md`; só se escreve dentro de `_Rega/`). Esta tarefa corre na nuvem e não chega ao Mac: se não houver acesso ao Mac, dizê-lo no relatório («ordem por gravar no Mac: PR…») para uma sessão ligada ao Mac a gravar.
+3c. Respostas do incentivo: ler no Notion (Registos, linha «Pagamento de incentivo») as notas «Incentivo: …» fechadas desde a execução anterior e pôr a resposta no relatório ao Valdo; o que pedir mudança na rega vai para «Para o Valdo decidir».
 4. No relatório ao Valdo, uma linha: «Nota ao pagamento de incentivo: PR…».
 
 ## 5. Relatório ao Valdo
@@ -64,5 +66,5 @@ Se não houver sugestões nem problemas, não enviar nada.
 - Não enviar mensagens a activistas, técnicos ou supervisores (só a resposta dentro da app).
 - Não criar acessos, não mudar senhas nem PIN, não mexer na função `gestor-activistas`.
 - Não apagar dados. Não correr SQL destrutivo.
-- Pagamento de incentivo (Valdo, 06/11/2026): só se envia a nota do passo 4b (registo no painel do Notion, linha «Pagamento de incentivo»). Não mexer em mais nada do incentivo: ficheiros, bases, repositório, Notion da sessão ou dados.
+- Pagamento de incentivo (Valdo, 06/11/2026): só se envia a nota do passo 4b (registo no painel do Notion, linha «Pagamento de incentivo») e a ordem em `pagamento de incentivo/_Rega/`. Não mexer em mais nada do incentivo: ficheiros, bases, repositório, Notion da sessão ou dados.
 - Se o Supabase ou o GitHub não responderem, terminar com o erro no relatório, sem tentar outras vias.
