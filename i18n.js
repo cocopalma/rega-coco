@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    // v216
+    "Versão da app": "App version",
     // v215
     "Ferramentas": "Tools",
     // v214

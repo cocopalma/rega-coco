@@ -3,6 +3,8 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    // v216
+    "Versão da app": "Toleo la programu",
     // v215
     "Ferramentas": "Zana",
     // v214

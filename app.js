@@ -609,7 +609,8 @@ function ecraDefinicoes() {
     <label>Língua</label><div class="chips sem-trad">${L.map((l) => `<button class="chip${l === atual ? ' on' : ''}" onclick="escolherLingua('${l}')">${nomes[l]}${l === atual ? ' ✓' : ''}</button>`).join('')}</div>
     ${window.DEMO ? '' : `<button class="btn sec" onclick="ecraTrocarSenha(false)">🔑 <span>${act ? 'Mudar o meu PIN' : 'Mudar a minha senha'}</span></button>`}
     <button class="btn sec" style="border-color:#b42318;color:#b42318" onclick="sair()">${window.DEMO ? 'Terminar a simulação' : 'Sair'}</button>
-    ${window.DEMO ? '' : `<p class="pequeno">${act ? 'Não é preciso sair no fim do dia: pode só fechar a app.' : 'Para voltar a entrar vai precisar do utilizador e da senha.'}</p>`}`);
+    ${window.DEMO ? '' : `<p class="pequeno">${act ? 'Não é preciso sair no fim do dia: pode só fechar a app.' : 'Para voltar a entrar vai precisar do utilizador e da senha.'}</p>`}
+    <p class="pequeno" id="def-versao" style="text-align:center;margin-top:14px">ℹ️ <span>Versão da app</span>: <b class="sem-trad">v${esc(versaoApp() || '?')}</b></p>`);   // v216 (07/11/2026, Valdo)
 }
 async function sair() {
   if (window.DEMO) return ecraDemo();                     // modo apresentação: "Sair" termina a apresentação
