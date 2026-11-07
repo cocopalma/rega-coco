@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    // v215
+    "Ferramentas": "Tools",
     // v214
     "As equipas, os avisos e «Fechar o dia» aparecem quando houver rede.": "The teams, the warnings and «Close the day» appear when there is network.",
     // v214

@@ -685,7 +685,7 @@ function iniciarMapa() {
   fundos[fundo].addTo(mapa);
   const BotaoFundo = L.Control.extend({ options: { position: 'topleft' }, onAdd() {
     const b = L.DomUtil.create('button', 'b-fundo'); b.type = 'button'; b.id = 'b-fundo';
-    const txt = () => { b.innerHTML = fundo === 'satelite' ? '🗺 <span>Mapa</span>' : '🛰 <span>Satélite</span>'; b.title = fundo === 'satelite' ? 'Ver o mapa de ruas' : 'Ver a imagem de satélite'; };
+    const txt = () => { b.innerHTML = fundo === 'satelite' ? '🗺 <span>Mapa</span>' : '🛰 <span>Satélite</span>'; b.title = fundo === 'satelite' ? 'Ver o mapa de ruas' : 'Ver a imagem de satélite'; const s = $('#b-sat'); if (s) { s.innerHTML = b.innerHTML; s.classList.toggle('on', fundo === 'satelite'); } };
     txt(); L.DomEvent.disableClickPropagation(b);
     b.onclick = () => { mapa.removeLayer(fundos[fundo]); fundo = fundo === 'satelite' ? 'mapa' : 'satelite'; fundos[fundo].addTo(mapa); fundos[fundo].bringToBack(); LS.set('fundo', fundo); txt(); };
     return b; } });
@@ -750,6 +750,19 @@ async function alternarRodar() {
   S.seguir = true; S.seguirCentro = true; window.addEventListener(EV_ORI, aoOrientar);
   if (S.pos) mapa.setView(S.pos, Math.max(mapa.getZoom(), 16)); else lerGPS().then(() => mapa.setView(S.pos, 16)).catch((e) => aviso(e.message, 'erro'));
   botaoRodar();
+}
+// v215 (07/11/2026, Valdo, proposta de visual M1–M3): à direita do mapa só «◎ Eu», «As minhas» e «Ferramentas»; Rodar, Medir,
+// Percursos, Trilho, Satélite e Coqueiros ficam no menu (os botões são os mesmos, com os mesmos id). O menu fecha ao escolher
+// ou ao tocar fora; «Ferramentas» tem um ponto amarelo quando alguma ferramenta está ligada.
+function ligarFerramentas() {
+  const b = $('#b-ferr'), m = $('#ferr-menu'); if (!b || !m) return;
+  const fechar = () => { m.hidden = true; b.setAttribute('aria-expanded', 'false'); };
+  b.onclick = (e) => { e.stopPropagation(); m.hidden = !m.hidden; b.setAttribute('aria-expanded', String(!m.hidden)); };
+  m.addEventListener('click', () => setTimeout(fechar, 0));
+  document.addEventListener('click', (e) => { if (!m.hidden && !m.contains(e.target) && !b.contains(e.target)) fechar(); }, true);
+  $('#b-sat').onclick = () => $('#b-fundo')?.click();
+  const marca = () => b.classList.toggle('on', [...m.querySelectorAll('button')].some((x) => x.id !== 'b-sat' && x.classList.contains('on')));
+  new MutationObserver(marca).observe(m, { subtree: true, attributes: true, attributeFilter: ['class'] }); marca();
 }
 function botaoRodar() { const b = $('#b-rodar'); if (!b) return; b.textContent = S.seguir ? '🧭 Norte' : '🧭 Rodar'; b.classList.toggle('on', !!S.seguir); }
 // etiqueta em cada campo à vista (zoom ≥ 15): nome do produtor, código do campo e plantas vivas, sem tocar (16/10/2026, Dalmar; 18/10 Valdo: nome completo e PR)
@@ -6180,6 +6193,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#h-sync').onclick = () => sincronizar();
   $('#folha-x').onclick = fecharFolha;
   $('#b-rodar').onclick = alternarRodar; botaoRodar();
+  ligarFerramentas();
   $('#b-regua').onclick = alternarRegua;
   $('#b-trilho').onclick = gravarTrilho;
   $('#b-coq').onclick = abrirCoq; $('#cq-marcar').onclick = marcarCoq; $('#cq-fechar').onclick = fecharCoq; $('#cq-desf').onclick = apagarUltimoCoq; $('#cq-csv').onclick = descarregarCoq;

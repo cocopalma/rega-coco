@@ -3,6 +3,8 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    // v215
+    "Ferramentas": "Zana",
     // v214
     "As equipas, os avisos e «Fechar o dia» aparecem quando houver rede.": "Timu, tahadhari na «Funga siku» huonekana kukiwa na mtandao.",
     // v214

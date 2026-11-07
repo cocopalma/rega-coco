@@ -108,6 +108,10 @@ label{display:block;margin-top:12px;font-weight:600}
 .flutua{position:absolute;z-index:500;right:8px;top:8px;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
 .flutua button{background:#fff;border:1px solid var(--borda);border-radius:8px;padding:5px 8px;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.15)}
 .flutua button.on{background:#1e5bd8;color:#fff;border-color:#1e5bd8}
+.flutua>button{min-height:40px;font-size:13px;padding:6px 12px;border-radius:20px}#b-ferr{display:flex;align-items:center;gap:6px;background:var(--verde);color:#fff;border-color:var(--verde)}#b-ferr svg{width:16px;height:16px}#b-ferr.on::after{content:"";width:8px;height:8px;border-radius:50%;background:#ffd54f;margin-left:2px}
+.ferr-menu{background:#fff;border-radius:14px;box-shadow:0 4px 16px rgba(0,0,0,.25);min-width:190px;padding:4px 0;display:flex;flex-direction:column}.ferr-menu[hidden]{display:none}
+.ferr-menu button{background:none;border:0;border-top:1px solid #eceee9;box-shadow:none;border-radius:0;text-align:left;min-height:44px;padding:0 14px;font-size:15px;font-weight:500}.ferr-menu button:first-child{border-top:0}.ferr-menu button.on{background:#e8f0fb;color:#1e5bd8}
+.leaflet-control .b-fundo,#b-fundo{display:none!important}
 .regua{position:absolute;z-index:600;left:8px;right:8px;bottom:8px;max-width:480px;margin:0 auto;background:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 1px 6px rgba(0,0,0,.25);font-size:15px}
 .regua .chips button{font-size:13px}
 .leaflet-tooltip.rot-regua{padding:0 5px;font-size:12px;font-weight:700;background:#111;color:#fff;border:0;box-shadow:none}
@@ -217,11 +221,15 @@ td.n,th.n{text-align:right}
       <div class="flutua">
         <button id="b-centrar">◎ Eu</button>
         <button id="b-filtro">As minhas</button>
-        <button id="b-rodar" title="Rodar o mapa com a direcção (bússola)">🧭 Rodar</button>
-        <button id="b-regua" title="Medir a distância entre campos (linha recta)">📏 Medir</button>
-        <button id="b-perc" title="Percurso do dia de cada activista" style="display:none">👣 Percursos</button>
-        <button id="b-trilho" title="Gravar um trilho: o caminho por onde anda fica para a navegação" style="display:none">🛤 Trilho</button>
-        <button id="b-coq" title="Coqueiros fora dos campos da base (p. ex. no acampamento)" style="display:none">🥥 Coqueiros (teste)</button>
+        <button id="b-ferr" aria-expanded="false" aria-controls="ferr-menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Ferramentas</span></button>
+        <div id="ferr-menu" class="ferr-menu" hidden>
+          <button id="b-rodar" title="Rodar o mapa com a direcção (bússola)">🧭 Rodar</button>
+          <button id="b-regua" title="Medir a distância entre campos (linha recta)">📏 Medir</button>
+          <button id="b-perc" title="Percurso do dia de cada activista" style="display:none">👣 Percursos</button>
+          <button id="b-trilho" title="Gravar um trilho: o caminho por onde anda fica para a navegação" style="display:none">🛤 Trilho</button>
+          <button id="b-sat">🛰 <span>Satélite</span></button>
+          <button id="b-coq" title="Coqueiros fora dos campos da base (p. ex. no acampamento)" style="display:none">🥥 Coqueiros (teste)</button>
+        </div>
       </div>
       <div class="modo-sw" id="modo-mapa" style="display:none"><button data-m="rega" onclick="setModo('rega')">💧 Rega</button><button data-m="manut" onclick="setModo('manut')">🌱 Manutenção</button></div>
       <div class="ronda" id="ronda-info" style="display:none"></div>
@@ -331,12 +339,12 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=214"></script>
-<script src="i18n.js?v=214"></script>
+<script src="i18n-sw.js?v=215"></script>
+<script src="i18n.js?v=215"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=214"></script>
-<script src="app.js?v=214"></script>
+<script src="demo.js?v=215"></script>
+<script src="app.js?v=215"></script>
 </body>
 </html>

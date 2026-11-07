@@ -57,7 +57,7 @@ with sync_playwright() as p:
     ctx, pg = abrir(b, "activista")
     print("0 botão percursos (activista):", pg.is_visible("#b-perc"))
     andar(ctx, pg, 3); print("1 antes de começar o dia: pontos", pg.evaluate("pontosPercursoHoje()"))
-    pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(800)
+    pg.evaluate("mudar('hoje')"); pg.wait_for_timeout(800)
     pg.evaluate("LS.set('jornada', { id: crypto.randomUUID(), data: hojeISO(), pessoas: 4 }); desenharHoje()"); pg.wait_for_timeout(500)
     andar(ctx, pg, 6); pg.wait_for_timeout(300)
     print("2 a andar 6 × 55 m: pontos", pg.evaluate("pontosPercursoHoje()"))
