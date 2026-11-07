@@ -113,9 +113,25 @@ def gerar(d):
     # 6) a fazer
     faz = ''.join(f'<div class=fz><span class=fi>{f["icone"]}</span><div><b>{esc(f["titulo"])}</b><span>{esc(f["detalhe"])}</span></div></div>' for f in d.get('a_fazer', []))
     sec_faz = f'<section><h2>{esc(d.get("proximo_dia", "Amanhã"))}</h2>{faz}</section>' if faz else ''
+    # Folhas para deslizar para o lado (Valdo, 07/11/2026: "todas no mesmo documento… como se fosse um slide… faço o swipe para o lado")
+    folhas = [f'<header><b>Rega Coco</b><h1>{esc(d["titulo_data"])}</h1></header>{big}{sec_wa}', tro + sec_eq + sec_ch, sec_faz]
+    folhas = [f for f in folhas if f.strip()]
+    n = len(folhas)
+    corpo = ''
+    for k, f in enumerate(folhas, 1):
+        topo = f'<div class=pag><span>{"" if k == 1 else "Rega Coco · " + esc(d["titulo_data"])}</span><b>{k}/{n}{" →" if k < n else ""}</b></div>'
+        fim = f'<div class=desl>Deslize para o lado →</div>' if k < n else ''
+        corpo += f'<div class=folha id=f{k}><div class=dentro>{topo}{f}{fim}</div></div>'
     return (f'<!doctype html><html lang=pt><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">'
-            f'<title>Rega Coco — {esc(d["titulo_data"])}</title><style>{CSS}</style></head><body><main>'
-            f'<header><b>Rega Coco</b><h1>{esc(d["titulo_data"])}</h1></header>{big}{sec_wa}{tro}{sec_eq}{sec_ch}{sec_faz}</main></body></html>')
+            f'<title>Rega Coco — {esc(d["titulo_data"])}</title><style>{CSS}{CSS_FOLHAS}</style></head><body><main class=folhas>{corpo}</main></body></html>')
+
+CSS_FOLHAS = """html,body{height:100%}body{overflow:hidden}
+main.folhas{max-width:none;padding:0;margin:0;height:100%;height:100dvh;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.folha{flex:0 0 100%;width:100%;height:100%;scroll-snap-align:start;scroll-snap-stop:always;overflow-y:auto}
+.dentro{max-width:560px;margin:0 auto;padding:10px 16px 24px}
+.pag{display:flex;justify-content:space-between;font-size:12px;color:#5F5E5A;margin:0 0 4px}.pag b{background:#1d4d2b;color:#fff;border-radius:10px;padding:1px 8px}
+.desl{text-align:center;font-size:14px;font-weight:600;color:#1d4d2b;margin:14px 0 0}
+@media print{html,body{height:auto;overflow:visible}main.folhas{display:block;height:auto}.folha{height:auto;page-break-after:always}.desl{display:none}}"""
 
 if __name__ == '__main__':
     d = json.load(open(sys.argv[1], encoding='utf-8'))
