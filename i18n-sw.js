@@ -3,6 +3,8 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    // v211
+    "📍 Ver no mapa": "📍 Ona kwenye ramani", "🧭 Navegar": "🧭 Elekea", "Área de expansão (tocar para ver os campos dentro)": "Eneo la upanuzi (gusa kuona mashamba yaliyomo)", "Abrir a área de expansão": "Fungua eneo la upanuzi", "Campos da base dentro da área": "Mashamba ya kumbukumbu ndani ya eneo", "📍 Ver a área no mapa": "📍 Ona eneo kwenye ramani", "🧭 Navegar até à área": "🧭 Elekea eneo", "Na rega": "Kwenye umwagiliaji", "Só entram os campos da base com coordenada dentro do limite. Os produtores sem campo na base não aparecem.": "Yanaingia tu mashamba ya kumbukumbu yenye kiratibu ndani ya mpaka. Wakulima wasio na shamba kwenye kumbukumbu hawaonekani.", "vivas de": "hai kati ya", "plantadas": "zilizopandwa", "retirado: o campo não existe": "limeondolewa: shamba halipo", "fora do plano de rega": "nje ya mpango wa umwagiliaji", "Área de expansão 2027": "Eneo la upanuzi 2027",
     // v210
     "Recusar a medição da área": "Kataa kipimo cha eneo", "Porque recusa esta medição? (obrigatório)": "Kwa nini unakataa kipimo hiki? (lazima)", "Ex.: o limite não é deste produtor; faltou um lado do campo": "Mf.: mpaka si wa mkulima huyu; upande mmoja wa shamba umekosekana", "O activista vê este motivo na ficha do campo e mede de novo.": "Mhamasishaji anaona sababu hii kwenye kadi ya shamba na anapima tena.", "✗ Recusar a medição": "✗ Kataa kipimo", "Escreva o motivo da recusa.": "Andika sababu ya kukataa.", "Medição recusada": "Kipimo kimekataliwa", "Meça a área de novo.": "Pima eneo tena.",
     // v209

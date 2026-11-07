@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    // v211
+    "📍 Ver no mapa": "📍 See on the map", "🧭 Navegar": "🧭 Navigate", "Área de expansão (tocar para ver os campos dentro)": "Expansion area (tap to see the fields inside)", "Abrir a área de expansão": "Open the expansion area", "Campos da base dentro da área": "Fields in the database inside the area", "📍 Ver a área no mapa": "📍 See the area on the map", "🧭 Navegar até à área": "🧭 Navigate to the area", "Na rega": "On the watering list", "Só entram os campos da base com coordenada dentro do limite. Os produtores sem campo na base não aparecem.": "Only fields in the database with a coordinate inside the boundary are listed. Farmers without a field in the database do not appear.", "vivas de": "alive of", "plantadas": "planted", "retirado: o campo não existe": "removed: the field does not exist", "fora do plano de rega": "outside the watering plan", "Área de expansão 2027": "Expansion area 2027",
     // v210
     "Recusar a medição da área": "Reject the area measurement", "Porque recusa esta medição? (obrigatório)": "Why are you rejecting this measurement? (required)", "Ex.: o limite não é deste produtor; faltou um lado do campo": "E.g.: the boundary is not this farmer's; one side of the field is missing", "O activista vê este motivo na ficha do campo e mede de novo.": "The activist sees this reason on the field card and measures again.", "✗ Recusar a medição": "✗ Reject the measurement", "Escreva o motivo da recusa.": "Write the reason for rejecting.", "Medição recusada": "Measurement rejected", "Meça a área de novo.": "Measure the area again.",
     // v209

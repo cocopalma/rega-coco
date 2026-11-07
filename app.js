@@ -459,6 +459,7 @@ async function carregarTudo() {
   if (['me', 'gestor'].includes(p.data.papel)) oficiais().catch(() => {});
   carregarNPlantas().catch(() => {});
   carregarSugFeitas().catch(() => {});
+  carregarExpansao().catch(() => {});
   carregarManut().catch(() => {});   // lista dos oficiais no telefone (encaminhar sem rede)
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
   // senha/PIN provisório dado pelo gestor: a pessoa escolhe outro (18/10/2026, Valdo)
@@ -518,7 +519,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []); S.autoriz = LS.get('autoriz', []); S.fechSemPl = LS.get('fechSemPl', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []); S.autoriz = LS.get('autoriz', []); S.fechSemPl = LS.get('fechSemPl', []); S.expansao = LS.get('expansao', []);
   return !!(S.perfil && S.areas.length);
 }
 
@@ -1085,6 +1086,7 @@ function desenharMapa(enquadrar = false) {
       .bindPopup(`<b>Poço ${esc(q.codigo)}</b><br>${esc(q.comunidade || '')}${q.fonte ? ' · ' + esc(q.fonte) : ''}${q.observacao ? '<br>' + esc(q.observacao) : ''}`)
       .on('click', () => { if (pontoRegua([q.lat, q.lon], q.codigo)) setTimeout(() => mapa.closePopup(), 0); }).addTo(camada);
   }
+  desenharExpansao();
   if (enquadrar && pts.length) mapa.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
   marcasItinerario();
   desenharRotulos();
@@ -1430,6 +1432,7 @@ const ROTULO_NAV = { coq: 'Coqueiro', campo: 'Campo' };
 function alvoNav() {                                      // posição do destino agora (o campo pode ter mudado)
   const N = S.nav; if (!N) return null;
   if (N.tipo === 'coq') { const c = coqLista().find((x) => x.id === N.id); return c ? { alvo: [c.lat, c.lon], nome: c.n ? 'Coqueiro nº ' + c.n : 'Coqueiro' } : null; }
+  if (N.tipo === 'ponto') return N.pt ? { alvo: [N.pt.lat, N.pt.lon], nome: N.pt.nome } : null;   // v211: campo fora do plano ou área de expansão
   const a = S.areas.find((x) => x.id === N.id); if (!a) return null;
   let alvo = a.latitude != null ? [a.latitude, a.longitude] : null;
   if (temPoligono(a) && S.pos) {                         // com limite: o canto do campo mais perto de quem vai
@@ -1443,15 +1446,15 @@ async function navegar(tipo, id) {
   if (S.regua) fecharRegua();
   if (S.modoPerc) fecharPercurso();
   if (S.rasto && S.rasto.origem === 'gravado') await pararGravarTrilho();
-  S.nav = { tipo, id, andou: 0, chegou: false, arrastou: 0, osmEm: 0, osm: false };
+  S.nav = { tipo, id, andou: 0, chegou: false, arrastou: 0, osmEm: 0, osm: false, pt: tipo === 'ponto' ? S.navPt : null };
   iniciarRasto('nav');
   if (S.fix && Date.now() - S.fix.t < 20000) pontoRasto(S.fix.coords);
   const x = alvoNav(); if (!x) { S.nav = null; return; }
   if (tipo === 'coq') { $('#coq').style.display = 'none'; $('#cq-mostrar').style.display = 'none'; }
   $('#nav-cx').style.display = ''; mostrarSugFixa();
-  $('#nv-tit').innerHTML = `🧭 <span>A caminho de</span> <span class="${tipo === 'campo' ? 'sem-trad' : ''}">${esc(x.nome)}</span>${tipo === 'campo' ? ` <span class="pequeno sem-trad">${esc(x.a.id)}</span>` : ''}`;
-  $('#nv-ficha').onclick = () => (tipo === 'coq' ? verCoq(id) : abrirFicha(id));
-  $('#nv-ficha').textContent = tipo === 'coq' ? 'Abrir a ficha do coqueiro' : 'Abrir a ficha do campo';
+  $('#nv-tit').innerHTML = `🧭 <span>A caminho de</span> <span class="${tipo !== 'coq' ? 'sem-trad' : ''}">${esc(x.nome)}</span>${tipo === 'campo' ? ` <span class="pequeno sem-trad">${esc(x.a.id)}</span>` : tipo === 'ponto' && S.nav.pt?.cod ? ` <span class="pequeno sem-trad">${esc(S.nav.pt.cod)}</span>` : ''}`;
+  $('#nv-ficha').onclick = () => (tipo === 'coq' ? verCoq(id) : tipo === 'ponto' ? fichaExpansao(S.nav?.pt?.exp) : abrirFicha(id));
+  $('#nv-ficha').textContent = tipo === 'coq' ? 'Abrir a ficha do coqueiro' : tipo === 'ponto' ? 'Abrir a área de expansão' : 'Abrir a ficha do campo';
   if (!camadaNav) camadaNav = L.layerGroup(); camadaNav.addTo(mapa);
   mapa.on('dragstart', navArrastou);
   await lerTrilhos();
@@ -1460,6 +1463,69 @@ async function navegar(tipo, id) {
   if (S.pos) pedirOSM();
 }
 function navegarCoq(id) { navegar('coq', id); }
+// v211 (07/11/2026, Valdo): navegar até um ponto que não é um campo da lista (campo fora do plano, área de expansão)
+function navegarPonto(lat, lon, nome, cod, exp) {
+  S.navPt = { lat: +lat, lon: +lon, nome, cod, exp }; fecharFolha(); mudar('mapa');
+  setTimeout(() => { mapa.invalidateSize(); navegar('ponto', 'pt-' + lat + ',' + lon); }, 80);
+}
+// ---------- Áreas de expansão (v211, 07/11/2026, Valdo) ----------
+// "É a área de expansão para 2027, vamos procurar engajar produtores dentro da área para termos uma espécie de bloco."
+// Só técnico, supervisor, gestor e director (o servidor devolve [] aos outros). Mostra o limite, os hectares, a nota e os campos da base dentro.
+async function carregarExpansao() {
+  if (!S.perfil || !['tecnico', 'supervisor', 'gestor', 'director'].includes(S.perfil.papel)) { S.expansao = []; LS.set('expansao', []); return; }
+  const r = await sb.rpc('areas_expansao_lista'); if (r.error || !Array.isArray(r.data)) return;
+  S.expansao = r.data; LS.set('expansao', S.expansao);
+  if (typeof desenharMapa === 'function' && camada) desenharMapa();
+}
+const verExpansao = () => !!(S.perfil && ['tecnico', 'supervisor', 'gestor', 'director'].includes(S.perfil.papel) && (S.expansao || []).length);
+const centroPol = (P) => { const ll = P.map(([x, y]) => [y, x]); return [ll.reduce((t, p) => t + p[0], 0) / ll.length, ll.reduce((t, p) => t + p[1], 0) / ll.length]; };
+const haExp = (e) => ((+e.area_m2 || areaPontos(e.poligono)) / 10000).toLocaleString(LOC, { maximumFractionDigits: 1 });
+function desenharExpansao() {
+  const l = $('#leg-exp'); if (l) l.style.display = verExpansao() ? '' : 'none';
+  if (!verExpansao() || modoManut()) return;
+  for (const e of S.expansao) {
+    if (!Array.isArray(e.poligono) || e.poligono.length < 3) continue;
+    const clique = (ev) => { if (S.regua) { L.DomEvent.stopPropagation(ev); pontoRegua([ev.latlng.lat, ev.latlng.lng], e.nome); return; } fichaExpansao(e.id); };
+    L.polygon(e.poligono.map(([x, y]) => [y, x]), { color: '#ad1457', weight: 3, dashArray: '10 6', opacity: S.modoPerc ? .5 : .95, fillColor: '#ad1457', fillOpacity: .05 })
+      .on('click', clique).addTo(camada);
+    L.marker(centroPol(e.poligono), { icon: L.divIcon({ className: '', html: `<span class="ic-exp"><span>${esc(e.nome)}</span> · ${haExp(e)} ha</span>`, iconSize: null, iconAnchor: [70, 10] }) })
+      .on('click', clique).addTo(camada);
+  }
+}
+function verExpNoMapa(id) {
+  const e = (S.expansao || []).find((x) => x.id === id); if (!e) return;
+  fecharFolha(); mudar('mapa'); setTimeout(() => { mapa.invalidateSize(); mapa.fitBounds(e.poligono.map(([x, y]) => [y, x]), { padding: [40, 40] }); }, 80);
+}
+function verPontoNoMapa(lat, lon) { fecharFolha(); mudar('mapa'); setTimeout(() => { mapa.invalidateSize(); mapa.setView([+lat, +lon], 18); }, 80); }
+function navegarExpansao(id) {
+  const e = (S.expansao || []).find((x) => x.id === id); if (!e) return;
+  let alvo = centroPol(e.poligono);                           // o canto da área mais perto de quem vai (como nos campos)
+  if (S.pos) { let m = Infinity; for (const [lo, la] of e.poligono) { const d = metros(S.pos, [la, lo]); if (d < m) { m = d; alvo = [la, lo]; } } }
+  navegarPonto(alvo[0], alvo[1], e.nome, null, e.id);
+}
+function fichaExpansao(id) {
+  const e = (S.expansao || []).find((x) => x.id === id); if (!e) return;
+  const C = e.campos || [], naRega = C.filter((c) => c.activa), fora = C.filter((c) => !c.activa);
+  const linha = (c) => {
+    const noTel = S.areas.some((a) => a.id === c.id), cod = c.pr ? `${c.pr}-${c.area_n}` : c.id;
+    return `<div class="item" style="display:block"><div class="nome sem-trad">${esc(c.produtor || '')}</div>
+      <div class="sub"><span class="sem-trad">${esc(cod)}</span> · ${num(c.vivas || 0)} <span>vivas de</span> ${num(c.instaladas || 0)} <span>plantadas</span>${c.activa ? ` · <span>activista</span> <span class="sem-trad">${esc(c.activista || '—')}</span>` : c.nao_existe ? ' · <span>retirado: o campo não existe</span>' : ' · <span>fora do plano de rega</span>'}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${noTel ? `<button class="chip" onclick="abrirFicha('${esc(c.id)}')">Abrir a ficha</button>` : ''}
+      <button class="chip" onclick="verPontoNoMapa(${+c.lat}, ${+c.lon})">📍 Ver no mapa</button>
+      <button class="chip" onclick="navegarPonto(${+c.lat}, ${+c.lon}, '${esc(String(c.produtor || '').replace(/'/g, ''))}', '${esc(cod)}', '${esc(e.id)}')">🧭 Navegar</button></div></div>`;
+  };
+  folha(`<h2><span>${esc(e.nome)}</span></h2>
+    <div class="cartao"><div class="lin"><span>Comunidade</span><b class="sem-trad">${esc(e.comunidade || '—')}</b></div>
+    <div class="lin"><span>Área</span><b>${haExp(e)} ha</b></div>
+    <div class="lin"><span>Campos da base dentro da área</span><b>${C.length}</b></div>
+    ${e.nota ? `<p class="pequeno sem-trad" style="margin:8px 0 0">${esc(e.nota)}</p>` : ''}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0"><button class="btn sec" style="margin:0;flex:1" onclick="verExpNoMapa('${esc(e.id)}')">📍 Ver a área no mapa</button>
+    <button class="btn sec" style="margin:0;flex:1" onclick="navegarExpansao('${esc(e.id)}')">🧭 Navegar até à área</button></div>
+    <h3 style="font-size:15px;margin:12px 0 4px"><span>Na rega</span> (${naRega.length})</h3>${naRega.length ? naRega.map(linha).join('') : '<p class="pequeno">Nenhum.</p>'}
+    <h3 style="font-size:15px;margin:12px 0 4px"><span>Fora do plano de rega</span> (${fora.length})</h3>${fora.length ? fora.map(linha).join('') : '<p class="pequeno">Nenhum.</p>'}
+    <p class="pequeno">Só entram os campos da base com coordenada dentro do limite. Os produtores sem campo na base não aparecem.</p>
+    <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
 function navegarCampo(id) { fecharFolha(); mudar('mapa'); setTimeout(() => { mapa.invalidateSize(); navegar('campo', id); }, 80); }
 function navArrastou() { if (S.nav) S.nav.arrastou = Date.now(); }
 async function pedirOSM() {
