@@ -40,10 +40,10 @@ with sync_playwright() as p:
         pg.click("#b-filtro"); pg.wait_for_timeout(300); print("2 depois de tocar:", pg.inner_text("#b-filtro"), pg.evaluate("visiveis().length"), "| guardado:", pg.evaluate("LS.get('filtroSup')"))
         pg.click("#b-filtro"); pg.wait_for_timeout(300)
     pg.evaluate("mudar('hoje')"); pg.wait_for_timeout(800)
-    t = pg.locator("#e-hoje .cartao:has-text('⚠️')")
+    t = pg.locator("#e-hoje details[data-k=se]")
     print("3 Hoje:", t.inner_text().replace("\n", " | ") if t.count() else "(sem cartão)")
     if t.count():
-        t.locator("button").click(); pg.wait_for_timeout(500)
+        t.locator("button:has-text('Atribuir'), button:has-text('Assign'), button:has-text('Gawa')").first.click(); pg.wait_for_timeout(500)
         print("4 lista:", pg.input_value("#f-ambito"), pg.input_value("#f-sit"), "|", [x.split("\n")[0] for x in pg.locator("#lista .item").all_inner_texts()])
     pg.evaluate("$('#f-sit').value=''; $('#f-ambito').value='todas'; $('#f-ambito').dispatchEvent(new Event('change'))"); pg.wait_for_timeout(300)
     print("5 todos:", [x.replace("\n", " ")[:80] for x in pg.locator("#lista .item").all_inner_texts()])

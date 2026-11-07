@@ -79,10 +79,10 @@ with sync_playwright() as p:
     entrar(pg); pg.wait_for_selector("#app", state="visible"); pg.wait_for_timeout(1500)
     # 1 equipas no Hoje e comunidade do activista
     pg.evaluate("mudar('hoje')"); pg.wait_for_timeout(1000)
-    c = pg.locator("#hoje details:has-text('👥')")
+    c = pg.locator("#hoje details[data-k=m-eq]")
     print("1 cartão equipas:", c.count(), c.inner_text().replace("\n", " | ")[:200] if c.count() else "")
-    c.locator("summary").click(); pg.wait_for_timeout(200); print("   aberto:", c.inner_text().replace("\n", " | ")[:300])
-    c.locator("button").first.click(); pg.wait_for_timeout(300)
+    c.locator("summary").first.click() if not c.evaluate("d=>d.open") else None; pg.wait_for_timeout(200); print("   aberto:", c.inner_text().replace("\n", " | ")[:300])
+    c.locator(".tc button").first.click(); pg.wait_for_timeout(300)
     print("2 ecrã:", pg.inner_text("#folha-c").replace("\n", " | ")[:300])
     pg.select_option("#t-com", "Palma"); pg.click("#folha-c .btn >> nth=0"); pg.wait_for_timeout(1500)
     print("3 enviado:", [x for x in rec if x[0] == "definir_comunidade_activista"], "| no telefone:", pg.evaluate(f"S.activistas.find(t => t.id === '{A1}').comunidade_principal"), "| fila:", pg.evaluate("LS.get('filaAlt', []).length"), "| alertas:", dial[-1:] )

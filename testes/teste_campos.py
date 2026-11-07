@@ -21,6 +21,7 @@ def fazer_mock(papel):
         if "/rpc/estado_ronda" in u: return ok([])
         if "/rest/v1/zonas" in u: return ok([{"comunidade": "Farol", "zona": "Norte"}, {"comunidade": "Farol", "zona": "Sul"}])
         if "/rpc/definir_zona" in u: rpcs.append(("definir_zona", json.loads(r.post_data))); return route.fulfill(status=204, body="")
+        if "/rpc/minhas_comunidades" in u: return ok(["Farol"])
         if "/rpc/meus_activistas" in u: return ok([A1, A2] if papel == "supervisor" else [A1])
         if "/rpc/gravar_coordenada" in u or "/rpc/atribuir_area" in u:
             corpo = json.loads(r.post_data); rpcs.append((u.split("/rpc/")[1], corpo))
@@ -43,7 +44,7 @@ with sync_playwright() as p:
         return ctx, pg
     def ficha(pg, id):
         if pg.is_visible("#folha.on"): pg.click("#folha-x")
-        pg.click("nav button[data-e=lista]"); pg.click(f".item[data-id='{id}']"); pg.wait_for_selector("#folha.on")
+        pg.click("nav button[data-e=lista]"); pg.evaluate("$('#f-ambito').value='todas'; $('#f-ambito').dispatchEvent(new Event('change'))"); pg.click(f".item[data-id='{id}']"); pg.wait_for_selector("#folha.on")
         return pg.inner_text("#folha-c")
     # supervisor, sem rede: grava coordenada e atribui; depois volta a rede
     ctx, pg = contexto("supervisor")
@@ -77,7 +78,7 @@ with sync_playwright() as p:
     ctx, pg = contexto("director"); t = ficha(pg, "PRX-1"); print("7 director:", "sem botões" if "📍" not in t and "👤" not in t else "TEM BOTÕES"); ctx.close()
     # lista "Por atribuir": confirmar proposta com um toque
     rpcs.clear(); ESTADO.clear(); ctx, pg = contexto("supervisor"); pg.click("nav button[data-e=lista]")
-    print("8 aviso na lista:", pg.inner_text("#lista .msg.info")[:40])
+    print("8 aviso na lista:", pg.inner_text("#av-lista")[:60] if pg.locator("#av-lista").count() else pg.inner_text("#lista .msg.info")[:40])
     pg.select_option("#f-sit", "sem"); pg.wait_for_timeout(300)
     print("  supervisor por atribuir:", [x.inner_text().split("\n")[0] for x in pg.query_selector_all("#lista .item")], "| botões confirmar:", len(pg.query_selector_all("button[data-acc=confirmar]")))
     pg.click("button[data-acc=confirmar][data-id='PRY-1']"); pg.wait_for_timeout(1500)
