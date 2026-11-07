@@ -3,6 +3,10 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    // v214
+    "As equipas, os avisos e «Fechar o dia» aparecem quando houver rede.": "Timu, tahadhari na «Funga siku» huonekana kukiwa na mtandao.",
+    // v214
+    "Ver todos os dados (técnico, supervisor, área, regas…)": "Ona data zote (fundi, msimamizi, eneo, umwagiliaji…)", "Gerir o campo": "Simamia shamba", "Acompanhei a rega": "Nilifuatilia umwagiliaji", "Marcar queimada": "Weka alama ya moto", "Pedir recontagem": "Omba kuhesabu upya", "Mapa das plantas": "Ramani ya mimea", "Medir a área": "Pima eneo", "Medir a área de novo": "Pima eneo tena", "andar à volta do campo": "tembea kuzunguka shamba", "Registar outra queimada": "Rekodi moto mwingine",
     // v213
     "Produtor ou PR": "Mkulima au PR",
     // v213

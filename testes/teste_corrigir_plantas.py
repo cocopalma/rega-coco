@@ -21,6 +21,7 @@ def mock(route):
     if "/rest/v1/activistas" in u: return ok([{"id": ACT, "nome": "Activista Exemplo", "comunidade_principal": "Farol", "equipa_tamanho": 5}])
     if "/rest/v1/areas" in u: return ok(areas)
     if "/rpc/estado_ronda" in u: return ok([{"area_id": a["id"], "ultima_rega": None, "regas_app": 0, "ronda_actual": 1, "regada_na_ronda": False} for a in areas])
+    if "/rpc/meus_activistas" in u: return ok([ACT])  # desde a v108 corrigir só na lista própria
     if "/rpc/corrigir_plantas_rega" in u:
         if not rede["on"]: return route.abort()
         rec["corr"].append(json.loads(r.post_data)); return ok(None)

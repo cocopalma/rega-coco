@@ -51,7 +51,7 @@ with sync_playwright() as p:
     pg.evaluate("abrirFicha('PR2-1')"); pg.wait_for_timeout(300)
     print("3 ficha PR2:", [l for l in pg.inner_text("#folha-c").split("\n") if "egas" in l or "Água" in l or "produtor" in l], "| poços no mapa:", pg.locator(".ic-poco").count())
     ctx.set_offline(True); pg.evaluate("window.dispatchEvent(new Event('offline'))")
-    pg.click("text=Marcar queimada nesta machamba"); pg.wait_for_selector("#q-data")
+    pg.click("#folha-c .fi-q:has-text('🔥')"); pg.wait_for_selector("#q-data")
     pg.locator("#folha-c button:has-text('Guardar')").first.click(); pg.wait_for_timeout(300)
     pg.fill("#q-obs", "metade do campo"); pg.fill("#q-afect", "40"); pg.fill("#q-mortas", "12"); pg.set_input_files("#q-foto", "/home/claude/rega-test/foto_teste.jpg"); pg.wait_for_selector("#q-prev", state="visible")
     pg.screenshot(path="/home/claude/rega-test/queimada.png", full_page=True)

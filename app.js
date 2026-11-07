@@ -2953,32 +2953,47 @@ function fecharFolha() { pararVigia(); $('#folha').classList.remove('on'); devol
 // ---------- coordenada e atribuição de campos (técnico, supervisor, gestor) ----------
 const PODE_COORD = ['tecnico', 'supervisor', 'gestor'];
 const podeAtribuir = () => ['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel);   // técnico: com motivo se o campo já tem activista (24/10/2026, Valdo)
+// v214 (07/11/2026, Valdo, proposta de visual F3–F5): «Regar pela equipa» e «Navegar» lado a lado; os registos em quadrados
+// (Acompanhei, Queimada, Recontagem, Mapa das plantas, Medir a área); «Gerir o campo» numa lista, «Retirar da rega» a vermelho no fim
+function parFicha(a, pelaBtn) {
+  const nav = a.latitude != null || temPoligono(a) ? `<button class="btn sec" onclick="navegarCampo('${esc(a.id)}')">🧭 <span>Navegar até ao campo</span></button>` : '';
+  const b = [pelaBtn, nav].filter(Boolean);
+  return b.length ? `<div class="fi-par${b.length === 1 ? ' um' : ''}">${b.join('')}</div>` : '';
+}
+const quadro = (onclick, ic, txt, extra = '') => `<button class="fi-q" onclick="${onclick}"><span class="fi-ic">${ic}</span><span>${txt}</span>${extra}</button>`;
+const itemGerir = (onclick, txt, cls = '') => `<button class="fi-g${cls ? ' ' + cls : ''}" onclick="${onclick}"><span>${txt}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>`;
 function botoesCampo(a) {
   let h = '';
+  const id = esc(a.id), papel = S.perfil.papel, coord = PODE_COORD.includes(papel);
   // depois de gravadas, coordenada e área ficam fechadas; só o gestor corrige ou volta a abrir (15/10/2026, Nuro/Valdo)
-  const gestor = S.perfil.papel === 'gestor', aberto = gestor || a.limites_abertos;
+  const gestor = papel === 'gestor', aberto = gestor || a.limites_abertos;
   // área medida pelo activista à espera de aprovação (técnico, supervisor ou gestor aprovam; 15/10/2026, Valdo)
-  if (a.poligono_proposto && PODE_COORD.includes(S.perfil.papel)) h += cartaoProposta(a);
-  if ((PODE_COORD.includes(S.perfil.papel) || S.perfil.papel === 'activista') && !a.poligono_proposto) h += linhaRecusaMed(a);
-  if (S.perfil.papel === 'activista' && a.activista_id === S.perfil.activista_id && (!temPoligono(a) || a.limites_abertos || a.poligono_proposto))
-    h += a.poligono_proposto ? `<div class="msg info">Área medida: ${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}. À espera de aprovação do técnico ou do supervisor.</div>`
-      : `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 ${temPoligono(a) ? 'Medir a área de novo (andar à volta)' : 'Medir a área (andar à volta do campo)'}</button>`;
-  if (PODE_COORD.includes(S.perfil.papel) && (a.latitude == null || aberto))
-    h += `<button class="btn sec" onclick="ecraCoordenada('${esc(a.id)}')">📍 ${a.latitude == null ? 'Gravar a coordenada deste campo' : 'Corrigir a coordenada (estou no campo)'}</button>`;
-  if (PODE_COORD.includes(S.perfil.papel)) h += resumoPlantas(a);
-  if (PODE_COORD.includes(S.perfil.papel)) { const np = plantasLocais(a.id).length;
-    h += `<button class="btn sec" onclick="ecraPlantas('${esc(a.id)}')">🌴 Mapa das plantas${np ? ` (${np})` : ''} · teste</button>`; }
-  if (PODE_COORD.includes(S.perfil.papel) && (!temPoligono(a) || aberto))
-    h += `<button class="btn sec" onclick="ecraMedir('${esc(a.id)}')">📐 ${temPoligono(a) ? 'Medir a área de novo (andar à volta)' : 'Medir a área (andar à volta do campo)'}</button>`;
-  if (PODE_ACOMP.includes(S.perfil.papel) && a.activista_id && !S.perfil.so_teste) h += `<button class="btn sec" onclick="ecraAcompanhar('${esc(a.id)}')">👁 Acompanhei a rega neste campo</button>`;
-  if (PODE_REGAR.includes(S.perfil.papel)) h += `<button class="btn sec" onclick="ecraQueimada('${esc(a.id)}')">🔥 ${queimadaDe(a.id) ? 'Registar outra queimada' : 'Marcar queimada nesta machamba'}</button>`;
-  if (podeAtribuir(a)) h += `<button class="btn sec" onclick="ecraAtribuir('${esc(a.id)}')">👤 ${a.activista_id ? 'Mudar o activista deste campo' : 'Atribuir a um activista'}</button>`;
-  if (['gestor', 'supervisor', 'tecnico'].includes(S.perfil.papel)) h += `<button class="btn sec" onclick="ecraComunidade('${esc(a.id)}')">🏘 Mudar a comunidade</button>`;
-  if (podeRetirar(a)) h += `<button class="btn sec" onclick="ecraRetirar('${esc(a.id)}')">🗑 Retirar da rega (mudas mortas ou sem acesso)</button>`;
-  if (['gestor', 'supervisor'].includes(S.perfil.papel) && zonasDe(a.comunidade).length) h += `<button class="btn sec" onclick="ecraZona('${esc(a.id)}')">🗂 ${a.zona ? 'Mudar a zona' : 'Definir a zona'}</button>`;
+  if (a.poligono_proposto && coord) h += cartaoProposta(a);
+  if ((coord || papel === 'activista') && !a.poligono_proposto) h += linhaRecusaMed(a);
+  if (coord) h += resumoPlantas(a);
+  // quadrados «Registar»
+  const q = [];
+  if (PODE_ACOMP.includes(papel) && a.activista_id && !S.perfil.so_teste) q.push(quadro(`ecraAcompanhar('${id}')`, '👁', 'Acompanhei a rega'));
+  if (PODE_REGAR.includes(papel)) q.push(quadro(`ecraQueimada('${id}')`, '🔥', queimadaDe(a.id) ? 'Registar outra queimada' : 'Marcar queimada'));
+  if (podePedirRecCampo(a)) q.push(quadro(`ecraPedirRecontagem('${id}')`, '📋', 'Pedir recontagem'));
+  if (coord) { const np = plantasLocais(a.id).length; q.push(quadro(`ecraPlantas('${id}')`, '🌴', 'Mapa das plantas', `<small>${np ? `(${np}) · ` : ''}<span>teste</span></small>`)); }
+  if (papel === 'activista' && a.activista_id === S.perfil.activista_id && (!temPoligono(a) || a.limites_abertos || a.poligono_proposto)) {
+    if (a.poligono_proposto) h += `<div class="msg info">Área medida: ${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}. À espera de aprovação do técnico ou do supervisor.</div>`;
+    else q.push(quadro(`ecraMedir('${id}')`, '📐', temPoligono(a) ? 'Medir a área de novo' : 'Medir a área', '<small>andar à volta do campo</small>'));
+  }
+  if (coord && (!temPoligono(a) || aberto)) q.push(quadro(`ecraMedir('${id}')`, '📐', temPoligono(a) ? 'Medir a área de novo' : 'Medir a área', '<small>andar à volta do campo</small>'));
+  if (q.length) h += `<div class="fi-tit">Registar</div><div class="fi-reg">${q.join('')}</div>`;
+  // «Gerir o campo»
+  const g = [];
+  if (podeAtribuir(a)) g.push(itemGerir(`ecraAtribuir('${id}')`, `👤 ${a.activista_id ? 'Mudar o activista deste campo' : 'Atribuir a um activista'}`));
+  if (['gestor', 'supervisor', 'tecnico'].includes(papel)) g.push(itemGerir(`ecraComunidade('${id}')`, '🏘 Mudar a comunidade'));
+  if (['gestor', 'supervisor'].includes(papel) && zonasDe(a.comunidade).length) g.push(itemGerir(`ecraZona('${id}')`, `🗂 ${a.zona ? 'Mudar a zona' : 'Definir a zona'}`));
+  if (coord && (a.latitude == null || aberto)) g.push(itemGerir(`ecraCoordenada('${id}')`, `📍 ${a.latitude == null ? 'Gravar a coordenada deste campo' : 'Corrigir a coordenada (estou no campo)'}`));
   if (gestor && (a.latitude != null || temPoligono(a)))
-    h += a.limites_abertos ? `<button class="btn sec" onclick="mudarLimites('${esc(a.id)}', false)">🔒 Fechar a correcção da coordenada e da área</button>`
-      : `<button class="btn sec" onclick="mudarLimites('${esc(a.id)}', true)">🔓 Deixar o supervisor/técnico corrigir a coordenada e medir de novo</button>`;
+    g.push(a.limites_abertos ? itemGerir(`mudarLimites('${id}', false)`, '🔒 Fechar a correcção da coordenada e da área')
+      : itemGerir(`mudarLimites('${id}', true)`, '🔓 Deixar o supervisor/técnico corrigir a coordenada e medir de novo'));
+  if (podeRetirar(a)) g.push(itemGerir(`ecraRetirar('${id}')`, '🗑 Retirar da rega', 'vermelho'));
+  if (g.length) h += `<div class="fi-tit">Gerir o campo</div><div class="fi-ger">${g.join('')}</div>`;
   return h;
 }
 // v205 (05/11/2026, Valdo: "vou habilitar-lhes a removerem campos da rega com motivo de… todas as mudas mortas e falta de
@@ -3234,7 +3249,7 @@ function abrirFicha(id, nota = '') {
   const s = situacao(a), emCurso = LS.get('emCurso');
   const d = S.pos ? distCampo(a, S.pos) : null;
   const podeRegar = PODE_REGAR.includes(S.perfil.papel) && (S.perfil.papel === 'activista' || a.activista_id);
-  let acc = '';
+  let acc = '', pelaBtn = '';
   if (emCurso && emCurso.area_id === a.id) acc = (emCurso.motivo_tecnico ? `<div class="msg info">🤝 <span>Rega pela equipa: conta na ronda da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>.</div>` : '') + (emCurso.agua_em
       ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>`
       : emCurso.sem_vivas
@@ -3254,31 +3269,36 @@ function abrirFicha(id, nota = '') {
     acc = (sem ? `<div class="msg info">📵 <span>${esc(nomeAct(a.activista_id))} não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele.</span></div>` : '') +
       (bl ? `<div class="msg erro">💧 <span>Este campo já recebeu água. A equipa ainda tem</span> <b>${bl.length}</b> <span>campos que nunca receberam água: regue esses primeiro. Para regar este campo, o supervisor tem de autorizar (pode ser já para hoje).</span></div>
         <button class="btn" onclick="ecraBloqueioAgua('${esc(a.id)}')">💧 Ver os campos que nunca receberam água</button>`
-        : `<button class="btn" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`) +
-      (pela ? `<p class="pequeno" style="margin:2px 0 6px">Rega de teste: não conta para a equipa.</p><button class="btn sec" onclick="ecraRegaPelaEquipa('${esc(a.id)}')">🤝 Regar pela equipa (conta na ronda)</button>` : '');
+        : `<button class="btn principal" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`) +
+      (pela ? `<p class="pequeno" style="margin:4px 0 0;text-align:center">Rega de teste: não conta para a equipa.</p>` : '');
+    if (pela) pelaBtn = `<button class="btn sec" onclick="ecraRegaPelaEquipa('${esc(a.id)}')">🤝 Regar pela equipa (conta na ronda)</button>`;
   }
   const alheio = !meuCampo(a); S.soVer = alheio;
-  folha(`${nota}<h2 style="margin-top:0">${esc(a.produtor)}</h2>
-   <div class="cartao" style="margin:8px 0">
+  folha(`${nota}<h2 style="margin:0">${esc(a.produtor)}</h2>
+   <p class="pequeno" style="margin:2px 0 6px">${esc(a.pr)}-${a.area_n ?? '—'} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''}</p>
+   <div class="it-tags" style="margin:0 0 8px"><span class="tag t-${s.cod}">${s.txt}</span>${nuncaAgua(a) ? '<span class="tag t-nunca">💧 <span>Nunca recebeu água</span></span>' : ''}${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}</div>
+   <div class="cartao fi-res" style="margin:0 0 8px">
+    <div class="lin"><span>Activista</span><b>${esc(nomeAct(a.activista_id))}</b></div>
+    <div class="lin"><span>Plantas vivas</span><b>${a.vivas != null ? num(a.vivas) : '—'}${a.instaladas != null ? ` <span>de</span> ${num(a.instaladas)}` : ''}</b></div>
+    <div class="lin"><span>Última rega</span><b>${fmtData(ultimaAgua(a) || s.u)}</b></div>
+    ${d != null ? `<div class="lin"><span>Distância${temPoligono(a) ? ' (à borda)' : ''}</span><b>${d === 0 ? 'dentro do campo' : (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') + (a.latitude != null ? ' · ' + rumo(S.pos, [a.latitude, a.longitude]) : '')}</b></div>` : ''}
+    <details class="fi-mais" ${window.__TAR_ABERTAS ? 'open' : ''}><summary><span>Ver todos os dados (técnico, supervisor, área, regas…)</span></summary>
     <div class="lin"><span>PR · área</span><b>${esc(a.pr)} · ${a.area_n ?? '—'}</b></div>
     <div class="lin"><span>Comunidade</span><b>${esc(a.comunidade)}</b></div>
     ${zonasDe(a.comunidade).length ? `<div class="lin"><span>Zona</span><b>${a.zona ? esc(a.zona) : '<span class="pequeno">por definir</span>'}</b></div>` : ''}
-    <div class="lin"><span>Activista</span><b>${esc(nomeAct(a.activista_id))}</b></div>
     ${a.activista_id ? `<div class="lin"><span>Técnico</span><b class="sem-trad">${esc(tecDe(a) || '—')}</b></div><div class="lin"><span>Supervisor</span><b class="sem-trad">${esc(supDe(a) || '—')}</b></div>` : ''}
     ${a.instaladas != null ? `<div class="lin"><span>Plantas instaladas</span><b>${num(a.instaladas)}</b></div>` : ''}<div class="lin"><span>Plantas vivas</span><b>${a.vivas != null ? num(a.vivas) : '—'}</b></div>${a.instaladas != null && a.vivas != null && a.instaladas >= a.vivas ? `<div class="lin"><span>Plantas mortas</span><b>${num(a.instaladas - a.vivas)}</b></div>` : ''}
-    <div class="lin"><span>Última rega</span><b>${fmtData(ultimaAgua(a) || s.u)}</b></div>
     ${a.wa_ultima ? `<div class="lin"><span>Registo do WhatsApp</span><b>${a.wa_por_pr ? '<span>só por produtor (não diz o campo)</span>' : `${fmtData(a.wa_ultima)} · ${a.wa_n || 1} ${a.wa_n > 1 ? '<span>regas</span>' : '<span>rega</span>'}`}</b></div>` : ''}
-    ${nuncaAgua(a) ? '<div class="msg erro">💧 <span>Este campo nunca recebeu água (nem na app, nem no registo do WhatsApp).</span></div>' : ''}
     ${linhasRegasCampo(a)}
-    <div class="lin"><span>Ronda da equipa</span><span class="tag t-${s.cod}">${s.txt}</span></div>
-    ${linhaOutraEquipa(a, s)}
-    ${s.pt ? `<div class="msg info">⏳ <span>Rega a meio nesta ronda: regadas</span> ${num(s.pt.regadas)} <span>de</span> ${num(plantasN(a))} <span>plantas</span>${s.pt.data ? ` (${fmtData(s.pt.data)})` : ''}. <span>O campo só fecha quando regarem as que faltam, ou se as que faltam forem mudas secas ou mortas.</span></div>` : ''}
-    ${d != null ? `<div class="lin"><span>Distância${temPoligono(a) ? ' (à borda)' : ''}</span><b>${d === 0 ? 'dentro do campo' : (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') + (a.latitude != null ? ' · ' + rumo(S.pos, [a.latitude, a.longitude]) : '')}</b></div>` : ''}
     ${eNovo(a) ? `<div class="lin"><span>Na rega desde</span><b>${fmtData(a.reactivada_em.slice(0, 10))} <span class="tag t-novo">Novo na rega</span></b></div>` : ''}
     <div class="lin"><span>Limite do campo</span><b>${temPoligono(a) ? 'polígono' : '<span class="pequeno">só ponto (sem polígono)</span>'}</b></div>
     ${temPoligono(a) ? `<div class="lin"><span>Área</span><b>${textoArea(a.area_m2 || areaPontos(a.poligono))}${a.area_m2 ? ' <span class="pequeno">(medida no campo)</span>' : ''}</b></div>` : ''}
+    </details>
+   </div>
+    ${linhaOutraEquipa(a, s)}
+    ${s.pt ? `<div class="msg info">⏳ <span>Rega a meio nesta ronda: regadas</span> ${num(s.pt.regadas)} <span>de</span> ${num(plantasN(a))} <span>plantas</span>${s.pt.data ? ` (${fmtData(s.pt.data)})` : ''}. <span>O campo só fecha quando regarem as que faltam, ou se as que faltam forem mudas secas ou mortas.</span></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   </div>${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a)}${avisoCampo(a.id)}${cartaoAutorizacao(a, alheio)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (simulação)</button><p class="pequeno" style="margin:0 0 6px">Só na simulação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${a.latitude != null || temPoligono(a) ? `<button class="chip" style="margin:6px 0" onclick="navegarCampo('${esc(a.id)}')">🧭 <span>Navegar até ao campo</span></button>` : ''}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+   ${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a, true)}${avisoCampo(a.id)}${cartaoAutorizacao(a, alheio)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (simulação)</button><p class="pequeno" style="margin:0 0 6px">Só na simulação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${parFicha(a, pelaBtn)}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
   S.soVer = false;
   if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
 }
@@ -4011,9 +4031,11 @@ function linhaTelefone(r) {
   const lig = (t) => `<a class="chip" href="tel:+258${esc(t)}" style="text-decoration:none">📞 ${esc(t)}</a>`;
   return `<div class="lin"><span>Telefone do produtor</span><b class="sem-trad">${lig(r.telefone)}${r.telefone2 ? ' ' + lig(r.telefone2) : ''}</b></div>${r.telefone_confirmar ? '<p class="pequeno">Número a confirmar com o produtor.</p>' : ''}`;
 }
-function cartaoRecontagem(a) {
+// v214: na ficha do campo, «Pedir recontagem» passou para os quadrados «Registar» (semPedir); noutros sítios fica como estava
+const podePedirRecCampo = (a) => { const r = recontagemDe(a.id); return podePedirRec() && (!r || r.estado === 'validada'); };
+function cartaoRecontagem(a, semPedir = false) {
   const r = recontagemDe(a.id), papel = S.perfil?.papel;
-  const pedir = podePedirRec() ? `<button class="btn sec" onclick="ecraPedirRecontagem('${esc(a.id)}')">📋 Pedir recontagem das plantas</button>` : '';
+  const pedir = podePedirRec() && !semPedir ? `<button class="btn sec" onclick="ecraPedirRecontagem('${esc(a.id)}')">📋 Pedir recontagem das plantas</button>` : '';
   if (!r) return pedir;
   const fotoB = (c, t) => c && papel !== 'activista' ? `<button class="chip" onclick="verFoto('recontagem-fotos','${esc(c)}','${t} · ${esc(a.pr)} · ${esc(dataCurta(r.contada_em))}')">📷 ${t}</button>` : '';
   const foto = fotoB(r.foto_campo_path, 'Campo') + fotoB(r.foto_path, 'Declaração');
@@ -5497,8 +5519,18 @@ function contaNunca() {
 }
 function cartaoMeuDia() {
   if (!MEU_DIA()) return '';
-  const c = LS.get('meuDia'); if (c && c.d === null && c.dia === hojeISO()) return '';
-  if (!c || !c.d || c.d.data !== hojeISO()) return '<div class="cartao" id="meu-dia"><h2>📋 O meu dia</h2><p class="pequeno">Aparece quando houver rede.</p></div>';
+  const c = LS.get('meuDia');
+  // v214: sem os dados do servidor (sem rede, ou o servidor não devolve «O meu dia»), as listas que vêm do telefone continuam
+  // (monitoria, campos que nunca receberam água, recontagens); na v212 ficavam escondidas
+  if (!c || !c.d || c.d.data !== hojeISO()) {
+    const sem = c && c.d === null && c.dia === hojeISO(), M = [];
+    const nMon = (Array.isArray(S.mon) ? S.mon : []).filter((m) => !monFeita(m)).length, cm = cartaoMonitoria();
+    if (cm) M.push(linhaTar('mo', 'Monitoria: verificar hoje', nMon, 'b', dentroCartao(cm)));
+    { const n = contaNunca(); if (n) M.push(linhaTar('na', 'Campos que nunca receberam água', n, 'b', dentroCartao(cartaoNuncaAgua()))); }
+    if (veRecontagens()) M.push(linhaTar('rc', 'Recontagens das plantas', contaRecHoje(), 'b', dentroCartao(cartaoRecontagensHoje())));
+    if (sem && !M.length) return '';
+    return `<div class="cartao" id="meu-dia"><h2>📋 O meu dia</h2>${sem ? '' : '<p class="pequeno">As equipas, os avisos e «Fechar o dia» aparecem quando houver rede.</p>'}${M.join('')}</div>`;
+  }
   const d = c.d, eqs = d.equipas || [], al = d.alertas || [], cp = confPendentes();
   const motivosDe = (e) => (e.motivos || (e.sem_rega ? [{ motivo: e.sem_rega }] : [])).map((m) => cp.has(m.id) ? { ...m, por_confirmar: false, confirmado_nome: S.perfil?.nome, pendente: true } : m);
   const falta = eqs.filter((e) => !e.regas && !e.comecou && !motivosDe(e).length);

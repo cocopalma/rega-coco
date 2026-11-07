@@ -96,7 +96,7 @@ with sync_playwright() as p:
     # 3. M&E: recusa e depois valida
     ctx, pg = abrir(b, "me")
     print("3 aviso:", pg.locator("body > .msg").all_inner_texts()[:1])
-    pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(1200); print("3 abas:", pg.inner_text("#hoje-abas").replace("\n", " | ")); pg.click("#hoje-abas [data-v=rec]"); pg.wait_for_timeout(800); print("3 Hoje:", linhas(pg.inner_text("#hoje"), "validar", "Recontag"))
+    pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(1200); print("3 abas:", pg.inner_text("#hoje-abas").replace("\n", " | ") if pg.locator("#hoje-abas").count() else "(sem separadores: «O meu dia», v212)"); (pg.click("#hoje-abas [data-v=rec]") if pg.locator("#hoje-abas [data-v=rec]").count() else None); pg.wait_for_timeout(800); print("3 Hoje:", linhas(pg.inner_text("#hoje"), "validar", "Recontag"))
     pg.evaluate("abrirFicha('PR2-1')"); pg.wait_for_timeout(300); print("3 ficha:", linhas(pg.inner_text("#folha-c"), "vivas · mortas", "Local da contagem", "Contada", "Declaração", "Campo", "Validar", "NAVUNA"))
     ctx.set_offline(True); pg.evaluate("window.dispatchEvent(new Event('offline'))")
     pg.click("button[onclick^=ecraRecusarRecontagem]"); pg.fill("#rr-m", "A declaração não se lê"); pg.click("#rr-ok"); pg.wait_for_timeout(800)
@@ -125,10 +125,10 @@ with sync_playwright() as p:
     pg.click("button[onclick*=recontagem-fotos]"); pg.wait_for_timeout(800); print("5b foto aberta:", pg.locator("#foto-modal img").count(), ST.get("sign")); ctx.close()
     # teste_vazio: gestor sem recontagens vê o cartão na mesma
     guarda = ST["rec"]; ST["rec"] = []
-    ctx, pg = abrir(b, "gestor"); pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(1200); pg.click("#hoje-abas [data-v=rec]"); pg.wait_for_timeout(800)
+    ctx, pg = abrir(b, "gestor"); pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(1200); (pg.click("#hoje-abas [data-v=rec]") if pg.locator("#hoje-abas [data-v=rec]").count() else None); pg.wait_for_timeout(800)
     print("6a gestor sem recontagens:", [l for l in pg.inner_text("#hoje").split("\n") if "econtag" in l][:3]); ctx.close(); ST["rec"] = guarda
     # teste_varias: gestor pede várias recontagens de uma vez, sem rede, pelo botão do Hoje
-    ctx, pg = abrir(b, "gestor"); pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(1200); pg.click("#hoje-abas [data-v=rec]"); pg.wait_for_timeout(800)
+    ctx, pg = abrir(b, "gestor"); pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(1200); (pg.click("#hoje-abas [data-v=rec]") if pg.locator("#hoje-abas [data-v=rec]").count() else None); pg.wait_for_timeout(800)
     pg.click("button[onclick^=ecraPedirVarias]"); pg.wait_for_selector("#pv-lista input")
     print("6v lista:", [l for l in pg.inner_text("#pv-lista").split("\n") if l.strip()][:5])
     ctx.set_offline(True); pg.evaluate("window.dispatchEvent(new Event('offline'))")
@@ -141,7 +141,7 @@ with sync_playwright() as p:
     print("6v enviado:", [c[1]["p_area"] for c in ST["chamadas"] if c[0] == "pedir_recontagem2"]); ctx.close()
     ST["rec"] = [r for r in ST["rec"] if r["area_id"] != "PR1-1"]
     # teste_sup: supervisor pede (sem escolher oficial) e vê o estado no Hoje › Recontagens
-    ctx, pg = abrir(b, "supervisor"); pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(1200); pg.click("#hoje-abas [data-v=rec]"); pg.wait_for_timeout(800)
+    ctx, pg = abrir(b, "supervisor"); pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(1200); (pg.click("#hoje-abas [data-v=rec]") if pg.locator("#hoje-abas [data-v=rec]").count() else None); pg.wait_for_timeout(800)
     print("6s Hoje sup:", [l for l in pg.inner_text("#hoje").split("\n") if l.strip()][:8])
     pg.click("button[onclick^=ecraPedirVarias]"); pg.wait_for_selector("#pv-lista input")
     print("6s tem escolha de oficial:", pg.locator("#pv-of").count(), "|", pg.inner_text("#folha-c").split("\n")[-4:-2])
@@ -162,7 +162,7 @@ with sync_playwright() as p:
     # 7. v121: o M&E vê que o oficial ainda não entrou na app
     ST["rec"][-1].update({"estado": "encaminhada", "oficial_id": OF, "oficial": "Oficial Exemplo"})
     ctx, pg = abrir(b, "me")
-    pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(1000); pg.click("#hoje-abas [data-v=rec]"); pg.wait_for_timeout(800)
+    pg.click("nav button[data-e=hoje]"); pg.wait_for_timeout(1000); (pg.click("#hoje-abas [data-v=rec]") if pg.locator("#hoje-abas [data-v=rec]").count() else None); pg.wait_for_timeout(800)
     print("7 Hoje M&E:", [l for l in pg.inner_text("#hoje").split("\n") if "entrou" in l or "opened" in l or "hajaingia" in l])
     pg.evaluate("abrirFicha('PR1-1')"); pg.wait_for_timeout(400); print("7 ficha:", linhas(pg.inner_text("#folha-c"), "entrou", "opened", "hajaingia"))
     pg.click("text=Mudar o oficial"); pg.wait_for_selector("#en-of"); pg.wait_for_timeout(300)

@@ -40,6 +40,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    // v214
+    "As equipas, os avisos e «Fechar o dia» aparecem quando houver rede.": "The teams, the warnings and «Close the day» appear when there is network.",
+    // v214
+    "Ver todos os dados (técnico, supervisor, área, regas…)": "See all the data (technician, supervisor, area, watering…)", "Gerir o campo": "Manage the field", "Acompanhei a rega": "I followed the watering", "Marcar queimada": "Mark a fire", "Pedir recontagem": "Request a recount", "Mapa das plantas": "Plant map", "Medir a área": "Measure the area", "Medir a área de novo": "Measure the area again", "andar à volta do campo": "walk around the field", "Registar outra queimada": "Record another fire",
     // v213
     "Produtor ou PR": "Farmer or PR",
     // v213
