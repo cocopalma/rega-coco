@@ -3207,6 +3207,15 @@ function guardarJornada(depois) {
 // Agora a recusa diz de que campo da lista está perto e mostra no mapa onde fica o campo escolhido.
 function campoJunto(id, g) {
   if (g.lat == null || g.lon == null) return '';
+  // v209 (Rotina Carlos pelo 💡, 07/11/2026): mediu o campo e está dentro da área medida, mas a entrada usa o limite antigo
+  // (a ~1 km) enquanto a medição não for aprovada. A recusa passa a dizer isso em vez de "confirme que está no campo certo".
+  const ap = (S.areas || []).find((x) => x.id === id);
+  if (ap && Array.isArray(ap.poligono_proposto) && ap.poligono_proposto.length >= 3) {
+    const dp = distPoligono(g.lat, g.lon, ap.poligono_proposto);
+    if (dp != null && dp <= CFG.margemPoligono + Math.min(g.precisao || 0, 50))
+      return `<div class="msg info" id="aviso-proposta"><span>Está na área medida pelo activista neste campo, que ainda está à espera de aprovação. A entrada usa o limite antigo do campo.</span>
+        <div class="pequeno" style="margin-top:4px">${PODE_COORD.includes(S.perfil?.papel) ? 'Aprove a medição no cartão «Área medida pelo activista — por aprovar» desta ficha; depois a entrada fica aceite.' : 'Peça ao técnico ou ao supervisor para aprovar a sua medição deste campo. Depois de aprovada, pode marcar a entrada.'}</div></div>`;
+  }
   let m = null;
   for (const b of S.areas || []) { if (b.id === id) continue; const d = distCampo(b, [g.lat, g.lon]); if (d != null && d <= 100 && (!m || d < m.d)) m = { a: b, d }; }
   const ver = `<button class="chip" onclick="fecharFolha();verNoMapaCampo('${esc(id)}')">🗺 Ver no mapa onde fica este campo</button>`;
