@@ -435,7 +435,7 @@ function actSync() {
 // ---------- dados ----------
 // todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
-  const [p, ac, ar, zs, est, lc, pc, qm, po, rc] = await Promise.all([
+  const [p, ac, ar, zs, est, lc, pc, qm, po, rc, pv] = await Promise.all([
     sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos,trocar_senha,marca_coqueiros,so_teste,ve_tudo').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho,sem_telefone').order('nome'),
     sb.from('areas').select(COLS_AREAS).eq('activa', true).order('comunidade').range(0, 4999),
@@ -446,6 +446,7 @@ async function carregarTudo() {
     sb.from('queimadas').select('id,area_id,data,observacao,foto_path,registada_por,registada_em,plantas_afectadas,plantas_mortas,recontagem_em,vivas_recontadas,recontagem_obs').eq('removida', false).range(0, 9999),
     sb.from('pocos').select('id,codigo,comunidade,fonte,lat,lon,foto_path,observacao').range(0, 4999),
     sb.rpc('recontagens_lista'),
+    sb.from('pluviometros').select('id,nome,comunidade,zona,lat,lon,ultima_leitura_origem').eq('activo', true).order('nome'),
   ]);
   if (p.error) throw new Error(p.error.message);
   if (!p.data) throw new Error('Este utilizador não tem perfil na app. Fale com o gestor.');
@@ -454,6 +455,7 @@ async function carregarTudo() {
   if (!zs.error) { S.zonas = zs.data; LS.set('zonas', S.zonas); }
   if (!lc.error && Array.isArray(lc.data)) { S.comunidades = lc.data; LS.set('comunidades', S.comunidades); }
   if (!po.error && Array.isArray(po.data)) { S.pocos = po.data; LS.set('pocos', S.pocos); }
+  if (pv && !pv.error && Array.isArray(pv.data)) { S.pluvs = pv.data; LS.set('pluvs', S.pluvs); }
   if (!qm.error && Array.isArray(qm.data)) { S.queimadas = qm.data; LS.set('queimadas', S.queimadas); }
   if (!rc.error && Array.isArray(rc.data)) { S.recont = rc.data; LS.set('recont', S.recont); }
   if (['me', 'gestor'].includes(p.data.papel)) oficiais().catch(() => {});
@@ -519,7 +521,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []); S.autoriz = LS.get('autoriz', []); S.fechSemPl = LS.get('fechSemPl', []); S.expansao = LS.get('expansao', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.pluvs = LS.get('pluvs', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []); S.autoriz = LS.get('autoriz', []); S.fechSemPl = LS.get('fechSemPl', []); S.expansao = LS.get('expansao', []);
   return !!(S.perfil && S.areas.length);
 }
 
@@ -1113,6 +1115,12 @@ function desenharMapa(enquadrar = false) {
     L.marker([q.lat, q.lon], { icon: L.divIcon({ className: 'ic-poco', html: '💧', iconSize: [20, 20], iconAnchor: [10, 10] }) })
       .bindPopup(`<b>Poço ${esc(q.codigo)}</b><br>${esc(q.comunidade || '')}${q.fonte ? ' · ' + esc(q.fonte) : ''}${q.observacao ? '<br>' + esc(q.observacao) : ''}`)
       .on('click', () => { if (pontoRegua([q.lat, q.lon], q.codigo)) setTimeout(() => mapa.closePopup(), 0); }).addTo(camada);
+  }
+  // pluviómetros (v219, 08/11/2026, Valdo): os 20 do sistema de chuva da JFS; a chuva regista-se junto deles
+  for (const q of S.pluvs || []) {
+    L.marker([q.lat, q.lon], { icon: L.divIcon({ className: 'ic-poco', html: '🌧', iconSize: [20, 20], iconAnchor: [10, 10] }) })
+      .bindPopup(`<b><span>Pluviómetro</span> <span class="sem-trad">${esc(q.nome)}</span></b><br><span class="sem-trad">${esc(nomeLocal(q.comunidade, q.zona))}</span>${q.ultima_leitura_origem ? `<br><span class="pequeno"><span>Última leitura no sistema de chuva:</span> ${fmtData(q.ultima_leitura_origem)}</span>` : ''}`)
+      .on('click', () => { if (pontoRegua([q.lat, q.lon], q.nome)) setTimeout(() => mapa.closePopup(), 0); }).addTo(camada);
   }
   desenharExpansao();
   if (enquadrar && pts.length) mapa.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
@@ -4539,7 +4547,15 @@ const chuvaTeste = () => S.perfil?.papel !== 'activista';
 // A comunidade da chuva é a do sítio onde a pessoa está (16/10/2026, Valdo: em Quitunda não pode registar outra comunidade).
 // A app lê o GPS e escolhe a comunidade do campo activo mais perto (todos os campos, guardados no telefone: funciona sem rede).
 // Nas comunidades com bairros (Palma) a pessoa escolhe o bairro dessa comunidade; começa no bairro do campo mais perto.
-const CHUVA_MAX_M = 3000;          // mais longe do que isto de qualquer campo: não deixa registar
+const CHUVA_MAX_M = 3000;          // mais longe do que isto de qualquer campo: não deixa registar (antes da v219)
+// v219 (08/11/2026, Valdo: "O registo da chuva é feito junto ao pluviómetro com evidência de foto mostrando a marca de água"):
+// a app procura o pluviómetro mais perto (os 20 do sistema de chuva da JFS, guardados no telefone) e só deixa registar a 50 m dele.
+const PLUV_MAX_M = 50;
+function pluvMaisPerto(pos) {
+  let p0 = null, d0 = Infinity;
+  for (const p of S.pluvs || []) { const m = metros(pos, [p.lat, p.lon]); if (m < d0) { d0 = m; p0 = p; } }
+  return p0 ? { p: p0, dist: d0 } : null;
+}
 const pontosChuva = () => (S.pontosCom?.length ? S.pontosCom : S.areas.filter((a) => a.latitude != null && a.longitude != null).map((a) => [a.comunidade, a.zona, a.latitude, a.longitude]));
 function localDaChuva(pos) {
   const pts = pontosChuva(); let p0 = null, d0 = Infinity;
@@ -4720,40 +4736,45 @@ async function carimbarFoto(foto, meta) {
   return await new Promise((ok, falha) => c.toBlob((b) => (b ? ok(b) : falha(new Error('foto'))), 'image/jpeg', 0.6));
 }
 const AVISO_CAMARA = '<div class="msg info">O telefone fechou a app ao abrir a câmara. Os dados foram recuperados. Se voltar a acontecer, tire a fotografia com a câmara do telefone e use «Escolher da galeria».</div>';
-// primeiro o GPS: só depois se sabe a comunidade
+// primeiro o GPS: só depois se sabe o pluviómetro (v219)
 async function ecraChuva(r) {
-  folha(`<h2>Chuva</h2><p id="c-gps">A ler o GPS para saber em que comunidade está…</p><button class="btn sec" onclick="LS.del('rascChuva');fecharFolha()">Cancelar</button>`);
+  const fechar = `<button class="btn sec" onclick="LS.del('rascChuva');fecharFolha()">Cancelar</button>`;
+  if (!(S.pluvs || []).length) return folha(`<h2>Chuva</h2><div class="msg erro">Os pluviómetros ainda não estão no telefone. Abra a app com rede uma vez e tente de novo.</div>${fechar}`);
+  folha(FOLHA_GPS('A confirmar que está junto de um pluviómetro.') + `<p id="c-gps" hidden></p>${fechar}`);
   let c;
-  try { c = await lerGPS(); }
-  catch (e) { if (!$('#c-gps')) return; return folha(`<h2>Chuva</h2><div class="msg erro">${esc(e.message)}</div><p class="pequeno">A chuva só se regista no local do pluviómetro: a app usa o GPS para saber a comunidade.</p>
-    <button class="btn" onclick="ecraChuva()">Tentar de novo</button><button class="btn sec" onclick="LS.del('rascChuva');fecharFolha()">Cancelar</button>`); }
+  try { c = await lerGPSBom(25, 20000, (k) => (pluvMaisPerto([k.latitude, k.longitude])?.dist ?? Infinity) <= PLUV_MAX_M); }
+  catch (e) { if (!$('#c-gps')) return; return folha(`<h2>Chuva</h2><div class="msg erro">${esc(e.message)}</div><p class="pequeno">A chuva só se regista junto ao pluviómetro: a app usa o GPS para saber em que pluviómetro está.</p>
+    <button class="btn" onclick="ecraChuva()">Tentar de novo</button>${fechar}`); }
   if (!$('#c-gps')) return;                             // cancelou enquanto lia o GPS
-  const pos = [c.latitude, c.longitude], loc = localDaChuva(pos);
-  if (!loc || loc.dist > CHUVA_MAX_M) return folha(`<h2>Chuva</h2><div class="msg erro">${loc ? `Está a ${num(Math.round(loc.dist / 100) / 10)} km do campo mais perto (${esc(loc.com)}).` : 'Não há campos com coordenada no telefone.'} Registe a chuva junto ao pluviómetro, na comunidade.</div>
-    <button class="btn" onclick="ecraChuva()">Tentar de novo</button><button class="btn sec" onclick="LS.del('rascChuva');fecharFolha()">Cancelar</button>`);
-  S.chuvaPos = { lat: c.latitude, lon: c.longitude, precisao: c.accuracy != null ? Math.round(c.accuracy) : null };
-  const locais = locaisChuva(loc.com), h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
+  const pos = [c.latitude, c.longitude], pp = pluvMaisPerto(pos), prec = c.accuracy != null ? Math.round(c.accuracy) : null;
+  if (!pp) return folha(`<h2>Chuva</h2><div class="msg erro">Os pluviómetros ainda não estão no telefone. Abra a app com rede uma vez e tente de novo.</div>${fechar}`);
+  const pl = pp.p, dm = Math.round(pp.dist);
+  if (pp.dist > PLUV_MAX_M) return folha(`<h2>Chuva</h2><div class="msg erro"><span>Está a</span> <b class="sem-trad">${dm >= 1000 ? num(Math.round(dm / 100) / 10) + ' km' : num(dm) + ' m'}</b> <span>do pluviómetro mais perto:</span> <b class="sem-trad">${esc(pl.nome)}</b>.
+      <br><span>A chuva regista-se junto ao pluviómetro, a menos de 50 m.</span>${dicaGpsFraco({ precisao: prec || 0 })}</div>
+    <button class="btn" onclick="ecraChuva()">Tentar de novo</button>
+    <button class="btn sec" onclick="navegarPonto(${pl.lat}, ${pl.lon}, ${esc(JSON.stringify('Pluviómetro ' + pl.nome))}, ${esc(JSON.stringify(pl.id))})">🧭 Navegar até ao pluviómetro</button>${fechar}`);
+  S.chuvaPos = { lat: c.latitude, lon: c.longitude, precisao: prec };
+  const locais = [{ com: pl.comunidade, zona: pl.zona || null, pluv: pl.id, nome: pl.nome }], h = hojeISO(), ontem = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
   const agora = new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+  const feito = (LS.get('chuvaFeita', {}) || {})[h + '|' + nomeLocal(pl.comunidade, pl.zona)];
   S.chuvaFoto = null; if (!r) LS.del('rascChuva');
-  folha(`<h2>Chuva</h2>${r?.camara ? AVISO_CAMARA : ''}${chuvaTeste() ? '<div class="msg info">Registo de teste: não conta no painel.</div>' : ''}<p class="pequeno">Leia o pluviómetro da comunidade, escreva os milímetros e tire uma fotografia da leitura. Se não choveu, carregue em "Não choveu".</p>
+  folha(`<h2>Chuva</h2>${r?.camara ? AVISO_CAMARA : ''}${chuvaTeste() ? '<div class="msg info">Registo de teste: não conta no painel.</div>' : ''}<p class="pequeno">Leia o pluviómetro, escreva os milímetros e tire uma fotografia do pluviómetro em que se veja a marca da água. Se não choveu, carregue em "Não choveu".</p>
+    <div class="lin"><span>Pluviómetro</span><b class="sem-trad">🌧 ${esc(pl.nome)}</b></div>
+    <p class="pequeno"><span>Está a</span> <span class="sem-trad">${num(dm)} m${prec != null ? ` (GPS ±${prec} m)` : ''}</span> <span>do pluviómetro.</span>${feito != null ? ` <span>Já registado hoje:</span> <span class="sem-trad">${num(feito)} mm</span>` : ''}</p>
+    <select id="c-com" hidden><option value="0"></option></select>
     <label>Dia da chuva<select id="c-data"><option value="${h}">Hoje · ${fmtData(h)}</option><option value="${ontem}">Ontem · ${fmtData(ontem)}</option></select></label>
     <label>Hora da leitura<input id="c-hora" type="time" value="${agora}"></label>
-    <p class="pequeno">Pelo GPS está em <b>${esc(loc.com)}</b>. Só pode registar a chuva da comunidade onde está.</p>
-    <label>${locais.length > 1 ? 'Bairro' : 'Comunidade'}<select id="c-com">${locais.map((l, i) => { const feito = (LS.get('chuvaFeita', {}) || {})[h + '|' + nomeLocal(l.com, l.zona)];
-      return `<option value="${i}">${esc(nomeLocal(l.com, l.zona))}${feito != null ? ` · registado hoje (${num(feito)} mm)` : ''}</option>`; }).join('')}</select></label>
     <label>Chuva no pluviómetro (mm)<input id="c-mm" type="number" inputmode="decimal" min="0" max="500" step="0.1"></label>
     <button class="chip" onclick="$('#c-mm').value='0';$('#c-mm').dispatchEvent(new Event('input'))">Não choveu (0 mm)</button>
-    ${campoFoto('c-foto', 'Fotografia da leitura do pluviómetro')}
+    ${campoFoto('c-foto', 'Fotografia do pluviómetro com a marca da água')}
     <img id="c-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
     <textarea id="c-obs" rows="2" placeholder="Observação (opcional)"></textarea>
-    <button class="btn" onclick="gravarChuva()">Guardar</button><button class="btn sec" onclick="LS.del('rascChuva');fecharFolha()">Cancelar</button>`);
+    <button class="btn" onclick="gravarChuva()">Guardar</button>${fechar}`);
   S.chuvaLocais = locais;
   if (r) {                                              // repõe o rascunho
     if (r.data && [...$('#c-data').options].some((o) => o.value === r.data)) $('#c-data').value = r.data;
     if (r.hora) $('#c-hora').value = r.hora; if (r.mm != null) $('#c-mm').value = r.mm; if (r.obs) $('#c-obs').value = r.obs;
-    const i = locais.findIndex((l) => nomeLocal(l.com, l.zona) === r.local); if (i >= 0) $('#c-com').value = String(i);
   }
-  else if (loc.zona) { const i = locais.findIndex((l) => l.zona === loc.zona); if (i >= 0) $('#c-com').value = String(i); }   // bairro do campo mais perto
   const guardar = () => rascGuardar('rascChuva', { perfil: S.perfil?.id, camara: false, data: $('#c-data').value, hora: $('#c-hora').value, mm: $('#c-mm').value, obs: $('#c-obs').value,
     local: (() => { const l = S.chuvaLocais?.[+$('#c-com').value]; return l ? nomeLocal(l.com, l.zona) : ''; })() });
   ['#c-data', '#c-hora', '#c-com', '#c-mm', '#c-obs'].forEach((q) => $(q).addEventListener('input', guardar));
@@ -4765,20 +4786,20 @@ async function gravarChuva() {
   const mm = parseFloat(String($('#c-mm').value).replace(',', '.'));
   if (!(mm >= 0 && mm <= 500)) { alert('Escreva os milímetros (0 a 500).'); return; }
   const hora = $('#c-hora').value; if (!hora) { alert('Escreva a hora da leitura.'); return; }
-  if (!S.chuvaFoto) { alert('Tire a fotografia da leitura do pluviómetro.'); return; }
+  if (!S.chuvaFoto) { alert('Tire a fotografia do pluviómetro com a marca da água.'); return; }
   const data = $('#c-data').value, [hh, mi] = hora.split(':'), t = new Date(data + 'T00:00:00'); t.setHours(+hh, +mi, 0, 0);
   const teste = chuvaTeste(), loc = S.chuvaLocais[+$('#c-com').value], com = loc.com, zona = loc.zona, chave = data + '|' + nomeLocal(com, zona);
   // no teste não há activista: o mesmo dia+local reutiliza o id para corrigir em vez de duplicar
   const ids = LS.get('chuvaTesteIds', {}) || {}, id = (teste && ids[chave]) || crypto.randomUUID();
   if (teste) { ids[chave] = id; LS.set('chuvaTesteIds', ids); }
-  const c = { id, data, comunidade: com, zona, mm, lida_em: t.toISOString(), activista_id: teste ? null : S.perfil.activista_id, user_id: S.perfil.id, observacao: $('#c-obs').value.trim() || null, teste,
+  const c = { id, data, comunidade: com, zona, pluviometro_id: loc.pluv || null, mm, lida_em: t.toISOString(), activista_id: teste ? null : S.perfil.activista_id, user_id: S.perfil.id, observacao: $('#c-obs').value.trim() || null, teste,
     lat: S.chuvaPos?.lat ?? null, lon: S.chuvaPos?.lon ?? null, precisao_m: S.chuvaPos?.precisao ?? null };
   try { await FOTOS.guardar(c.id, S.chuvaFoto); } catch { S.fotosMem = { ...(S.fotosMem || {}), [c.id]: S.chuvaFoto }; }
   const f = LS.get('filaChuva', []).filter((x) => !(x.data === c.data && x.comunidade === c.comunidade && (x.zona || null) === zona)); f.push(c); LS.set('filaChuva', f);
   const g = LS.get('chuvaFeita', {}) || {}; g[chave] = mm; LS.set('chuvaFeita', g);
   LS.del('rascChuva');
   fecharFolha(); actSync(); sincronizar(true); if ($('#e-hoje').classList.contains('on')) desenharHoje();
-  aviso(`Chuva guardada: ${num(mm)} mm em ${nomeLocal(com, zona)}.` + (teste ? ' (teste)' : ''), 'ok');
+  aviso(`Chuva guardada: ${num(mm)} mm no pluviómetro ${loc.nome || nomeLocal(com, zona)}.` + (teste ? ' (teste)' : ''), 'ok');
 }
 // ---------- hoje ----------
 const tamanhoEquipa = (id) => (S.activistas.find((t) => t.id === id) || {}).equipa_tamanho || null;   // null = por definir
