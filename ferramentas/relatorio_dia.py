@@ -71,9 +71,17 @@ def cartao(valor, titulo, sub='', cls=''):
     return f'<div class="k {cls}"><div class="k-v">{valor}</div><div class="k-t">{titulo}</div>{s}</div>'
 
 
+# 08/11/2026 (Valdo): com a monitoria parada (config.monitoria_pausa) a regra r3 não conta nem aparece
+MON_PAUSA = False
+
+
+def regras():
+    return tuple(k for k in ('r1', 'r2', 'r3', 'r5', 'r6') if not (k == 'r3' and MON_PAUSA))
+
+
 def falhas_dia(x):
     f = {'r1': len(x['r1']), 'r2': 0 if (x['fecho'] and x['fecho'] <= '18:00') else 1,
-         'r3': x['r3'], 'r5': len(x['r5']), 'r6': x['r6']}
+         'r3': 0 if MON_PAUSA else x['r3'], 'r5': len(x['r5']), 'r6': x['r6']}
     f['total'] = sum(f.values())
     return f
 
@@ -100,6 +108,8 @@ def colunas_dias(dias, alt=60):
 def bloco_cumprimento(c):
     if not c or not c.get('pessoas'):
         return '<p>Sem dados do cumprimento.</p>'
+    global MON_PAUSA
+    MON_PAUSA = bool(c.get('monitoria_pausa'))
     ps = c['pessoas']
     hc = c.get('hora_chegada') or '06:00'
     # total de todos por dia
@@ -113,15 +123,15 @@ def bloco_cumprimento(c):
             agg['_r2'] += falhas_dia(x)['r2']
         tot.append(agg)
     # colunas do total (r2 somado à parte)
-    mx = max([len(a['r1']) + a['_r2'] + a['r3'] + len(a['r5']) + a['r6'] for a in tot] or [0]) or 1
+    mx = max([len(a['r1']) + a['_r2'] + (0 if MON_PAUSA else a['r3']) + len(a['r5']) + a['r6'] for a in tot] or [0]) or 1
     cols = ''
     for a in tot:
-        v = {'r1': len(a['r1']), 'r2': a['_r2'], 'r3': a['r3'], 'r5': len(a['r5']), 'r6': a['r6']}
+        v = {'r1': len(a['r1']), 'r2': a['_r2'], 'r3': 0 if MON_PAUSA else a['r3'], 'r5': len(a['r5']), 'r6': a['r6']}
         t = sum(v.values())
         d = date.fromisoformat(a['data'])
         seg = ''.join(f'<div style="height:{80 * v[k] / mx:.1f}px;background:{CORES_R[k]}"></div>' for k in ('r6', 'r5', 'r3', 'r2', 'r1') if v[k])
         cols += f'<div class="cd"><div class="cd-n">{t}</div><div class="cd-b" style="height:80px">{seg}</div><div class="cd-l">{DIAS_C[d.weekday()]}<br>{d:%d/%m}</div></div>'
-    leg = ' · '.join(f'<span class="sq" style="background:{CORES_R[k]}"></span>{e(NOMES_R[k])}' for k in ('r1', 'r2', 'r3', 'r5', 'r6'))
+    leg = ' · '.join(f'<span class="sq" style="background:{CORES_R[k]}"></span>{e(NOMES_R[k])}' for k in regras())
     out = (f'<h3>Todos os técnicos e supervisores, por dia</h3><div class="cds">{cols}</div>'
            f'<div class="leg">{leg}</div>')
     for p_ in ps:
@@ -152,7 +162,7 @@ def bloco_cumprimento(c):
             itens.append('<li class="verm">Não fechou o dia na app</li>')
         if hoje['r1']:
             itens.append(f'<li class="verm">{len(hoje["r1"])} equipa(s) sem rega, sem início do dia e sem motivo: {e(", ".join(pnome(n) for n in hoje["r1"]))}</li>')
-        if hoje['r3']:
+        if hoje['r3'] and not MON_PAUSA:
             itens.append(f'<li class="verm">{hoje["r3"]} campo(s) da monitoria não verificados no dia</li>')
         if hoje['r5']:
             itens.append(f'<li class="amar">{len(hoje["r5"])} equipa(s) chegaram ao 1.º campo depois das {e(hc)} (hora combinada): '
@@ -171,8 +181,11 @@ def bloco_cumprimento(c):
                 f'<ul>{"".join(itens)}</ul>{colunas_dias(p_["dias"])}</div>')
     ini = date.fromisoformat(c['inicio'])
     out += (f'<p class="cinz">Conta de segunda a sábado, desde {ini:%d/%m/%Y}, com as equipas que cada pessoa tem hoje. '
-            'Uma falha por equipa sem rega nem motivo, por dia não fechado até às 18:00, por campo da monitoria não verificado, '
-            'por equipa que chegou tarde ao 1.º campo e por rega fora da lista sem motivo. '
+            'Uma falha por equipa sem rega nem motivo, por dia não fechado até às 18:00, '
+            + ('' if MON_PAUSA else 'por campo da monitoria não verificado, ')
+            + f'por equipa que chegou ao 1.º campo depois das {e(hc)} (hora combinada) e por rega fora da lista sem motivo. '
+            + ('A monitoria está parada: não conta. ' if MON_PAUSA else '')
+            +
             'As regas com aviso e os motivos por confirmar são o que está por tratar hoje.</p>')
     return out
 

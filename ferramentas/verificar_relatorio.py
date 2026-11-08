@@ -115,6 +115,8 @@ def main(dados, base):
     t = texto(h)
     emb = json.loads(re.search(r'id="rega-coco-dados">(.*?)</script>', h, re.S).group(1).replace('<\\/', '</'))
     ver(emb == d, 'JSON dentro do HTML = dados')
+    if c.get('monitoria_pausa'):   # 08/11/2026: monitoria parada, a regra não aparece
+        ver('monitoria não verificad' not in t, 'monitoria parada: o relatório não fala em campos da monitoria não verificados')
     fx = os.path.join(os.path.dirname(os.path.abspath(base)), 'Rega_Coco_dados.json')
     if os.path.exists(fx):
         ver(json.load(open(fx, encoding='utf-8')) == d, 'Rega_Coco_dados.json = dados')

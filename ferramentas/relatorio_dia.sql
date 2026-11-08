@@ -150,6 +150,8 @@ select json_build_object(
   'cumprimento', json_build_object(
     'inicio', (select d from cini),
     'hora_chegada', (select h from hcheg),
+    -- 08/11/2026 (Valdo): monitoria parada até nova decisão; com a pausa o relatório não conta «campo da monitoria não verificado»
+    'monitoria_pausa', coalesce((select (valor #>> '{}')::boolean from public.config where chave = 'monitoria_pausa'), false),
     'pessoas', (select coalesce(json_agg(x order by x.papel desc, x.nome), '[]') from (
       select ps.nome, ps.papel,
         (select count(*) from pe where pe.perfil_id = ps.id)::int as equipas,
