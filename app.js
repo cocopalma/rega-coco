@@ -2990,7 +2990,7 @@ function botoesCampo(a) {
   if (coord) h += resumoPlantas(a);
   // quadrados «Registar»
   const q = [];
-  if (PODE_ACOMP.includes(papel) && a.activista_id && !S.perfil.so_teste) q.push(quadro(`ecraAcompanhar('${id}')`, '👁', 'Acompanhei a rega'));
+  if (PODE_ACOMP.includes(papel) && a.activista_id) q.push(quadro(`ecraAcompanhar('${id}')`, '👁', 'Acompanhei a rega'));   // v218: também contas de testes (fica como teste)
   if (PODE_REGAR.includes(papel)) q.push(quadro(`ecraQueimada('${id}')`, '🔥', queimadaDe(a.id) ? 'Registar outra queimada' : 'Marcar queimada'));
   if (podePedirRecCampo(a)) q.push(quadro(`ecraPedirRecontagem('${id}')`, '📋', 'Pedir recontagem'));
   if (coord) { const np = plantasLocais(a.id).length; q.push(quadro(`ecraPlantas('${id}')`, '🌴', 'Mapa das plantas', `<small>${np ? `(${np}) · ` : ''}<span>teste</span></small>`)); }
@@ -5004,11 +5004,11 @@ async function regasDoCampo(id) {
 // O técnico/supervisor (ou o gestor), no campo, regista que acompanhou a rega: fotografia obrigatória + GPS (como a entrada).
 // Fica visível na ficha (junto da rega desse dia) e no painel (Cumprimento). Não substitui a monitoria sorteada. Funciona sem rede.
 const PODE_ACOMP = ['tecnico', 'supervisor', 'gestor'];
-const acompLocais = (id) => LS.get('filaAcomp', []).filter((x) => !id || x.area_id === id).map((x) => ({ ...x, quem: S.perfil?.nome, meu: true, local: true }));
+const acompLocais = (id) => LS.get('filaAcomp', []).filter((x) => !id || x.area_id === id).map((x) => ({ ...x, quem: S.perfil?.nome, meu: true, local: true, teste: !!S.perfil?.so_teste }));
 function linhaAcomp(c) {
   const foto = c.foto_path && fotoVisivel(c.foto_path) ? ` <button class="chip" onclick="verFoto('rega-fotos','${esc(c.foto_path)}','Acompanhamento · ${esc(fmtData(c.data))} ${esc(fmtHora(c.feito_em))} · ${esc(c.quem || '')}')">📷</button>` : '';
   const rem = c.meu ? ` <button class="chip" onclick="removerAcomp('${esc(c.id)}')">Remover (engano)</button>` : '';
-  return `<div class="pequeno" style="margin-top:4px">👁 <span>Acompanhada por</span> <span class="sem-trad">${esc(c.quem || '?')}</span> <span>às</span> ${fmtHora(c.feito_em)}${c.observacao ? ` · <span class="sem-trad">${esc(c.observacao)}</span>` : ''}${c.local ? ' · <span>no telefone</span>' : ''}${foto}${rem}</div>`;
+  return `<div class="pequeno" style="margin-top:4px">👁 <span>Acompanhada por</span> <span class="sem-trad">${esc(c.quem || '?')}</span> <span>às</span> ${fmtHora(c.feito_em)}${c.teste ? ' · 🧪 <span>teste</span>' : ''}${c.observacao ? ` · <span class="sem-trad">${esc(c.observacao)}</span>` : ''}${c.local ? ' · <span>no telefone</span>' : ''}${foto}${rem}</div>`;
 }
 function blocoAcomp(acs, diasComRega) {      // acompanhamentos em dias sem rega registada na app (a rega pode ainda não ter sido enviada)
   const l = acs.filter((c) => !diasComRega || !diasComRega.has(c.data)); if (!l.length) return '';
@@ -5018,7 +5018,7 @@ function ecraAcompanhar(id, r) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   S.acompFoto = null; if (!r) LS.del('rascAcomp');
   folha(`<h2>👁 Acompanhei a rega</h2>${r?.camara ? AVISO_CAMARA : ''}<p class="pequeno">${esc(a.produtor)} · ${esc(a.pr)} · ${esc(a.comunidade)} · <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span></p>
-    <p class="pequeno">Registe aqui quando estiver no campo com a equipa durante a rega. Fica visível para a gestão. Tire uma fotografia da equipa a regar. Não substitui a monitoria sorteada.</p>
+    <p class="pequeno">Registe aqui quando estiver no campo com a equipa durante a rega. Fica visível para a gestão. Tire uma fotografia da equipa a regar. Não substitui a monitoria sorteada.</p>${S.perfil?.so_teste ? '<div class="msg info">🧪 <span>Conta de testes: este acompanhamento fica registado como teste.</span></div>' : ''}
     <textarea id="ac-obs" rows="2" placeholder="Observação (opcional): o que viu, apoio dado na app…"></textarea>
     ${campoFoto('ac-foto', 'Fotografia da equipa a regar (obrigatória)')}
     <img id="ac-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">

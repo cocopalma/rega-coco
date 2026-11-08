@@ -3,6 +3,7 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+  "Conta de testes: este acompanhamento fica registado como teste.": "Akaunti ya majaribio: ufuatiliaji huu unarekodiwa kama majaribio.",
     // v217
     "🚱 Nunca recebeu água (nem na app nem no WhatsApp)": "🚱 Haijawahi kupata maji (wala kwenye programu wala kwenye WhatsApp)",
     // v216

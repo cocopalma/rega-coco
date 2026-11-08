@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    "teste": "test", "Conta de testes: este acompanhamento fica registado como teste.": "Test account: this accompaniment is recorded as a test.",
     // v217
     "🚱 Nunca recebeu água (nem na app nem no WhatsApp)": "🚱 Never received water (neither in the app nor on WhatsApp)",
     // v216
