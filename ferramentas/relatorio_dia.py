@@ -12,7 +12,7 @@ para o painel da operação os ler sem interpretar a página.
 import html
 import json
 import sys
-from datetime import date
+from datetime import date, datetime
 
 DIAS = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
 MOTIVOS = {
@@ -219,7 +219,8 @@ def gerar(d):
     r, m = d['rega'], d['manutencao']
     dia = date.fromisoformat(d['data'])
     titulo_dia = f'{DIAS[dia.weekday()]}, {dia:%d/%m/%Y}'
-    hora = d['gerado_em'][11:16]
+    lido = datetime.fromisoformat(d['gerado_em'][:16])
+    lido_txt = f'{lido:%d/%m/%Y} às {lido:%H:%M}'
     eqs = r['por_equipa']
     com = [x for x in eqs if x['regas'] > 0]
     sem = [x for x in eqs if x['regas'] == 0]
@@ -375,7 +376,7 @@ footer{{color:var(--c);font-size:12px;margin-top:24px;border-top:1px solid var(-
 @page{{size:A4;margin:12mm}}
 </style></head><body><main>
 <header><h1>Rega Coco — relatório do dia</h1>
-<div class="sub">{titulo_dia} · dados da app às {hora} · regas reais (sem testes) · Projeto de Desenvolvimento da Cadeia de Valor do Coco · Palma</div></header>
+<div class="sub">{titulo_dia} · dados lidos da app a {lido_txt} · regas reais (sem testes) · Projeto de Desenvolvimento da Cadeia de Valor do Coco · Palma</div></header>
 
 <h2>Rega</h2>
 <div class="kpis">{''.join(k)}</div>
@@ -406,7 +407,7 @@ footer{{color:var(--c);font-size:12px;margin-top:24px;border-top:1px solid var(-
 <tbody>{linhas}</tbody></table></div>
 {resumo_equipas(eqs, r.get('hora_combinada_chegada'))}
 
-<footer>Fonte: app Rega Coco (servidor). Só regas reais; as regas de teste não contam. Números do dia {dia:%d/%m/%Y} até às {hora}; regas enviadas mais tarde entram no relatório seguinte do mesmo dia, se houver. Os dados deste relatório estão também em JSON dentro do ficheiro (elemento «rega-coco-dados»).</footer>
+<footer>Fonte: app Rega Coco (servidor). Só regas reais; as regas de teste não contam. Regas do dia {dia:%d/%m/%Y} que já tinham chegado ao servidor quando os dados foram lidos ({lido_txt}). Uma rega deste dia que chegue depois (telefone sem rede) não entra neste relatório; fica na app e no painel. Os dados deste relatório estão também em JSON dentro do ficheiro (elemento «rega-coco-dados»).</footer>
 </main>
 <script type="application/json" id="rega-coco-dados">{dados_json}</script>
 </body></html>'''
