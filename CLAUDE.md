@@ -473,7 +473,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 
 ## Relatório do dia na pasta partilhada com o Dalmar (08/11/2026, Valdo)
 - Pedido do Dalmar (WhatsApp 08/11 08:40): ligar a rega ao painel online da operação dele. Valdo: todos os dias às 19h um relatório da app (rega + manutenção de Quiwia e Farol) em HTML e PDF numa pasta do Drive partilhada com o Dalmar; na pasta fica só o do dia, os anteriores vão para `_old`. O Dalmar compara com o WhatsApp no painel dele. O email das 22:30 continua.
-- Drive (conta do Valdo): «Projecto de plantio de coco› Rega Coco — relatório diário» (id 1PPswhJRYONzeqiex1gpXtC3R9qTl4Ewl), subpasta `_old` (id 1sbce7U9CAAWCuDbyjlIWa-Fd1WBrWp12); partilhada com dalmar.jose.santos@gmail.com (leitor). Primeiro relatório: 07/11 (posto a 08/11).
+- Drive (conta do Valdo): «Projecto de plantio de coco › Rega de emergencia _2026 › Rega Coco — relatório diário» (movida a 08/11 a pedido do Valdo; id 1PPswhJRYONzeqiex1gpXtC3R9qTl4Ewl), subpasta `_old` (id 1sbce7U9CAAWCuDbyjlIWa-Fd1WBrWp12); partilhada com dalmar.jose.santos@gmail.com (leitor). Primeiro relatório: 07/11 (posto a 08/11).
 - Ficheiros: `ferramentas/relatorio_dia.sql` (só leitura; `__DIA__`; devolve o JSON), `ferramentas/relatorio_dia.py dados.json Rega_Coco_relatorio_AAAAMMDD` (HTML + PDF A4; o HTML leva o JSON em `<script type="application/json" id="rega-coco-dados">`), `ferramentas/RELATORIO_DRIVE.md` (instruções da tarefa). Envio para o Drive por referência ao ficheiro (`sha256:<hash>:<caminho>`), testado a 08/11.
 - Tarefa agendada «Rega Coco — relatório do dia na pasta partilhada (19:00)», segunda a sábado, na nuvem.
 

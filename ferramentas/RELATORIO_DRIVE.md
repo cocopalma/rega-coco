@@ -7,7 +7,7 @@ Valdo, 08/11/2026: "criamos uma pasta que partilho com ele os relatórios diári
 O Dalmar compara estes números (só da app) com os do WhatsApp no painel da operação dele. Este relatório não compara com o WhatsApp nem cobra incumprimentos (isso é o relatório das 22:30, ferramentas/RELATORIO_DIARIO.md, que continua).
 
 PASTA NO GOOGLE DRIVE (conta do Valdo; partilhada com dalmar.jose.santos@gmail.com, leitor)
-- «Rega Coco — relatório diário», id 1PPswhJRYONzeqiex1gpXtC3R9qTl4Ewl, dentro de «Projecto de plantio de coco».
+- «Rega Coco — relatório diário», id 1PPswhJRYONzeqiex1gpXtC3R9qTl4Ewl, dentro de «Projecto de plantio de coco › Rega de emergencia _2026» (movida para aí a 08/11/2026, pedido do Valdo; o id não mudou).
 - Subpasta «_old», id 1sbce7U9CAAWCuDbyjlIWa-Fd1WBrWp12.
 - Na pasta principal fica SÓ o relatório do dia: Rega_Coco_relatorio_AAAAMMDD.html e Rega_Coco_relatorio_AAAAMMDD.pdf.
 
