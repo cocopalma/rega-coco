@@ -177,6 +177,44 @@ def bloco_cumprimento(c):
     return out
 
 
+CAT_EQ = [('ok', '#2f7d4f', 'Regou · chegou a horas'), ('tarde', '#f2c94c', 'Regou · chegou depois da hora'),
+          ('motivo', '#c8c6bd', 'Sem rega · com motivo'), ('sem', '#b3261e', 'Sem rega · sem motivo')]
+
+
+def resumo_equipas(eqs, hc):
+    """Resumo da tabela «Todas as equipas»: por técnico, quantas equipas em cada situação (Valdo, 08/11/2026)."""
+    hc = hc or '06:00'
+
+    def cat(x):
+        if x['regas']:
+            return 'tarde' if (x.get('chegada_1o_campo') or '') > hc else 'ok'
+        return 'motivo' if x['motivos_sem_rega'] else 'sem'
+
+    grupos = {}
+    for x in eqs:
+        grupos.setdefault(x.get('tecnico') or 'Sem técnico', []).append(cat(x))
+    todos = [cat(x) for x in eqs]
+    mx = max([len(v) for v in grupos.values()] + [1])
+
+    def linha(rot, cats, larg):
+        v = {k: cats.count(k) for k, _, _ in CAT_EQ}
+        seg = ''.join(f'<div style="width:{100 * v[k] / larg:.2f}%;background:{cor}" title="{t}: {v[k]}">{v[k]}</div>'
+                      for k, cor, t in CAT_EQ if v[k])
+        return (f'<div class="b"><div class="b-nome">{rot}</div><div class="b-trilho rs">{seg}</div>'
+                f'<div class="b-val">{len(cats)} equipas</div></div>')
+
+    ordem = sorted(grupos, key=lambda t: (t == 'Sem técnico', -len(grupos[t]), t))
+    leg = ' · '.join(f'<span class="sq" style="background:{cor}"></span>{e(t)}' for k, cor, t in CAT_EQ)
+    tot = {k: todos.count(k) for k, _, _ in CAT_EQ}
+    frase = (f"{tot['ok'] + tot['tarde']} de {len(todos)} equipas regaram ({tot['tarde']} chegaram ao 1.º campo depois das {e(hc)}); "
+             f"{tot['motivo']} sem rega com motivo; {tot['sem']} sem rega e sem motivo.")
+    return (f'<div class="resumo"><h3>Resumo da tabela</h3><p class="cinz">{frase}</p>'
+            + linha('<b>Todas</b>', todos, len(todos))
+            + '<div class="cinz" style="margin:8px 0 2px">Por técnico</div>'
+            + ''.join(linha(e(t), grupos[t], mx) for t in ordem)
+            + f'<div class="leg">{leg}</div></div>')
+
+
 def gerar(d):
     r, m = d['rega'], d['manutencao']
     dia = date.fromisoformat(d['data'])
@@ -315,6 +353,7 @@ h2{{font-size:18px;margin:26px 0 8px;padding-top:8px;border-top:1px solid var(--
 .b-nome{{font-size:13px;font-weight:600}} .b-sub{{font-weight:400;color:var(--c);font-size:11.5px}}
 .b-trilho{{background:#ecebe5;border-radius:5px;height:14px;overflow:hidden}} .b-enc{{height:100%}}
 .b-val{{font-size:12.5px;white-space:nowrap;text-align:right}}
+.rs{{display:flex;height:18px}} .rs div{{color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:18px;overflow:hidden}} .rs div[style*='#f2c94c'],.rs div[style*='#c8c6bd']{{color:#1f2a24}}
 .grupo{{background:var(--f);border:1px solid var(--b);border-radius:10px;padding:8px 12px;margin:8px 0}} .grupo.vermelho{{background:#fcebeb;border-color:#e9b8b8}}
 .g-t{{font-weight:700}} .g-n{{background:#fff;border:1px solid var(--b);border-radius:9px;padding:0 7px;font-size:12px}}
 ul{{margin:6px 0 0;padding-left:18px}} li{{margin:2px 0;font-size:13.5px}}
@@ -332,7 +371,7 @@ th{{background:var(--f);font-size:12px}} td.c{{text-align:center;white-space:now
 li.ok,span.ok{{color:#27500a}} li.verm{{color:#791f1f}} li.amar{{color:#633806}}
 footer{{color:var(--c);font-size:12px;margin-top:24px;border-top:1px solid var(--b);padding-top:8px}}
 @media (max-width:560px){{.kpis{{grid-template-columns:repeat(2,1fr)}} .b{{grid-template-columns:42% 1fr auto}} h1{{font-size:20px}}}}
-@media print{{body{{font-size:11.5px;font-family:"DejaVu Sans","Liberation Sans",sans-serif}} main{{max-width:none;padding:0}} h2,h3{{break-after:avoid}} .man,.grupo,.k,tr,.pess{{break-inside:avoid}} .tab{{overflow:visible}}}}
+@media print{{body{{font-size:11.5px;font-family:"DejaVu Sans","Liberation Sans",sans-serif}} main{{max-width:none;padding:0}} h2,h3{{break-after:avoid}} .man,.grupo,.k,tr,.pess,.resumo{{break-inside:avoid}} .tab{{overflow:visible}}}}
 @page{{size:A4;margin:12mm}}
 </style></head><body><main>
 <header><h1>Rega Coco — relatório do dia</h1>
@@ -365,6 +404,7 @@ footer{{color:var(--c);font-size:12px;margin-top:24px;border-top:1px solid var(-
 <h2>Todas as equipas</h2>
 <div class="tab"><table><thead><tr><th>Equipa (activista)</th><th>Hoje</th><th>Pessoas</th><th>1.º campo</th><th>Ronda · campos</th><th>Dificuldades</th><th>Técnico / supervisor</th></tr></thead>
 <tbody>{linhas}</tbody></table></div>
+{resumo_equipas(eqs, r.get('hora_combinada_chegada'))}
 
 <footer>Fonte: app Rega Coco (servidor). Só regas reais; as regas de teste não contam. Números do dia {dia:%d/%m/%Y} até às {hora}; regas enviadas mais tarde entram no relatório seguinte do mesmo dia, se houver. Os dados deste relatório estão também em JSON dentro do ficheiro (elemento «rega-coco-dados»).</footer>
 </main>
