@@ -2,6 +2,8 @@
 
 Relatório do dia na pasta partilhada com o Dalmar — Rega Coco
 
+HORA: 20:00 de Maputo, de segunda a sábado (Valdo, 08/11/2026: "Passa a produzir o relatório às 20h"; antes 19:00).
+
 FINALIDADE
 Valdo, 08/11/2026: "criamos uma pasta que partilho com ele os relatórios diários da rega, que vem do aplicativo… às 19h produzes um relatório em HTML e em PDF e colocas sempre dentro dessa pasta. Os relatórios do dia anterior passam para old… a pasta sempre que o ficheiro que vai estar vivo é o ficheiro do dia… ele consegue acessar nessa pasta e consegue puxar a informação para o painel dele… rega, mas também… manutenção… em Quiwia e Farol."
 O Dalmar compara estes números (só da app) com os do WhatsApp no painel da operação dele. Este relatório não compara com o WhatsApp nem cobra incumprimentos (isso é o relatório das 22:30, ferramentas/RELATORIO_DIARIO.md, que continua).
@@ -11,7 +13,7 @@ PASTA NO GOOGLE DRIVE (conta do Valdo; partilhada com dalmar.jose.santos@gmail.c
 - Subpasta «_old», id 1sbce7U9CAAWCuDbyjlIWa-Fd1WBrWp12.
 - Na pasta principal fica SÓ o relatório do dia: Rega_Coco_relatorio_AAAAMMDD.html e Rega_Coco_relatorio_AAAAMMDD.pdf.
 
-PASSOS (de segunda a sábado, às 19:00 de Maputo)
+PASSOS (de segunda a sábado, às 20:00 de Maputo)
 1. Data do relatório = hoje em Maputo (Africa/Maputo, UTC+2), AAAA-MM-DD.
 2. Clonar o repositório GitHub cocopalma/rega-coco (só leitura; não alterar o repositório).
 3. Ler ferramentas/relatorio_dia.sql, substituir __DIA__ pela data e correr com o conector Supabase (execute_sql, projecto fgzdqnvobgfzjetbbxcm). Só leitura: não gravar, actualizar nem apagar nada no servidor. Gravar o valor da coluna «dados» (JSON) num ficheiro dados.json.
@@ -23,4 +25,4 @@ PASSOS (de segunda a sábado, às 19:00 de Maputo)
 9. Se algum passo falhar (consulta, script, envio), não deixar a pasta vazia: os ficheiros do dia anterior só passam para «_old» depois de os de hoje estarem prontos (passos 3 a 5 antes do 6). Escrever no fim do trabalho o que falhou.
 
 O QUE O RELATÓRIO TEM (gerado pelo script; não escrever o HTML à mão)
-Rega: equipas que regaram / total, campos e plantas regadas hoje, pessoas, plantas regadas na app desde 24/10, progresso da ronda, campos que nunca receberam água; plantas por equipa com a hora do 1.º campo; equipas sem rega agrupadas pelo motivo registado (e «Sem motivo registado»); o que dificultou a rega (registado na saída); plantas por comunidade; progresso da ronda por equipa. Manutenção (Quiwia e Farol): trabalho de hoje, % de plantas com cava-roda e com mulching, situação dos campos por comunidade. Tabela de todas as equipas. Os mesmos dados vão em JSON dentro do HTML (<script type="application/json" id="rega-coco-dados">) para o painel do Dalmar os ler.
+Rega: equipas que regaram / total, campos e plantas regadas hoje, pessoas, plantas regadas na app desde 24/10, progresso da ronda, campos que nunca receberam água; plantas por equipa com a hora do 1.º campo; equipas sem rega agrupadas pelo motivo registado (e «Sem motivo registado»); o que dificultou a rega (registado na saída); plantas por comunidade; progresso da ronda por equipa. Manutenção (Quiwia e Farol): trabalho de hoje, % de plantas com cava-roda e com mulching, situação dos campos por comunidade. Técnicos e supervisores (Valdo, 08/11/2026: "coloca também os incumprimentos dos técnicos e supervisores, e o progresso deles à medida que forem se alinhando"): falhas de hoje por pessoa (dia não fechado na app até às 18:00, equipa sem rega nem início do dia nem motivo, campo da monitoria não verificado no dia, equipa que chegou ao 1.º campo depois da hora combinada, rega fora da lista sem motivo), o que está por tratar (regas com aviso, motivos do activista por confirmar), e o progresso por dia desde config.cumprimento_inicio (segunda a sábado), de cada pessoa e de todos juntos, com a comparação com a média dos dias anteriores. As regras são as do relatório das 22:30 (ferramentas/RELATORIO_DIARIO.md, R1–R6 e R8; a R7 e as divergências com o WhatsApp ficam no relatório das 22:30). Conta com as equipas que cada pessoa tem hoje. Tabela de todas as equipas. Os mesmos dados vão em JSON dentro do HTML (<script type="application/json" id="rega-coco-dados">) para o painel do Dalmar os ler.

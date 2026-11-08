@@ -70,6 +70,112 @@ def cartao(valor, titulo, sub='', cls=''):
     return f'<div class="k {cls}"><div class="k-v">{valor}</div><div class="k-t">{titulo}</div>{s}</div>'
 
 
+def falhas_dia(x):
+    f = {'r1': len(x['r1']), 'r2': 0 if (x['fecho'] and x['fecho'] <= '18:00') else 1,
+         'r3': x['r3'], 'r5': len(x['r5']), 'r6': x['r6']}
+    f['total'] = sum(f.values())
+    return f
+
+
+DIAS_C = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom']
+CORES_R = {'r1': '#b3261e', 'r2': '#e8710a', 'r3': '#8e44ad', 'r5': '#f2c94c', 'r6': '#5f5e5a'}
+NOMES_R = {'r1': 'Equipa sem rega, sem início do dia e sem motivo', 'r2': 'Dia não fechado na app até às 18:00',
+           'r3': 'Campo da monitoria não verificado no dia', 'r5': 'Equipa chegou ao 1.º campo depois da hora combinada',
+           'r6': 'Rega fora da lista sem motivo'}
+
+
+def colunas_dias(dias, alt=60):
+    mx = max([falhas_dia(x)['total'] for x in dias] or [0]) or 1
+    out = ''
+    for x in dias:
+        f = falhas_dia(x)
+        d = date.fromisoformat(x['data'])
+        seg = ''.join(f'<div style="height:{alt * f[k] / mx:.1f}px;background:{CORES_R[k]}"></div>' for k in ('r6', 'r5', 'r3', 'r2', 'r1') if f[k])
+        out += (f'<div class="cd"><div class="cd-n">{f["total"]}</div><div class="cd-b" style="height:{alt}px">{seg}</div>'
+                f'<div class="cd-l">{DIAS_C[d.weekday()]}<br>{d:%d/%m}</div></div>')
+    return f'<div class="cds">{out}</div>'
+
+
+def bloco_cumprimento(c):
+    if not c or not c.get('pessoas'):
+        return '<p>Sem dados do cumprimento.</p>'
+    ps = c['pessoas']
+    hc = c.get('hora_chegada') or '06:00'
+    # total de todos por dia
+    datas = [x['data'] for x in ps[0]['dias']]
+    tot = []
+    for i, dt in enumerate(datas):
+        agg = {'data': dt, 'r1': [], 'fecho': '00:00', 'r3': 0, 'r5': [], 'r6': 0, '_r2': 0}
+        for p_ in ps:
+            x = p_['dias'][i]
+            agg['r1'] += x['r1']; agg['r3'] += x['r3']; agg['r5'] += x['r5']; agg['r6'] += x['r6']
+            agg['_r2'] += falhas_dia(x)['r2']
+        tot.append(agg)
+    # colunas do total (r2 somado à parte)
+    mx = max([len(a['r1']) + a['_r2'] + a['r3'] + len(a['r5']) + a['r6'] for a in tot] or [0]) or 1
+    cols = ''
+    for a in tot:
+        v = {'r1': len(a['r1']), 'r2': a['_r2'], 'r3': a['r3'], 'r5': len(a['r5']), 'r6': a['r6']}
+        t = sum(v.values())
+        d = date.fromisoformat(a['data'])
+        seg = ''.join(f'<div style="height:{80 * v[k] / mx:.1f}px;background:{CORES_R[k]}"></div>' for k in ('r6', 'r5', 'r3', 'r2', 'r1') if v[k])
+        cols += f'<div class="cd"><div class="cd-n">{t}</div><div class="cd-b" style="height:80px">{seg}</div><div class="cd-l">{DIAS_C[d.weekday()]}<br>{d:%d/%m}</div></div>'
+    leg = ' · '.join(f'<span class="sq" style="background:{CORES_R[k]}"></span>{e(NOMES_R[k])}' for k in ('r1', 'r2', 'r3', 'r5', 'r6'))
+    out = (f'<h3>Todos os técnicos e supervisores, por dia</h3><div class="cds">{cols}</div>'
+           f'<div class="leg">{leg}</div>')
+    for p_ in ps:
+        hoje = p_['dias'][-1]
+        f = falhas_dia(hoje)
+        ant = [falhas_dia(x)['total'] for x in p_['dias'][:-1]]
+        med = round(sum(ant) / len(ant), 1) if ant else None
+        if med is None:
+            tend = ''
+        elif f['total'] < med:
+            tend = f'<span class="ok">▼ melhor do que a média dos dias anteriores ({str(med).replace(".", ",")})</span>'
+        elif f['total'] > med:
+            tend = f'<span class="verm">▲ pior do que a média dos dias anteriores ({str(med).replace(".", ",")})</span>'
+        else:
+            tend = f'= igual à média dos dias anteriores ({str(med).replace(".", ",")})'
+        seguidos = 0
+        for x in reversed(p_['dias']):
+            if falhas_dia(x)['total'] == 0:
+                seguidos += 1
+            else:
+                break
+        itens = []
+        if hoje['fecho'] and hoje['fecho'] <= '18:00':
+            itens.append(f'<li class="ok">Fechou o dia às {e(hoje["fecho"])} (limite: 18:00)</li>')
+        elif hoje['fecho']:
+            itens.append(f'<li class="verm">Fechou o dia às {e(hoje["fecho"])} (limite: 18:00)</li>')
+        else:
+            itens.append('<li class="verm">Não fechou o dia na app</li>')
+        if hoje['r1']:
+            itens.append(f'<li class="verm">{len(hoje["r1"])} equipa(s) sem rega, sem início do dia e sem motivo: {e(", ".join(pnome(n) for n in hoje["r1"]))}</li>')
+        if hoje['r3']:
+            itens.append(f'<li class="verm">{hoje["r3"]} campo(s) da monitoria não verificados no dia</li>')
+        if hoje['r5']:
+            itens.append(f'<li class="amar">{len(hoje["r5"])} equipa(s) chegaram ao 1.º campo depois das {e(hc)} (hora combinada): '
+                         + e(', '.join(f'{pnome(z["nome"])} às {z["hora"]}' for z in sorted(hoje['r5'], key=lambda z: z['hora']))) + '</li>')
+        if hoje['r6']:
+            itens.append(f'<li class="verm">{hoje["r6"]} rega(s) fora da lista sem motivo</li>')
+        if p_.get('r4_por_tratar'):
+            itens.append(f'<li class="amar">⚠️ {p_["r4_por_tratar"]} rega(s) com aviso por confirmar ou corrigir (desde o início)</li>')
+        if p_.get('r8_por_confirmar'):
+            itens.append(f'<li class="amar">{p_["r8_por_confirmar"]} motivo(s) do activista por confirmar</li>')
+        cor = 'ok' if f['total'] == 0 else 'verm'
+        seq = f' · {seguidos} dia(s) seguidos sem falhas' if seguidos > 1 else ''
+        out += (f'<div class="pess"><div class="pess-t"><b>{e(p_["nome"])}</b> <span class="cinz">· {e({"tecnico": "técnico", "supervisor": "supervisor"}.get(p_["papel"], p_["papel"]))} · {p_["equipas"]} equipas</span>'
+                f'<span class="pess-n {cor}">{f["total"]}</span></div>'
+                f'<div class="cinz">Falhas hoje: {f["total"]}{seq}. {tend}</div>'
+                f'<ul>{"".join(itens)}</ul>{colunas_dias(p_["dias"])}</div>')
+    ini = date.fromisoformat(c['inicio'])
+    out += (f'<p class="cinz">Conta de segunda a sábado, desde {ini:%d/%m/%Y}, com as equipas que cada pessoa tem hoje. '
+            'Uma falha por equipa sem rega nem motivo, por dia não fechado até às 18:00, por campo da monitoria não verificado, '
+            'por equipa que chegou tarde ao 1.º campo e por rega fora da lista sem motivo. '
+            'As regas com aviso e os motivos por confirmar são o que está por tratar hoje.</p>')
+    return out
+
+
 def gerar(d):
     r, m = d['rega'], d['manutencao']
     dia = date.fromisoformat(d['data'])
@@ -217,9 +323,15 @@ ul{{margin:6px 0 0;padding-left:18px}} li{{margin:2px 0;font-size:13.5px}}
 .sq{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}}
 .tab{{overflow-x:auto}} table{{border-collapse:collapse;width:100%;font-size:12.5px}} th,td{{border-bottom:1px solid var(--b);padding:6px 5px;text-align:left;vertical-align:top}}
 th{{background:var(--f);font-size:12px}} td.c{{text-align:center;white-space:nowrap}}
+.cds{{display:flex;gap:6px;align-items:flex-end;overflow-x:auto;margin:8px 0}} .cd{{flex:1;min-width:30px;text-align:center}}
+.cd-n{{font-size:12px;font-weight:700}} .cd-b{{display:flex;flex-direction:column-reverse;justify-content:flex-start;background:#f3f2ee;border-radius:4px;overflow:hidden}}
+.cd-l{{font-size:10.5px;color:var(--c);line-height:1.2;margin-top:3px}}
+.pess{{border:1px solid var(--b);border-radius:10px;padding:10px 12px;margin:10px 0}} .pess-t{{display:flex;align-items:center;gap:6px}}
+.pess-n{{margin-left:auto;font-size:20px;font-weight:700;border-radius:8px;padding:0 10px}} .pess-n.ok{{background:#eaf3de;color:#27500a}} .pess-n.verm{{background:#fcebeb;color:#791f1f}}
+li.ok,span.ok{{color:#27500a}} li.verm{{color:#791f1f}} li.amar{{color:#633806}}
 footer{{color:var(--c);font-size:12px;margin-top:24px;border-top:1px solid var(--b);padding-top:8px}}
 @media (max-width:560px){{.kpis{{grid-template-columns:repeat(2,1fr)}} .b{{grid-template-columns:42% 1fr auto}} h1{{font-size:20px}}}}
-@media print{{body{{font-size:11.5px;font-family:"DejaVu Sans","Liberation Sans",sans-serif}} main{{max-width:none;padding:0}} h2,h3{{break-after:avoid}} .man,.grupo,.k,tr{{break-inside:avoid}} .tab{{overflow:visible}}}}
+@media print{{body{{font-size:11.5px;font-family:"DejaVu Sans","Liberation Sans",sans-serif}} main{{max-width:none;padding:0}} h2,h3{{break-after:avoid}} .man,.grupo,.k,tr,.pess{{break-inside:avoid}} .tab{{overflow:visible}}}}
 @page{{size:A4;margin:12mm}}
 </style></head><body><main>
 <header><h1>Rega Coco — relatório do dia</h1>
@@ -245,6 +357,9 @@ footer{{color:var(--c);font-size:12px;margin-top:24px;border-top:1px solid var(-
 
 <h2>Manutenção — Quiwia e Farol</h2>
 {man_html}
+
+<h2>Técnicos e supervisores — incumprimentos e progresso</h2>
+{bloco_cumprimento(d.get('cumprimento'))}
 
 <h2>Todas as equipas</h2>
 <div class="tab"><table><thead><tr><th>Equipa (activista)</th><th>Hoje</th><th>Pessoas</th><th>1.º campo</th><th>Ronda · campos</th><th>Dificuldades</th><th>Técnico / supervisor</th></tr></thead>

@@ -62,6 +62,38 @@ man_dia as (
                coalesce(lag(r.cavaroda) over w, 0) as ant_c, coalesce(lag(r.mulching) over w, 0) as ant_m
         from public.manutencao_registos r where not r.removido and privado.manut_conta(r.feito_em)
         window w as (partition by r.area_id order by r.feito_em)) d
+),
+cini as (select coalesce((select (valor #>> '{}')::date from public.config where chave = 'cumprimento_inicio'), date '2026-10-29') as d),
+hcheg as (select coalesce((select valor #>> '{}' from public.config where chave = 'hora_chegada_equipa'), '06:00') as h),
+pess as (
+  select pf.id, pf.nome, pf.papel from public.perfis pf
+  where pf.id in (select privado.monitores()) and exists (select 1 from privado.equipas_de(pf.id))
+),
+pe as (select ps.id as perfil_id, t as activista_id from pess ps, lateral privado.equipas_de(ps.id) t),
+dias as (
+  select g::date as d from p, cini, generate_series(cini.d, p.dia, interval '1 day') g where extract(isodow from g) < 7
+),
+regd as (
+  select r.activista_id, r.data, min(r.entrada_em) as primeira,
+         count(*) filter (where r.alerta = 'fora_da_lista' and r.motivo_alerta like 'Sem justifica%') as fora_sem_motivo
+  from public.registos_rega r, cini, p where not r.teste and r.data between cini.d and p.dia group by 1, 2
+),
+jord as (select distinct j.activista_id, j.data from public.jornadas j, cini, p where not j.teste and j.data between cini.d and p.dia),
+pd as (
+  select ps.id as perfil_id, ps.nome, ps.papel, dd.d,
+    (select coalesce(json_agg(a.nome order by a.nome), '[]') from pe join public.activistas a on a.id = pe.activista_id
+       where pe.perfil_id = ps.id
+         and not exists (select 1 from regd where regd.activista_id = pe.activista_id and regd.data = dd.d)
+         and not exists (select 1 from jord where jord.activista_id = pe.activista_id and jord.data = dd.d)
+         and not exists (select 1 from privado.motivos_dia(pe.activista_id, dd.d))) as r1,
+    (select to_char(f.fechado_em at time zone 'Africa/Maputo', 'HH24:MI') from public.fechos_dia f where f.perfil_id = ps.id and f.data = dd.d) as fecho,
+    (select count(*) from public.monitoria_amostra m where m.verificador_id = ps.id and privado.dia_verif(m.data_rega) = dd.d
+       and not exists (select 1 from public.monitorias mo where mo.amostra_id = m.id))::int as r3,
+    (select coalesce(json_agg(json_build_object('nome', a.nome, 'hora', to_char(regd.primeira at time zone 'Africa/Maputo', 'HH24:MI')) order by regd.primeira), '[]')
+       from pe join regd on regd.activista_id = pe.activista_id and regd.data = dd.d join public.activistas a on a.id = pe.activista_id, hcheg
+       where pe.perfil_id = ps.id and to_char(regd.primeira at time zone 'Africa/Maputo', 'HH24:MI') > hcheg.h) as r5,
+    (select coalesce(sum(regd.fora_sem_motivo), 0) from pe join regd on regd.activista_id = pe.activista_id and regd.data = dd.d where pe.perfil_id = ps.id)::int as r6
+  from pess ps, dias dd
 )
 select json_build_object(
   'data', (select dia from p),
@@ -114,5 +146,21 @@ select json_build_object(
     'hoje_por_comunidade', (select coalesce(json_agg(x order by x.comunidade), '[]') from (
         select a.comunidade, count(distinct d.area_id)::int as campos, sum(d.cavaroda)::int as cavaroda, sum(d.mulching)::int as mulching
         from man_dia d join public.areas a on a.id = d.area_id, p where d.data = p.dia group by a.comunidade) x)
+  ),
+  'cumprimento', json_build_object(
+    'inicio', (select d from cini),
+    'hora_chegada', (select h from hcheg),
+    'pessoas', (select coalesce(json_agg(x order by x.papel desc, x.nome), '[]') from (
+      select ps.nome, ps.papel,
+        (select count(*) from pe where pe.perfil_id = ps.id)::int as equipas,
+        (select coalesce(json_agg(json_build_object('data', pd.d, 'r1', pd.r1, 'fecho', pd.fecho, 'r3', pd.r3, 'r5', pd.r5, 'r6', pd.r6) order by pd.d), '[]')
+           from pd where pd.perfil_id = ps.id) as dias,
+        (select count(*) from privado.regas_alerta((select (valor #>> '{}')::date from public.config where chave = 'activistas_inicio'), (select dia from p)) ra
+           where not ra.tratado and ra.activista_id in (select activista_id from pe where pe.perfil_id = ps.id))::int as r4_por_tratar,
+        (select count(*) from public.dias_sem_rega ds
+           where ds.activista_id in (select activista_id from pe where pe.perfil_id = ps.id)
+             and not ds.removido and not coalesce(ds.substituido, false)
+             and privado.dsr_pc(ds.user_id, ds.confirmado_em, ds.data, ds.ate))::int as r8_por_confirmar
+      from pess ps) x)
   )
 ) as dados;
