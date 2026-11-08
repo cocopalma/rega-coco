@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Relatório do dia da Rega Coco para a pasta partilhada com o Dalmar (tarefa das 19:00).
+"""Relatório do dia da Rega Coco para a pasta partilhada com o Dalmar (tarefa das 20:00).
 
 Uso: python3 ferramentas/relatorio_dia.py dados.json Rega_Coco_relatorio_AAAAMMDD
-     -> Rega_Coco_relatorio_AAAAMMDD.html e Rega_Coco_relatorio_AAAAMMDD.pdf
+     -> Rega_Coco_relatorio_AAAAMMDD.html, Rega_Coco_relatorio_AAAAMMDD.pdf
+        e Rega_Coco_dados.json (na mesma pasta; nome fixo, para o painel do Dalmar)
 
 dados.json = resultado de ferramentas/relatorio_dia.sql (coluna «dados»).
 O HTML leva os mesmos dados dentro de <script type="application/json" id="rega-coco-dados">,
@@ -389,4 +390,8 @@ if __name__ == '__main__':
     base = os.path.abspath(sys.argv[2])
     open(base + '.html', 'w', encoding='utf-8').write(gerar(d))
     pdf(base + '.html', base + '.pdf')
-    print(base + '.html', base + '.pdf')
+    # Os mesmos dados que vão dentro do HTML, num ficheiro de nome fixo (Valdo, 08/11/2026).
+    js = os.path.join(os.path.dirname(base), 'Rega_Coco_dados.json')
+    with open(js, 'w', encoding='utf-8') as f:
+        json.dump(d, f, ensure_ascii=False, indent=1)
+    print(base + '.html', base + '.pdf', js)
