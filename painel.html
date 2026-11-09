@@ -146,7 +146,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <div class="grelha kpis" id="k-nunca"></div>
     <h3 style="font-size:14px;margin:12px 0 4px">Campos que ainda faltam, no fim de cada dia</h3><p style="margin:0 0 6px;font-size:12px;color:var(--ink2)">Desce quando um campo recebe a 1.ª água ou é retirado da rega; sobe quando um campo volta à rega. Valores aproximados para os dias passados: usam o registo do WhatsApp actual.</p><div id="g-nunca-dia"></div>
     <h3 style="font-size:14px;margin:12px 0 4px">Por equipa (hoje)</h3><div id="g-nunca-eq"></div>
-    <p style="margin:8px 0"><button class="foto-btn" id="b-nunca-csv" type="button">⬇ Descarregar a lista (Excel, .csv)</button></p>
+    <p style="margin:8px 0"><button class="foto-btn" id="b-nunca-csv" type="button">⬇ Descarregar a lista (Excel, .csv)</button></p><p class="pequeno" style="margin:-4px 0 8px;color:var(--ink2)">Todos os campos (na rega e retirados), com as regas da app e do WhatsApp. Precisa de rede.</p>
     <details><summary>Ver os campos que nunca receberam água</summary><div class="tabela" id="t-nunca"></div></details>
     <details><summary>Ver os campos que receberam a 1.ª água no período</summary><div class="tabela" id="t-nunca-prim"></div></details>
     <details><summary>Ver os campos retirados da rega no período</summary><div class="tabela" id="t-nunca-ret"></div></details></section>
@@ -262,10 +262,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=227"></script>
-<script src="i18n.js?v=227"></script>
+<script src="i18n-sw.js?v=228"></script>
+<script src="i18n.js?v=228"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=227"></script>
+<script src="demo.js?v=228"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -851,7 +851,27 @@ function desenharNunca() {
   tabela('#t-nunca-ret', [['Campo'], ['Produtor'], ['Comunidade'], ['Equipa de origem'], ['Retirado em'], ['Retirado por'], ['Nunca tinha recebido água'], ['Motivo'], ['Justificação']],
     R.map((r) => [esc(r.pr), esc(r.produtor || ''), locNa(r), esc(r.equipa || ''), fmtData(r.data), esc(r.por || '—'), r.nunca ? 'sim' : 'não', motivoRet(r), `<span class="sem-trad">${esc(justRet(r.motivo))}</span>`]));
 }
-function descarregarNunca() {
+// v228 (09/11/2026, Dalmar via Valdo: "envia uma lista completa dos que regaram e não regaram… para verificar o que não está a bater"):
+// o botão descarrega todos os campos (na rega e retirados) com as regas da app e do WhatsApp (RPC lista_campos_rega, só ao tocar;
+// não fica na cache do painel). Sem rede, descarrega a lista curta do painel (como na v225).
+async function descarregarNunca() {
+  const b = $('#b-nunca-csv'); let L = null;
+  if (navigator.onLine) { b.disabled = true; try { const r = await sb.rpc('lista_campos_rega'); if (!r.error && Array.isArray(r.data) && r.data.length) L = r.data; } catch {} b.disabled = false; }
+  if (!L) return descarregarNuncaCurta();
+  const T = (x) => (window.trEN ? window.trEN(x) : x), cel = (v) => { const t = String(v ?? ''); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const dd = (d) => (d ? d.split('-').reverse().join('/') : ''), dec = (v) => (v == null ? '' : Number(v).toLocaleString(LOC, { useGrouping: false, maximumFractionDigits: 6 })), sn = (v) => T(v ? 'sim' : 'não');
+  const sit = (r) => (!r.na_rega ? 'Retirado da rega' : r.nunca ? 'Na rega · nunca recebeu água' : 'Na rega · já recebeu água');
+  const cab = ['Situação', 'Campo', 'Produtor', 'Comunidade', 'Zona', 'Equipa', 'Técnico', 'Supervisor', 'Plantas vivas', 'Plantas instaladas', 'Latitude', 'Longitude',
+    'Nunca recebeu água', 'Regas na app', 'Plantas regadas na app', '1.ª rega na app', 'Última rega na app', 'Regas no WhatsApp', 'Última rega no WhatsApp', 'WhatsApp só por produtor', 'Regas antes da app',
+    'Retirado em', 'Motivo da retirada', 'Justificação'];
+  const linhas = L.map((r) => [T(sit(r)), r.pr, r.produtor, r.comunidade, r.zona, r.equipa, r.tecnico, r.supervisor, r.vivas, r.instaladas, dec(r.lat), dec(r.lon),
+    sn(r.nunca), r.app_n, r.app_plantas, dd(r.app_primeira), dd(r.app_ultima), r.wa_n ?? '', dd(r.wa_ultima), sn(r.wa_por_pr), r.antes_n,
+    dd(r.retirado_em), r.na_rega ? '' : T(motivoRet({ motivo_cod: r.retirado_motivo, motivo: r.retirado_texto })), r.na_rega ? '' : justRet(r.retirado_texto)]);
+  const csv = '﻿' + [cab.map(T), ...linhas].map((l) => l.map(cel).join(';')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `Rega_Coco_lista_campos_${diaMaputo().replace(/-/g, '')}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function descarregarNuncaCurta() {
   const X = DNA; if (!X || !Array.isArray(X.campos)) return;
   const T = (x) => (window.trEN ? window.trEN(x) : x), cel = (v) => { const t = String(v ?? ''); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
   const dd = (d) => (d ? d.split('-').reverse().join('/') : '');

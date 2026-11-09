@@ -1,7 +1,7 @@
-# v225 (09/11/2026, Valdo): painel › «💧 Campos que nunca receberam água» (lista, evolução por dia, por equipa, .csv). NULO=1: servidor devolve null (secção escondida). LING=en / sw.
+# v225/v228 (09/11/2026, Valdo): v228 = lista completa (LISTA=0: servidor sem a lista, descarrega a curta). painel › «💧 Campos que nunca receberam água» (lista, evolução por dia, por equipa, .csv). NULO=1: servidor devolve null (secção escondida). LING=en / sw.
 import json, subprocess, time, sys, os, glob
 from playwright.sync_api import sync_playwright
-NM = "/home/claude/rega-test/node_modules"; LING = os.environ.get("LING", "pt"); NULO = os.environ.get("NULO") == "1"
+NM = "/home/claude/rega-test/node_modules"; LING = os.environ.get("LING", "pt"); NULO = os.environ.get("NULO") == "1"; LISTA = os.environ.get("LISTA", "1") == "1"
 srv = subprocess.Popen([sys.executable, "-m", "http.server", "8863", "--directory", "/home/claude/rega-coco"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(1)
 D = {"gerado_em": "2026-11-09T19:00:00Z", "periodo": {"de": None, "ate": None}, "inicio": "2026-10-24", "fim": "2026-11-09", "universo": {"areas": 713, "vivas": 100000},
      "areas_regadas": 600, "vivas_regadas": 70000, "plantas_regadas_total": 90000, "pessoas_dia_total": 900, "registos": 1500, "por_dia": [], "por_comunidade": [], "por_equipa": [], "constrangimentos": {}, "chegadas_agua": []}
@@ -18,6 +18,9 @@ def mock(route):
     u = route.request.url; ok = lambda b: route.fulfill(status=200, content_type="application/json", body=json.dumps(b))
     if "/rpc/painel_resumo_periodo" in u: return ok(D)
     if "/rpc/painel_nunca_agua" in u: return ok(None if NULO else NA)
+    if "/rpc/lista_campos_rega" in u: return ok([{"pr": "PR1-1", "produtor": "Produtor Um", "comunidade": "Palma", "zona": "Muah", "na_rega": True, "equipa": "Azize Exemplo", "tecnico": "T", "supervisor": "S", "vivas": 120, "instaladas": 140, "lat": -10.7, "lon": 40.4, "app_n": 0, "app_plantas": 0, "app_primeira": None, "app_ultima": None, "wa_ultima": None, "wa_n": None, "wa_por_pr": False, "antes_n": 0, "nunca": True, "retirado_em": None, "retirado_motivo": None, "retirado_texto": None},
+        {"pr": "PR4-1", "produtor": "Produtor; Quatro", "comunidade": "Farol", "zona": None, "na_rega": True, "equipa": "Majula", "tecnico": "T", "supervisor": "S", "vivas": 60, "instaladas": 70, "lat": -10.68, "lon": 40.63, "app_n": 2, "app_plantas": 110, "app_primeira": "2026-11-07", "app_ultima": "2026-11-09", "wa_ultima": "2026-10-20", "wa_n": 3, "wa_por_pr": False, "antes_n": 1, "nunca": False, "retirado_em": None, "retirado_motivo": None, "retirado_texto": None},
+        {"pr": "PR6-1", "produtor": "Produtor Seis", "comunidade": "Quiwia", "zona": None, "na_rega": False, "equipa": "Alafo", "tecnico": None, "supervisor": None, "vivas": 70, "instaladas": 70, "lat": None, "lon": None, "app_n": 0, "app_plantas": 0, "app_primeira": None, "app_ultima": None, "wa_ultima": None, "wa_n": None, "wa_por_pr": False, "antes_n": 0, "nunca": True, "retirado_em": "2026-11-09", "retirado_motivo": "mudas_mortas", "retirado_texto": "Retirado da rega na app: Todas as mudas mortas: Sem mudas"}] if LISTA else [])
     if "/auth/v1/token" in u: return ok({"access_token": "x.y.z", "token_type": "bearer", "expires_in": 3600, "expires_at": int(time.time()) + 3600, "refresh_token": "r", "user": {"id": "u", "aud": "authenticated", "role": "authenticated", "email": "g@rega-coco.example.com"}})
     if "/rpc/painel_monitoria" in u or "/rpc/painel_plantas_marcadas" in u or "/rpc/painel_cumprimento" in u or "/rpc/painel_manutencao" in u or "/rpc/painel_medicoes" in u: return ok(None)
     if "/rpc/" in u: return ok([])
@@ -54,9 +57,16 @@ with sync_playwright() as p:
         with pg.expect_download() as dl: pg.click("#b-nunca-csv")
         f = dl.value; caminho = f"/home/claude/rega-test/{f.suggested_filename}"; f.save_as(caminho)
         csv = open(caminho, encoding="utf-8-sig").read().splitlines()
-        verif(f.suggested_filename.startswith("Rega_Coco_campos_nunca_regados_") and f.suggested_filename.endswith(".csv"), "7 nome do ficheiro")
-        verif(len(csv) == 1 + 3 + 2 + 2, f"8 csv com 7 linhas de dados ({len(csv) - 1})")
-        verif('"Produtor; Dois"' in "\n".join(csv), "9 ponto e vírgula dentro do nome fica entre aspas")
+        if LISTA:
+            verif(f.suggested_filename.startswith("Rega_Coco_lista_campos_") and f.suggested_filename.endswith(".csv"), "7 nome do ficheiro (lista completa)")
+            verif(len(csv) == 1 + 3, f"8 csv com 3 linhas ({len(csv) - 1})")
+            j = "\n".join(csv)
+            verif('"Produtor; Quatro"' in j and "09/11/2026" in j and ("-10,68" in j or "-10.68" in j), "9 aspas, datas e coordenadas")
+            if LING == "pt": verif("Na rega · nunca recebeu água" in j and "Retirado da rega" in j and "Todas as mudas mortas" in j, "10 situação e motivo")
+        else:
+            verif(f.suggested_filename.startswith("Rega_Coco_campos_nunca_regados_") and f.suggested_filename.endswith(".csv"), "7 nome do ficheiro (lista curta)")
+            verif(len(csv) == 1 + 3 + 2 + 2, f"8 csv com 7 linhas de dados ({len(csv) - 1})")
+            verif('"Produtor; Dois"' in "\n".join(csv), "9 ponto e vírgula dentro do nome fica entre aspas")
         pg.locator("#s-nunca").screenshot(path=f"/home/claude/rega-test/v225_{LING}.png")
     print("erros JS:", erros)
     if erros: falhas.append("erros JS")
