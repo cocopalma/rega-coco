@@ -41,6 +41,8 @@ with sync_playwright() as p:
             verif("1835" in k.replace(" ", "").replace("\u202f","") and "354" in k, "2 secas ou mortas e por terminar no cartão")
         verif(pg.locator("#g-dia svg path[opacity]").count() == 2, "3 duas colunas claras (vivas) no gráfico")
         verif(pg.is_visible("#leg-dia"), "4 legenda visível")
+        nf = pg.locator('#g-dia text.valor[style*="ink2"]').count()
+        verif(nf == 1, f"4b valor das vivas por cima da coluna clara ({nf})")
         pg.evaluate("document.querySelectorAll('details').forEach(d=>d.open=true)"); pg.wait_for_timeout(300)
         t = pg.inner_text("#t-dia")
         verif("4959" in t.replace(" ", "").replace("\u202f","").replace(",","") and "55 %" in t, "5 tabela com vivas e %")

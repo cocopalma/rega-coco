@@ -262,10 +262,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=228"></script>
-<script src="i18n.js?v=228"></script>
+<script src="i18n-sw.js?v=229"></script>
+<script src="i18n.js?v=229"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=228"></script>
+<script src="demo.js?v=229"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -379,6 +379,9 @@ function colunas(alvo, dados, { valor, rotulo, dicaDe, fmt = compacto, ref, refT
       (fundo && fundo(d) > 0 ? `<path d="${colunaPath(x, pt + ih - (fundo(d) / top) * ih, bw, (fundo(d) / top) * ih)}" fill="var(--s1)" opacity=".28"/>` : '') +
       (h > 0 ? `<path class="vis" d="${colunaPath(x, y, bw, h)}" fill="var(--s1)"/>` : '') + '</g>';
     if (i === iMax || i === dados.length - 1) s += `<text class="valor" x="${x + bw / 2}" y="${y - 6}" text-anchor="middle">${fmt(v)}</text>`;
+    // v229 (09/11/2026, Valdo: "Em cima do gráfico de plantas vivas devia ter também o label"): valor da coluna clara por cima dela
+    if (fundo && (i === iMax || i === dados.length - 1)) { const f = fundo(d) || 0, yf = pt + ih - (f / top) * ih;
+      if (f > 0 && y - yf >= 16) s += `<text class="valor" x="${x + bw / 2}" y="${yf - 6}" text-anchor="middle" style="fill:var(--ink2);font-weight:500">${fmt(f)}</text>`; }
     if (i % salto === 0) s += `<text x="${pl + i * banda + banda / 2}" y="${H - 8}" text-anchor="middle">${esc(rotulo(d))}</text>`;
   });
   if (ref != null) { const y = pt + ih - (ref / top) * ih; s += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="var(--ink2)" stroke-width="1.5" stroke-dasharray="5 4"/><text class="lbl" x="${W - pr}" y="${y - 6}" text-anchor="end">${esc(refTxt || '')}</text>`; }
