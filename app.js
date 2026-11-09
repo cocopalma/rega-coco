@@ -5878,6 +5878,87 @@ async function enviarMonitorias() {
   return null;
 }
 
+// ---------- v223 (09/11/2026, Valdo pelo 💡): Gestão › «Equipa de campo», só para o gestor principal ----------
+// "Preciso de ter um painel de gestão, para eu perceber se cada técnico supervisor fez ou não o que devia fazer e se não fez o que
+// falta fazer. Esse painel só eu devo ter acesso." Servidor: RPC gestao_equipa_campo() (devolve null a quem não é gere_acessos).
+const souGestorPrincipal = () => S.perfil?.papel === 'gestor' && S.perfil?.gere_acessos === true && !S.perfil?.so_teste && !window.DEMO;
+const TIPO_ALERTA = { mais_que_base: 'Plantas regadas acima da base', ritmo: 'Ritmo fora do habitual', foto_data: 'Fotografia de outro dia' };
+const motivoDsrTxt = (m) => (MOTIVOS_DSR.find((x) => x[0] === m) || [m, m])[1];
+function abaGestao(a) { LS.set('gestaoAba', a); mostrarAbaGestao(); }
+function mostrarAbaGestao() {
+  const tem = souGestorPrincipal(), aba = tem ? (LS.get('gestaoAba') || 'eq') : 'acessos';
+  $('#gestao-tabs').innerHTML = tem ? `<div class="chips" style="margin:0 0 10px"><button class="chip${aba === 'eq' ? ' on' : ''}" onclick="abaGestao('eq')">👷 Equipa de campo</button><button class="chip${aba === 'acessos' ? ' on' : ''}" onclick="abaGestao('acessos')">⚙️ Acessos e configurações</button></div>` : '';
+  $('#gestao-eq').style.display = aba === 'eq' ? '' : 'none';
+  $('#gestao-demo').style.display = $('#gestao').style.display = aba === 'eq' ? 'none' : '';
+  if (aba === 'eq') desenharEquipaCampo();
+}
+async function desenharEquipaCampo() {
+  const el = $('#gestao-eq'); if (!el || !souGestorPrincipal()) return;
+  const g = LS.get('gestaoEq');
+  el.innerHTML = g ? htmlEquipaCampo(g) : '<p>A carregar…</p>';
+  if (!navigator.onLine) { if (!g) el.innerHTML = '<div class="msg info">Sem rede. Este painel aparece quando houver rede.</div>'; return; }
+  const { data, error } = await sb.rpc('gestao_equipa_campo');
+  if (error || !data) { if (!g) el.innerHTML = `<div class="msg erro">${esc(error?.message || 'Sem acesso a este painel.')}</div>`; return; }
+  LS.set('gestaoEq', data);
+  if ($('#gestao-eq').style.display !== 'none') el.innerHTML = htmlEquipaCampo(data);
+}
+// estado do fecho do dia: ok (até às 18:00), tarde (depois), pend (hoje, ainda antes das 18:00), nao (não fechou)
+function estadoFecho(dia, fecho, hoje, depois) {
+  if (fecho) return fecho <= '18:00' ? ['ok', '✅', 'Fechou o dia às', fecho] : ['tarde', '⚠️', 'Fechou o dia depois das 18:00, às', fecho];
+  if (dia === hoje && !depois) return ['pend', '⏳', 'Ainda não fechou o dia (pode fechar até às 18:00)', ''];
+  return ['nao', '❌', 'Não fechou o dia', ''];
+}
+const nomesSem = (l) => `<span class="sem-trad">${esc(l.join(', '))}</span>`;
+function htmlEquipaCampo(d) {
+  const hoje = d.dia, depois = (d.agora || '').slice(11, 16) > '18:00' || hojeISO() > hoje;
+  const pessoas = (d.pessoas || []).map((p) => {
+    const dh = (p.dias || []).find((x) => x.data === hoje) || null, f = [];
+    if (dh && dh.sem_rega.length) f.push([depois ? 'v' : 'a', depois ? 'Equipas sem rega nem motivo' : 'Equipas ainda sem rega nem motivo', dh.sem_rega.length,
+      `<p class="pequeno">${nomesSem(dh.sem_rega)}</p>`]);
+    if (p.motivos.length) f.push(['v', 'Motivos por confirmar', p.motivos.length, p.motivos.map((m) =>
+      `<div class="sub"><span class="sem-trad">${esc(m.activista)}</span> · ${fmtData(m.data)} · <span>${esc(motivoDsrTxt(m.motivo))}</span></div>`).join('')]);
+    if (p.alertas.length) f.push(['a', 'Regas com ⚠️ por tratar', p.alertas.length, p.alertas.map((a) =>
+      `<div class="sub"><span class="sem-trad">${esc(a.activista)}</span> · <b>${esc(a.pr)}</b> · ${fmtData(a.data)} · <span>${esc(TIPO_ALERTA[a.tipo] || a.tipo)}</span>${a.tipo === 'mais_que_base' ? ` (<b>${num(a.plantas)}</b> / <b>${num(a.base)}</b>)` : ''}</div>`).join('')]);
+    if (p.medicoes.length) f.push(['a', 'Medições de área por aprovar', p.medicoes.length, p.medicoes.map((m) =>
+      `<div class="sub"><span class="sem-trad">${esc(m.produtor || '')}</span> · <b>${esc(m.pr)}</b> · <span class="sem-trad">${esc(m.activista)}</span> · ${fmtDataHora(m.em)}</div>`).join('')]);
+    if (p.sem_equipa) f.push(['a', 'Campos sem equipa nas comunidades das suas equipas', p.sem_equipa, '<p class="pequeno">Atribuir na app: Campos › Por atribuir.</p>']);
+    if (dh && dh.monitoria && !d.monitoria_pausa) f.push(['v', 'Campos da monitoria por verificar', dh.monitoria, '']);
+    if (dh && dh.fora) f.push(['v', 'Regas fora da lista sem motivo', dh.fora, '']);
+    const npend = f.reduce((t, x) => t + x[2], 0), ef = dh ? estadoFecho(hoje, dh.fecho, hoje, depois) : null;
+    return { p, dh, f, npend: npend + (ef && ef[0] === 'nao' ? 1 : 0), ef };
+  }).sort((a, b) => b.npend - a.npend || a.p.nome.localeCompare(b.p.nome));
+  const fecharam = pessoas.filter((x) => x.dh?.fecho).length, comPend = pessoas.filter((x) => x.npend).length;
+  const corCel = { ok: '#2e7d32', tarde: '#b45309', pend: '#9aa19b', nao: '#c62828' };
+  return `<div class="cartao"><h2>👷 Equipa de campo</h2>
+    <p class="pequeno"><span>O que cada técnico e supervisor fez e o que falta.</span> <span>Só o gestor principal vê este painel.</span></p>
+    <div class="sub"><span>Hoje</span> <b>${fmtData(hoje)}</b> · <span>actualizado às</span> <b>${esc((d.agora || '').slice(11, 16))}</b> <button class="chip" onclick="desenharEquipaCampo()">↻ Actualizar</button></div>
+    <div class="kpis-eq"><div><b>${fecharam}</b> <span>de</span> <b>${pessoas.length}</b><small>fecharam o dia hoje</small></div><div><b class="${comPend ? 'erro-txt' : ''}">${comPend}</b><small>com coisas por fazer</small></div></div>
+    <div class="leg-eq"><span><i style="background:${corCel.ok}"></i>Fechou até às 18:00</span><span><i style="background:${corCel.tarde}"></i>Fechou depois das 18:00</span><span><i style="background:${corCel.nao}"></i>Não fechou</span><span><i style="background:${corCel.pend}"></i>Hoje, ainda pode fechar</span></div>
+    ${d.monitoria_pausa ? '<p class="pequeno">⏸ <span>A monitoria está parada: não conta.</span></p>' : ''}</div>
+  ${pessoas.map(({ p, dh, f, npend, ef }) => {
+    const dias = [...(p.dias || [])].sort((a, b) => (a.data < b.data ? -1 : 1));
+    const faixa = dias.map((x) => { const e = estadoFecho(x.data, x.fecho, hoje, depois), dw = DIAS_SEM[new Date(x.data + 'T12:00:00').getDay() - 1] || '';
+      return `<div class="cel" style="background:${corCel[e[0]]}"><span>${esc(dw)}</span><b>${esc(x.data.slice(8, 10) + '/' + x.data.slice(5, 7))}</b>${x.fecho ? `<small>${esc(x.fecho)}</small>` : ''}</div>`; }).join('');
+    const anteriores = dias.filter((x) => x.data !== hoje).reverse().map((x) => { const e = estadoFecho(x.data, x.fecho, hoje, depois);
+      return `<div class="item"><div><div class="nome">${DIAS_SEM[new Date(x.data + 'T12:00:00').getDay() - 1] ? `<span>${DIAS_SEM[new Date(x.data + 'T12:00:00').getDay() - 1]}</span> ` : ''}<b>${fmtData(x.data)}</b></div>
+        <div class="sub">${e[1]} <span>${e[2]}</span>${e[3] ? ` <b>${esc(e[3])}</b>` : ''}</div>
+        ${x.sem_rega.length ? `<div class="sub erro-txt"><span>Sem rega nem motivo:</span> ${nomesSem(x.sem_rega)}</div>` : ''}
+        ${x.chegadas.length ? `<div class="sub"><span>Chegaram depois das</span> <b>${esc(d.hora_chegada)}</b>: <span class="sem-trad">${esc(x.chegadas.map((c) => c.nome + ' ' + c.hora).join(', '))}</span></div>` : ''}
+        ${x.monitoria && !d.monitoria_pausa ? `<div class="sub erro-txt"><span>Monitoria por verificar:</span> <b>${x.monitoria}</b></div>` : ''}
+        ${x.fora ? `<div class="sub erro-txt"><span>Regas fora da lista sem motivo:</span> <b>${x.fora}</b></div>` : ''}
+        ${x.acomp ? `<div class="sub"><span>Regas acompanhadas:</span> <b>${x.acomp}</b></div>` : ''}</div></div>`; }).join('');
+    const info2 = dh ? [dh.chegadas.length ? `<div class="sub"><span>Chegaram ao 1.º campo depois das</span> <b>${esc(d.hora_chegada)}</b>: <span class="sem-trad">${esc(dh.chegadas.map((c) => c.nome + ' ' + c.hora).join(', '))}</span></div>` : '',
+      `<div class="sub"><span>Regas acompanhadas hoje:</span> <b>${dh.acomp}</b></div>`].join('') : '';
+    return `<div class="cartao eqc" data-p="${esc(p.id)}">
+      <div class="eqc-cab"><div><div class="nome sem-trad">${esc(p.nome)}</div><div class="sub"><span>${p.papel === 'supervisor' ? 'Supervisor' : 'Técnico'}</span> · <b>${p.equipas.length}</b> <span>equipas</span></div></div>${npend ? `<span class="nb v">${npend}</span>` : '<span class="nb ok">✓</span>'}</div>
+      ${ef ? `<div class="msg ${ef[0] === 'ok' ? 'ok' : ef[0] === 'pend' ? 'info' : 'erro'}">${ef[1]} <span>${ef[2]}</span>${ef[3] ? ` <b>${esc(ef[3])}</b>` : ''}</div>` : '<div class="msg info"><span>Hoje não é dia de rega.</span></div>'}
+      ${f.length ? `<div class="fi-tit">O que falta</div>${f.map(([cor, t, n, c], i) => linhaTar(`eq-${p.id}-${i}`, t, n, cor, c || '<p class="pequeno">—</p>')).join('')}` : '<p class="ok-txt">✓ Nada por fazer hoje.</p>'}
+      ${info2}
+      <div class="fi-tit">Fecho do dia nos últimos dias</div><div class="faixa-eq">${faixa}</div>
+      ${anteriores ? `<details class="fi-mais"${window.__TAR_ABERTAS ? ' open' : ''}><summary>Ver os dias anteriores</summary>${anteriores}</details>` : ''}
+      <details class="fi-mais"><summary>Equipas</summary><p class="pequeno">${nomesSem(p.equipas)}</p></details></div>`;
+  }).join('') || '<div class="msg info">Não há técnicos nem supervisores com equipas.</div>'}`;
+}
 // ---------- gestão (gestor) ----------
 async function chamarGestor(corpo) {
   const { data, error } = await sb.functions.invoke('gestor-activistas', { body: corpo });
@@ -5886,6 +5967,7 @@ async function chamarGestor(corpo) {
 }
 const sugerirUtilizador = (nome) => nome.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/\s+/)[0].replace(/[^a-z0-9]/g, '');
 async function desenharGestao(msg = '') {
+  mostrarAbaGestao();   // v223: separadores «Equipa de campo» / «Acessos e configurações» (só o gestor principal)
   $('#gestao-demo').innerHTML = cartaoDemo();
   const guardado = LS.get('gestaoListar');
   if (guardado) montarGestao(guardado, msg); else $('#gestao').innerHTML = '<p>A carregar…</p>';

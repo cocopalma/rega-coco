@@ -37,6 +37,13 @@ nav button.on{color:var(--verde);border-top-color:var(--verde)}
 .tar>summary .nb.v{background:#c62828}.tar>summary .nb.a{background:#b45309}.tar>summary .nb.z{background:#e3e7e1;color:#5b6168}
 .tar>summary .ch{width:18px;height:18px;flex:none;transition:transform .15s;color:#8a9089}.tar[open]>summary .ch{transform:rotate(90deg)}
 .tar>.tc{padding:0 0 10px}
+.eqc-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}.eqc-cab .nome{font-weight:700;font-size:16px}
+.eqc-cab .nb,.eqc .nb.ok{min-width:28px;text-align:center;border-radius:999px;padding:3px 9px;font-size:13px;font-weight:700;color:#fff;background:#c62828}.eqc .nb.ok{background:#2e7d32}
+.kpis-eq{display:flex;gap:10px;margin:10px 0}.kpis-eq>div{flex:1;background:#f4f6f2;border-radius:10px;padding:8px 10px;font-size:22px}.kpis-eq small{display:block;font-size:12px;color:var(--cinza)}
+.leg-eq{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--cinza)}.leg-eq i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.faixa-eq{display:flex;gap:4px;margin:4px 0 8px}.faixa-eq .cel{flex:1;min-width:0;border-radius:8px;color:#fff;text-align:center;padding:5px 2px;font-size:11px;line-height:1.25}
+.faixa-eq .cel span,.faixa-eq .cel b,.faixa-eq .cel small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.faixa-eq .cel b{font-size:12.5px}
+.ok-txt{color:#2e7d32;font-weight:600}
 .cartao-in{padding:0}.cartao-in>h2:first-child{display:none}
 .mais-tit{font-size:13px;font-weight:700;color:var(--cinza);margin:16px 4px 6px;letter-spacing:.02em}
 details.ajuda{display:inline}details.ajuda>summary{list-style:none;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1.5px solid #8a9089;color:#5b6168;font-size:13px;font-weight:700;cursor:pointer;vertical-align:middle}
@@ -328,7 +335,7 @@ td.n,th.n{text-align:right}
     </section>
     <section class="ecra" id="e-hoje"><div class="pad" id="hoje"></div></section>
     <section class="ecra" id="e-painel"><iframe id="painel-f" title="Painel geral" style="border:0;width:100%;height:100%;display:block"></iframe></section>
-    <section class="ecra" id="e-gestao"><div class="pad"><div id="gestao-demo"></div><div id="gestao"></div></div></section>
+    <section class="ecra" id="e-gestao"><div class="pad"><div id="gestao-tabs"></div><div id="gestao-eq" style="display:none"></div><div id="gestao-demo"></div><div id="gestao"></div></div></section>
   </main>
   <nav id="nav">
     <button data-e="hoje"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Hoje</span></button>
@@ -341,12 +348,12 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=222"></script>
-<script src="i18n.js?v=222"></script>
+<script src="i18n-sw.js?v=223"></script>
+<script src="i18n.js?v=223"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=222"></script>
-<script src="app.js?v=222"></script>
+<script src="demo.js?v=223"></script>
+<script src="app.js?v=223"></script>
 </body>
 </html>
