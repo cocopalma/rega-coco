@@ -778,7 +778,7 @@ function desenharRotulos() {
   // os campos mais perto do centro do ecrã primeiro; uma etiqueta que tapasse outra já posta não aparece
   // (aparece ao aproximar o mapa) — 18/10/2026, Valdo
   const man = modoManut();
-  const L2 = (man ? camposManut() : visiveis()).filter((a) => a.latitude != null && b.contains([a.latitude, a.longitude]) && (man || !(fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa))))
+  const L2 = (man ? camposManut() : visiveis()).filter((a) => a.latitude != null && b.contains([a.latitude, a.longitude]) && (man || !(fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa))) && (man || !S.planoIds || S.planoIds.has(a.id)))
     .sort((x, y) => mapa.distance(c, [x.latitude, x.longitude]) - mapa.distance(c, [y.latitude, y.longitude]));
   const postas = []; let n = 0;
   const tapa = (r) => postas.some((p) => r.left < p.right + 2 && r.right > p.left - 2 && r.top < p.bottom + 2 && r.bottom > p.top - 2);
@@ -1086,6 +1086,7 @@ function desenharMapa(enquadrar = false) {
     // v139 (29/10/2026, Valdo): a área medida pelo activista aparece a tracejado enquanto não é aprovada (também nos campos sem coordenada)
     const prop = Array.isArray(a.poligono_proposto) && a.poligono_proposto.length >= 3 ? a.poligono_proposto : null;
     if (a.latitude == null && !prop) continue;
+    if (S.planoIds && !S.planoIds.has(a.id)) continue;   // v222: mapa do plano
     if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
     const s = situacao(a);
     const borda = bordaAzul(a, s) ? BORDA.regado : BORDA.nunca;
@@ -1112,18 +1113,18 @@ function desenharMapa(enquadrar = false) {
     pts.push([a.latitude, a.longitude]);
   }
   // poços de água (18/10/2026, Valdo): em princípio estão em campos de produtores que regam sozinhos (fora do plano)
-  for (const q of S.pocos || []) {
+  for (const q of S.planoIds ? [] : S.pocos || []) {
     L.marker([q.lat, q.lon], { icon: L.divIcon({ className: 'ic-poco', html: '💧', iconSize: [20, 20], iconAnchor: [10, 10] }) })
       .bindPopup(`<b>Poço ${esc(q.codigo)}</b><br>${esc(q.comunidade || '')}${q.fonte ? ' · ' + esc(q.fonte) : ''}${q.observacao ? '<br>' + esc(q.observacao) : ''}`)
       .on('click', () => { if (pontoRegua([q.lat, q.lon], q.codigo)) setTimeout(() => mapa.closePopup(), 0); }).addTo(camada);
   }
   // pluviómetros (v219, 08/11/2026, Valdo): os 20 do sistema de chuva da JFS; a chuva regista-se junto deles
-  for (const q of S.pluvs || []) {
+  for (const q of S.planoIds ? [] : S.pluvs || []) {
     L.marker([q.lat, q.lon], { icon: L.divIcon({ className: 'ic-poco', html: '🌧', iconSize: [20, 20], iconAnchor: [10, 10] }) })
       .bindPopup(`<b><span>Pluviómetro</span> <span class="sem-trad">${esc(q.nome)}</span></b><br><span class="sem-trad">${esc(nomeLocal(q.comunidade, q.zona))}</span>${q.ultima_leitura_origem ? `<br><span class="pequeno"><span>Última leitura no sistema de chuva:</span> ${fmtData(q.ultima_leitura_origem)}</span>` : ''}`)
       .on('click', () => { if (pontoRegua([q.lat, q.lon], q.nome)) setTimeout(() => mapa.closePopup(), 0); }).addTo(camada);
   }
-  desenharExpansao();
+  if (!S.planoIds) desenharExpansao();
   if (enquadrar && pts.length) mapa.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
   marcasItinerario();
   desenharRotulos();
@@ -2202,8 +2203,10 @@ function verPlanoMapa(id) {
   const el = $('#sug-mapa');
   el.innerHTML = `<div>🗺 <span>Plano da equipa</span> · <span class="sem-trad">${esc(p.activista)}</span> · <span>dia·ordem</span></div><div class="chips"><button class="chip" onclick="ecraPlano('${esc(p.id)}')">Ver o plano</button><button class="chip" onclick="fecharPlanoMapa()">Fechar</button></div>`;
   el.style.display = ''; S.planoMapa = true;
+  // v222 (09/11/2026, Valdo pelo 💡): no mapa do plano só aparecem os campos do plano; os outros saem para não atrapalhar a análise
+  S.planoIds = new Set((p.dias || []).flatMap((d) => d.campos.map((c) => c.area_id))); desenharMapa();
 }
-function fecharPlanoMapa() { S.planoMapa = false; if (camadaPlano) { camadaPlano.clearLayers(); mapa.removeLayer(camadaPlano); } mostrarSugFixa(); }
+function fecharPlanoMapa() { S.planoMapa = false; S.planoIds = null; desenharMapa(); if (camadaPlano) { camadaPlano.clearLayers(); mapa.removeLayer(camadaPlano); } mostrarSugFixa(); }
 
 // ---------- manutenção das plantas em Quiwia e Farol (v96, 22/10/2026, pedido do Raul via Valdo) ----------
 // À parte da rega, para não se confundir campos por regar com campos por fazer: interruptor "💧 Rega / 🌱 Manutenção" no Mapa

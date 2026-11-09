@@ -632,6 +632,9 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Tabela enviada ao Valdo: `Rega_Coco_revisao_suaili_20261016.xlsx` (cópia em `rega-test/suaili/`). Folhas: 1 Activista (198 frases vistas nos testes do activista), 2 Técnico e supervisor (333), 3 Painel (117), 4 Frases com números (116). Coluna amarela "Kiswahili corrigido"; coluna ID = `D|<frase em português>` (dicionário `I18N_SW_D`) ou `R|<índice>` (expressão `I18N_SW_R`, mesma ordem que `R`). Nas frases variáveis [1], [2] = partes da expressão e { } = parte opcional.
 - Quando voltar: para cada linha com correcção, D → substituir o valor em `I18N_SW_D`; R → reescrever a substituição da expressão nesse índice (pôr $1/$2 no lugar de [1]/[2]). Gerado por `rega-test/suaili/tabela.js`.
 
+## Mapa do plano só com os campos do plano (v222, 09/11/2026, sugestão do Valdo pelo 💡: "no mapa deve aparecer apenas os campos regados. Todos os outros campos… devem ser apagados para não atrapalhar a análise")
+- Planos das equipas › «Ver no mapa» (`verPlanoMapa`): o mapa mostra só os campos dos dias do plano (`S.planoIds`), sem os outros campos, etiquetas, poços, pluviómetros nem a área de expansão; «Fechar» (`fecharPlanoMapa`) repõe tudo. Teste: `testes/teste_v222.py` (LING=en / sw).
+
 ## Data e hora da medição da área (v221, 09/11/2026, Valdo: "deve aparecer na ficha do produtor a data e a hora em que ele fez a medição")
 - Ficha do campo: cartão «Área medida pelo activista — por aprovar» › «Medida em dd/mm/aaaa hh:mm»; o activista vê o mesmo por baixo de «Área medida: … À espera de aprovação…»; «O meu dia» › medições por aprovar também com a hora (`fmtDataHora`, hora do telefone; `areas.proposta_em` já guardava a hora). Teste: `testes/teste_v221.py` (PAPEL=tecnico / activista; LING=en / sw).
 
