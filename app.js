@@ -375,7 +375,7 @@ async function sincronizarAgora(silencioso) {
         ? await sb.rpc('gravar_coordenada', { p_area: x.area_id, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao })
         : x.tipo === 'zona' ? await sb.rpc('definir_zona', { p_area: x.area_id, p_zona: x.zona })
         : x.tipo === 'comunidade' ? await sb.rpc('definir_comunidade', { p_area: x.area_id, p_comunidade: x.comunidade })
-        : x.tipo === 'limites' ? await sb.rpc('abrir_limites', { p_area: x.area_id, p_abrir: x.abrir })
+        : x.tipo === 'limites' ? await sb.rpc('abrir_limites', { p_area: x.area_id, p_abrir: x.abrir, p_motivo: x.motivo || null })
         : x.tipo === 'aprovar' ? await sb.rpc('aprovar_poligono', { p_area: x.area_id, p_aprovar: x.aprovar, p_motivo: x.motivo || null })
         : x.tipo === 'poligono' ? await sb.rpc('gravar_poligono', { p_area: x.area_id, p_pontos: x.pontos, p_precisao: x.precisao, p_medido_em: x.medido_em })
         : x.tipo === 'planta' ? await sb.rpc('gravar_planta', { p_id: x.planta.id, p_area: x.area_id, p_n: x.planta.n, p_lat: x.planta.lat, p_lon: x.planta.lon, p_precisao: x.planta.precisao_m, p_em: x.planta.marcada_em, p_estado: x.planta.estado, p_cavaroda: x.planta.cavaroda, p_mulching: x.planta.mulching })
@@ -3014,9 +3014,9 @@ function botoesCampo(a) {
   if (['gestor', 'supervisor', 'tecnico'].includes(papel)) g.push(itemGerir(`ecraComunidade('${id}')`, '🏘 Mudar a comunidade'));
   if (['gestor', 'supervisor'].includes(papel) && zonasDe(a.comunidade).length) g.push(itemGerir(`ecraZona('${id}')`, `🗂 ${a.zona ? 'Mudar a zona' : 'Definir a zona'}`));
   if (coord && (a.latitude == null || aberto)) g.push(itemGerir(`ecraCoordenada('${id}')`, `📍 ${a.latitude == null ? 'Gravar a coordenada deste campo' : 'Corrigir a coordenada (estou no campo)'}`));
-  if (gestor && (a.latitude != null || temPoligono(a)))
+  if (podeAbrirLimites(a) && (a.latitude != null || temPoligono(a)))
     g.push(a.limites_abertos ? itemGerir(`mudarLimites('${id}', false)`, '🔒 Fechar a correcção da coordenada e da área')
-      : itemGerir(`mudarLimites('${id}', true)`, '🔓 Deixar o supervisor/técnico corrigir a coordenada e medir de novo'));
+      : itemGerir(`ecraAbrirLimites('${id}')`, '🔓 Abrir a correcção da coordenada e da área (medir de novo)'));
   if (podeRetirar(a)) g.push(itemGerir(`ecraRetirar('${id}')`, '🗑 Retirar da rega', 'vermelho'));
   if (g.length) h += `<div class="fi-tit">Gerir o campo</div><div class="fi-ger">${g.join('')}</div>`;
   return h;
@@ -3078,7 +3078,7 @@ function cartaoProposta(a) {
     ${a.vivas ? `<div class="lin"><span>Plantas vivas na base</span><b>${num(a.vivas)} (${(a.vivas / ((a.area_m2_proposta || areaPontos(a.poligono_proposto)) / 10000)).toLocaleString(LOC, { maximumFractionDigits: 0 })} por ha)</b></div>` : ''}
     ${desenhoPontos(a.poligono_proposto)}
     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="margin:0" onclick="aprovarMedicao('${esc(a.id)}', true)">✓ Aprovar</button><button class="btn sec" style="margin:0" onclick="aprovarMedicao('${esc(a.id)}', false)">✗ Recusar</button></div>
-    ${temPoligono(a) && !a.limites_abertos ? '<p class="pequeno">Este campo já tem limite: só o gestor pode substituí-lo.</p>' : ''}</div>`;
+    ${temPoligono(a) && !a.limites_abertos ? '<p class="pequeno">Este campo já tem limite. Para o substituir, abra antes a correcção em «Gerir o campo» › «🔓 Abrir a correcção da coordenada e da área».</p>' : ''}</div>`;
 }
 // v210 (07/11/2026, Valdo: "Deve passar a pedir motivo de recusa"): recusar a medição pede o motivo; o activista vê-o na ficha
 function linhaRecusaMed(a) {
@@ -3112,7 +3112,7 @@ function aplicarAprovacao(a, sim, motivo) {
 }
 function aprovarMedicao(id, sim, motivo) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
-  if (sim && temPoligono(a) && !a.limites_abertos && S.perfil.papel !== 'gestor') return aviso('Este campo já tem limite. Só o gestor pode substituí-lo.', 'erro');
+  if (sim && temPoligono(a) && !a.limites_abertos && S.perfil.papel !== 'gestor') return aviso('Este campo já tem limite. Para o substituir, abra antes a correcção em «Gerir o campo» › «🔓 Abrir a correcção da coordenada e da área».', 'erro');
   if (!sim && !motivo) return ecraRecusarMedicao(id);
   aplicarAprovacao(a, sim, motivo); LS.set('areas', S.areas);
   porNaFilaAlt({ tipo: 'aprovar', area_id: id, aprovar: sim, motivo: sim ? null : motivo });
@@ -3126,10 +3126,30 @@ function ecraPorAprovar() {
     <div class="sub">${esc(a.pr)} · ${esc(a.comunidade)} · ${esc(nomeAct(a.activista_id))} · ${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}</div></div></div>`).join('') : '<p class="pequeno">Nada por aprovar.</p>'}
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
 }
-function mudarLimites(id, abrir) {
+// v220 (09/11/2026, Valdo: "para que o técnico e o supervisor consigam habilitar que o ativista meça a área, não apenas o gestor,
+// mesmo de um campo que já tem polígono feito"): técnico e supervisor abrem a correcção nos campos da sua lista, com motivo
+// obrigatório (o gestor pode deixar vazio); fecha sozinho quando alguém grava a coordenada ou a área. Funciona sem rede.
+const podeAbrirLimites = (a) => !!(a && !S.perfil?.so_teste && (S.perfil?.papel === 'gestor' || (['tecnico', 'supervisor'].includes(S.perfil?.papel) && meuCampo(a))));
+function ecraAbrirLimites(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a || !podeAbrirLimites(a)) return;
+  const obrig = S.perfil.papel !== 'gestor';
+  folha(`<h2>Abrir a correcção da coordenada e da área</h2>
+    <p class="pequeno"><span class="sem-trad">${esc(a.produtor)} · ${esc(a.pr)}-${esc(a.area_n)}</span></p>
+    <p class="pequeno">O activista, o técnico e o supervisor passam a poder corrigir a coordenada e medir a área deste campo de novo. A medição do activista fica por aprovar pelo técnico ou pelo supervisor. Fecha sozinho depois de gravarem.</p>
+    <label>${obrig ? 'Porque é preciso medir de novo? (obrigatório)' : 'Porque é preciso medir de novo? (opcional)'}</label>
+    <textarea id="al-mot" rows="3" placeholder="Ex.: o limite não é deste campo; o ponto está fora do campo"></textarea>
+    <div id="al-msg"></div>
+    <button class="btn" id="al-ok">🔓 Abrir a correcção</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Cancelar</button>`);
+  $('#al-ok').onclick = () => {
+    const m = $('#al-mot').value.trim();
+    if (obrig && m.replace(/\s/g, '').length < 3) { $('#al-msg').innerHTML = '<div class="msg erro">Escreva o motivo.</div>'; return; }
+    mudarLimites(id, true, m);
+  };
+}
+function mudarLimites(id, abrir, motivo) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
-  a.limites_abertos = abrir; LS.set('areas', S.areas); porNaFilaAlt({ tipo: 'limites', area_id: id, abrir });
-  abrirFicha(id, `<div class="msg ok">${abrir ? 'O supervisor e o técnico já podem corrigir a coordenada e medir a área deste campo. Fecha de novo depois de gravarem.' : 'Correcção fechada.'}</div>`);
+  a.limites_abertos = abrir; LS.set('areas', S.areas); porNaFilaAlt({ tipo: 'limites', area_id: id, abrir, motivo: abrir ? (motivo || null) : null });
+  abrirFicha(id, `<div class="msg ok">${abrir ? 'O activista, o técnico e o supervisor já podem corrigir a coordenada e medir a área deste campo. Fecha sozinho depois de gravarem.' : 'Correcção fechada.'}</div>`);
 }
 // mudar a comunidade do campo (15/10/2026, Nuro/Valdo): técnico, supervisor e gestor; a zona volta a "por definir"
 function ecraComunidade(id) {
