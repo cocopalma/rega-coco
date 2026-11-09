@@ -101,6 +101,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .filtro input[type=date]{font:inherit;font-size:13px;color:var(--ink);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px 6px;margin-left:4px}
 .filtro .datas button{border-radius:8px}
 .filtro .legenda{flex-basis:100%;color:var(--ink);font-size:13px;font-weight:600}
+.leg-dia[hidden]{display:none}.leg-dia{display:flex;gap:14px;flex-wrap:wrap;margin:4px 0 6px;font-size:12px;color:var(--ink2)}.leg-dia i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-2px}
 .per-tag{font-size:12px;color:var(--muted);margin:-4px 0 8px}
 .sec.oculta{display:none!important}
 .esc-teste{float:right;font-size:12px;font-weight:400;margin-top:4px}
@@ -156,7 +157,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <div class="tabela" id="t-cump"></div></section>
 
   <section class="grelha dois sec">
-    <div class="card"><h2>Plantas regadas por dia</h2><p class="desc">Registos da app com plantas regadas (exclui testes).</p><div id="g-dia"></div><details><summary>Ver tabela</summary><div class="tabela" id="t-dia"></div></details></div>
+    <div class="card"><h2>Plantas regadas por dia</h2><p class="desc">Registos da app com plantas regadas (exclui testes).</p><div id="g-dia"></div><div class="leg-dia pequeno" id="leg-dia" hidden><span><i style="background:var(--s1);opacity:.28"></i>Plantas vivas na base dos campos regados</span> <span><i style="background:var(--s1)"></i>Plantas regadas</span></div><p class="desc" id="d-dia-vivas" hidden>Em cada rega, as plantas regadas comparam-se com as vivas na base do campo. Um campo regado em várias rondas conta as vivas em cada rega. Uma rega que ficou a meio e continuou noutro dia conta só o que regou; o resto passa para a rega seguinte. As secas ou mortas são as declaradas na saída da rega (desde 31/10).</p><details><summary>Ver tabela</summary><div class="tabela" id="t-dia"></div></details></div>
     <div class="card"><h2>Plantas vivas regadas por comunidade</h2><p class="desc">% das plantas vivas da comunidade em campos já regados pela app. Em Palma, por zona (bairro onde fica o campo).</p><div id="g-com"></div><details><summary>Ver tabela</summary><div class="tabela" id="t-com"></div></details></div>
   </section>
 
@@ -261,10 +262,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=226"></script>
-<script src="i18n.js?v=226"></script>
+<script src="i18n-sw.js?v=227"></script>
+<script src="i18n.js?v=227"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=226"></script>
+<script src="demo.js?v=227"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -285,6 +286,13 @@ const TIPOS = { sem_agua_fonte: 'Não havia água na fonte', agua_acabou: 'A ág
 let DMC = null;   // v123: campos sorteados na monitoria, por pessoa
 let DCU = null;   // v134: cumprimento por técnico e supervisor
 let DNA = null;   // v225: campos que nunca receberam água
+let DPV = null;   // v227: plantas regadas das vivas que havia (painel_plantas_vivas)
+function kpiVivas(kpi) {
+  const t = DPV.total, falta = t.vivas - t.plantas, p = t.vivas ? Math.round(100 * t.plantas / t.vivas) : null;
+  return kpi('Plantas regadas das vivas que havia', p == null ? '—' : p + ' %',
+    `${num(t.plantas)} <span>regadas de</span> ${num(t.vivas)} <span>vivas na base</span> · ${num(t.regas)} <span>regas</span>` +
+    (falta > 0 ? `<br><span>Faltaram</span> ${num(falta)}: <span>secas ou mortas</span> ${num(t.mortas)} · <span>por terminar</span> ${num(t.por_terminar)} · <span>outras razões</span> ${num(t.outras)}` : ''), p);
+}
 let DMX = null;   // v226: porque não se atingiu a meta
 let D = null, DM = null, DP = null, DT = null, DZ = null, DC = null, DR = null;   // DR = recontagens; DM = monitoria; DP = plantas por dia e equipa; DT = tempos
 const META = 140;   // plantas por pessoa por dia (Valdo, 11/10/2026)
@@ -353,12 +361,12 @@ function colunaPath(x, y, w, h) { const r = Math.min(4, w / 2, h); return `M${x}
 function barraPath(x, y, w, h) { const r = Math.min(4, h / 2, w); return `M${x},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h - r}Q${x + w},${y + h} ${x + w - r},${y + h}H${x}Z`; }
 
 // ---------- gráfico de colunas (uma série) ----------
-function colunas(alvo, dados, { valor, rotulo, dicaDe, fmt = compacto, ref, refTxt }) {
+function colunas(alvo, dados, { valor, rotulo, dicaDe, fmt = compacto, ref, refTxt, fundo }) {   // v227: fundo = coluna clara por trás (ex.: plantas vivas na base)
   const el = $(alvo);
   if (!dados.length) { el.innerHTML = '<div class="vazio">Ainda sem registos.</div>'; return; }
   const W = Math.max(320, el.clientWidth || 520), H = 240, pl = 48, pr = 8, pt = 22, pb = 28;
   const iw = W - pl - pr, ih = H - pt - pb;
-  const { top, step } = passoLimpo(Math.max(...dados.map(valor), ref || 0));
+  const { top, step } = passoLimpo(Math.max(...dados.map(valor), ...(fundo ? dados.map((d) => fundo(d) || 0) : []), ref || 0));
   const banda = iw / dados.length, bw = Math.max(3, Math.min(24, banda - 2));
   const salto = Math.ceil(dados.length / Math.max(1, Math.floor(iw / 46)));
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de colunas">`;
@@ -368,6 +376,7 @@ function colunas(alvo, dados, { valor, rotulo, dicaDe, fmt = compacto, ref, refT
   dados.forEach((d, i) => {
     const v = valor(d), h = (v / top) * ih, x = pl + i * banda + (banda - bw) / 2, y = pt + ih - h;
     s += `<g class="marca-dados" tabindex="0" data-dica="${dica(dicaDe(d))}"><rect x="${pl + i * banda}" y="${pt}" width="${banda}" height="${ih}" fill="transparent"/>` +
+      (fundo && fundo(d) > 0 ? `<path d="${colunaPath(x, pt + ih - (fundo(d) / top) * ih, bw, (fundo(d) / top) * ih)}" fill="var(--s1)" opacity=".28"/>` : '') +
       (h > 0 ? `<path class="vis" d="${colunaPath(x, y, bw, h)}" fill="var(--s1)"/>` : '') + '</g>';
     if (i === iMax || i === dados.length - 1) s += `<text class="valor" x="${x + bw / 2}" y="${y - 6}" text-anchor="middle">${fmt(v)}</text>`;
     if (i % salto === 0) s += `<text x="${pl + i * banda + banda / 2}" y="${H - 8}" text-anchor="middle">${esc(rotulo(d))}</text>`;
@@ -521,6 +530,7 @@ function desenhar() {
   const hc = D.chegada_equipa?.hora_combinada || '06:00';
   $('#d-agua').textContent = `${filtrado ? 'No período escolhido.' : 'Últimos 14 dias.'} Espera = minutos entre a chegada da equipa ao campo e a chegada do tuk-tuk (água). As equipas devem chegar ao campo às ${hc}; atraso = minutos depois das ${hc} na chegada ao 1.º campo do dia.`;
   const eqR = D.por_equipa || [], rLista = eqR.reduce((t, e) => t + (e.lista || 0), 0), rReg = eqR.reduce((t, e) => t + (e.regadas_ronda || 0), 0), pR = pct(rReg, rLista);
+  const PV = DPV && DPV.total && DPV.total.regas ? DPV.total : null;   // v227: plantas regadas das vivas que havia
   const kpi = (rot, val, sub, barra) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${val}</div><div class="sub">${sub}</div>${barra != null ? `<div class="barra"><i style="width:${Math.min(100, barra)}%"></i></div>` : ''}</div>`;
   $('#kpis').innerHTML =
     // v128 (28/10/2026, Valdo): dividir os campos regados num dia por todos os campos não dizia nada; o número é do período e a % passa para o progresso da ronda (estado de hoje)
@@ -528,20 +538,24 @@ function desenhar() {
     (!filtrado ? kpi('Campos regados', fmtPct(pct(D.areas_regadas, u.areas)), `${num(D.areas_regadas)} / ${num(u.areas)} <span>campos na rega já receberam pelo menos uma rega</span>`, pct(D.areas_regadas, u.areas))
       : kpi('Campos regados', num(D.areas_regadas), `<span>com pelo menos uma rega no período</span><br><span>Campos na rega:</span> ${num(u.areas)}`)) +
     kpi('Progresso da ronda (hoje)', fmtPct(pR), `${num(rReg)} / ${num(rLista)} <span>campos com equipa, na ronda actual de cada uma</span>${u.areas > rLista ? `<br><span>Campos sem equipa:</span> ${num(u.areas - rLista)} · <span>total na rega:</span> ${num(u.areas)}` : ''}`, pR) +
-    kpi('Plantas vivas em campos regados', num(D.vivas_regadas), `<span>nos campos regados no período</span><br><span>Plantas vivas na rega:</span> ${num(u.vivas)}`) +
+    (PV ? kpiVivas(kpi) : kpi('Plantas vivas em campos regados', num(D.vivas_regadas), `<span>nos campos regados no período</span><br><span>Plantas vivas na rega:</span> ${num(u.vivas)}`)) +
     kpi('Frequência média', D.dias_medios_entre_regas != null ? `${Number(D.dias_medios_entre_regas).toLocaleString(LOC)} dias` : '—', 'entre duas regas do mesmo campo') +
     kpi('Espera pela água', D.espera_agua_min != null ? `${num(D.espera_agua_min)} min` : '—', 'média, da chegada da equipa ao campo à chegada do tuk-tuk') +
     kpi('Chegada da equipa ao 1.º campo', D.chegada_equipa?.hora_media || '—', D.chegada_equipa ? `média; devia ser às ${D.chegada_equipa.hora_combinada}. ${num(D.chegada_equipa.depois_hora)} de ${num(D.chegada_equipa.dias)} dias de equipa depois dessa hora (atraso médio ${num(D.chegada_equipa.atraso_min)} min)` : 'sem dados');
-  $('#kpis').innerHTML += kpi('Plantas regadas (total)', num(D.plantas_regadas_total), `em ${num(D.registos)} regas de campo`) +
+  $('#kpis').innerHTML += (PV ? '' : kpi('Plantas regadas (total)', num(D.plantas_regadas_total), `em ${num(D.registos)} regas de campo`)) +
     kpi('Pessoas-dia', num(D.pessoas_dia_total), 'soma das pessoas presentes por equipa e dia') +
     kpi('Plantas por pessoa-dia', D.pessoas_dia_total ? num(D.plantas_regadas_total / D.pessoas_dia_total) : '—', 'produtividade média') +
     kpi('Equipas activas', num((D.por_equipa || []).filter((e) => e.dias_trabalhados > 0).length), `de ${num((D.por_equipa || []).length)} equipas com lista`);
 
   const dias = D.por_dia || [];
-  colunas('#g-dia', dias, { valor: (d) => d.plantas, rotulo: (d) => ddmm(d.data),
-    dicaDe: (d) => [[num(d.plantas), 'plantas regadas'], [fmtData(d.data)], [`${d.campos} campos · ${d.equipas} equipas · ${num(d.pessoas)} pessoas`]] });
-  tabela('#t-dia', [['Data'], ['Plantas', 1], ['Campos', 1], ['Equipas', 1], ['Pessoas', 1]],
-    dias.slice().reverse().map((d) => [fmtData(d.data), num(d.plantas), num(d.campos), num(d.equipas), num(d.pessoas)]));
+  // v227 (09/11/2026, Valdo: "Neste gráfico podíamos colocar também plantas vivas"): coluna clara = plantas vivas na base dos campos regados, rega a rega
+  const pvd = Object.fromEntries(((DPV && DPV.dias) || []).map((x) => [x.data, x]));
+  $('#leg-dia').hidden = $('#d-dia-vivas').hidden = !PV;
+  colunas('#g-dia', dias, { valor: (d) => d.plantas, rotulo: (d) => ddmm(d.data), fundo: PV ? (d) => pvd[d.data]?.vivas || 0 : null,
+    dicaDe: (d) => [[num(d.plantas), 'plantas regadas'], ...(pvd[d.data] ? [[num(pvd[d.data].vivas), 'plantas vivas na base']] : []), [fmtData(d.data)], [`${d.campos} campos · ${d.equipas} equipas · ${num(d.pessoas)} pessoas`]] });
+  const pcV = (x) => (x && x.vivas ? Math.round(100 * x.plantas / x.vivas) + ' %' : '—'), nV = (x, k) => (x ? num(x[k]) : '—');
+  tabela('#t-dia', [['Data'], ['Plantas', 1], ...(PV ? [['Plantas vivas na base', 1], ['% regadas', 1], ['Secas ou mortas', 1], ['Por terminar', 1], ['Outras razões', 1]] : []), ['Campos', 1], ['Equipas', 1], ['Pessoas', 1]],
+    dias.slice().reverse().map((d) => { const x = pvd[d.data]; return [fmtData(d.data), num(d.plantas), ...(PV ? [nV(x, 'vivas'), pcV(x), nV(x, 'mortas'), nV(x, 'por_terminar'), nV(x, 'outras')] : []), num(d.campos), num(d.equipas), num(d.pessoas)]; }));
 
   const com = (D.por_comunidade || []).map((c) => ({ ...c, p: pct(c.vivas_regadas, c.vivas) })).sort((a, b) => b.p - a.p || a.comunidade.localeCompare(b.comunidade));
   // zonas (bairros) pelo local do campo, logo abaixo da comunidade (12/10/2026, Valdo)
@@ -1085,7 +1099,8 @@ async function buscarPeriodo(p) {
   const cu = await sb.rpc('painel_cumprimento', { p_de: de, p_ate: ate });
   const na = await sb.rpc('painel_nunca_agua', { p_de: de, p_ate: ate });
   const mx = await sb.rpc('painel_meta_causas', { p_de: de, p_ate: ate });
-  return { DMX: mx.error ? null : mx.data, DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
+  const pv = await sb.rpc('painel_plantas_vivas', { p_de: de, p_ate: ate });
+  return { DPV: pv.error ? null : pv.data, DMX: mx.error ? null : mx.data, DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
 }
 // uma só cópia por período (v168, 01/11/2026: o espaço do aparelho encheu): apaga as cópias desse período de outros dias e, se
 // mesmo assim não couber, as outras cópias do painel; períodos escolhidos à mão (de… até…) só fica o que se está a ver
@@ -1123,7 +1138,7 @@ function semPeriodoGuardado() {
 async function carregar(mudou = false) {
   const c = (!D || mudou) && lerCache();
   if (mudou && !c && !navigator.onLine) { semPeriodoGuardado(); return; }
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; DMX = c.DMX || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; DMX = c.DMX || null; DPV = c.DPV || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
@@ -1138,6 +1153,7 @@ async function carregar(mudou = false) {
   const pCu = sb.rpc('painel_cumprimento', { p_de: de, p_ate: ate });
   const pNa = sb.rpc('painel_nunca_agua', { p_de: de, p_ate: ate });
   const pMx = sb.rpc('painel_meta_causas', { p_de: de, p_ate: ate });
+  const pPv = sb.rpc('painel_plantas_vivas', { p_de: de, p_ate: ate });
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa2', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   const rec = await pRec; DR = rec.error ? null : rec.data;
   const pl = await pPl; DPL = pl.error ? null : pl.data;
@@ -1150,6 +1166,7 @@ async function carregar(mudou = false) {
   const cu = await pCu; DCU = cu.error ? null : cu.data;
   const na = await pNa; DNA = na.error ? null : na.data;
   const mx = await pMx; DMX = mx.error ? null : mx.data;
+  const pv = await pPv; DPV = pv.error ? null : pv.data;
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
@@ -1158,7 +1175,7 @@ async function carregar(mudou = false) {
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
   D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas();
   arrumarCache();   // fica uma cópia por período (a mais recente), para ver sem rede
-  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, DMX, em: Date.now() });
+  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, DMX, DPV, em: Date.now() });
   setTimeout(() => guardarOutrosPeriodos().catch(() => {}), 1500);
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }

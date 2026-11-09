@@ -451,7 +451,7 @@
       if (papel === 'activista') Object.assign(ar, { poligono_proposto: a.p_pontos, area_m2_proposta: m2, proposta_em: a.p_medido_em || new Date().toISOString() });
       else { Object.assign(ar, { poligono: a.p_pontos, area_m2: m2, limites_abertos: false }); if (ar.latitude == null) { const c = centro(a.p_pontos); ar.latitude = c[1]; ar.longitude = c[0]; } }
       return null; },
-    monitoria_falhas: () => [], painel_cumprimento: () => null, painel_nunca_agua: () => null, painel_meta_causas: () => null, meta_por_explicar: () => [], gravar_meta_motivo: () => null,
+    monitoria_falhas: () => [], painel_cumprimento: () => null, painel_nunca_agua: () => null, painel_meta_causas: () => null, painel_plantas_vivas: () => null, meta_por_explicar: () => [], gravar_meta_motivo: () => null,
     // v156: sugestões ficam na base de exemplo (antes iam para o servidor verdadeiro; Valdo, 30/10/2026: o que se faz na apresentação não entra no servidor)
     enviar_sugestao2: (a) => novaSugestao(a), enviar_sugestao3: (a) => novaSugestao(a),
     avaliar_sugestao: (a) => { const x = (DB.sugestoes || []).find((y) => y.id === a.p_id); if (x) Object.assign(x, { estado: a.p_estado, nota: a.p_nota ?? x.nota, avaliada_em: new Date().toISOString() }); return null; },
