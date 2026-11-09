@@ -180,7 +180,12 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     </div>
     <div class="vista" role="group" id="v-meta"><button data-v="dia">Por dia</button><button data-v="semana">Por semana</button><button data-v="periodo">Período</button></div>
     <p class="desc">Faltas = pessoas da equipa que não estiveram presentes (soma dos dias com rega).</p>
-    <div class="tabela" id="t-meta" style="max-height:none"></div></section>
+    <div class="tabela" id="t-meta" style="max-height:none"></div>
+    <div id="meta-causas" hidden><h3 style="font-size:15px;margin:16px 0 4px">Porque não se atingiu a meta</h3>
+      <p class="desc" id="d-meta-causas"></p>
+      <div class="grelha kpis" id="k-meta-causas"></div>
+      <h3 style="font-size:14px;margin:12px 0 4px">O que explica os dias abaixo do limite</h3><p style="margin:0 0 6px;font-size:12px;color:var(--ink2)">Um dia pode ter mais de uma explicação.</p><div id="g-meta-causas"></div>
+      <details><summary>Ver por equipa e dia</summary><div class="tabela" id="t-meta-causas"></div></details></div></section>
 
   <section class="card sec"><h2>Tempo por campo e deslocação entre campos</h2>
     <p class="desc">Por equipa no período (valor do meio de cada equipa, a mediana, para um dia fora do normal não estragar o valor). Espera = da entrada no campo à chegada da água. Rega = da chegada da água à saída (sem a espera). Plantas por pessoa por hora = plantas regadas ÷ (pessoas × horas de rega). Deslocação = da saída de um campo à entrada no seguinte, no mesmo dia. Conta como deslocação até 20 min mais 1 min por cada 40 m entre os dois campos (a pé, com equipamento); acima disso é pausa e fica de fora da mediana. Sem coordenadas num dos campos, o limite é 60 min. A primeira rega de cada dia não tem deslocação, por isso as deslocações medidas são sempre menos do que as regas.</p>
@@ -256,10 +261,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=225"></script>
-<script src="i18n.js?v=225"></script>
+<script src="i18n-sw.js?v=226"></script>
+<script src="i18n.js?v=226"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=225"></script>
+<script src="demo.js?v=226"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -280,6 +285,7 @@ const TIPOS = { sem_agua_fonte: 'Não havia água na fonte', agua_acabou: 'A ág
 let DMC = null;   // v123: campos sorteados na monitoria, por pessoa
 let DCU = null;   // v134: cumprimento por técnico e supervisor
 let DNA = null;   // v225: campos que nunca receberam água
+let DMX = null;   // v226: porque não se atingiu a meta
 let D = null, DM = null, DP = null, DT = null, DZ = null, DC = null, DR = null;   // DR = recontagens; DM = monitoria; DP = plantas por dia e equipa; DT = tempos
 const META = 140;   // plantas por pessoa por dia (Valdo, 11/10/2026)
 let VM = 'dia'; try { VM = localStorage.getItem('rega.painel.meta') || 'dia'; } catch {}
@@ -764,6 +770,36 @@ function descarregarRec() {
 }
 $('#b-rec-csv').onclick = descarregarRec;
 
+// ---------- porque não se atingiu a meta (v226, 09/11/2026, Valdo: "Sim" + "Eu preciso de ter visibilidade disso") ----------
+// A app explica cada dia de equipa abaixo do limite com o que já tem (chegada, espera pela água, falta de água ou avaria, mudas secas
+// ou mortas, campo sem rega com motivo); sem nenhuma destas, o técnico ou o supervisor registam o motivo no «O meu dia».
+const CAUSA_META = { tarde: 'Chegou tarde', espera: 'Esperou pela água', agua: 'Falta de água ou avaria',
+  mortas: 'Mudas secas ou mortas', dia_sem_rega: 'Campo sem rega' };
+function desenharMetaCausas() {
+  const el = $('#meta-causas'); if (!el) return;
+  const X = DMX && typeof DMX === 'object' && Array.isArray(DMX.dias) ? DMX : null; el.hidden = !X; if (!X) return;
+  const lim = +X.limiar || 70, L = X.dias, ab = L.filter((d) => d.pct != null && +d.pct < lim);
+  const kpi = (rot, v, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${v}</div><div class="sub">${sub}</div></div>`;
+  $('#d-meta-causas').innerHTML = `<span>Cada dia de equipa abaixo de</span> <b>${num(lim)} %</b> <span>da meta e o que o explica:</span> <span>chegada ao 1.º campo depois das</span> <b>${esc(X.hora_chegada || '')}</b>; <span>espera pela água de</span> <b>${num(X.espera_min)} min</b> <span>ou mais no dia;</span> <span>falta de água ou avaria registada na saída;</span> <span>mudas secas ou mortas</span> (<b>${num(X.mortas_pct)} %</b> <span>ou mais das plantas da base, e as que ficavam vivas não chegavam para a meta);</span> <span>campo sem rega com motivo registado.</span> <span>Sem nenhuma destas, o técnico ou o supervisor registam o motivo no «O meu dia»</span>${X.motivo_inicio ? ` (<span>desde</span> ${fmtData(X.motivo_inicio)})` : ''}. <span>A hora de fim aparece na tabela, mas acabar cedo não explica a meta.</span>`;
+  const pl = L.reduce((t, d) => t + (d.plantas || 0), 0), hv = L.reduce((t, d) => t + (d.vivas_havia || 0), 0);
+  const sem = ab.filter((d) => !(d.causas || []).length), semMot = sem.filter((d) => !d.motivo);
+  $('#k-meta-causas').innerHTML = kpi(`<span>Dias de equipa abaixo de</span> ${num(lim)} %`, num(ab.length), `<span>de</span> ${num(L.length)} <span>dias de equipa com rega</span>`) +
+    kpi('Plantas vivas que havia nos campos regados', hv ? Math.round(100 * pl / hv) + ' %' : '—', `${num(pl)} <span>regadas de</span> ${num(hv)} <span>vivas (base menos as secas ou mortas declaradas)</span>`) +
+    kpi('Sem explicação', num(sem.length), `${num(sem.length - semMot.length)} <span>com motivo registado</span> · ${num(semMot.length)} <span>sem motivo</span>`);
+  const C = Object.keys(CAUSA_META).map((k) => ({ k, t: CAUSA_META[k], n: ab.filter((d) => (d.causas || []).includes(k)).length }))
+    .concat([{ k: 'sem', t: 'Sem explicação', n: sem.length }]).filter((c) => c.n).sort((a, b) => b.n - a.n);
+  barras('#g-meta-causas', C, { valor: (c) => c.n, rotulo: (c) => c.t, texto: (c) => num(c.n), max: Math.max(1, ab.length), dicaDe: (c) => `${c.t}: ${num(c.n)}` });
+  const expl = (d) => {
+    const cs = (d.causas || []).map((k) => `<span>${CAUSA_META[k] || esc(k)}</span>`);
+    if (d.motivo) cs.push(`<span>Motivo</span>: <span class="sem-trad">${esc(d.motivo)}</span>${d.motivo_por ? ` (<span class="sem-trad">${esc(d.motivo_por)}</span>)` : ''}`);
+    if (!cs.length) return +d.pct < lim ? `<span style="color:var(--crit,#c62828);font-weight:600">Sem explicação</span>` : '—';
+    return cs.join('<br>');
+  };
+  const pcT = (d) => d.pct == null ? '—' : +d.pct < lim ? `<span style="color:var(--crit,#c62828);font-weight:600">${num(Math.round(d.pct))} %</span>` : `${num(Math.round(d.pct))} %`;
+  tabela('#t-meta-causas', [['Data'], ['Equipa'], ['Plantas regadas', 1], ['Meta', 1], ['% da meta', 1], ['Plantas vivas que havia', 1], ['% das vivas regadas', 1], ['1.ª entrada'], ['Última saída'], ['Espera pela água (min)', 1], ['Explicação']],
+    L.map((d) => [fmtData(d.data), `<span class="sem-trad">${esc(d.equipa || '')}</span>`, num(d.plantas), num(d.meta), pcT(d), num(d.vivas_havia), d.cobertura == null ? '—' : num(Math.round(d.cobertura)) + ' %',
+      esc(d.ini || ''), esc(d.fim || ''), num(d.espera_min), expl(d)]));
+}
 // ---------- campos que nunca receberam água (v225, 09/11/2026, Valdo: "Faz sentido colocar isso no painel para acompanhamento?" "Sim") ----------
 // Lista e evolução (painel_nunca_agua); botão para descarregar a lista (para o Dalmar comparar com o registo do WhatsApp)
 const MOT_RET = { mudas_mortas: 'Todas as mudas mortas', sem_acesso: 'Sem acesso ao campo', nao_existe: 'O campo não existe', outro: 'Outro motivo' };
@@ -1048,7 +1084,8 @@ async function buscarPeriodo(p) {
   const mc = await sb.rpc('painel_monitoria_campos', { p_de: de, p_ate: ate });
   const cu = await sb.rpc('painel_cumprimento', { p_de: de, p_ate: ate });
   const na = await sb.rpc('painel_nunca_agua', { p_de: de, p_ate: ate });
-  return { DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
+  const mx = await sb.rpc('painel_meta_causas', { p_de: de, p_ate: ate });
+  return { DMX: mx.error ? null : mx.data, DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
 }
 // uma só cópia por período (v168, 01/11/2026: o espaço do aparelho encheu): apaga as cópias desse período de outros dias e, se
 // mesmo assim não couber, as outras cópias do painel; períodos escolhidos à mão (de… até…) só fica o que se está a ver
@@ -1086,7 +1123,7 @@ function semPeriodoGuardado() {
 async function carregar(mudou = false) {
   const c = (!D || mudou) && lerCache();
   if (mudou && !c && !navigator.onLine) { semPeriodoGuardado(); return; }
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; DMX = c.DMX || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
@@ -1100,6 +1137,7 @@ async function carregar(mudou = false) {
   const pMc = sb.rpc('painel_monitoria_campos', { p_de: de, p_ate: ate });
   const pCu = sb.rpc('painel_cumprimento', { p_de: de, p_ate: ate });
   const pNa = sb.rpc('painel_nunca_agua', { p_de: de, p_ate: ate });
+  const pMx = sb.rpc('painel_meta_causas', { p_de: de, p_ate: ate });
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa2', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   const rec = await pRec; DR = rec.error ? null : rec.data;
   const pl = await pPl; DPL = pl.error ? null : pl.data;
@@ -1111,15 +1149,16 @@ async function carregar(mudou = false) {
   const mc = await pMc; DMC = mc.error ? null : mc.data;
   const cu = await pCu; DCU = cu.error ? null : cu.data;
   const na = await pNa; DNA = na.error ? null : na.data;
+  const mx = await pMx; DMX = mx.error ? null : mx.data;
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) { if (erroDeRede(error)) avisoRede(c || { antigo: null }); return; }   // sem rede: fica o último painel guardado
   if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca();
+  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas();
   arrumarCache();   // fica uma cópia por período (a mais recente), para ver sem rede
-  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, em: Date.now() });
+  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, DMX, em: Date.now() });
   setTimeout(() => guardarOutrosPeriodos().catch(() => {}), 1500);
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }

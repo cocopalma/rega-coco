@@ -392,11 +392,12 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'dia_sem_rega' ? await enviarDiaSemRega(x.d)
         : x.tipo === 'dia_sem_rega_rem' ? await sb.rpc('remover_dia_sem_rega', { p_id: x.dsr_id })
         : x.tipo === 'conf_dsr' ? await sb.rpc('confirmar_dia_sem_rega', { p_id: x.dsr_id, p_nota: x.nota || null })
+        : x.tipo === 'meta_mot' ? await sb.rpc('gravar_meta_motivo', { p_id: x.mm_id, p_activista: x.activista_id, p_data: x.data, p_motivo: x.motivo })   // v226
         : x.tipo === 'retirar' ? await sb.rpc('retirar_da_rega', { p_area: x.area_id, p_motivo: x.motivo, p_obs: x.obs || null, p_em: x.em })   // v205
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
       if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
       if (r4.error) aviso(`Não foi gravado (${x.area_id || x.sug_id || x.activista_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
-      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas'].includes(x.tipo)) alteradas++;
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot'].includes(x.tipo)) alteradas++;
     }
   }
   if (!erro) erro = await enviarPercurso();
@@ -5503,10 +5504,11 @@ const somaDias = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(
 const MEU_DIA = () => ['tecnico', 'supervisor'].includes(S.perfil?.papel) && !S.perfil?.ve_tudo;
 async function carregarMeuDia() {
   if (!MEU_DIA() || !navigator.onLine) return;
-  const [r, cn, ma] = await Promise.all([sb.rpc('meu_dia'), sb.rpc('correccoes_nome_lista'), sb.rpc('motivos_anteriores')]);
+  const [r, cn, ma, mx] = await Promise.all([sb.rpc('meu_dia'), sb.rpc('correccoes_nome_lista'), sb.rpc('motivos_anteriores'), sb.rpc('meta_por_explicar')]);
   if (!r.error) LS.set('meuDia', { em: new Date().toISOString(), d: r.data || null, dia: hojeISO() });
   if (!cn.error) LS.set('corrNome', Array.isArray(cn.data) ? cn.data : []);
   if (!ma.error) LS.set('motivosAnt', Array.isArray(ma.data) ? ma.data : []);   // v224
+  if (!mx.error) LS.set('metaExpl', Array.isArray(mx.data) ? mx.data : []);   // v226
 }
 // v197 (02/11/2026, Valdo: "Muda, mas o técnico e supervisor devem confirmar. Cria esta confirmação obrigatória"): correcção do nome
 // do produtor pedida ao gestor (ex.: pelo 💡); o nome só muda quando o técnico E o supervisor da equipa confirmam (servidor).
@@ -5561,6 +5563,26 @@ function ecraConfirmarDsr(eqId, dsrId) {
     const f = LS.get('filaAlt', []).filter((x) => !(x.tipo === 'conf_dsr' && x.dsr_id === dsrId));
     f.push({ id: crypto.randomUUID(), tipo: 'conf_dsr', dsr_id: dsrId, nota: nota || null }); LS.set('filaAlt', f);
     fecharFolha(); actSync(); sincronizar(true); aviso(navigator.onLine ? 'Confirmado.' : 'Confirmado. É enviado quando houver rede.', 'ok');
+    if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
+    setTimeout(async () => { if (navigator.onLine) { await carregarMeuDia(); if ($('#e-hoje')?.classList.contains('on')) desenharHoje(); } }, 2500);
+  };
+}
+// v226: motivo de um dia de equipa muito abaixo da meta sem explicação (funciona sem rede: fila 'meta_mot')
+function ecraMotivoMeta(act, data) {
+  const x = (LS.get('metaExpl', []) || []).find((y) => y.activista_id === act && y.data === data); if (!x) return;
+  folha(`<h2>✍️ <span>Porque não se atingiu a meta</span></h2>
+    <p><b class="sem-trad">${esc(x.equipa || '')}</b> · ${fmtData(x.data)}</p>
+    <div class="msg info">${num(x.plantas)} <span>de</span> ${num(x.meta)} <span>plantas da meta</span> (${num(Math.round(x.pct))} %) · ${num(x.pessoas)} <span>pessoas</span><br>
+      <span>1.ª entrada</span> ${esc(x.ini || '—')} · <span>última saída</span> ${esc(x.fim || '—')} · <span>espera pela água</span> ${num(x.espera_min)} min</div>
+    <label><span>Motivo (obrigatório)</span><textarea id="mm-mot" rows="3"></textarea></label><div id="mm-msg"></div>
+    <button class="btn" id="mm-ok">Guardar o motivo</button>
+    <button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  $('#mm-ok').onclick = () => {
+    const mot = $('#mm-mot').value.trim();
+    if (mot.length < 5) { $('#mm-msg').innerHTML = '<div class="msg erro">Escreva o motivo.</div>'; $('#mm-mot').focus(); return; }
+    const f = LS.get('filaAlt', []).filter((y) => !(y.tipo === 'meta_mot' && y.activista_id === act && y.data === data));
+    f.push({ id: crypto.randomUUID(), tipo: 'meta_mot', mm_id: crypto.randomUUID(), activista_id: act, data, motivo: mot }); LS.set('filaAlt', f);
+    fecharFolha(); actSync(); sincronizar(true); aviso(navigator.onLine ? 'Motivo guardado.' : 'Motivo guardado. É enviado quando houver rede.', 'ok');
     if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
     setTimeout(async () => { if (navigator.onLine) { await carregarMeuDia(); if ($('#e-hoje')?.classList.contains('on')) desenharHoje(); } }, 2500);
   };
@@ -5647,6 +5669,15 @@ function cartaoMeuDia() {
       '<p class="pequeno">Motivos de outros dias que ainda ninguém confirmou. Confirme ou registe o motivo certo.</p>' + ma.map((x) => `<div class="item" style="display:block"><div class="nome"><span class="sem-trad">${esc(x.activista || '')}</span> · ${fmtData(x.data)}${x.ate ? ` <span>até</span> ${fmtData(x.ate)}` : ''}</div>
       <div class="sub"><span>${esc(nomeMotivoDsr(x.motivo))}</span>${x.produtor ? ` · <span class="sem-trad">${esc(x.produtor)}</span>` : ''}${x.criado_em ? ` · <span>registado a</span> ${fmtData(String(x.criado_em))}` : ''}${x.quem ? ` · <span>por</span> <span class="sem-trad">${esc(x.quem)}</span>` : ''}</div>
       <div class="chips"><button class="chip" onclick="ecraConfirmarDsr('${esc(x.activista_id)}','${esc(x.id)}')">✓ Confirmar</button></div></div>`).join('')]); }
+  // v226 (09/11/2026, Valdo: "Sim" + "Eu preciso de ter visibilidade disso"): dias da equipa abaixo do limite da meta que a app não consegue
+  // explicar (chegada, espera pela água, falta de água ou avaria, mudas secas ou mortas, campo sem rega com motivo): o técnico ou o
+  // supervisor escrevem o motivo. Não tranca o «Fechar o dia».
+  { const pend = new Set(LS.get('filaAlt', []).filter((x) => x.tipo === 'meta_mot').map((x) => x.activista_id + '|' + x.data));
+    const mx = (LS.get('metaExpl', []) || []).filter((x) => !pend.has(x.activista_id + '|' + x.data));
+    if (mx.length) L.push(['mt', 'Meta muito abaixo, sem explicação', mx.length, 'a',
+      '<p class="pequeno">A equipa ficou muito abaixo da meta e a app não encontrou explicação: chegou a horas, não esperou muito pela água, não registou falta de água, avaria nem mudas mortas. Pergunte à equipa e escreva o motivo.</p>' + mx.map((x) => `<div class="item" style="display:block"><div class="nome"><span class="sem-trad">${esc(x.equipa || '')}</span> · ${fmtData(x.data)}</div>
+      <div class="sub">${num(x.plantas)} <span>de</span> ${num(x.meta)} <span>plantas da meta</span> (${num(Math.round(x.pct))} %) · ${num(x.pessoas)} <span>pessoas</span> · ${esc(x.ini || '')}–${esc(x.fim || '')}</div>
+      <div class="chips"><button class="chip" onclick="ecraMotivoMeta('${esc(x.activista_id)}','${esc(x.data)}')">✍️ Escrever o motivo</button></div></div>`).join('')]); }
   // 8. chegadas tardias (v153)
   const hc = d.hora_chegada || '06:00', hMz = (t) => new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour: '2-digit', minute: '2-digit', hour12: false });
   const tarde = eqs.filter((e) => e.chegada && hMz(e.chegada) > hc).sort((a, b) => a.chegada < b.chegada ? -1 : 1);
