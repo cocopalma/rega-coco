@@ -5503,9 +5503,10 @@ const somaDias = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(
 const MEU_DIA = () => ['tecnico', 'supervisor'].includes(S.perfil?.papel) && !S.perfil?.ve_tudo;
 async function carregarMeuDia() {
   if (!MEU_DIA() || !navigator.onLine) return;
-  const [r, cn] = await Promise.all([sb.rpc('meu_dia'), sb.rpc('correccoes_nome_lista')]);
+  const [r, cn, ma] = await Promise.all([sb.rpc('meu_dia'), sb.rpc('correccoes_nome_lista'), sb.rpc('motivos_anteriores')]);
   if (!r.error) LS.set('meuDia', { em: new Date().toISOString(), d: r.data || null, dia: hojeISO() });
   if (!cn.error) LS.set('corrNome', Array.isArray(cn.data) ? cn.data : []);
+  if (!ma.error) LS.set('motivosAnt', Array.isArray(ma.data) ? ma.data : []);   // v224
 }
 // v197 (02/11/2026, Valdo: "Muda, mas o técnico e supervisor devem confirmar. Cria esta confirmação obrigatória"): correcção do nome
 // do produtor pedida ao gestor (ex.: pelo 💡); o nome só muda quando o técnico E o supervisor da equipa confirmam (servidor).
@@ -5541,7 +5542,9 @@ function ecraCorrNome(id) {
 // primeiro fecha; se os dois responderem sem rede, fica o do supervisor (servidor). Funciona sem rede (fila 'conf_dsr').
 function confPendentes() { return new Map(LS.get('filaAlt', []).filter((x) => x.tipo === 'conf_dsr').map((x) => [x.dsr_id, x])); }
 function ecraConfirmarDsr(eqId, dsrId) {
-  const c = LS.get('meuDia'), e = (c?.d?.equipas || []).find((x) => x.id === eqId), m = (e?.motivos || []).find((x) => x.id === dsrId); if (!m) return;
+  const c = LS.get('meuDia'); let e = (c?.d?.equipas || []).find((x) => x.id === eqId), m = (e?.motivos || []).find((x) => x.id === dsrId);
+  if (!m) { m = (LS.get('motivosAnt', []) || []).find((x) => x.id === dsrId); if (m) e = { id: m.activista_id, nome: m.activista }; }   // v224: dias anteriores
+  if (!m) return;
   const pedeNota = m.motivo === 'equipa' && !(m.descricao && m.descricao.trim().length >= 3);
   folha(`<h2>✓ <span>Confirmar o motivo</span></h2>
     <p><b class="sem-trad">${esc(e.nome)}</b> · ${fmtData(m.data)}${m.ate ? ` <span>até</span> ${fmtData(m.ate)}` : ''}</p>
@@ -5637,6 +5640,13 @@ function cartaoMeuDia() {
   { const n = contaNunca(); L.push(['na', 'Campos que nunca receberam água', n, 'b', n ? dentroCartao(cartaoNuncaAgua()) : '<p class="pequeno">Nenhum.</p>']); }
   // 7. recontagens das plantas (antes um botão no topo do Hoje)
   if (veRecontagens()) L.push(['rc', 'Recontagens das plantas', contaRecHoje(), 'b', dentroCartao(cartaoRecontagensHoje())]);
+  // v224 (09/11/2026, Valdo: "Sim"): motivos de dias anteriores que ficaram por confirmar (o «O meu dia» só mostra os do próprio dia;
+  // ex.: motivo registado pelo activista dias depois). Não trancam o «Fechar o dia» de hoje.
+  { const ma = (LS.get('motivosAnt', []) || []).filter((x) => !cp.has(x.id));
+    if (ma.length) L.push(['ma', 'Motivos de dias anteriores por confirmar', ma.length, 'a',
+      '<p class="pequeno">Motivos de outros dias que ainda ninguém confirmou. Confirme ou registe o motivo certo.</p>' + ma.map((x) => `<div class="item" style="display:block"><div class="nome"><span class="sem-trad">${esc(x.activista || '')}</span> · ${fmtData(x.data)}${x.ate ? ` <span>até</span> ${fmtData(x.ate)}` : ''}</div>
+      <div class="sub"><span>${esc(nomeMotivoDsr(x.motivo))}</span>${x.produtor ? ` · <span class="sem-trad">${esc(x.produtor)}</span>` : ''}${x.criado_em ? ` · <span>registado a</span> ${fmtData(String(x.criado_em))}` : ''}${x.quem ? ` · <span>por</span> <span class="sem-trad">${esc(x.quem)}</span>` : ''}</div>
+      <div class="chips"><button class="chip" onclick="ecraConfirmarDsr('${esc(x.activista_id)}','${esc(x.id)}')">✓ Confirmar</button></div></div>`).join('')]); }
   // 8. chegadas tardias (v153)
   const hc = d.hora_chegada || '06:00', hMz = (t) => new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour: '2-digit', minute: '2-digit', hour12: false });
   const tarde = eqs.filter((e) => e.chegada && hMz(e.chegada) > hc).sort((a, b) => a.chegada < b.chegada ? -1 : 1);
@@ -5915,8 +5925,11 @@ function htmlEquipaCampo(d) {
     const dh = (p.dias || []).find((x) => x.data === hoje) || null, f = [];
     if (dh && dh.sem_rega.length) f.push([depois ? 'v' : 'a', depois ? 'Equipas sem rega nem motivo' : 'Equipas ainda sem rega nem motivo', dh.sem_rega.length,
       `<p class="pequeno">${nomesSem(dh.sem_rega)}</p>`]);
-    if (p.motivos.length) f.push(['v', 'Motivos por confirmar', p.motivos.length, p.motivos.map((m) =>
-      `<div class="sub"><span class="sem-trad">${esc(m.activista)}</span> · ${fmtData(m.data)} · <span>${esc(motivoDsrTxt(m.motivo))}</span></div>`).join('')]);
+    // v224: um motivo registado depois do próprio dia não podia ser confirmado nesse dia: aparece, mas não conta como falta
+    const mFalta = p.motivos.filter((m) => !m.registado || m.registado <= m.data);
+    if (p.motivos.length) f.push([mFalta.length ? 'v' : 'a', 'Motivos por confirmar', mFalta.length, p.motivos.map((m) =>
+      `<div class="sub"><span class="sem-trad">${esc(m.activista)}</span> · ${fmtData(m.data)} · <span>${esc(motivoDsrTxt(m.motivo))}</span>${m.registado && m.registado > m.data ? ` · <span>registado a</span> ${fmtData(m.registado)} <span>(não conta como falta)</span>` : ''}</div>`).join('')
+      + '<p class="pequeno">Desde a versão 224 estes motivos aparecem no «O meu dia» › Motivos de dias anteriores por confirmar.</p>']);
     if (p.alertas.length) f.push(['a', 'Regas com ⚠️ por tratar', p.alertas.length, p.alertas.map((a) =>
       `<div class="sub"><span class="sem-trad">${esc(a.activista)}</span> · <b>${esc(a.pr)}</b> · ${fmtData(a.data)} · <span>${esc(TIPO_ALERTA[a.tipo] || a.tipo)}</span>${a.tipo === 'mais_que_base' ? ` (<b>${num(a.plantas)}</b> / <b>${num(a.base)}</b>)` : ''}</div>`).join('')]);
     if (p.medicoes.length) f.push(['a', 'Medições de área por aprovar', p.medicoes.length, p.medicoes.map((m) =>
