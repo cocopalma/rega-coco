@@ -26,6 +26,7 @@ const LOC = typeof LINGUA !== 'undefined' && LINGUA !== 'pt' ? 'en-GB' : 'pt-PT'
 const hojeISO = () => new Date().toLocaleDateString('sv-SE');
 const fmtData = (d) => d ? new Date(d + (d.length === 10 ? 'T12:00:00' : '')).toLocaleDateString(LOC) : '—';
 const fmtHora = (t) => t ? new Date(t).toLocaleTimeString(LOC, { hour: '2-digit', minute: '2-digit' }) : '—';
+const fmtDataHora = (t) => t ? fmtData(String(t)) + ' ' + fmtHora(t) : '—';   // v221: data e hora (ex.: medição da área)
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = (n) => (n ?? 0).toLocaleString(LOC);
 
@@ -3003,7 +3004,7 @@ function botoesCampo(a) {
   if (podePedirRecCampo(a)) q.push(quadro(`ecraPedirRecontagem('${id}')`, '📋', 'Pedir recontagem'));
   if (coord) { const np = plantasLocais(a.id).length; q.push(quadro(`ecraPlantas('${id}')`, '🌴', 'Mapa das plantas', `<small>${np ? `(${np}) · ` : ''}<span>teste</span></small>`)); }
   if (papel === 'activista' && a.activista_id === S.perfil.activista_id && (!temPoligono(a) || a.limites_abertos || a.poligono_proposto)) {
-    if (a.poligono_proposto) h += `<div class="msg info">Área medida: ${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}. À espera de aprovação do técnico ou do supervisor.</div>`;
+    if (a.poligono_proposto) h += `<div class="msg info">Área medida: ${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}. À espera de aprovação do técnico ou do supervisor.${a.proposta_em ? `<br><span>Medida em</span> <b>${fmtDataHora(a.proposta_em)}</b>` : ''}</div>`;
     else q.push(quadro(`ecraMedir('${id}')`, '📐', temPoligono(a) ? 'Medir a área de novo' : 'Medir a área', '<small>andar à volta do campo</small>'));
   }
   if (coord && (!temPoligono(a) || aberto)) q.push(quadro(`ecraMedir('${id}')`, '📐', temPoligono(a) ? 'Medir a área de novo' : 'Medir a área', '<small>andar à volta do campo</small>'));
@@ -3074,7 +3075,7 @@ function retirarTodosMostrados() { if (!S.selRet) return; for (const id of S.ult
 function cartaoProposta(a) {
   return `<div class="cartao" style="border-left:4px solid #0b6e8a"><h3 style="margin:0 0 6px;font-size:15px">Área medida pelo activista — por aprovar</h3>
     <div class="lin"><span>Área</span><b>${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}</b></div>
-    ${a.proposta_em ? `<div class="lin"><span>Medida em</span><b>${fmtData(String(a.proposta_em).slice(0, 10))}</b></div>` : ''}
+    ${a.proposta_em ? `<div class="lin"><span>Medida em</span><b>${fmtDataHora(a.proposta_em)}</b></div>` : ''}
     ${a.vivas ? `<div class="lin"><span>Plantas vivas na base</span><b>${num(a.vivas)} (${(a.vivas / ((a.area_m2_proposta || areaPontos(a.poligono_proposto)) / 10000)).toLocaleString(LOC, { maximumFractionDigits: 0 })} por ha)</b></div>` : ''}
     ${desenhoPontos(a.poligono_proposto)}
     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="margin:0" onclick="aprovarMedicao('${esc(a.id)}', true)">✓ Aprovar</button><button class="btn sec" style="margin:0" onclick="aprovarMedicao('${esc(a.id)}', false)">✗ Recusar</button></div>
@@ -5623,7 +5624,7 @@ function cartaoMeuDia() {
   // 4. medições por aprovar (v138)
   L.push(['me', 'Medições de área por aprovar', pa.length, 'b',
     pa.length ? pa.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
-      <div class="sub"><span class="sem-trad">${esc(x.equipa || '')}</span> · ${esc(x.comunidade || '')} · ${x.proposta_em ? fmtData(x.proposta_em) : ''}${x.area_m2 ? ' · ' + textoArea(x.area_m2) : ''}${x.quem ? ` · <span>medida por</span> <span class="sem-trad">${esc(x.quem)}</span>` : ''}</div>
+      <div class="sub"><span class="sem-trad">${esc(x.equipa || '')}</span> · ${esc(x.comunidade || '')} · ${x.proposta_em ? fmtDataHora(x.proposta_em) : ''}${x.area_m2 ? ' · ' + textoArea(x.area_m2) : ''}${x.quem ? ` · <span>medida por</span> <span class="sem-trad">${esc(x.quem)}</span>` : ''}</div>
       <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e aprovar</button></div></div>`).join('') : '<p class="pequeno">Nenhuma.</p>']);
   // 5. monitoria (o cartão da monitoria passou para dentro desta linha)
   L.push(['mo', 'Monitoria: verificar hoje', d.monitoria_hoje || 0, 'b',
