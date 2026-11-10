@@ -52,7 +52,7 @@ with sync_playwright() as p:
     else: verif("A fechar o dia" not in bt, "1b traduzido")
     pg.wait_for_timeout(21000)
     av = pg.inner_text("body")
-    verif(("Sem ligação ao servidor" in av) if LING == "pt" else ("Sem ligação ao servidor" not in av and ("connection" in av or "muunganisho" in av)), "2 aviso de falta de ligação ao fim de 20 s")
+    verif(("Sem resposta do servidor" in av) if LING == "pt" else ("Sem resposta do servidor" not in av and ("No response" in av or "Hakuna jibu" in av)), "2 aviso de falta de ligação ao fim de 20 s")
     verif(not pg.eval_on_selector("#md-fechar", "e => e.disabled") and "⏳" not in pg.inner_text("#md-fechar"), "3 botão volta a ficar activo")
     pg.screenshot(path=f"/home/claude/rega-test/v231_{LING}.png")
     estado["pendurar"] = False

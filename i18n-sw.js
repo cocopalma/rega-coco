@@ -399,6 +399,7 @@ window.I18N_SW_D = {
 "🔓 Deixar o supervisor/técnico corrigir a coordenada e medir de novo": "🔓 Ruhusu msimamizi/fundi kurekebisha kiratibu na kupima tena",
 "O supervisor e o técnico já podem corrigir a coordenada e medir a área deste campo. Fecha de novo depois de gravarem.": "Msimamizi na fundi sasa wanaweza kurekebisha kiratibu na kupima eneo la shamba hili. Inafungwa tena wakishahifadhi.",
 "Correcção fechada.": "Marekebisho yamefungwa.",
+"Sem resposta do servidor. Feche a app, abra-a de novo e tente outra vez.": "Hakuna jibu kutoka kwa seva. Funga programu, ifungue tena na ujaribu tena.",
 "A fechar o dia…": "Inafunga siku\u2026",
 "Não conte aqui as pessoas que marcou acima nem o activista: a app já as conta.": "Usihesabu hapa watu uliowachagua juu wala mhamasishaji: app tayari inawahesabu.",
 "Activista:": "Mhamasishaji:",

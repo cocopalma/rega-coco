@@ -5742,8 +5742,9 @@ async function fecharDia() {
   let r;
   try { r = await Promise.race([sb.rpc('fechar_dia', { p_data: hojeISO() }), new Promise((ok) => setTimeout(() => ok({ semResposta: true }), FECHAR_ESPERA_MS))]); }
   catch (e) { r = { error: e }; }
-  if (r.semResposta) { repor(); return aviso('Sem ligação ao servidor. Tente de novo quando tiver rede.', 'erro'); }
-  if (r.error) { repor(); return aviso(/fetch|network|Load failed/i.test(r.error.message || '') ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : r.error.message, 'erro'); }
+  // v232 (10/11/2026, Valdo: o WhatsApp funcionava; o mais provável é a app presa à espera da sessão): pedir para fechar e abrir a app
+  if (r.semResposta) { repor(); return aviso('Sem resposta do servidor. Feche a app, abra-a de novo e tente outra vez.', 'erro'); }
+  if (r.error) { repor(); return aviso(/fetch|network|Load failed/i.test(r.error.message || '') ? 'Sem resposta do servidor. Feche a app, abra-a de novo e tente outra vez.' : r.error.message, 'erro'); }
   aviso('Dia fechado.', 'ok'); await carregarMeuDia(); actHoje();
 }
 const FECHAR_ESPERA_MS = 20000;
