@@ -3393,7 +3393,7 @@ function ecraJornada(depois = '') {
   folha(`<h2>${j ? 'Alterar pessoas presentes' : 'Início do dia'}</h2>
     <p>Quem veio hoje trabalhar na rega? Toque no nome de cada pessoa que está presente.</p>
     <div id="j-lista">${l.map((m) => `<label class="sem-trad" style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--linha,#ddd);font-size:17px"><input type="checkbox" value="${esc(m.id)}" style="width:24px;height:24px" ${pres.includes(m.id) ? 'checked' : ''} onchange="contaJornada()"> ${esc(m.nome)}</label>`).join('')}</div>
-    <label>Outras pessoas que vieram e não estão na lista<input id="j-outros" type="number" inputmode="numeric" min="0" max="30" value="${j ? j.outros || 0 : 0}" oninput="contaJornada()"></label>
+    <label>Outras pessoas que vieram e não estão na lista<span class="pequeno" style="display:block;font-weight:normal">Não conte aqui as pessoas que marcou acima nem o activista: a app já as conta.</span><input id="j-outros" type="number" inputmode="numeric" min="0" max="30" value="${j ? j.outros || 0 : 0}" oninput="contaJornada()"></label>
     <div class="msg info" id="j-total"></div>
     <p class="pequeno">Se a lista estiver errada (pessoa que saiu ou mudou de equipa), diga ao técnico ou ao supervisor: eles corrigem na app.</p>
     <button class="btn" onclick="guardarJornada(${dep})">Guardar</button>`);
@@ -3401,7 +3401,12 @@ function ecraJornada(depois = '') {
 }
 function contaJornada() {
   const n = 1 + document.querySelectorAll('#j-lista input:checked').length + (parseInt($('#j-outros')?.value, 10) || 0), e = $('#j-total');
-  if (e) e.innerHTML = `<span>Pessoas hoje (com o activista):</span> <b>${n}</b>`;
+  if (!e) return;
+  // v230 (Biena pelo 💡, 10/11/2026): marcou as 2 pessoas e escreveu-as também em «Outras pessoas»; o total passava a equipa.
+  const k = document.querySelectorAll('#j-lista input:checked').length, o = n - 1 - k, tam = tamanhoEquipa(S.perfil?.activista_id);
+  e.innerHTML = `<span>Pessoas hoje (com o activista):</span> <b>${n}</b>
+    <div class="pequeno"><span>Activista:</span> 1 · <span>marcadas na lista:</span> ${k} · <span>outras pessoas:</span> ${o}</div>`
+    + (o > 0 && tam && n > tam ? `<div id="j-acima" style="margin-top:6px;color:var(--crit,#b42318)"><span>São mais pessoas do que a equipa tem</span> (${tam}). <span>Em «Outras pessoas» escreva só quem veio e não está na lista; se não veio mais ninguém, ponha 0.</span></div>` : '');
 }
 function guardarJornada(depois) {
   const comLista = !!$('#j-lista');
