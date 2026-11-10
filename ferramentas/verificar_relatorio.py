@@ -28,6 +28,15 @@ def ver(ok, txt):
     RES.append((bool(ok), txt))
 
 
+AVISOS = []
+
+
+def aviso(ok, txt):
+    # 10/11/2026: dados do servidor que parecem contraditórios mas não tornam o relatório incoerente; não bloqueiam o envio
+    if not ok:
+        AVISOS.append(txt)
+
+
 def n(x):
     return f'{int(x or 0):,}'.replace(',', ' ')
 
@@ -74,7 +83,9 @@ def main(dados, base):
         if x['regas']:
             ver(x['campos'] >= 1 and x['campos'] <= x['regas'], f'{a}: 1 ≤ campos ≤ regas')
             ver(bool(re.fullmatch(r'[0-2]\d:[0-5]\d', x['chegada_1o_campo'] or '')), f'{a}: hora do 1.º campo válida ({x["chegada_1o_campo"]})')
-            ver(not x['motivos_sem_rega'], f'{a}: regou e não tem motivo de dia sem rega')
+            # Uma equipa pode regar uns campos e registar «Não houve rega neste campo» ou um motivo noutro (v118):
+            # o relatório mostra-a com as regas. Só avisa.
+            aviso(not x['motivos_sem_rega'], f'{a}: regou e também tem motivo de dia sem rega registado')
         else:
             ver(x['plantas'] == 0 and x['campos'] == 0 and not x['chegada_1o_campo'], f'{a}: sem rega, sem plantas nem campos')
             ver(not x['constrangimentos'], f'{a}: sem rega, sem constrangimentos da saída')
@@ -158,6 +169,8 @@ def main(dados, base):
     ver(not re.search(r'(?<!\d)8[2-7] ?\d{3} ?\d{4}(?!\d)', t), 'sem números de telefone no HTML')
 
     falhas = [x for x in RES if not x[0]]
+    for txt in AVISOS:
+        print('AVISO (não bloqueia):', txt)
     for ok, txt in RES:
         if not ok:
             print('FALHA:', txt)
