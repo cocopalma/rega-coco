@@ -5711,7 +5711,7 @@ function cartaoMeuDia() {
   // v183: o botão aparece sempre; fica desactivado, com a razão, enquanto faltar alguma equipa sem rega nem motivo ou motivos por confirmar
   h += d.fechado_em ? '' : falta.length ? `<button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button><p class="pequeno" style="text-align:center;color:#8a4b00;margin:6px 0 0"><span>Para fechar o dia, todas as equipas têm de ter rega ou motivo. Faltam:</span> ${falta.length}</p>`
     : porConf ? `<button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button><p class="pequeno" style="text-align:center;color:#8a4b00;margin:6px 0 0"><span>Para fechar o dia, confirme os motivos dos activistas. Faltam:</span> ${porConf}</p>`
-    : `<button class="btn" style="margin-top:12px" onclick="fecharDia()">🔒 Fechar o dia</button>`;
+    : `<button class="btn" id="md-fechar" style="margin-top:12px" onclick="fecharDia()">🔒 Fechar o dia</button>`;
   h += `<div class="pequeno" style="margin-top:8px"><span>Feche o dia até às 18:00.</span> ${info('Os dias fechados a tempo, a monitoria no prazo, as regas com ⚠️ confirmadas e as equipas sem motivo contam no cumprimento de cada técnico e supervisor (painel).')}</div>${c.em && !navigator.onLine ? `<p class="pequeno"><span>Sem rede: dados de</span> ${fmtHora(c.em)}</p>` : ''}</div>`;
   return h;
 }
@@ -5732,12 +5732,21 @@ function cartaoMaisHoje(hojeCard) {
   if (!L.length) return '';
   return `<div class="mais-tit">MAIS</div><div class="cartao" style="padding:2px 14px">${L.join('')}</div>`;
 }
+// v231 (10/11/2026, Guidion: "não consigo fechar o dia"; o telefone mostrava 4G mas nenhum pedido chegava ao servidor desde as 14:19):
+// o botão ficava sem resposta. Agora mostra «A fechar o dia…» e, sem resposta em 20 s, diz que não há ligação ao servidor.
 async function fecharDia() {
   if (!navigator.onLine) return aviso('Fechar o dia precisa de rede.', 'erro');
-  const r = await sb.rpc('fechar_dia', { p_data: hojeISO() });
-  if (r.error) return aviso(r.error.message, 'erro');
+  const b = $('#md-fechar'), txt = b ? b.innerHTML : '';
+  if (b) { if (b.disabled) return; b.disabled = true; b.innerHTML = '⏳ <span>A fechar o dia…</span>'; }
+  const repor = () => { const x = $('#md-fechar'); if (x) { x.disabled = false; x.innerHTML = txt; } };
+  let r;
+  try { r = await Promise.race([sb.rpc('fechar_dia', { p_data: hojeISO() }), new Promise((ok) => setTimeout(() => ok({ semResposta: true }), FECHAR_ESPERA_MS))]); }
+  catch (e) { r = { error: e }; }
+  if (r.semResposta) { repor(); return aviso('Sem ligação ao servidor. Tente de novo quando tiver rede.', 'erro'); }
+  if (r.error) { repor(); return aviso(/fetch|network|Load failed/i.test(r.error.message || '') ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : r.error.message, 'erro'); }
   aviso('Dia fechado.', 'ok'); await carregarMeuDia(); actHoje();
 }
+const FECHAR_ESPERA_MS = 20000;
 // v159 (31/10/2026, Valdo): numa rega com mais plantas do que a base, «Está certo» exige as plantas vivas contadas.
 // Contadas < regadas → o servidor recusa (corrigir as plantas regadas); contadas ≠ base → pedido de recontagem ao M&E.
 // v198: fotografias de outro dia (data da fotografia diferente do dia da rega). Não bloqueia: o técnico/supervisor vê e confirma.
