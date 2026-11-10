@@ -20,7 +20,17 @@ const CFG = {
 /* Regra da fase de aprendizagem (1–2 semanas): cada equipa rega a sua lista em "rondas".
    Um campo da lista não pode ser regado de novo enquanto a equipa não regar todos os campos da lista.
    A duração de cada ronda concluída é o ciclo provisório da comunidade. */
-const sb = supabase.createClient(CFG.url, CFG.chave, { auth: { persistSession: true, autoRefreshToken: true } });
+// Passo A do ponto 1 do MELHORIAS.md (cópia de teste, 10/11/2026): nenhum pedido ao servidor fica pendurado.
+// Sem limite, um pedido sem resposta deixava o envio preso (aSincronizar = true) até fechar a app (caso provável do Guidion, 10/11).
+const LIMITE_PEDIDO_MS = 30000, LIMITE_FOTO_MS = 90000;
+function fetchComLimite(input, init = {}) {
+  const url = typeof input === 'string' ? input : (input && input.url) || '';
+  const ms = /\/storage\/v1\//.test(url) ? LIMITE_FOTO_MS : LIMITE_PEDIDO_MS;
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms), sig = init && init.signal;
+  if (sig) { if (sig.aborted) ctl.abort(); else sig.addEventListener('abort', () => ctl.abort(), { once: true }); }
+  return fetch(input, { ...init, signal: ctl.signal }).finally(() => clearTimeout(t));
+}
+const sb = supabase.createClient(CFG.url, CFG.chave, { auth: { persistSession: true, autoRefreshToken: true }, global: { fetch: fetchComLimite } });
 const $ = (s) => document.querySelector(s);
 const LOC = typeof LINGUA !== 'undefined' && LINGUA !== 'pt' ? 'en-GB' : 'pt-PT';
 const hojeISO = () => new Date().toLocaleDateString('sv-SE');
@@ -329,18 +339,43 @@ const visiveis = () => (S.filtro === 'meus' && S.perfil?.papel === 'activista' ?
 // ---------- fila offline ----------
 const filaRegistos = () => LS.get('fila', []);
 function porNaFila(reg) { const f = filaRegistos(); f.push(reg); LS.set('fila', f); _regTel = null; }
-let aSincronizar = false;
+// Erro passageiro = sem rede, tempo esgotado, sessão expirada, base de dados ocupada: pára o envio e tenta mais tarde.
+// Qualquer outro código é uma recusa do servidor (restrição, permissão, formato, mensagem de uma função): esse registo
+// fica de lado, marcado, e os outros seguem (caso de 02/11: 23514 em `constrangimentos` prendeu 4 telefones 3–4 dias).
+function erroPassageiro(e) {
+  if (!e) return false;
+  const c = String(e.code || ''), m = String(e.message || '');
+  if (!c) return true;
+  if (/^PGRST[03]/.test(c) || /JWT|fetch|network|abort|timeout/i.test(m)) return true;
+  return ['57014', '57P01', '57P03', '53300', '08000', '08003', '08006', '40001', '40P01'].includes(c);
+}
+const erroSessao = (e) => !!e && (/^PGRST3/.test(String(e.code || '')) || /JWT/i.test(String(e.message || '')));
+// marca o registo recusado na própria fila (não sai do telefone: o activista não o pode descartar) e regista o problema
+function marcarRecusa(fila, item, e, tabela) {
+  const agora = new Date().toISOString();
+  LS.set(fila, LS.get(fila, []).map((x) => x.id !== item.id ? x : { ...x, _recusa: { codigo: String(e.code || ''), msg: String(e.message || '').slice(0, 300), tabela, desde: x._recusa?.desde || agora, ultima: agora, tentativas: (x._recusa?.tentativas || 0) + 1 } }));
+  problemaApp('envio_recusado', `${tabela}: ${e.message}`, { codigo: e.code || null, id: item.id, area: item.area_id || null, fila });
+}
+// os envios que ainda deitam fora o que o servidor recusa passam a deixar rasto em problemas_app
+function avisoRecusado(e, txt, tipo) { problemaApp('envio_descartado', String(e?.message || ''), { codigo: e?.code || null }); aviso(txt, tipo); }
+const FILAS_RECUSA = ['fila', 'filaJ', 'filaAlt', 'filaChuva'];
+const recusados = () => FILAS_RECUSA.flatMap((f) => (LS.get(f, []) || []).filter((x) => x && x._recusa).map((x) => ({ fila: f, x })));
+let aSincronizar = false, aSincronizarDesde = 0, sincN = 0;
+const LIMITE_SINC_MS = 5 * 60 * 1000;
 async function sincronizar(silencioso = false) {
-  if (aSincronizar) return; aSincronizar = true;
-  try { await sincronizarAgora(silencioso); } finally { aSincronizar = false; }
+  // um envio que não acaba em 5 min não bloqueia os seguintes (cada pedido já tem limite; isto cobre o resto)
+  if (aSincronizar && Date.now() - aSincronizarDesde < LIMITE_SINC_MS) return;
+  if (aSincronizar) problemaApp('sinc_presa', 'Envio anterior sem fim ao fim de 5 min');
+  const meu = ++sincN; aSincronizar = true; aSincronizarDesde = Date.now();
+  try { await sincronizarAgora(silencioso); } finally { if (sincN === meu) aSincronizar = false; }
 }
 async function sincronizarAgora(silencioso) {
-  const f = filaRegistos();
+  const f = [...filaRegistos()].sort((a, b) => (a._recusa ? 1 : 0) - (b._recusa ? 1 : 0));   // os recusados no fim
   if (!navigator.onLine) { actSync(); if (!silencioso) aviso('Sem rede. Os registos ficam guardados no telefone.', 'info'); return; }
   if (S.credPend && !(await autenticarPendente())) { actSync(); return; }
-  let enviados = 0, erro = null;
+  let enviados = 0, erro = null, sessao = false, recusadas = 0;
   envio: for (const reg of f) {
-    const { constr, fotos, ...linha } = reg;
+    const { constr, fotos, _recusa, ...linha } = reg;
     for (const [tipo, em] of Object.entries(fotos || {})) {   // fotografias da rega (entrada, rega, saída) primeiro
       const k = `${reg.id}-${tipo}`, caminho = `${S.perfil.id}/${k}.jpg`;
       let b = null; try { b = await FOTOS.ler(k); } catch {} b = b || S.fotosMem?.[k] || null;
@@ -348,10 +383,16 @@ async function sincronizarAgora(silencioso) {
       linha['foto_' + tipo] = b ? caminho : null; linha['foto_' + tipo + '_em'] = em;
     }
     const r1 = await sb.from('registos_rega').upsert(linha, { onConflict: 'id', ignoreDuplicates: true });
-    if (r1.error) { erro = r1.error.message; break; }
+    if (r1.error) {
+      if (erroPassageiro(r1.error)) { erro = r1.error.message; sessao = erroSessao(r1.error); break; }
+      marcarRecusa('fila', reg, r1.error, 'registos_rega'); recusadas++; continue;
+    }
     if (constr?.length) {
       const r2 = await sb.from('constrangimentos').upsert(constr.map((c) => ({ ...c, registo_id: reg.id })), { onConflict: 'id', ignoreDuplicates: true });
-      if (r2.error) { erro = r2.error.message; break; }
+      if (r2.error) {
+        if (erroPassageiro(r2.error)) { erro = r2.error.message; sessao = erroSessao(r2.error); break; }
+        marcarRecusa('fila', reg, r2.error, 'constrangimentos'); recusadas++; continue;   // a rega fica na fila até os constrangimentos entrarem
+      }
     }
     // já está no servidor: passa da fila para "meus registos" no mesmo passo (não se perde nem se conta duas vezes)
     const m = LS.get('meusRegs', []); if (!m.some((x) => x.id === reg.id)) m.push({ id: reg.id, area_id: reg.area_id, activista_id: reg.activista_id, data: reg.data, ronda: reg.ronda, plantas_regadas: reg.plantas_regadas, teste: reg.teste, campo_fechado: reg.campo_fechado ?? null });
@@ -361,9 +402,13 @@ async function sincronizarAgora(silencioso) {
     enviados++;
   }
   if (!erro) {                                           // início do dia (pessoas presentes)
-    for (const j of LS.get('filaJ', [])) {
-      const r3 = await sb.from('jornadas').upsert(j, { onConflict: 'id', ignoreDuplicates: true });
-      if (r3.error) { erro = r3.error.message; break; }
+    for (const j of [...LS.get('filaJ', [])].sort((a, b) => (a._recusa ? 1 : 0) - (b._recusa ? 1 : 0))) {
+      const { _recusa, ...jj } = j;
+      const r3 = await sb.from('jornadas').upsert(jj, { onConflict: 'id', ignoreDuplicates: true });
+      if (r3.error) {
+        if (erroPassageiro(r3.error)) { erro = r3.error.message; sessao = erroSessao(r3.error); break; }
+        marcarRecusa('filaJ', j, r3.error, 'jornadas'); recusadas++; continue;
+      }
       LS.set('filaJ', LS.get('filaJ', []).filter((x) => x.id !== j.id));
     }
   }
@@ -395,8 +440,8 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'meta_mot' ? await sb.rpc('gravar_meta_motivo', { p_id: x.mm_id, p_activista: x.activista_id, p_data: x.data, p_motivo: x.motivo })   // v226
         : x.tipo === 'retirar' ? await sb.rpc('retirar_da_rega', { p_area: x.area_id, p_motivo: x.motivo, p_obs: x.obs || null, p_em: x.em })   // v205
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
-      if (r4.error && !r4.error.code) { erro = r4.error.message; break; }   // sem rede: fica na fila
-      if (r4.error) aviso(`Não foi gravado (${x.area_id || x.sug_id || x.activista_id}): ${r4.error.message}`, 'erro');   // recusado pelo servidor: sai da fila
+      if (r4.error && erroPassageiro(r4.error)) { erro = r4.error.message; sessao = erroSessao(r4.error); break; }   // sem rede: fica na fila
+      if (r4.error) { marcarRecusa('filaAlt', x, r4.error, x.tipo || 'atrib'); recusadas++; continue; }   // recusado: fica na fila, marcado (antes saía e perdia-se)
       LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot'].includes(x.tipo)) alteradas++;
     }
   }
@@ -408,9 +453,10 @@ async function sincronizarAgora(silencioso) {
       let foto = null; try { foto = await FOTOS.ler(c.id); } catch {} foto = foto || S.fotosMem?.[c.id] || null;
       const caminho = `${S.perfil.id}/${c.id}.jpg`;
       if (foto) { const up = await sb.storage.from('chuva-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) { erro = up.error.message; break; } }
-      const r5 = await sb.from('chuva').upsert({ ...c, zona: c.zona ?? null, teste: !!c.teste, foto_path: foto ? caminho : null }, { onConflict: c.teste ? 'id' : 'data,comunidade,zona,activista_id' });
-      if (r5.error && !r5.error.code) { erro = r5.error.message; break; }
-      if (r5.error) aviso(`Chuva não gravada: ${r5.error.message}`, 'erro');
+      const { _recusa, ...cc } = c;
+      const r5 = await sb.from('chuva').upsert({ ...cc, zona: c.zona ?? null, teste: !!c.teste, foto_path: foto ? caminho : null }, { onConflict: c.teste ? 'id' : 'data,comunidade,zona,activista_id' });
+      if (r5.error && erroPassageiro(r5.error)) { erro = r5.error.message; sessao = erroSessao(r5.error); break; }
+      if (r5.error) { marcarRecusa('filaChuva', c, r5.error, 'chuva'); recusadas++; continue; }   // fica no telefone com a fotografia
       LS.set('filaChuva', LS.get('filaChuva', []).filter((y) => y.id !== c.id));
       try { await FOTOS.apagar(c.id); } catch {}
     }
@@ -424,14 +470,19 @@ async function sincronizarAgora(silencioso) {
   if (!erro) erro = await enviarGestaoRecontagens();
   if (!erro) erro = await enviarRecontagens();
   if (!erro && (LS.get('filaTrilho', []) || []).length) await enviarTrilhos();
+  if (erro && recusadas && !sessao) await enviarProblemas();   // o servidor respondeu às recusas: o relatório delas também deve chegar
   if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
   actSync();
-  if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
+  if (sessao) aviso('A sessão expirou. Feche a app, abra-a de novo e tente outra vez.', 'erro');
+  else if (recusadas && !erro) aviso('Alguns registos foram recusados pelo servidor. Toque no botão vermelho do topo para ver quais.', 'erro');
+  else if (!silencioso) aviso(erro ? 'Falhou o envio: ' + erro : enviados ? `${enviados} registo(s) enviados.` : 'Tudo sincronizado.', erro ? 'erro' : 'ok');
+  if ($('#pe-lista')) ecraPorEnviar();   // ecrã «Registos por enviar» aberto: actualiza
 }
 function actSync() {
   const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaAcomp', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length + LS.get('filaCoq', []).length + LS.get('filaMed', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
-  b.textContent = n ? `${n} por enviar` : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
-  b.classList.toggle('pend', n > 0);
+  const nr = recusados().length;
+  b.textContent = n ? (nr ? `${n} por enviar · ${nr} recusado(s)` : `${n} por enviar`) : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
+  b.classList.toggle('pend', n > 0 && !nr); b.classList.toggle('recusa', nr > 0);
 }
 
 // ---------- dados ----------
@@ -834,7 +885,7 @@ async function enviarPercurso() {
     if ((b.env || 0) >= b.pontos.length) continue;
     const n = b.pontos.length;
     const r = await sb.rpc('gravar_percurso', { p_id: b.id, p_data: b.data, p_pontos: b.pontos, p_teste: !!b.teste });
-    if (r.error && !r.error.code) return r.error.message;                       // sem rede: fica no telefone
+    if (r.error && erroPassageiro(r.error)) return r.error.message;                       // sem rede: fica no telefone
     const B = LS.get('percurso', []) || [], x = B.find((y) => y.id === b.id); if (x) x.env = n;
     // blocos cheios ou de outros dias, já enviados, saem do telefone
     LS.set('percurso', B.filter((y) => !((y.env || 0) >= y.pontos.length && (y.pontos.length >= PERC.max || y.data !== hojeISO()))));
@@ -1729,7 +1780,7 @@ async function pararGravarTrilho(cancelar) {
 async function enviarTrilhos() {
   for (const t of LS.get('filaTrilho', []) || []) {
     const r = await sb.rpc('gravar_trilho', { p_id: t.id, p_pontos: t.pontos.slice(0, 3000), p_origem: t.origem || 'nav' });
-    if (r.error && !r.error.code) return null;            // sem rede: fica no telefone
+    if (r.error && erroPassageiro(r.error)) return null;            // sem rede: fica no telefone
     LS.set('filaTrilho', (LS.get('filaTrilho', []) || []).filter((x) => x.id !== t.id));   // enviado (ou recusado: não volta a tentar)
   }
   return null;
@@ -1811,8 +1862,8 @@ async function enviarCoq() {
       r = await sb.rpc('gravar_coqueiro2', { p_id: x.c.id, p_lat: x.c.lat, p_lon: x.c.lon, p_precisao: x.c.precisao_m, p_estado: x.c.estado, p_local: x.c.local, p_obs: x.c.observacao, p_foto: caminho, p_em: x.c.marcado_em,
         p_tratamento: x.c.tratamento ?? null, p_cachos: x.c.cachos ?? null, p_cocos: x.c.cocos ?? null, p_fotos_extra: extras });
     } else r = await sb.rpc('remover_coqueiro', { p_id: x.id });
-    if (r.error && !r.error.code) return r.error.message;
-    if (r.error) aviso(`Coqueiro não gravado: ${r.error.message}`, 'erro');
+    if (r.error && erroPassageiro(r.error)) return r.error.message;
+    if (r.error) avisoRecusado(r.error, `Coqueiro não gravado: ${r.error.message}`, 'erro');
     LS.set('filaCoq', filaCoq().filter((y) => y.fid !== x.fid));
     if (x.op === 'gravar' && x.foto) try { await FOTOS.apagar('coq-' + x.c.id); } catch {}
     for (const k of (x.op === 'gravar' && x.extras) || []) try { await FOTOS.apagar(k); } catch {}
@@ -1978,8 +2029,8 @@ async function enviarMed() {
     const up = await sb.storage.from('medicoes-fotos').upload(caminho, b, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message;
     const r = await sb.rpc('gravar_medicao', { p_id: m.id, p_tipo: m.tipo, p_alvo: m.alvo, p_area: m.area, p_altura: m.altura_cm, p_diametro: m.diametro_cm, p_copa: m.copa_cm,
       p_vara: VARA_CM, p_pontos: m.pontos, p_foto: caminho, p_em: m.medido_em });
-    if (r.error && !r.error.code) return r.error.message;
-    if (r.error) aviso(`Medição não gravada: ${r.error.message}`, 'erro');
+    if (r.error && erroPassageiro(r.error)) return r.error.message;
+    if (r.error) avisoRecusado(r.error, `Medição não gravada: ${r.error.message}`, 'erro');
     LS.set('filaMed', filaMed().filter((x) => x.id !== m.id));
     try { await FOTOS.apagar('med-' + m.id); } catch {}
     if (!r.error) { const t = LS.get('medicoes', {}) || {}; t[m.alvo] = [{ ...m, foto_path: caminho }, ...(t[m.alvo] || []).filter((x) => x.id !== m.id)]; LS.set('medicoes', t); }
@@ -2431,8 +2482,8 @@ async function enviarManut() {
       r = await sb.rpc('gravar_manutencao', { p_id: x.id, p_area: x.area_id, p_data: x.data, p_cavaroda: x.cavaroda, p_mulching: x.mulching, p_pessoas: x.pessoas, p_obs: x.obs, p_foto: caminho, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao, p_em: x.em });
     } else if (x.tipo === 'feito') r = await sb.rpc('marcar_manutencao_feita', { p_area: x.area_id, p_feito: x.feito, p_em: x.em });
     else r = { error: null };
-    if (r.error && !r.error.code) return r.error.message;
-    if (r.error) aviso(`Manutenção não gravada: ${r.error.message}`, 'erro');
+    if (r.error && erroPassageiro(r.error)) return r.error.message;
+    if (r.error) avisoRecusado(r.error, `Manutenção não gravada: ${r.error.message}`, 'erro');
     LS.set('filaMan', filaMan().filter((y) => y.id !== x.id)); mudou = true;
     if (x.tipo === 'reg') try { await FOTOS.apagar('man-' + x.id); } catch {}
   }
@@ -4232,8 +4283,8 @@ async function enviarGestaoRecontagens() {
       : x.op === 'encaminhar' ? await sb.rpc('encaminhar_recontagem2', { p_id: x.id, p_oficial: x.oficial, p_em: x.em })
       : x.op === 'validar' ? await sb.rpc('validar_recontagem2', { p_id: x.id, p_validar: x.sim, p_motivo: x.motivo, p_vivas: x.vivas, p_mortas: x.mortas, p_em: x.em })
       : await sb.rpc('cancelar_recontagem', { p_id: x.id });
-    if (r.error && !r.error.code) return r.error.message;                 // sem rede: fica na fila
-    if (r.error) aviso(`Recontagem: ${r.error.message}`, 'erro');           // recusado pelo servidor: sai da fila
+    if (r.error && erroPassageiro(r.error)) return r.error.message;                 // sem rede: fica na fila
+    if (r.error) avisoRecusado(r.error, `Recontagem: ${r.error.message}`, 'erro');           // recusado pelo servidor: sai da fila
     else if (x.op === 'validar' && x.sim) mudouVivas = true;
     LS.set('filaRecG', filaRecG().filter((y) => !(y.id === x.id && y.op === x.op && y.em === x.em))); fez = true;
   }
@@ -4318,8 +4369,8 @@ async function enviarRecontagens() {
     // contagens guardadas por versões anteriores (sem a marca do NAVUNA) continuam pela enviar_recontagem2
     const r = x.navuna ? await sb.rpc('enviar_recontagem3', { p_id: x.id, p_vivas: x.vivas, p_mortas: x.mortas, p_foto: cd, p_foto_campo: cc, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao, p_em: x.em, p_navuna: true })
       : await sb.rpc('enviar_recontagem2', { p_id: x.id, p_vivas: x.vivas, p_mortas: x.mortas, p_foto: cd, p_foto_campo: cc, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao, p_em: x.em });
-    if (r.error && !r.error.code) return r.error.message;
-    if (r.error) aviso(`Recontagem não gravada: ${r.error.message}`, 'erro');
+    if (r.error && erroPassageiro(r.error)) return r.error.message;
+    if (r.error) avisoRecusado(r.error, `Recontagem não gravada: ${r.error.message}`, 'erro');
     LS.set('filaRec', filaRec().filter((y) => y.id !== x.id));
     for (const k of [kd, kc]) { try { await FOTOS.apagar(k); } catch {} if (S.fotosMem) delete S.fotosMem[k]; }
   }
@@ -4419,8 +4470,8 @@ async function enviarQueimadas() {
     const caminho = `${S.perfil.id}/queimada-${q.id}.jpg`;
     if (foto) { const up = await sb.storage.from('rega-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
     const r = await sb.rpc('gravar_queimada2', { p_id: q.id, p_area: q.area_id, p_data: q.data, p_obs: q.observacao, p_foto: foto ? caminho : null, p_lat: q.lat, p_lon: q.lon, p_precisao: q.precisao_m, p_afectadas: q.plantas_afectadas ?? null, p_mortas: q.plantas_mortas ?? null });
-    if (r.error && !r.error.code) return r.error.message;
-    if (r.error) aviso(`Queimada não gravada: ${r.error.message}`, 'erro');
+    if (r.error && erroPassageiro(r.error)) return r.error.message;
+    if (r.error) avisoRecusado(r.error, `Queimada não gravada: ${r.error.message}`, 'erro');
     else { S.queimadas = [...(S.queimadas || []), { id: q.id, area_id: q.area_id, data: q.data, observacao: q.observacao, foto_path: foto ? caminho : null, registada_por: S.perfil.id, plantas_afectadas: q.plantas_afectadas ?? null, plantas_mortas: q.plantas_mortas ?? null }]; LS.set('queimadas', S.queimadas); }
     LS.set('filaQueim', queimadasLocais().filter((y) => y.id !== q.id));
     try { await FOTOS.apagar(q.id); } catch {}
@@ -4494,16 +4545,57 @@ async function enviarSugestoes() {
     }
     const args = { p_id: g.id, p_texto: g.texto, p_foto: caminhos[0] || null, p_ecra: g.ecra, p_area: g.area_id, p_versao: g.versao, p_telefone: g.telefone, p_lingua: g.lingua, p_em: g.em, p_diag: g.diag || null };
     const r = caminhos.length > 1 ? await sb.rpc('enviar_sugestao3', { ...args, p_fotos_extra: caminhos.slice(1) }) : await sb.rpc('enviar_sugestao2', args);
-    if (r.error && !r.error.code) return r.error.message;
-    if (r.error) aviso(`Sugestão não enviada: ${r.error.message}`, 'erro');
+    if (r.error && erroPassageiro(r.error)) return r.error.message;
+    if (r.error) avisoRecusado(r.error, `Sugestão não enviada: ${r.error.message}`, 'erro');
     LS.set('filaSug', LS.get('filaSug', []).filter((y) => y.id !== g.id));
     for (let i = 0; i < MAX_FOTOS_SUG; i++) { const k = 'sug-' + g.id + (i ? '-' + (i + 1) : ''); try { await FOTOS.apagar(k); } catch {} if (S.fotosMem) delete S.fotosMem[k]; }
   }
   const sp = LS.get('filaSugProx', []);                 // registo das sugestões do próximo campo (v100)
   if (sp.length) { const r = await sb.rpc('registar_sugestoes_proximo', { p_lista: sp }); if (!r.error) LS.set('filaSugProx', LS.get('filaSugProx', []).filter((x) => !sp.some((y) => y.id === x.id))); }
+  await enviarProblemas();
+  return null;
+}
+async function enviarProblemas() {
   const p = LS.get('problemas', []);
   if (p.length) { const r = await sb.rpc('registar_problemas', { p_lista: p.map(({ k, ...x }) => x) }); if (!r.error) LS.set('problemas', LS.get('problemas', []).filter((x) => !p.some((y) => y.k === x.k && y.vezes === x.vezes))); }
-  return null;
+}
+// ---------- Registos por enviar (passo B do ponto 1, cópia de teste, 10/11/2026) ----------
+// O activista vê o que o servidor recusou, em palavras simples. Não há «Apagar»: um registo nunca se deita fora no telefone
+// (decisão do Valdo, 10/11/2026); resolve-se no servidor e a app volta a enviar sozinha.
+function explicaRecusa(r) {
+  const c = r.codigo || '';
+  if (c === '23514') return 'O servidor não aceitou um dos valores deste registo (por exemplo, um tipo de constrangimento novo).';
+  if (c === '23503') return 'Falta no servidor um dado ligado a este registo (o campo ou a equipa).';
+  if (c === '42501') return 'O servidor não deixou gravar este registo com esta conta.';
+  if (c.startsWith('22')) return 'Um dos valores deste registo tem um formato que o servidor não aceita.';
+  return 'O servidor não aceitou este registo.';
+}
+function linhaRecusado({ fila, x }) {
+  const r = x._recusa, a = x.area_id ? (S.areas || []).find((y) => y.id === x.area_id) : null;
+  const tipo = fila === 'fila' ? 'Rega' : fila === 'filaJ' ? 'Início do dia' : fila === 'filaChuva' ? 'Chuva' : 'Alteração';
+  const quem = a ? a.produtor : (x.produtor || x.comunidade || '');
+  const sub = [a?.pr || '', x.data ? fmtData(x.data) : ''].filter(Boolean).join(' · ');
+  return `<div class="item" style="border-left:4px solid #b42318;display:block">
+    <div class="nome"><span>${tipo}</span>${quem ? ` · <span class="sem-trad">${esc(quem)}</span>` : ''}</div>
+    <div class="sub"><span class="sem-trad">${esc(sub)}</span>${fila === 'fila' && x.plantas_regadas != null ? ` · <span>${esc(String(x.plantas_regadas))} plantas</span>` : ''}${fila === 'filaAlt' ? ` · <span class="sem-trad">${esc(x.tipo || '')}</span>` : ''}</div>
+    <p style="margin:6px 0 2px">${explicaRecusa(r)}</p>
+    <p class="pequeno" style="margin:0"><span>Mensagem do servidor</span>: <span class="sem-trad">${esc(r.msg)}${r.codigo ? ' (' + esc(r.codigo) + ')' : ''}</span></p>
+    <p class="pequeno" style="margin:0"><span>Tentativas</span>: <b class="sem-trad">${r.tentativas}</b> · <span>Desde</span> <span class="sem-trad">${esc(fmtDataHora(r.desde))}</span></p>
+  </div>`;
+}
+function ecraPorEnviar() {
+  const rec = recusados(), outros = FILAS_RECUSA.reduce((s, f) => s + (LS.get(f, []) || []).filter((x) => x && !x._recusa).length, 0);
+  folha(`<h2>📤 <span>Registos por enviar</span></h2>
+    <p class="pequeno">Estes registos estão guardados neste telefone. A app envia-os sozinha quando houver rede.</p>
+    <div id="pe-lista">${rec.length ? `<h3 style="color:#b42318"><span>Recusados pelo servidor</span> (<span class="sem-trad">${rec.length}</span>)</h3>${rec.map(linhaRecusado).join('')}
+      <div class="msg erro">Não apague nada nem saia da conta. Mostre este ecrã ao técnico ou ao supervisor: o problema resolve-se no servidor e a app volta a enviar sozinha.</div>` : '<div class="msg ok">Todos os registos foram enviados.</div>'}
+    ${outros ? `<p class="pequeno"><span>Outros registos por enviar</span>: <b class="sem-trad">${outros}</b></p>` : ''}</div>
+    <button class="btn" id="pe-tentar" onclick="tentarDeNovo()">🔄 <span>Tentar de novo agora</span></button>`);
+}
+async function tentarDeNovo() {
+  const b = $('#pe-tentar'); if (b) b.disabled = true;
+  await sincronizar(true);
+  if ($('#pe-lista')) { ecraPorEnviar(); if (recusados().length) aviso('Ainda há registos recusados. A app volta a tentar em cada envio.', 'erro'); }
 }
 // Gestão › sugestões e problemas: só o gestor principal
 const ESTADOS_SUG = { nova: 'Nova', aprovada: 'Aprovada', recusada: 'Recusada', feita: 'Feita' };
@@ -5106,8 +5198,8 @@ async function enviarAcomp() {
     const caminho = `${S.perfil.id}/acomp-${x.id}.jpg`;
     const up = await sb.storage.from('rega-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message;
     const r = await sb.rpc('gravar_acompanhamento', { p_id: x.id, p_area: x.area_id, p_feito_em: x.feito_em, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao_m, p_distancia: x.distancia_m, p_foto: caminho, p_obs: x.observacao });
-    if (r.error && !r.error.code) return r.error.message;
-    if (r.error) aviso(`Acompanhamento não gravado: ${r.error.message}`, 'erro');
+    if (r.error && erroPassageiro(r.error)) return r.error.message;
+    if (r.error) avisoRecusado(r.error, `Acompanhamento não gravado: ${r.error.message}`, 'erro');
     LS.set('filaAcomp', LS.get('filaAcomp', []).filter((y) => y.id !== x.id));
     try { await FOTOS.apagar('acomp-' + x.id); } catch {}
   }
@@ -5925,8 +6017,8 @@ async function enviarMonitorias() {
     if (foto) { const up = await sb.storage.from('monitoria-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
     const { sem_foto_local, ...linha } = x;
     const r = await sb.from('monitorias').insert({ ...linha, foto_path: foto ? caminho : null });
-    if (r.error && !r.error.code) return r.error.message;                         // sem rede: fica na fila
-    if (r.error && r.error.code !== '23505') aviso(`Verificação não gravada: ${r.error.message}`, 'erro');   // 23505 = já estava no servidor
+    if (r.error && erroPassageiro(r.error)) return r.error.message;                         // sem rede: fica na fila
+    if (r.error && r.error.code !== '23505') avisoRecusado(r.error, `Verificação não gravada: ${r.error.message}`, 'erro');   // 23505 = já estava no servidor
     LS.set('monFeitas', [...LS.get('monFeitas', []), x.amostra_id].slice(-50));
     LS.set('filaMon', LS.get('filaMon', []).filter((y) => y.id !== x.id));
     try { await FOTOS.apagar(x.id); } catch {}
@@ -6380,7 +6472,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#l-mostrar').onclick = () => { const i = $('#l-senha'); i.type = i.type === 'password' ? 'text' : 'password'; $('#l-mostrar').textContent = i.type === 'password' ? 'Mostrar' : 'Esconder'; };
   modoEntrada();
   $('#nav').onclick = (e) => { const b = e.target.closest('button[data-e]'); if (b) mudar(b.dataset.e); };
-  $('#h-sync').onclick = () => sincronizar();
+  $('#h-sync').onclick = () => (recusados().length ? ecraPorEnviar() : sincronizar());
   $('#folha-x').onclick = fecharFolha;
   $('#b-rodar').onclick = alternarRodar; botaoRodar();
   ligarFerramentas();
