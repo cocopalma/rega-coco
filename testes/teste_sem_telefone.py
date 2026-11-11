@@ -49,6 +49,9 @@ with sync_playwright() as p:
     print("2 ficha:", [l for l in pg.inner_text("#folha-c").split("\n") if "📷" in l or "✓" in l or "Tirar" in l][:4])
     pg.click("button[onclick^=ecraSaida]"); pg.fill("#s-plantas", "70"); pg.click("button[onclick^=marcarSaida]"); pg.wait_for_timeout(400)
     print("3 sem foto da rega:", dialogos[-1:], "| ecrã:", pg.inner_text("#folha-c").split("\n")[0])
+    # v173: a rega começa com a água; só depois aparece a fotografia da rega
+    pg.click("text=Chegou a água (tuk-tuk) agora"); pg.wait_for_selector("button[onclick=\"ecraFotoRega('rega')\"]")
+    pg.click("button[onclick=\"ecraFotoRega('rega')\"]"); pg.wait_for_selector("#fr-foto", state="attached")
     pg.set_input_files("#fr-foto", "/home/claude/rega-test/foto_teste.jpg"); pg.wait_for_timeout(800)
     pg.click("button[onclick^=ecraSaida]"); pg.fill("#s-plantas", "70"); pg.click("button[onclick^=marcarSaida]"); pg.wait_for_timeout(400)
     print("4 sem foto da saída:", dialogos[-1:])

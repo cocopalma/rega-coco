@@ -12,7 +12,7 @@ UID = "22222222-2222-2222-2222-222222222222"
 areas = [
   {"id": "PR1-1", "pr": "PR1", "area_n": 1, "comunidade": "Farol", "produtor": "Produtor Um", "instaladas": 70, "vivas": 70, "latitude": -10.6835, "longitude": 40.6340, "activista_id": ACT, "activista_proposto": None, "data_plantio": "2026-05-06"},
   {"id": "PR2-1", "pr": "PR2", "area_n": 1, "comunidade": "Farol", "produtor": "Produtor Dois", "instaladas": 60, "vivas": 0, "latitude": -10.6842, "longitude": 40.6332, "activista_id": ACT, "activista_proposto": None, "data_plantio": "2026-05-19"},
-  {"id": "PR3-1", "pr": "PR3", "area_n": 1, "comunidade": "Farol", "produtor": "Produtor Tres", "instaladas": 50, "vivas": 48, "latitude": -10.6900, "longitude": 40.6400, "activista_id": ACT, "activista_proposto": None, "data_plantio": "2026-04-01"},
+  {"id": "PR3-1", "pr": "PR3", "area_n": 1, "comunidade": "Farol", "produtor": "Produtor Tres", "instaladas": 50, "vivas": 48, "latitude": -10.6900, "longitude": 40.6400, "activista_id": ACT, "activista_proposto": None, "data_plantio": "2026-04-01", "wa_ultima": "2026-10-01", "wa_n": 1},   # já recebeu água (WhatsApp): sem isto a regra da v204 bloqueia os outros campos
   {"id": "PR4-1", "pr": "PR4", "area_n": 1, "comunidade": "Farol", "produtor": "Produtor Quatro", "instaladas": 40, "vivas": 40, "latitude": -10.6838, "longitude": 40.6343, "activista_id": OUTRO, "activista_proposto": None, "data_plantio": "2026-04-01"},
 ]
 estado = [{"area_id": a["id"], "ultima_rega": "2026-10-01" if a["id"] == "PR3-1" else None, "regas_app": 0, "ronda_actual": 1, "regada_na_ronda": False} for a in areas]
@@ -75,16 +75,17 @@ with sync_playwright() as p:
     pg.fill("#j-pessoas", "4"); pg.click("#folha.on button:has-text('Guardar')"); pg.wait_for_timeout(1200)
     print("2 jornada enviada:", recebidos["jornadas"][0]["pessoas"] if recebidos["jornadas"] else "NÃO", "| mapa:", pg.inner_text("#ronda-info"))
 
-    regar(pg, "PR1-1", plantas=65, agua="agora"); pg.wait_for_timeout(1500)
+    regar(pg, "PR1-1", agua="agora"); pg.wait_for_timeout(1500)   # todas as plantas: com menos e «A água acabou» o campo fica por terminar (v154) e pode voltar a ser regado
     r1 = recebidos["registos"][0]
     print("3 PR1:", {k: r1[k] for k in ["ronda", "pessoas", "plantas_regadas"]}, "| agua_em:", bool(r1["agua_em"]), "| sugestão:", pg.inner_text("#folha-c").split("Produtor")[1][:20].strip())
     fechar_sugestao(pg)
     regar(pg, "PR2-1"); pg.wait_for_timeout(1500)
     r2 = recebidos["registos"][-1]; print("4 PR2: hora da água escrita →", r2["agua_em"], "| seguiu sugestão:", r2["seguiu_sugestao"])
     fechar_sugestao(pg)
-    # repetir PR1 na mesma ronda → bloqueado
+    # repetir PR1 na mesma ronda → desde a v164 pede o motivo (antes recusava); aqui volta-se atrás sem regar
     pg.click("nav button[data-e=lista]"); pg.click(".item[data-id='PR1-1']"); pg.click("text=Cheguei — marcar entrada")
-    pg.wait_for_selector("text=já foi regado na ronda 1"); print("5 repetir na ronda bloqueado:", pg.inner_text(".msg.erro")[:120])
+    pg.wait_for_selector("text=Este campo já foi regado nesta ronda"); print("5 repetir na ronda pede o motivo:", pg.inner_text("#folha-c .msg.info")[:120].replace("\n", " "))
+    if "rp-mot" not in pg.inner_html("#folha-c"): print("FALHA 5 sem a lista de motivos")
     # PR3 longe → GPS bloqueia; perto → fecha a ronda
     pg.click("#folha-x"); pg.click("nav button[data-e=lista]"); pg.click(".item[data-id='PR3-1']"); pg.click("text=Cheguei — marcar entrada")
     pg.wait_for_selector("text=Só pode marcar a entrada", timeout=35000); print("6 longe do campo bloqueado: OK")
@@ -97,8 +98,13 @@ with sync_playwright() as p:
     pg.wait_for_selector("text=fora da sua lista", timeout=15000); pg.fill("#a-motivo", "pedido do supervisor"); pg.click("text=Regar mesmo assim")
     pg.wait_for_selector("text=Entrada marcada"); fotos(pg); pg.click("text=Terminei — marcar saída"); pg.click("text=Marcar saída e guardar"); pg.wait_for_timeout(300)
     print("7b campo vazio:", dialogos[-1:], "| valor:", repr(pg.input_value("#s-plantas")))
-    pg.fill("#s-plantas", "40"); pg.evaluate("document.querySelector('#s-chips .chip[data-k=mudas_secas]').click()"); pg.click("text=Marcar saída e guardar"); pg.wait_for_selector("text=Rega guardada"); pg.wait_for_timeout(1500)
-    r4 = recebidos["registos"][-1]; print("8 fora da lista:", r4["alerta"], "|", r4["motivo_alerta"], "| ronda", r4["ronda"])
+    pg.fill("#s-plantas", "40"); pg.evaluate("document.querySelector('#s-chips .chip[data-k=mudas_secas]').click()"); pg.fill("#s-mortas", "3"); pg.click("text=Marcar saída e guardar")   # v165: nº de mortas obrigatório; pg.wait_for_selector("text=Rega guardada")
+    for _ in range(30):   # espera que a rega do PR4 chegue ao servidor (antes lia a do PR3)
+        if any(x["area_id"] == "PR4-1" for x in recebidos["registos"]): break
+        pg.wait_for_timeout(500)
+    r4 = next((x for x in recebidos["registos"] if x["area_id"] == "PR4-1"), {})
+    print("8 fora da lista:", r4.get("alerta"), "|", r4.get("motivo_alerta"), "| ronda", r4.get("ronda"))
+    if r4.get("alerta") != "fora_da_lista" or r4.get("motivo_alerta") != "pedido do supervisor": print("FALHA 8 a rega fora da lista não levou o alerta e o motivo")
     fechar_sugestao(pg)
     # ronda 2, sem rede: PR1 volta a ser permitido e fica na fila
     ctx.set_offline(True); pg.evaluate("window.dispatchEvent(new Event('offline'))")
