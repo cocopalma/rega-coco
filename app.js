@@ -5223,7 +5223,7 @@ function ecraCorrigirPlantas(rid, areaId, contadas) {
     ${contadas >= 0 ? `<div class="lin"><span>Plantas vivas que contou no campo</span><b>${num(contadas)}</b></div>` : ''}
     <label>Número certo de plantas regadas<input id="cp-n" type="number" inputmode="numeric" min="0"></label>
     <label>Motivo da correcção<textarea id="cp-mot" rows="2" placeholder="Ex.: esqueceu-se de mudar o número"></textarea></label>
-    <p class="pequeno">Fica registado quem corrigiu, quando, o número que estava e o motivo. Funciona sem rede.</p>
+    <p class="pequeno">Fica registado quem corrigiu, quando, o número que estava e o motivo. Funciona sem rede.</p><div id="cp-msg"></div>
     <button class="btn" onclick="gravarCorrecaoPlantas('${esc(rid)}','${esc(areaId)}')">Gravar a correcção</button>
     <button class="btn sec" onclick="abrirFicha('${esc(areaId)}')">Voltar</button>`);
 }
@@ -5231,6 +5231,16 @@ function gravarCorrecaoPlantas(rid, areaId) {
   const a = S.areas.find((x) => x.id === areaId), n = Number($('#cp-n').value), mot = $('#cp-mot').value.trim();
   if ($('#cp-n').value === '' || !Number.isInteger(n) || n < 0) return alert('Escreva o número de plantas regadas.');
   if (mot.length < 3) return alert('Escreva o motivo da correcção.');
+  // v234 (11/11/2026, sugestão do Guidion pelo 💡 às 16:21): ele escrevia o mesmo número para confirmar a rega; o servidor não muda nada
+  // com o mesmo número e o ⚠️ ficava. Agora a app diz que não há nada para corrigir e leva ao «✓ Está certo».
+  const v = (S.regasCampo?.[areaId] || []).find((x) => x.id === rid);
+  if (v && Number(v.plantas_regadas) === n) {
+    const al = (LS.get('meuDia')?.d?.alertas || []).find((x) => x.registo_id === rid), el = $('#cp-msg');
+    const h = `<div class="msg erro"><span>O número é igual ao que está gravado: não há nada para corrigir.</span> <span>Se a rega está certa, use «✓ Está certo».</span></div>`
+      + (al ? `<button class="chip" onclick="ecraConfirmarRega('${esc(rid)}', '${esc(al.tipo)}', ${Number(al.plantas) || 0}, ${Number(al.base) || 0}, '${esc(areaId)}')">✓ Está certo</button>` : '');
+    if (el) el.innerHTML = h; else alert('O número é igual ao que está gravado: não há nada para corrigir.');
+    return;
+  }
   if (a && plantasN(a) > 0 && n > plantasN(a) && !confirm(`Escreveu ${n}, mas a base diz ${plantasTxt(a)}. Confirma?`)) return;   // v167: acima da base
   const f = LS.get('filaAlt', []).filter((x) => !(x.tipo === 'plantas_rega' && x.registo_id === rid)); LS.set('filaAlt', f);   // só a última correcção
   porNaFilaAlt({ tipo: 'plantas_rega', area_id: areaId, registo_id: rid, plantas: n, motivo: mot, em: new Date().toISOString() });
@@ -5715,7 +5725,9 @@ function cartaoMeuDia() {
     if (sem && !M.length) return '';
     return `<div class="cartao" id="meu-dia"><h2>📋 O meu dia</h2>${sem ? '' : '<p class="pequeno">As equipas, os avisos e «Fechar o dia» aparecem quando houver rede.</p>'}${M.join('')}</div>`;
   }
-  const d = c.d, eqs = d.equipas || [], al = d.alertas || [], cp = confPendentes();
+  // v234: as regas com uma correcção das plantas ainda por enviar saem da lista (no servidor a correcção trata o ⚠️)
+  const corrPend = new Set(LS.get('filaAlt', []).filter((x) => x.tipo === 'plantas_rega').map((x) => x.registo_id));
+  const d = c.d, eqs = d.equipas || [], al = (d.alertas || []).filter((x) => !(x.tipo !== 'foto_data' && corrPend.has(x.registo_id))), cp = confPendentes();
   const motivosDe = (e) => (e.motivos || (e.sem_rega ? [{ motivo: e.sem_rega }] : [])).map((m) => cp.has(m.id) ? { ...m, por_confirmar: false, confirmado_nome: S.perfil?.nome, pendente: true } : m);
   const falta = eqs.filter((e) => !e.regas && !e.comecou && !motivosDe(e).length);
   const porConf = eqs.reduce((n, e) => n + motivosDe(e).filter((m) => m.por_confirmar).length, 0);

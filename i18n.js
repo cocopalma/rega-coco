@@ -222,6 +222,8 @@ document.addEventListener('DOMContentLoaded', () => {
     'O supervisor e o técnico já podem corrigir a coordenada e medir a área deste campo. Fecha de novo depois de gravarem.': 'The supervisor and technician can now correct the coordinate and measure the area of this field. It closes again after they save.',
     'Correcção fechada.': 'Correction closed.',
   "Sem resposta do servidor. Feche a app, abra-a de novo e tente outra vez.": "No response from the server. Close the app, open it again and try again.",
+  "O número é igual ao que está gravado: não há nada para corrigir.": "The number is the same as the one saved: there is nothing to correct.",
+  "Se a rega está certa, use «✓ Está certo».": "If the watering is right, use «✓ It is correct».",
   "A fechar o dia…": "Closing the day\u2026",
   "Alteração": "Change",
   "Tentativas": "Attempts",

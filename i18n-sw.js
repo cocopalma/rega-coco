@@ -400,6 +400,8 @@ window.I18N_SW_D = {
 "O supervisor e o técnico já podem corrigir a coordenada e medir a área deste campo. Fecha de novo depois de gravarem.": "Msimamizi na fundi sasa wanaweza kurekebisha kiratibu na kupima eneo la shamba hili. Inafungwa tena wakishahifadhi.",
 "Correcção fechada.": "Marekebisho yamefungwa.",
 "Sem resposta do servidor. Feche a app, abra-a de novo e tente outra vez.": "Hakuna jibu kutoka kwa seva. Funga programu, ifungue tena na ujaribu tena.",
+"O número é igual ao que está gravado: não há nada para corrigir.": "Nambari ni sawa na iliyohifadhiwa: hakuna cha kusahihisha.",
+"Se a rega está certa, use «✓ Está certo».": "Ikiwa umwagiliaji ni sahihi, tumia «✓ Ni sahihi».",
 "A fechar o dia…": "Inafunga siku\u2026",
 "Alteração": "Mabadiliko",
 "Tentativas": "Majaribio",
