@@ -420,7 +420,7 @@ footer{{color:var(--c);font-size:12px;margin-top:24px;border-top:1px solid var(-
 <tbody>{linhas}</tbody></table></div>
 {resumo_equipas(eqs, r.get('hora_combinada_chegada'))}
 
-<footer>Fonte: app Rega Coco (servidor). Só regas reais; as regas de teste não contam. Regas do dia {dia:%d/%m/%Y} que já tinham chegado ao servidor quando os dados foram lidos ({lido_txt}). Uma rega deste dia que chegue depois (telefone sem rede) não entra neste relatório; fica na app e no painel. Os dados deste relatório estão também em JSON dentro do ficheiro (elemento «rega-coco-dados»).</footer>
+<footer>Fonte: app Rega Coco (servidor). Só regas reais; as regas de teste não contam. Regas do dia {dia:%d/%m/%Y} que já tinham chegado ao servidor quando os dados foram lidos ({lido_txt}). Uma rega deste dia que chegue depois (telefone sem rede) não entra neste relatório; fica na app e no painel. Os dados deste relatório estão também em JSON dentro do ficheiro (elemento «rega-coco-dados») e no Rega_Coco_dados.json, com a lista completa dos campos (na rega e retirados, chave «campos»).</footer>
 </main>
 <script type="application/json" id="rega-coco-dados">{dados_json}</script>
 </body></html>'''

@@ -94,8 +94,27 @@ def main(dados, base):
         ver(0 <= x['cavaroda'] <= x['plantas'] and 0 <= x['mulching'] <= x['plantas'], f'manutenção {k}: cava-roda e mulching ≤ plantas')
         ver(x['feitos'] + x['completos'] + x['em_curso'] + x['por_fazer'] + x['sem_plantas'] == x['campos'],
             f'manutenção {k}: situações somam {x["campos"]} campos')
+    # Lista completa dos campos (12/11/2026, Valdo: base única com o painel do Dalmar)
+    cs = d.get('campos')
+    if cs is not None:
+        SIT = {'na_rega_ja_recebeu_agua', 'na_rega_nunca_recebeu_agua', 'retirado'}
+        ver(len({x['campo'] for x in cs}) == len(cs), f'campos: {len(cs)} sem repetidos')
+        ver(all(x['situacao'] in SIT for x in cs), 'campos: situação válida em todos')
+        na = [x for x in cs if x['situacao'] != 'retirado']
+        ver(len(na) == r['campos_na_rega'], f'campos: na rega na lista {len(na)} = campos na rega {r["campos_na_rega"]}')
+        ver(sum(1 for x in na if not x['activista']) <= (r.get('campos_sem_equipa') or 0),
+            'campos: na rega sem activista ≤ campos sem equipa')
+        nun = sum(1 for x in na if x['situacao'] == 'na_rega_nunca_recebeu_agua' and x['activista'])
+        ver(nun == r['campos_nunca_receberam_agua'],
+            f'campos: nunca receberam água (com activista) {nun} = {r["campos_nunca_receberam_agua"]}')
+        ver(all(x['app_regas'] == 0 and (x['wa_regas'] == 0 or x['wa_so_por_produtor']) and x['antes_app_regas'] == 0
+                for x in cs if x['situacao'] == 'na_rega_nunca_recebeu_agua'), 'campos: «nunca recebeu água» sem regas no próprio campo')
+        ver(all(x['retirado_em'] and x['retirado_motivo'] for x in cs if x['situacao'] == 'retirado'), 'campos: retirados com data e motivo')
+        ver(all(not x['retirado_em'] for x in na), 'campos: na rega sem data de retirada')
+        ver(all(x['app_regas'] <= 0 or (x['app_primeira'] and x['app_ultima'] and x['app_ultima'] <= d['data']) for x in cs),
+            'campos: regas da app até ao dia do relatório')
     if c.get('pessoas'):
-        nomes_sem = {x['activista'] for x in sem if not x['motivos_sem_rega']}
+        nomes_sem ={x['activista'] for x in sem if not x['motivos_sem_rega']}
         sem_inicio = {x['activista']: x for x in sem if not x['motivos_sem_rega'] and not x['inicio_dia']}
         tarde = {x['activista'] for x in com if (x['chegada_1o_campo'] or '') > hc}
         r1, r5 = set(), set()

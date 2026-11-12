@@ -164,5 +164,32 @@ select json_build_object(
              and not ds.removido and not coalesce(ds.substituido, false)
              and privado.dsr_pc(ds.user_id, ds.confirmado_em, ds.data, ds.ate))::int as r8_por_confirmar
       from pess ps) x)
-  )
+  ),
+  -- 12/11/2026 (Valdo: "sim"): lista completa dos campos (na rega + retirados), para o painel do Dalmar usar a mesma base.
+  -- Estado do campo = o de agora (quando os dados foram lidos); regas da app até ao dia do relatório. Sem telefones nem texto livre.
+  'campos', (
+    with ult as (select distinct on (area_id) area_id, valor_novo, em from public.alteracoes_areas where campo = 'activa' order by area_id, em desc),
+    rgc as (select r.area_id, count(*)::int n, sum(coalesce(r.plantas_regadas, 0))::int plantas, min(r.data) primeira, max(r.data) ultima
+            from public.registos_rega r, p where not r.teste and r.data <= p.dia group by r.area_id),
+    b as (select a.*, t.nome as activista_nome, t.tecnico as tec, t.supervisor as sup, rgc.n as app_n, rgc.plantas as app_plantas,
+            rgc.primeira as app_primeira, rgc.ultima as app_ultima,
+            case when not a.activa and u.valor_novo in ('false', 'f') then (u.em at time zone 'Africa/Maputo')::date end as ret_em,
+            (rgc.n is null and (a.wa_ultima is null or coalesce(a.wa_por_pr, false))
+             and (coalesce(cardinality(a.datas_rega_origem), 0) = 0 or coalesce(a.regas_origem_por_pr, false))) as nunca
+          from public.areas a left join public.activistas t on t.id = a.activista_id
+          left join rgc on rgc.area_id = a.id left join ult u on u.area_id = a.id)
+    select coalesce(json_agg(json_build_object(
+        'campo', b.pr || coalesce('-' || b.area_n, ''), 'pr', b.pr, 'produtor', b.produtor, 'comunidade', b.comunidade, 'zona', b.zona,
+        'situacao', case when not b.activa then 'retirado' when b.nunca then 'na_rega_nunca_recebeu_agua' else 'na_rega_ja_recebeu_agua' end,
+        'origem', case when b.fonte ilike '%REGA=NÃO%' then 'acrescentado_na_app' when b.fonte ilike '%REGA=SIM%' then 'plano_0910' when b.fonte ilike 'Separado%' then 'campo_dividido' else 'outro' end,
+        'posto_na_rega_em', (b.reactivada_em at time zone 'Africa/Maputo')::date,
+        'activista', b.activista_nome, 'tecnico', b.tec, 'supervisor', b.sup,
+        'vivas', b.vivas, 'instaladas', b.instaladas, 'lat', b.latitude, 'lon', b.longitude,
+        'app_regas', coalesce(b.app_n, 0), 'app_plantas', coalesce(b.app_plantas, 0), 'app_primeira', b.app_primeira, 'app_ultima', b.app_ultima,
+        'wa_regas', coalesce(b.wa_n, 0), 'wa_ultima', b.wa_ultima, 'wa_so_por_produtor', coalesce(b.wa_por_pr, false) and b.wa_ultima is not null,
+        'antes_app_regas', case when coalesce(b.regas_origem_por_pr, false) then 0 else coalesce(cardinality(b.datas_rega_origem), 0) end,
+        'campos_do_mesmo_pr', (select count(*) from public.areas z where z.pr = b.pr)::int,
+        'retirado_em', b.ret_em, 'retirado_motivo', case when b.ret_em is not null then coalesce(b.retirado_motivo, 'decisao_do_gestor') end)
+      order by b.activa desc, b.comunidade, b.produtor, b.area_n), '[]')
+    from b where b.activa or b.ret_em is not null)
 ) as dados;
