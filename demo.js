@@ -358,6 +358,8 @@
       if (!z) { z = { id: uid(), area_id: a.p_area, activista_id: ar?.activista_id || null, para_data: pd, motivo: a.p_motivo, quem: 'Supervisor Exemplo', posso: true, autorizado_em: new Date().toISOString() }; DB.autoriz.push(z); }
       return { id: z.id, para_data: pd }; },
     abrir_limites: (a) => { const ar = DB.areas.find((x) => x.id === a.p_area); if (ar) ar.limites_abertos = !!a.p_abrir; return null; },   // v220
+    gravar_recolha_agua: (a) => { (DB.agua ||= []).push({ id: a.p_id, activista_id: a.p_activista, em: a.p_em, data: dia(0) }); return null; },   // v235
+    atribuir_chefe_manut: () => null,   // v235 (a manutenção não entra na simulação)
     retirar_da_rega: (a) => { const ar = DB.areas.find((x) => x.id === a.p_area); if (!ar) return null; if (!ar.activa) return 'ja_retirado'; ar.activa = false; return 'retirado'; },   // v205
     cancelar_autorizacao_rega: (a) => { DB.autoriz = (DB.autoriz || []).filter((x) => x.id !== a.p_id); return null; },
     lista_comunidades: () => [...new Set(DB.areas.map((a) => a.comunidade))].sort(),
@@ -416,6 +418,7 @@
         const l = reais().filter((r) => r.activista_id === t.id && r.data === hoje), ms = DB.dsr.filter((d) => !d.removido && d.activista_id === t.id && d.data <= hoje && (d.ate || d.data) >= hoje), sr = ms.map((d) => d.motivo);
         return { id: t.id, nome: t.nome, comunidade: t.comunidade_principal, sem_telefone: false, regas: l.length, plantas: l.reduce((x, r) => x + r.plantas_regadas, 0),
           chegada: l.map((r) => r.entrada_em).sort()[0] || null, sem_rega: sr.length ? sr.join(', ') : null, comecou: null,
+          agua: ((DB.agua || []).filter((w) => w.activista_id === t.id && w.data === hoje).map((w) => w.em).sort()[0]) || null,   // v235
           motivos: ms.map((d) => ({ id: d.id, motivo: d.motivo, descricao: d.descricao, todo_dia: d.todo_dia, data: d.data, ate: d.ate || null, quem: d.quem, papel_quem: d.papel_quem || 'tecnico',
             criado_em: d.criado_em, por_confirmar: d.papel_quem === 'activista' && !d.confirmado_em, confirmado_nome: d.confirmado_nome || null, confirmado_em: d.confirmado_em || null })) }; });
       const base = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;

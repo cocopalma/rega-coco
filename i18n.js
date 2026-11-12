@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    // v235
+    "🚰 Ida buscar água": "🚰 Trip to fetch water", "🚰 Fomos buscar água": "🚰 We went to fetch water", "Registar que a equipa foi buscar água agora?": "Record that the team went to fetch water now?", "Registado: a equipa foi buscar água.": "Recorded: the team went to fetch water.", "Registado sem GPS: a equipa foi buscar água.": "Recorded without GPS: the team went to fetch water.", "Foi buscar água às": "Went to fetch water at", "mediana de todas as equipas": "median of all teams", "Fonte de água secou": "Water source dried up", "Na base este campo tinha água perto: o produtor regava sozinho.": "In the database this field had water nearby: the farmer watered it himself.", "Chefe de manutenção": "Maintenance team leader", "Passar este campo para": "Move this field to", "— Escolha o chefe —": "— Choose the leader —", "O chefe da comunidade do campo (automático)": "The leader of the field's community (automatic)", "Porque muda o chefe deste campo? (obrigatório)": "Why are you changing this field's leader? (required)", "Agora:": "Now:", "Escolha o chefe.": "Choose the leader.", "Chefe de manutenção mudado.": "Maintenance team leader changed.", "Grupo (comunidade da manutenção)": "Group (maintenance community)", "— Escolha a comunidade —": "— Choose the community —",
     "teste": "test", "Conta de testes: este acompanhamento fica registado como teste.": "Test account: this accompaniment is recorded as a test.",
     // v217
     "🚱 Nunca recebeu água (nem na app nem no WhatsApp)": "🚱 Never received water (neither in the app nor on WhatsApp)",

@@ -248,6 +248,7 @@ const FUNCOES = {
   director: { nome: 'Director (só leitura)', desc: 'vê todos os campos, a rega do dia e o painel; não regista regas.' },
   me: { nome: 'M&E (só leitura)', desc: 'o mesmo que o director.' },
   cliente: { nome: 'Só painel (cliente / administração)', desc: 'vê o painel geral, o mapa e as fichas dos campos com as fotografias; não regista nada.' },
+  chefe_manutencao: { nome: 'Chefe de manutenção', desc: 'chefe de um grupo de sazonais da manutenção (cava-roda e mulching em Quiwia e Farol): vê só os campos do seu grupo e regista o trabalho com a fotografia. Não vê a rega.' },
   oficial_me: { nome: 'Oficial de M&E (recontagens)', desc: 'vê só os campos que o M&E lhe encaminha para recontagem e regista as plantas vivas e mortas, com a fotografia no campo (com o produtor e o oficial) e a da declaração. Sem recontagens, a app fica vazia.' },
 };
 const PODE_REGAR = ['activista', 'tecnico', 'supervisor', 'gestor'];
@@ -439,10 +440,13 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'conf_dsr' ? await sb.rpc('confirmar_dia_sem_rega', { p_id: x.dsr_id, p_nota: x.nota || null })
         : x.tipo === 'meta_mot' ? await sb.rpc('gravar_meta_motivo', { p_id: x.mm_id, p_activista: x.activista_id, p_data: x.data, p_motivo: x.motivo })   // v226
         : x.tipo === 'retirar' ? await sb.rpc('retirar_da_rega', { p_area: x.area_id, p_motivo: x.motivo, p_obs: x.obs || null, p_em: x.em })   // v205
+        : x.tipo === 'agua' ? await sb.rpc('gravar_recolha_agua', { p_id: x.agua_id, p_activista: x.activista_id, p_em: x.em, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao })   // v235
+        : x.tipo === 'chefe_man' ? await sb.rpc('atribuir_chefe_manut', { p_area: x.area_id, p_chefe: x.chefe_id, p_motivo: x.motivo })   // v235
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
       if (r4.error && erroPassageiro(r4.error)) { erro = r4.error.message; sessao = erroSessao(r4.error); break; }   // sem rede: fica na fila
       if (r4.error) { marcarRecusa('filaAlt', x, r4.error, x.tipo || 'atrib'); recusadas++; continue; }   // recusado: fica na fila, marcado (antes saía e perdia-se)
-      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot'].includes(x.tipo)) alteradas++;
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot', 'agua', 'chefe_man'].includes(x.tipo)) alteradas++;
+      if (x.tipo === 'chefe_man') S.manutMudou = true;
     }
   }
   if (!erro) erro = await enviarPercurso();
@@ -471,7 +475,7 @@ async function sincronizarAgora(silencioso) {
   if (!erro) erro = await enviarRecontagens();
   if (!erro && (LS.get('filaTrilho', []) || []).length) await enviarTrilhos();
   if (erro && recusadas && !sessao) await enviarProblemas();   // o servidor respondeu às recusas: o relatório delas também deve chegar
-  if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); await carregarEstado(); }
+  if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); if (S.manutMudou) { S.manutMudou = false; await carregarManut().catch(() => {}); } await carregarEstado(); }
   actSync();
   if (sessao) aviso('A sessão expirou. Feche a app, abra-a de novo e tente outra vez.', 'erro');
   else if (recusadas && !erro) aviso('Alguns registos foram recusados pelo servidor. Toque no botão vermelho do topo para ver quais.', 'erro');
@@ -540,6 +544,7 @@ async function carregarEstado(pronto) {
   let { data, error } = pronto || await sb.rpc('estado_ronda3');
   if (error) ({ data, error } = await sb.rpc('estado_ronda2'));   // v154: estado_ronda3 = + campos por terminar
   if (error) return;
+  if (souChefe()) { desenharMapa(); desenharLista(); return; }   // v235: chefe de manutenção — sem rega
   S.estado = {}; for (const e of data) S.estado[e.area_id] = { u: e.ultima_rega, ronda: e.ronda_actual, feita: e.regada_na_ronda, n: e.regas_app || 0, pl: e.plantas_app || 0, pt: !!e.por_terminar, plr: e.plantas_ronda || 0, dp: e.data_parcial || null };
   LS.set('estado', S.estado); LS.set('estadoEm', new Date().toISOString());
   // v155: os pedidos seguintes saem ao mesmo tempo (antes eram uns atrás dos outros)
@@ -575,7 +580,7 @@ async function carregarEstado(pronto) {
 }
 function carregarDoTelefone() {
   S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.pluvs = LS.get('pluvs', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []); S.autoriz = LS.get('autoriz', []); S.fechSemPl = LS.get('fechSemPl', []); S.expansao = LS.get('expansao', []);
-  return !!(S.perfil && S.areas.length);
+  return !!(S.perfil && (S.areas.length || S.perfil.papel === 'chefe_manutencao'));   // v235: o chefe de manutenção não tem campos da rega
 }
 
 // ---------- login ----------
@@ -652,7 +657,7 @@ async function entrar() {
   try { await carregarTudo(); } catch (e) { msgEntrada(`<div class="msg erro">${esc(semRede(e) ? 'A rede caiu durante a entrada. Tente de novo.' : e.message)}</div>`); return; }
   if (S.perfil?.papel !== 'cliente') guardarAcessoOff(email, pin);
   const papel = S.perfil?.papel;                          // da próxima vez abre o ecrã desta função
-  try { localStorage.setItem('rega.entrada', papel === 'activista' ? 'activista' : ['tecnico', 'supervisor', 'oficial_me'].includes(papel) ? 'tecnico' : 'escritorio'); } catch {}
+  try { localStorage.setItem('rega.entrada', papel === 'activista' ? 'activista' : ['tecnico', 'supervisor', 'oficial_me', 'chefe_manutencao'].includes(papel) ? 'tecnico' : 'escritorio'); } catch {}
   mostrarApp();
 }
 // v212 (07/11/2026, Valdo, G2): no topo ficam o nome inteiro, o 💡 e o ⚙. A língua, a senha/PIN e o Sair estão no ⚙.
@@ -2270,15 +2275,18 @@ const COR_MAN = { por: '#9e9e9e', curso: '#f9a825', completo: '#8d6e63', feito: 
 const TXT_MAN = { por: 'Por fazer', curso: 'Em curso', completo: 'Completo, por confirmar', feito: 'Feito', sem: 'Sem plantas' };
 const temManut = () => !!S.manut?.acesso;
 const escreveManut = () => S.manut?.acesso === 'escreve';                 // supervisor das comunidades e gestor: registam e marcam "Feito"
-const registaManut = () => ['escreve', 'regista'].includes(S.manut?.acesso);   // + técnico dessas equipas (v99): só regista
-const modoManut = () => temManut() && S.modo === 'manut';
+const registaManut = () => ['escreve', 'regista', 'chefe'].includes(S.manut?.acesso);   // + técnico dessas equipas (v99) e chefe de manutenção (v235): só regista
+// v235 (12/11/2026, Valdo): chefe de manutenção — só a manutenção, só os campos do seu grupo; o técnico ou o supervisor mudam o chefe de um campo
+const souChefe = () => S.perfil?.papel === 'chefe_manutencao';
+const mudaChefeManut = () => ['escreve', 'regista'].includes(S.manut?.acesso) && !souChefe();
+const modoManut = () => temManut() && (S.modo === 'manut' || souChefe());
 const filaMan = () => LS.get('filaMan', []);
 // fase de teste até ao início (v98, 23/10/2026, Valdo: a manutenção começa a 02/11; até lá o Raul e o Guidion testam)
 const avisoTesteManut = () => (S.manut?.teste && S.manut.inicio
   ? `<div class="msg info">🧪 <span>Fase de teste.</span> ${(R_TESTE_MAN(fmtData(S.manut.inicio)))}</div>` : '');
 const R_TESTE_MAN = (d) => `<span>A manutenção começa a ${d}. O que se registar antes é teste e deixa de contar nesse dia.</span>`;
 // medir a área na manutenção (v97): supervisor e gestor (escrevem) e o técnico dessas equipas; sem limite, ou o gestor de novo
-const podeMedirManut = (c) => (registaManut() || (temManut() && S.perfil?.papel === 'tecnico')) && (!temPoligono(c) || S.perfil?.papel === 'gestor');
+const podeMedirManut = (c) => !souChefe() && (registaManut() || (temManut() && S.perfil?.papel === 'tecnico')) && (!temPoligono(c) || S.perfil?.papel === 'gestor');
 const pctMan = (v, n) => (!n ? 0 : (v || 0) >= n ? 100 : Math.min(99, Math.round((v || 0) * 100 / n)));
 function camposManut() {   // campos do servidor com o que está na fila do telefone por cima
   const f = filaMan();
@@ -2292,6 +2300,8 @@ function camposManut() {   // campos do servidor com o que está na fila do tele
       }
       if (x.tipo === 'feito') { c.feito = x.feito; c.feito_em = x.em; c.pendente = true; }
     }
+    // v235: chefe de manutenção mudado no telefone e ainda por enviar
+    for (const x of LS.get('filaAlt', [])) if (x.tipo === 'chefe_man' && x.area_id === c.id) { c.chefe_id = x.chefe_id; c.chefe = x.chefe_nome; c.pendente = true; }
     return c;
   });
 }
@@ -2303,7 +2313,7 @@ function estadoMan(c) {
   return 'curso';
 }
 async function carregarManut() {
-  if (!S.perfil || !['gestor', 'supervisor', 'tecnico', 'director', 'me'].includes(S.perfil.papel)) { S.manut = null; LS.del('manut'); mostrarModo(); return; }
+  if (!S.perfil || !['gestor', 'supervisor', 'tecnico', 'director', 'me', 'chefe_manutencao'].includes(S.perfil.papel)) { S.manut = null; LS.del('manut'); mostrarModo(); return; }
   const r = await sb.rpc('manutencao_campos');
   if (r.error) return;
   S.manut = r.data && r.data.acesso ? r.data : null;
@@ -2312,8 +2322,8 @@ async function carregarManut() {
   if (modoManut()) { desenharMapa(); if ($('#e-lista')?.classList.contains('on')) desenharLista(); }
 }
 function mostrarModo() {
-  const tem = temManut(); if (!tem && S.modo === 'manut') S.modo = 'rega';
-  document.querySelectorAll('.modo-sw').forEach((d) => { d.style.display = tem ? '' : 'none'; d.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.m === (S.modo || 'rega'))); });
+  const tem = temManut(); if (souChefe()) S.modo = 'manut'; else if (!tem && S.modo === 'manut') S.modo = 'rega';
+  document.querySelectorAll('.modo-sw').forEach((d) => { d.style.display = tem && !souChefe() ? '' : 'none'; d.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.m === (S.modo || 'rega'))); });
   const m = modoManut();
   if ($('#leg-rega')) { $('#leg-rega').style.display = m ? 'none' : ''; $('#leg-man').style.display = m ? '' : 'none'; }
   const fl = $('#e-lista .filtros'); if (fl) fl.style.display = m ? 'none' : '';
@@ -2388,6 +2398,7 @@ function abrirFichaManut(id, nota = '') {
     <div class="cartao" style="margin:8px 0">
       <div class="lin"><span>Situação</span><b><span class="tag" style="background:${COR_MAN[s]}">${TXT_MAN[s]}</span></b></div>
       <div class="lin"><span>Plantas do campo</span><b>${num(n)}</b></div>
+      ${!souChefe() && Array.isArray(S.manut?.chefes) ? `<div class="lin"><span>Chefe de manutenção</span><b>${c.chefe ? `<span class="sem-trad">${esc(c.chefe)}</span>` : '—'}${mudaChefeManut() && S.manut.chefes.length ? ` <button class="chip" onclick="ecraChefeManut('${esc(id)}')">Mudar</button>` : ''}</b></div>` : ''}
       <div style="margin-top:8px"><span>Com cava-roda</span>: <b>${num(c.cavaroda || 0)}</b> <span>de</span> ${num(n)} (${pc}%)</div>${barraMan(pc, '#8d6e63')}
       <div><span>Com mulching</span>: <b>${num(c.mulching || 0)}</b> <span>de</span> ${num(n)} (${pm}%)</div>${barraMan(pm, '#8d6e63')}
       ${c.ultima ? `<div class="lin"><span>Último registo</span><b>${fmtData(c.ultima)}</b></div>` : ''}
@@ -2405,6 +2416,27 @@ function abrirFichaManut(id, nota = '') {
     <h3>Registos</h3><div id="man-regs" class="pequeno">${navigator.onLine ? 'A carregar…' : ''}</div>
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
   regsManut(id);
+}
+// v235 (12/11/2026, Valdo): "Caso um campo esteja mais próximo de uma equipa que não é a dona do campo, o técnico ou o supervisor
+// pode atribuí-lo". Sem escolha (automático) = o chefe da comunidade do campo. Motivo obrigatório; funciona sem rede (fila 'chefe_man').
+function ecraChefeManut(id) {
+  const c = camposManut().find((x) => x.id === id); if (!c || !mudaChefeManut()) return;
+  const ch = S.manut?.chefes || [];
+  folha(`<h2>👷 <span>Chefe de manutenção</span></h2><p class="pequeno"><span class="sem-trad">${esc(c.produtor || '')}</span> · ${esc(c.id)} · ${esc(c.comunidade)}</p>
+    <p><span>Agora:</span> <b>${c.chefe ? `<span class="sem-trad">${esc(c.chefe)}</span>` : '—'}</b></p>
+    <label>Passar este campo para<select id="cm-chefe"><option value="">— Escolha o chefe —</option>${ch.map((x) => `<option value="${esc(x.id)}" data-n="${esc(x.nome)}" ${x.id === c.chefe_id ? 'disabled' : ''}>${esc(x.nome)} (${esc(x.comunidade || '')})</option>`).join('')}<option value="__auto">O chefe da comunidade do campo (automático)</option></select></label>
+    <label>Porque muda o chefe deste campo? (obrigatório)<textarea id="cm-motivo" rows="2" placeholder="Ex.: o campo fica mais perto do grupo de Farol"></textarea></label>
+    <button class="btn" onclick="gravarChefeManut('${esc(id)}')">Gravar</button><button class="btn sec" onclick="abrirFichaManut('${esc(id)}')">Cancelar</button>`);
+}
+function gravarChefeManut(id) {
+  const v = $('#cm-chefe').value, motivo = $('#cm-motivo').value.trim();
+  if (!v) return alert('Escolha o chefe.');
+  if (motivo.length < 3) return alert('Escreva o motivo (pelo menos 3 letras).');
+  const o = $('#cm-chefe').selectedOptions[0], c = (S.manut?.campos || []).find((x) => x.id === id);
+  const auto = v === '__auto', comCh = c && (S.manut?.chefes || []).find((x) => x.comunidade === c.comunidade);
+  const x = { id: crypto.randomUUID(), tipo: 'chefe_man', area_id: id, chefe_id: auto ? null : v, chefe_nome: auto ? (comCh ? comCh.nome : null) : o.dataset.n, motivo };
+  LS.set('filaAlt', [...LS.get('filaAlt', []).filter((y) => !(y.tipo === 'chefe_man' && y.area_id === id)), x]);
+  actSync(); aviso('Chefe de manutenção mudado.', 'ok'); abrirFichaManut(id); sincronizar(true);
 }
 async function regsManut(id) {
   const loc = filaMan().filter((x) => x.tipo === 'reg' && x.area_id === id).map((x) => ({ ...x, local: true, quem: S.perfil?.nome }));
@@ -3011,8 +3043,11 @@ function confirmarVoltaRega(i) {
   const tec = S.perfil.papel === 'tecnico';   // v136 (29/10/2026, Valdo): o técnico também põe na rega, com motivo obrigatório
   folha(`<h2>${esc(a.produtor || a.pr)}</h2><p class="pequeno">${esc(a.id || a.pr)} · ${esc(a.comunidade)} · ${a.vivas != null ? num(a.vivas) + ' vivas' : '—'}${a.instaladas != null ? ' de ' + num(a.instaladas) + ' plantadas' : ''}</p>
     <p>Este campo volta à lista de rega a partir de agora.</p>
+    <div class="chips" style="margin:6px 0"><button class="chip${a.agua_origem === 'COM' ? ' on' : ''}" onclick="$('#vr-motivo').value='Fonte de água secou: o produtor já não consegue regar'">💧 <span>Fonte de água secou</span></button></div>
+    ${a.agua_origem === 'COM' ? '<p class="pequeno">Na base este campo tinha água perto: o produtor regava sozinho.</p>' : ''}
     <label>${tec ? 'Motivo (obrigatório)' : 'Motivo (opcional)'}<textarea id="vr-motivo" rows="2" placeholder="Ex.: o poço secou"></textarea></label>
     <button class="btn" id="vr-ok" onclick="voltarRega(${i})">Voltar a regar</button><button class="btn sec" onclick="ecraVoltarRega()">Cancelar</button>`);
+  if (a.agua_origem === 'COM') $('#vr-motivo').value = 'Fonte de água secou: o produtor já não consegue regar';   // v235: o motivo fica em português
 }
 async function voltarRega(i) {
   const a = S.foraPlano[i]; if (!navigator.onLine) return aviso('Sem rede. Tente quando houver rede.', 'erro');
@@ -5021,6 +5056,27 @@ function vistaHoje(v) {
   else $('#hoje').innerHTML = abasHoje('rega') + (S.hojeRega && S.hojeRega.d === hojeISO() ? S.hojeRega.html : '<p class="pequeno">A carregar…</p>');
   desenharHoje();
 }
+// v235 (12/11/2026, Valdo: "Para quem vai buscar água o início é o mesmo, o que acontece é que saberemos a razão de terem
+// chegado ao campo tarde"): o activista toca «🚰 Fomos buscar água» quando a equipa vai encher água antes do campo (ex.: Farol
+// enche em Quiwia). Fica a hora e o sítio; o «O meu dia» e o relatório mostram-no ao lado da chegada tardia. Funciona sem rede.
+const aguaHoje = () => (LS.get('aguaHoje', []) || []).filter((x) => x.data === hojeISO());
+function linhaAgua() {
+  if (!souActivista() || !S.perfil?.activista_id) return '';
+  const L = aguaHoje();
+  return `<div class="lin"><span>🚰 Ida buscar água</span><b>${L.length ? L.map((x) => fmtHora(x.em)).join(', ') : '—'} <button class="chip" id="b-agua" onclick="registarAgua()">🚰 Fomos buscar água</button></b></div>`;
+}
+async function registarAgua() {
+  if (!confirm('Registar que a equipa foi buscar água agora?')) return;
+  const b = $('#b-agua'); if (b) { b.disabled = true; b.textContent = 'A ler o GPS…'; }
+  let g = S.fix && Date.now() - S.fix.t < 120000 ? S.fix.coords : null;
+  if (!g) { try { g = await Promise.race([lerGPS(), new Promise((_, n) => setTimeout(() => n(new Error('tempo')), 15000))]); } catch { g = null; } }
+  const x = { id: crypto.randomUUID(), tipo: 'agua', agua_id: crypto.randomUUID(), activista_id: S.perfil.activista_id, em: new Date().toISOString(),
+    lat: g ? g.latitude : null, lon: g ? g.longitude : null, precisao: g ? Math.round(g.accuracy) : null };
+  LS.set('filaAlt', [...LS.get('filaAlt', []), x]);
+  LS.set('aguaHoje', [...(LS.get('aguaHoje', []) || []).filter((y) => y.data >= hojeISO()), { data: hojeISO(), em: x.em }]);
+  actSync(); aviso(g ? 'Registado: a equipa foi buscar água.' : 'Registado sem GPS: a equipa foi buscar água.', 'ok');
+  desenharHoje(); sincronizar(true);
+}
 async function desenharHoje() {
   const h = hojeISO(), local = filaRegistos().filter((r) => r.data === h);
   const guardado = LS.get('hojeHtml');
@@ -5056,6 +5112,7 @@ async function desenharHoje() {
     const j = jornadaHoje();
     html += `<div class="lin"><span>Ronda</span><b>${textoRonda()}</b></div>
       <div class="lin"><span>Pessoas hoje</span><b>${j ? textoEquipa(j.pessoas, tamanhoEquipa(S.perfil.activista_id)) : '—'} <button class="chip" onclick="ecraJornada()">${j ? 'Alterar' : 'Registar'}</button></b></div>${j ? linhaFaltaram(S.perfil.activista_id) : ''}
+      ${linhaAgua()}
       ${linhaChuva('Chuva (pluviómetro)')}
       <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div></div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
@@ -5753,7 +5810,7 @@ function cartaoMeuDia() {
   // 2. regas com aviso
   L.push(['al', 'Regas com ⚠️ por confirmar', al.length, 'a',
     al.length ? al.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
-      <div class="sub"><span class="sem-trad">${esc(x.equipa)}</span> · ${fmtData(x.data)} · ${x.tipo === 'foto_data' ? linhaFotoData(x) : x.tipo === 'mais_que_base' ? `${num(x.plantas)} <span>plantas regadas</span>, ${num(x.base)} <span>na base</span>` : `<span>ritmo</span> ${num(x.ritmo)} <span>plantas por pessoa por hora</span>, <span>habitual</span> ${num(x.mediana)}`}</div>
+      <div class="sub"><span class="sem-trad">${esc(x.equipa)}</span> · ${fmtData(x.data)} · ${x.tipo === 'foto_data' ? linhaFotoData(x) : x.tipo === 'mais_que_base' ? `${num(x.plantas)} <span>plantas regadas</span>, ${num(x.base)} <span>na base</span>` : `<span>ritmo</span> ${num(x.ritmo)} <span>plantas por pessoa por hora</span>, <span>mediana de todas as equipas</span> ${num(x.mediana)}`}</div>
       <div class="chips">${x.tipo === 'foto_data' ? `<button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">📷 Abrir a ficha e ver as fotografias</button>` : `<button class="chip" onclick="corrigirRegaAgora('${esc(x.registo_id)}','${esc(x.area_id)}')">✏️ Corrigir as plantas regadas</button>`}<button class="chip" onclick="ecraConfirmarRega('${x.registo_id}', '${x.tipo}', ${Number(x.plantas) || 0}, ${Number(x.base) || 0}, '${esc(x.area_id)}')">✓ Está certo</button></div></div>`).join('')
       : '<p class="pequeno">Nenhuma.</p>']);
   // 3. campos sem equipa (antes também havia um cartão à parte no topo: saiu, era repetido)
@@ -5792,7 +5849,7 @@ function cartaoMeuDia() {
   const tarde = eqs.filter((e) => e.chegada && hMz(e.chegada) > hc).sort((a, b) => a.chegada < b.chegada ? -1 : 1);
   const minAtraso = (e) => { const [a, b] = hMz(e.chegada).split(':').map(Number), [x, y] = hc.split(':').map(Number); return (a * 60 + b) - (x * 60 + y); };
   L.push(['ch', `<span>Chegaram ao 1.º campo depois das</span> ${esc(hc)}`, tarde.length, 'a',
-    tarde.length ? '<p class="pequeno">Pergunte a cada equipa porque chegou tarde.</p>' + tarde.map((e) => `<div class="lin"><span class="sem-trad">${esc(e.nome)}</span><b>${hMz(e.chegada)} · +${num(minAtraso(e))} min</b></div>`).join('')
+    tarde.length ? '<p class="pequeno">Pergunte a cada equipa porque chegou tarde.</p>' + tarde.map((e) => `<div class="lin"><span class="sem-trad">${esc(e.nome)}</span><b>${hMz(e.chegada)} · +${num(minAtraso(e))} min</b></div>${e.agua ? `<div class="sub" style="margin:-4px 0 6px">🚰 <span>Foi buscar água às</span> ${hMz(e.agua)}</div>` : ''}`).join('')
       : `<p class="pequeno">${eqs.some((e) => e.chegada) ? 'Todas as equipas que regaram chegaram a tempo.' : 'Ainda nenhuma equipa marcou entrada hoje.'}</p>`]);
   // 9. campos por terminar (v154)
   const pt = d.por_terminar || [];
@@ -6155,6 +6212,7 @@ async function montarGestao(d, msg = '') {
     <div id="c-nada"></div>
     <label>Função<select id="c-papel"><option value="">— Escolha a função —</option>${Object.entries(FUNCOES).map(([k, f]) => `<option value="${k}">${f.nome}</option>`).join('')}</select></label>
     <label>Nome<span id="c-nome-caixa"></span></label>
+    <label id="c-com-l" style="display:none">Grupo (comunidade da manutenção)<select id="c-com"><option value="">— Escolha a comunidade —</option></select></label>
     <label>Utilizador<input id="c-user" autocapitalize="none"></label>
     <label>Senha provisória (8 ou mais caracteres)<input id="c-senha" type="password" autocomplete="new-password"></label><p class="pequeno">Ao entrar pela primeira vez, a pessoa escolhe uma senha só dela.</p>
     <button class="btn" id="c-criar" disabled>Criar acesso</button></div>` : ''}
@@ -6205,15 +6263,20 @@ async function montarGestao(d, msg = '') {
     return lista;
   };
   const porCriar = (papel) => listaDe(papel).filter((x) => !comLogin.has(papel + '|' + x.nome)).length;
-  [...$('#c-papel').options].forEach((o) => { if (!o.value) return; const n = porCriar(o.value);
-    o.disabled = !n; o.textContent = `${FUNCOES[o.value].nome} (${n ? n + ' por criar' : 'todos com acesso'})`; });
+  // v235: o chefe de manutenção não está no Excel de logins: escreve-se o nome e escolhe-se o grupo (comunidade da manutenção)
+  [...$('#c-papel').options].forEach((o) => { if (!o.value) return; const ch = o.value === 'chefe_manutencao', n = porCriar(o.value);
+    o.disabled = !n && !ch; o.textContent = `${FUNCOES[o.value].nome} (${ch && !n ? 'escrever o nome' : n ? n + ' por criar' : 'todos com acesso'})`; });
+  sb.from('manutencao_comunidades').select('comunidade').order('comunidade').then(({ data }) => { if (Array.isArray(data) && $('#c-com'))
+    $('#c-com').innerHTML = '<option value="">— Escolha a comunidade —</option>' + data.map((x) => `<option>${esc(x.comunidade)}</option>`).join(''); });
   if (![...$('#c-papel').options].some((o) => o.value && !o.disabled)) {
     $('#c-nada').innerHTML = '<div class="msg info">Não há acessos por criar: todas as pessoas da lista já têm acesso. Para uma pessoa nova, acrescente-a primeiro à lista do Excel de logins (aba OUTROS_ACESSOS).</div>';
     $('#c-papel').disabled = true;
   }
-  const podeCriar = () => { const v = $('#c-nome')?.value; $('#c-criar').disabled = !v || (v === '__outro' && $('#c-nome-outro').value.trim().length < 3); };
+  const podeCriar = () => { const v = $('#c-nome')?.value; $('#c-criar').disabled = !v || (v === '__outro' && $('#c-nome-outro').value.trim().length < 3) || ($('#c-papel').value === 'chefe_manutencao' && !$('#c-com').value); };
+  $('#c-com').onchange = () => podeCriar();
   const caixaNome = () => {
     const papel = $('#c-papel').value, fixo = ['tecnico', 'supervisor'].includes(papel);
+    $('#c-com-l').style.display = papel === 'chefe_manutencao' ? '' : 'none';
     if (!papel) { $('#c-nome-caixa').innerHTML = '<select id="c-nome" disabled><option value="">— Escolha primeiro a função —</option></select>'; $('#c-user').value = ''; podeCriar(); return; }
     const lista = listaDe(papel);
     $('#c-nome-caixa').innerHTML = `<select id="c-nome"><option value="">— Escolha o nome —</option>${lista.map((x) => `<option value="${esc(x.nome)}" data-u="${esc((x.utilizador || '').toLowerCase())}" ${comLogin.has(papel + '|' + x.nome) ? 'disabled' : ''}>${esc(x.nome)}${x.entidade ? ' — ' + esc(x.entidade) : ''}${comLogin.has(papel + '|' + x.nome) ? ' (já tem acesso)' : ''}</option>`).join('')}
@@ -6231,6 +6294,7 @@ async function montarGestao(d, msg = '') {
   $('#c-papel').onchange = caixaNome; caixaNome();
   $('#c-criar').onclick = async () => {
     const corpo = { accao: 'criar_utilizador', nome: nomeEscolhido(), papel: $('#c-papel').value, utilizador: $('#c-user').value.trim().toLowerCase(), senha: $('#c-senha').value };
+    if (corpo.papel === 'chefe_manutencao') corpo.comunidade = $('#c-com').value;   // v235
     try { const r = await chamarGestor(corpo); desenharGestao(`<div class="msg ok">Acesso criado: ${esc(r.nome)} → utilizador <b>${esc(r.utilizador)}</b>.</div>`); }
     catch (e) { aviso(e.message, 'erro'); }
   };
@@ -6373,7 +6437,8 @@ function mostrarApp() {
   document.querySelectorAll('#f-sit .op-coord').forEach((o) => { o.hidden = !PODE_COORD.includes(papel); });
   document.querySelectorAll('.leg-plantas').forEach((x) => { x.style.display = PODE_COORD.includes(papel) ? '' : 'none'; });
   const cliente = papel === 'cliente';                     // cliente: Mapa, Campos e Painel, só para ver (15/10/2026, Valdo)
-  document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.e === 'hoje') b.style.display = cliente ? 'none' : ''; });
+  document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.e === 'hoje') b.style.display = cliente || souChefe() ? 'none' : ''; });
+  if (souChefe()) S.modo = 'manut';                        // v235: o chefe de manutenção só vê a manutenção (Mapa e Campos)
   $('#h-sync').style.display = cliente ? 'none' : '';
   // desde 18/10/2026 (Valdo) o servidor só manda ao activista os seus campos: o filtro "As minhas / Todas" deixa de ter sentido
   const lp = ['supervisor', 'tecnico'].includes(papel);
@@ -6399,6 +6464,7 @@ function mostrarApp() {
   const emCurso = LS.get('emCurso');
   if (cliente) { mudar('painel'); return; }
   if (souOficial()) { mudar('hoje'); return; }           // oficial de M&E: abre nas recontagens
+  if (souChefe()) { mudar('lista'); return; }            // v235: chefe de manutenção abre na lista dos campos do grupo
   if (emCurso) abrirFicha(emCurso.area_id, '<div class="msg info">Tem uma rega em curso.</div>');
   else if (souActivista() && S.perfil.activista_id && !jornadaHoje()) ecraJornada();
 }

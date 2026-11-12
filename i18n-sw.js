@@ -3,6 +3,8 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    // v235
+    "🚰 Ida buscar água": "🚰 Safari ya kuchota maji", "🚰 Fomos buscar água": "🚰 Tumeenda kuchota maji", "Registar que a equipa foi buscar água agora?": "Rekodi kwamba timu imeenda kuchota maji sasa?", "Registado: a equipa foi buscar água.": "Imerekodiwa: timu imeenda kuchota maji.", "Registado sem GPS: a equipa foi buscar água.": "Imerekodiwa bila GPS: timu imeenda kuchota maji.", "Foi buscar água às": "Ilienda kuchota maji saa", "mediana de todas as equipas": "wastani wa kati wa timu zote", "Fonte de água secou": "Chanzo cha maji kimekauka", "Na base este campo tinha água perto: o produtor regava sozinho.": "Kwenye hifadhidata shamba hili lilikuwa na maji karibu: mkulima alimwagilia mwenyewe.", "Chefe de manutenção": "Kiongozi wa matengenezo", "Passar este campo para": "Hamisha shamba hili kwa", "— Escolha o chefe —": "— Chagua kiongozi —", "O chefe da comunidade do campo (automático)": "Kiongozi wa jamii ya shamba (moja kwa moja)", "Porque muda o chefe deste campo? (obrigatório)": "Kwa nini unabadilisha kiongozi wa shamba hili? (lazima)", "Agora:": "Sasa:", "Escolha o chefe.": "Chagua kiongozi.", "Chefe de manutenção mudado.": "Kiongozi wa matengenezo amebadilishwa.", "Grupo (comunidade da manutenção)": "Kikundi (jamii ya matengenezo)", "— Escolha a comunidade —": "— Chagua jamii —",
   "Conta de testes: este acompanhamento fica registado como teste.": "Akaunti ya majaribio: ufuatiliaji huu unarekodiwa kama majaribio.",
     // v217
     "🚱 Nunca recebeu água (nem na app nem no WhatsApp)": "🚱 Haijawahi kupata maji (wala kwenye programu wala kwenye WhatsApp)",

@@ -166,7 +166,7 @@ def bloco_cumprimento(c):
             itens.append(f'<li class="verm">{hoje["r3"]} campo(s) da monitoria não verificados no dia</li>')
         if hoje['r5']:
             itens.append(f'<li class="amar">{len(hoje["r5"])} equipa(s) chegaram ao 1.º campo depois das {e(hc)} (hora combinada): '
-                         + e(', '.join(f'{pnome(z["nome"])} às {z["hora"]}' for z in sorted(hoje['r5'], key=lambda z: z['hora']))) + '</li>')
+                         + e(', '.join(f'{pnome(z["nome"])} às {z["hora"]}' + (f' (foi buscar água às {z["agua"]})' if z.get('agua') else '') for z in sorted(hoje['r5'], key=lambda z: z['hora']))) + '</li>')
         if hoje['r6']:
             itens.append(f'<li class="verm">{hoje["r6"]} rega(s) fora da lista sem motivo</li>')
         if p_.get('r4_por_tratar'):

@@ -13,7 +13,7 @@ const cors = {
 const resp = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 const RE_USER = /^[a-z0-9._-]{3,30}$/;
-const PAPEIS_OUTROS = ["tecnico", "supervisor", "director", "me", "cliente", "oficial_me"]; // oficial_me: recontagens (18/10/2026)
+const PAPEIS_OUTROS = ["tecnico", "supervisor", "director", "me", "cliente", "oficial_me", "chefe_manutencao"]; // oficial_me: recontagens (18/10/2026); chefe_manutencao: v235 (12/11/2026)
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -76,6 +76,12 @@ Deno.serve(async (req) => {
       const { data: ja } = await admin.from("perfis").select("id").eq("papel", papel).eq("nome", nome).maybeSingle();
       if (ja) return resp(409, { erro: "Esta pessoa já tem acesso. Use 'Nova senha'." });
     }
+    // chefe de manutenção (v235, 12/11/2026, Valdo): fica com o grupo de uma comunidade da manutenção (Quiwia ou Farol)
+    const comunidade = String(body?.comunidade || "").trim();
+    if (papel === "chefe_manutencao") {
+      const { data: com } = await admin.from("manutencao_comunidades").select("comunidade").eq("comunidade", comunidade).maybeSingle();
+      if (!com) return resp(400, { erro: "Escolha a comunidade do grupo (Quiwia ou Farol)" });
+    }
     if (!RE_USER.test(utilizador)) return resp(400, { erro: "Utilizador: 3 a 30 letras minúsculas, números, ponto, hífen ou _" });
     if (senha.length < 8) return resp(400, { erro: "A senha tem de ter pelo menos 8 caracteres" });
     const { data: novo, error } = await admin.auth.admin.createUser({
@@ -84,6 +90,10 @@ Deno.serve(async (req) => {
     if (error) return resp(400, { erro: /already|registered|exists/i.test(error.message) ? "Esse utilizador já existe" : error.message });
     const { error: eP } = await admin.from("perfis").insert({ id: novo.user.id, nome, papel, trocar_senha: true });
     if (eP) { await admin.auth.admin.deleteUser(novo.user.id); return resp(500, { erro: eP.message }); }
+    if (papel === "chefe_manutencao") {
+      const { error: eC } = await admin.from("manutencao_chefes").insert({ perfil_id: novo.user.id, comunidade, criado_por: quem.user.id });
+      if (eC) { await admin.from("perfis").delete().eq("id", novo.user.id); await admin.auth.admin.deleteUser(novo.user.id); return resp(500, { erro: eC.message }); }
+    }
     return resp(200, { ok: true, utilizador, nome, papel });
   }
 

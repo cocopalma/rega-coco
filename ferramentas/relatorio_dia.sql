@@ -89,7 +89,9 @@ pd as (
     (select to_char(f.fechado_em at time zone 'Africa/Maputo', 'HH24:MI') from public.fechos_dia f where f.perfil_id = ps.id and f.data = dd.d) as fecho,
     (select count(*) from public.monitoria_amostra m where m.verificador_id = ps.id and privado.dia_verif(m.data_rega) = dd.d
        and not exists (select 1 from public.monitorias mo where mo.amostra_id = m.id))::int as r3,
-    (select coalesce(json_agg(json_build_object('nome', a.nome, 'hora', to_char(regd.primeira at time zone 'Africa/Maputo', 'HH24:MI')) order by regd.primeira), '[]')
+    -- v235: 'agua' = hora em que a equipa foi buscar água antes do campo (razão da chegada tardia), se registada
+    (select coalesce(json_agg(json_build_object('nome', a.nome, 'hora', to_char(regd.primeira at time zone 'Africa/Maputo', 'HH24:MI'),
+        'agua', (select to_char(min(w.em) at time zone 'Africa/Maputo', 'HH24:MI') from public.recolhas_agua w where w.activista_id = pe.activista_id and w.data = dd.d and not w.removido)) order by regd.primeira), '[]')
        from pe join regd on regd.activista_id = pe.activista_id and regd.data = dd.d join public.activistas a on a.id = pe.activista_id, hcheg
        where pe.perfil_id = ps.id and to_char(regd.primeira at time zone 'Africa/Maputo', 'HH24:MI') > hcheg.h) as r5,
     (select coalesce(sum(regd.fora_sem_motivo), 0) from pe join regd on regd.activista_id = pe.activista_id and regd.data = dd.d where pe.perfil_id = ps.id)::int as r6
