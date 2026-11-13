@@ -12,6 +12,8 @@ import * as XLSX from "npm:xlsx@0.18.5";
 //   Página de entrada:   POST .../entrada  (regista a entrada e diz se a conta pode ler)
 //   Dados, Excel, foto:  .../dados/<tipo>?de=&ate=[&formato=csv|geojson], .../excel?de=&ate=, .../foto?ref=  (com o token)
 //   v2.1 (13/11/2026): quadros do painel, percursos, limites e planos pela função api_painel (permissões de quem pede)
+//   v2.2 (13/11/2026): os dados e as fotografias seguem as permissões da app de quem pede (api_dados2, api_foto_ok);
+//        limite por hora também nos links e nos lotes; assinatura dos links verificada com crypto.subtle.verify.
 
 const TIPOS_API = ["resumo", "regas", "equipas", "dias_sem_rega", "campos", "recontagens", "manutencao", "acompanhamentos",
   "queimadas", "chuva", "monitorias", "idas_agua"];
@@ -22,7 +24,8 @@ const TIPOS = [...TIPOS_API, ...TIPOS_PAINEL];
 const SEM_PERIODO = ["campos", "limites", "planos"];
 const BUCKETS = ["rega-fotos", "recontagem-fotos", "manutencao-fotos", "chuva-fotos", "monitoria-fotos"];
 const MAX_DIAS = 92;
-const VERSAO = "2.1";
+const VERSAO = "2.2";
+const MAX_LOTE = 20; // v2.2: pedidos num lote MCP
 
 function encodeBase64(u: Uint8Array) {
   let s = "";
@@ -73,10 +76,10 @@ async function dados(tipo: string, de: string | undefined, ate: string | undefin
     const t = transformar(tipo, data);
     return { periodo: p, dados: filtrar(t.linhas, comunidade, equipa), extra: t.extra };
   }
-  const { data, error } = await admin.rpc("api_dados", {
-    p_tipo: tipo, p_de: p.de, p_ate: p.ate, p_comunidade: comunidade || null, p_equipa: equipa || null,
+  const { data, error } = await admin.rpc("api_dados2", {
+    p_perfil: perfil, p_tipo: tipo, p_de: p.de, p_ate: p.ate, p_comunidade: comunidade || null, p_equipa: equipa || null,
   });
-  if (error) throw new Erro(500, "Erro ao ler os dados");
+  if (error) throw new Erro(/acesso/i.test(error.message || "") ? 403 : 500, /acesso/i.test(error.message || "") ? error.message : "Erro ao ler os dados");
   return { periodo: p, dados: data };
 }
 
@@ -296,6 +299,12 @@ function refValida(ref: string) {
   if (i < 1 || !BUCKETS.includes(b) || !c || c.includes("..") || !/^[\w\-./]+\.(jpg|jpeg|png)$/i.test(c)) throw new Erro(400, "Referência de fotografia inválida");
   return { b, c };
 }
+async function fotoPermitida(perfil: string, ref: string) {
+  refValida(ref);
+  const { data, error } = await admin.rpc("api_foto_ok", { p_perfil: perfil, p_ref: ref });
+  if (error) throw new Erro(500, "Erro ao verificar a fotografia");
+  if (data !== true) throw new Erro(403, "Sem acesso a esta fotografia com esta conta");
+}
 async function linkFoto(ref: string) {
   const { b, c } = refValida(ref);
   const { data, error } = await admin.storage.from(b).createSignedUrl(c, 3600);
@@ -334,18 +343,22 @@ async function geojson(tipo: string, dia: string | undefined, comunidade: string
 // ---------- link do Excel sem o token no endereço (válido 1 h) ----------
 const enc = new TextEncoder();
 const b64u = (u: Uint8Array) => encodeBase64(u).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+const chaveHmac = () => crypto.subtle.importKey("raw", enc.encode("dados-rega:" + service), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 async function hmac(txt: string) {
-  const k = await crypto.subtle.importKey("raw", enc.encode("dados-rega:" + service), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return b64u(new Uint8Array(await crypto.subtle.sign("HMAC", k, enc.encode(txt))));
+  return b64u(new Uint8Array(await crypto.subtle.sign("HMAC", await chaveHmac(), enc.encode(txt))));
 }
+const deB64u = (t: string) => Uint8Array.from(atob(t.replaceAll("-", "+").replaceAll("_", "/") + "===".slice((t.length + 3) % 4)), (ch) => ch.charCodeAt(0));
 async function tokenExcel(perfilId: string, q: Record<string, string | undefined>) {
   const corpo = b64u(enc.encode(JSON.stringify({ c: perfilId, e: Math.floor(Date.now() / 1000) + 3600, ...q })));
   return corpo + "." + (await hmac(corpo));
 }
 async function lerToken(t: string) {
   const [corpo, ass] = (t || "").split(".");
-  if (!corpo || ass !== (await hmac(corpo))) return null;
-  const o = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(corpo.replaceAll("-", "+").replaceAll("_", "/")), (ch) => ch.charCodeAt(0))));
+  if (!corpo || !ass) return null;
+  let ok = false;
+  try { ok = await crypto.subtle.verify("HMAC", await chaveHmac(), deB64u(ass), enc.encode(corpo)); } catch { return null; } // tempo constante
+  if (!ok) return null;
+  const o = JSON.parse(new TextDecoder().decode(deB64u(corpo)));
   return o.e > Date.now() / 1000 ? o : null;
 }
 
@@ -446,6 +459,7 @@ async function chamarFerramenta(nome: string, a: any, base: string, perfilId: st
   }
   if (nome === "ver_foto") {
     const ref = String(a.ref || "");
+    await fotoPermitida(perfilId, ref);
     const [bytes, link] = [await bytesFoto(ref), await linkFoto(ref)];
     const mime = /\.png$/i.test(ref) ? "image/png" : "image/jpeg";
     return { conteudo: [{ type: "image", data: encodeBase64(bytes), mimeType: mime }, { type: "text", text: `Link (válido 1 hora): ${link}` }], linhas: 1 };
@@ -552,6 +566,7 @@ Deno.serve(async (req) => {
     perfil = tk.c;
     const { data: v } = await admin.rpc("api_validar_perfil", { p_perfil: tk.c });
     if (!v) { await reg("geojson", null, 0, 403); return json(403, { erro: "Acesso desligado" }); }
+    if (v.pedidos_hora >= v.limite) { await reg("geojson", null, 0, 429); return json(429, { erro: "Demasiados pedidos nesta hora. Tente mais tarde." }); }
     try {
       const g = await geojson(tk.tipo, tk.dia, tk.comunidade, tk.equipa, tk.c);
       await admin.rpc("api_registar2", { p_perfil: tk.c, p_client: null, p_ip: ip, p_agente: agente, p_via: "link", p_accao: "geojson",
@@ -565,10 +580,11 @@ Deno.serve(async (req) => {
 
   if (resto[0] === "excel" && q("t")) {
     const tk = await lerToken(q("t")!);
-    if (!tk || (tk.k && tk.k !== "xlsx")) return json(401, { erro: "Link expirado ou inválido. Peça um link novo ao conector." });
+    if (!tk || tk.k !== "xlsx") return json(401, { erro: "Link expirado ou inválido. Peça um link novo ao conector." });
     perfil = tk.c;
     const { data: v } = await admin.rpc("api_validar_perfil", { p_perfil: tk.c });
     if (!v) { await reg("excel", null, 0, 403); return json(403, { erro: "Acesso desligado" }); }
+    if (v.pedidos_hora >= v.limite) { await reg("excel", null, 0, 429); return json(429, { erro: "Demasiados pedidos nesta hora. Tente mais tarde." }); }
     try {
       const x = await excel(tk.de, tk.ate, tk.comunidade, tk.equipa, tk.c);
       await admin.rpc("api_registar2", { p_perfil: tk.c, p_client: null, p_ip: ip, p_agente: agente, p_via: "link", p_accao: "excel",
@@ -606,6 +622,10 @@ Deno.serve(async (req) => {
       let corpo: any;
       try { corpo = await req.json(); } catch { return json(400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "JSON inválido" } }); }
       if (Array.isArray(corpo)) {
+        if (corpo.length > MAX_LOTE || v.pedidos_hora + corpo.length > v.limite) {
+          await reg("mcp:lote", { pedidos: corpo.length }, 0, 429);
+          return json(429, { jsonrpc: "2.0", id: null, error: { code: -32000, message: `No máximo ${MAX_LOTE} pedidos por lote e ${v.limite} por hora.` } });
+        }
         const rs = (await Promise.all(corpo.map((m) => mcp(m, base, v, reg)))).filter(Boolean);
         return rs.length ? json(200, rs) : new Response(null, { status: 202, headers: cors });
       }
@@ -634,6 +654,7 @@ Deno.serve(async (req) => {
         "Content-Disposition": `attachment; filename="${x.nome}"` } });
     }
     if (accao === "foto") {
+      await fotoPermitida(w.uid, q("ref") || "");
       const link = await linkFoto(q("ref") || "");
       await reg("foto", { ref: q("ref") }, 1, 302);
       return new Response(null, { status: 302, headers: { ...cors, Location: link } });
