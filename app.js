@@ -633,13 +633,14 @@ async function entrarSemRede(email, segredo) {
 async function autenticarPendente() {
   if (!S.credPend) return true;
   const { data, error } = await sb.auth.signInWithPassword({ email: S.credPend.email, password: S.credPend.segredo });
-  if (error && /fetch|network|Failed/i.test(error.message)) return false;          // ainda sem rede
+  if (error && (semRede(error) || /fetch|Failed/i.test(error.message))) return false;          // ainda sem rede (v237: também pedido cortado aos 30 s)
   if (error) { S.credPend = null; LS.del('acessoOff'); aviso('A senha ou o PIN mudou. Entre de novo com rede; os registos continuam guardados no telefone.', 'erro'); setTimeout(() => location.reload(), 4000); return false; }
   S.user = data.user; S.credPend = null;
   carregarTudo().then(() => { if ($('#e-hoje').classList.contains('on')) desenharHoje(); }).catch(() => {});
   return true;
 }
-const semRede = (e) => !navigator.onLine || /Failed to fetch|NetworkError|Load failed|network/i.test(e?.message || '');
+// v237 (13/11/2026): desde a v233 um pedido lento é cortado aos 30 s (AbortError) e conta como falta de rede
+const semRede = (e) => !navigator.onLine || e?.status === 0 || e?.name === 'AuthRetryableFetchError' || /Failed to fetch|NetworkError|Load failed|network|abort|timeout/i.test(e?.message || '');
 async function entrar() {
   const m = S.modoEntrada || 'activista';
   const u = (m === 'escritorio' ? $('#le-user') : $('#l-user')).value.trim().toLowerCase();
@@ -5129,7 +5130,7 @@ async function desenharHoje() {
     if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste') + (percursoActivo() || pontosPercursoHoje() ? linhaPercurso() : '');
     // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
     const r = navigator.onLine ? await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h) : { error: { semRede: true } };
-    if (r.error && (r.error.semRede || /fetch|network|rede/i.test(r.error.message || ''))) {
+    if (r.error && (r.error.semRede || /fetch|network|rede|abort|timeout/i.test(r.error.message || ''))) {
       // sem rede: mostra o último resumo das equipas guardado no telefone (16/10/2026, Nuro)
       const ult = LS.get('hojeEquipas');
       if (ult && ult.d === h) html += `<div class="msg info">Sem rede. Resumo das equipas guardado às ${fmtHora(ult.em)}; pode não ter as últimas regas.</div>${ult.html}`;
@@ -5696,7 +5697,7 @@ function ecraCorrNome(id) {
     if (!navigator.onLine) { $('#cn-msg').innerHTML = '<div class="msg erro">Precisa de rede.</div>'; return; }
     $('#cn-ok').disabled = $('#cn-nao').disabled = true;
     let r; try { r = await sb.rpc('confirmar_correccao_nome', { p_id: id, p_confirmar: sim, p_motivo: mot || null }); } catch (e) { r = { error: { message: String(e?.message || e) } }; }
-    if (r.error) { $('#cn-msg').innerHTML = `<div class="msg erro">${esc(r.error.message || 'Sem ligação ao servidor. Tente de novo quando tiver rede.')}</div>`; $('#cn-ok').disabled = $('#cn-nao').disabled = false; return; }
+    if (r.error) { $('#cn-msg').innerHTML = `<div class="msg erro">${esc(!r.error.message || /fetch|network|Load failed|abort|timeout/i.test(r.error.message) ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : r.error.message)}</div>`; $('#cn-ok').disabled = $('#cn-nao').disabled = false; return; }
     const est = r.data && r.data.estado;
     if (est === 'aplicada') {
       S.areas.forEach((a) => { if (a.id === x.area_id || (x.pr && a.pr === x.pr)) a.produtor = x.nome_novo; }); LS.set('areas', S.areas);
@@ -5909,7 +5910,7 @@ async function fecharDia() {
   catch (e) { r = { error: e }; }
   // v232 (10/11/2026, Valdo: o WhatsApp funcionava; o mais provável é a app presa à espera da sessão): pedir para fechar e abrir a app
   if (r.semResposta) { repor(); return aviso('Sem resposta do servidor. Feche a app, abra-a de novo e tente outra vez.', 'erro'); }
-  if (r.error) { repor(); return aviso(/fetch|network|Load failed/i.test(r.error.message || '') ? 'Sem resposta do servidor. Feche a app, abra-a de novo e tente outra vez.' : r.error.message, 'erro'); }
+  if (r.error) { repor(); return aviso(/fetch|network|Load failed|abort|timeout/i.test(r.error.message || '') ? 'Sem resposta do servidor. Feche a app, abra-a de novo e tente outra vez.' : r.error.message, 'erro'); }
   aviso('Dia fechado.', 'ok'); await carregarMeuDia(); actHoje();
 }
 const FECHAR_ESPERA_MS = 20000;
@@ -5946,7 +5947,7 @@ function ecraConfirmarRega(id, tipo, plantas, base, area) {
     const bt = $('#cr-ok'); if (bt.disabled) return; bt.disabled = true; bt.textContent = 'A gravar…'; $('#cr-msg').innerHTML = '';
     let r; try { r = conta ? await sb.rpc('confirmar_rega2', { p_id: id, p_nota: t, p_vivas: v }) : tipo === 'foto_data' ? await sb.rpc('confirmar_foto_rega', { p_id: id, p_nota: t }) : await sb.rpc('confirmar_rega', { p_id: id, p_nota: t }); } catch (e) { r = { error: { message: String(e?.message || e) } }; }
     if (r.error) {
-      const m = String(r.error.message || ''), rede = !m || /fetch|network|Load failed|timeout/i.test(m);
+      const m = String(r.error.message || ''), rede = !m || /fetch|network|Load failed|timeout|abort/i.test(m);
       problemaApp('confirmar_rega', m || 'sem mensagem', { id, tipo });
       const txt = rede ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : m;
       msg(`<div class="msg erro">${esc(txt)}</div>` + (/Corrija as plantas regadas/.test(m) && area ? `<button class="chip" onclick="corrigirRegaAgora('${esc(id)}','${esc(area)}',${v ?? -1})">✏️ Corrigir as plantas regadas</button>` : ''), txt);
