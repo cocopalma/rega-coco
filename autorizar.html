@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1f5130">
+<title>Rega Coco — entrada do Claude</title>
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" crossorigin="anonymous" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Página de entrada do conector do Claude (13/11/2026, Valdo: "a entrada tem que ser por senha").
+   O Supabase Auth manda para aqui com ?authorization_id=…; a pessoa entra com o utilizador e a senha da app
+   e autoriza a leitura. A sessão fica só na memória desta página (não mexe na sessão da app). */
+:root{--verde:#1f5130;--verde2:#2e7d4a;--fundo:#f3f5f1;--cartao:#fff;--texto:#17201a;--cinza:#5f6861;--borda:#d9dfd7;--erro:#b3261e}
+@media (prefers-color-scheme: dark){:root{--fundo:#121614;--cartao:#1c221e;--texto:#e7ece8;--cinza:#a7b0a9;--borda:#334038;--verde2:#5fb37f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fundo);color:var(--texto);font:17px/1.45 "Atkinson Hyperlegible",system-ui,sans-serif}
+header{background:var(--verde);color:#fff;padding:14px 16px;font-weight:700}
+main{max-width:440px;margin:24px auto;padding:0 16px}
+.cartao{background:var(--cartao);border:1px solid var(--borda);border-radius:12px;padding:20px}
+h1{font-size:20px;margin:0 0 8px}
+p{margin:8px 0}
+.pequeno{color:var(--cinza);font-size:15px}
+label{display:block;font-weight:700;margin:14px 0 4px}
+input{width:100%;font:inherit;padding:12px;border:1px solid var(--borda);border-radius:8px;background:var(--fundo);color:var(--texto)}
+.linha{display:flex;gap:8px}.linha input{flex:1}
+button{font:inherit;font-weight:700;border-radius:8px;padding:12px 16px;border:1px solid var(--borda);background:var(--cartao);color:var(--texto);cursor:pointer}
+button.principal{background:var(--verde2);border-color:var(--verde2);color:#fff;width:100%;margin-top:18px}
+button:disabled{opacity:.6;cursor:default}
+.erro{color:var(--erro);font-weight:700}
+ul{margin:8px 0;padding-left:20px}
+.botoes{display:flex;gap:10px;margin-top:18px}.botoes button{flex:1}
+</style>
+</head>
+<body>
+<header>Rega Coco · dados da rega</header>
+<main><div class="cartao" id="caixa"><p>A carregar…</p></div></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
+<script>
+const CFG = {
+  url: 'https://fgzdqnvobgfzjetbbxcm.supabase.co',
+  chave: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZnemRxbnZvYmdmempldGJieGNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NDgyMzUsImV4cCI6MjEwNzIyNDIzNX0.1bSDbPLWMvhIG2fzu_Ta2vm1qV1NutzMEmii3wbN7mY',
+  dominio: 'rega-coco.example.com',
+};
+const FUNCAO = CFG.url + '/functions/v1/dados-rega';
+const caixa = document.getElementById('caixa');
+const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const idPedido = new URLSearchParams(location.search).get('authorization_id');
+let sb = null;
+try {
+  sb = supabase.createClient(CFG.url, CFG.chave, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'sb-rega-autorizar' } });
+} catch (e) { /* sem biblioteca: mostrado abaixo */ }
+
+function ecraEntrar(msg) {
+  caixa.innerHTML = `
+    <h1>Entrar para ligar o Claude</h1>
+    <p class="pequeno">O Claude pede para ler os dados da app de rega. Entre com o utilizador e a senha da app.</p>
+    ${msg ? `<p class="erro">${esc(msg)}</p>` : ''}
+    <form id="f" autocomplete="on">
+      <label for="u">Utilizador</label>
+      <input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      <label for="s">Senha</label>
+      <div class="linha"><input id="s" name="password" type="password" autocomplete="current-password" required>
+      <button type="button" id="ver">Mostrar</button></div>
+      <button class="principal" id="ok">Entrar</button>
+    </form>`;
+  document.getElementById('ver').onclick = () => {
+    const s = document.getElementById('s'); const m = s.type === 'password';
+    s.type = m ? 'text' : 'password'; document.getElementById('ver').textContent = m ? 'Esconder' : 'Mostrar';
+  };
+  document.getElementById('f').onsubmit = entrar;
+  document.getElementById('u').focus();
+}
+
+async function entrar(ev) {
+  ev.preventDefault();
+  const b = document.getElementById('ok'); b.disabled = true; b.textContent = 'A entrar…';
+  const u = document.getElementById('u').value.trim().toLowerCase();
+  const email = u.includes('@') ? u : u + '@' + CFG.dominio;
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: document.getElementById('s').value });
+  if (error || !data?.session) return ecraEntrar('Utilizador ou senha errados.');
+  let r = null;
+  try {
+    const resp = await fetch(FUNCAO + '/entrada', { method: 'POST', headers: { authorization: 'Bearer ' + data.session.access_token } });
+    r = await resp.json();
+  } catch (e) { return ecraEntrar('Sem ligação ao servidor. Tente de novo.'); }
+  if (!r?.autorizado) return ecraSemAcesso();
+  const det = await sb.auth.oauth.getAuthorizationDetails(idPedido);
+  if (det.error) return ecraFim('Este pedido já não vale (pode ter expirado). Volte ao Claude e ligue o conector outra vez.');
+  if (det.data?.redirect_url && !det.data?.authorization_id) { location.assign(det.data.redirect_url); return; }
+  ecraAutorizar(r.nome, det.data);
+}
+
+function anfitriao(u) { try { return new URL(u).host; } catch (e) { return u || '?'; } }
+
+function ecraAutorizar(nome, d) {
+  caixa.innerHTML = `
+    <h1>Autorizar a leitura dos dados</h1>
+    <p>Olá, <b>${esc(nome)}</b>.</p>
+    <p><b>${esc(d?.client?.name || d?.client?.client_name || 'Uma aplicação')}</b> (${esc(anfitriao(d?.redirect_uri))}) pede para <b>ler</b> os dados da app de rega:</p>
+    <ul><li>regas, equipas, campos, dias sem rega, recontagens, manutenção, chuva e monitoria;</li>
+    <li>as fotografias e o Excel desses dados.</li></ul>
+    <p class="pequeno">Só leitura: não pode mudar nada na app nem no servidor. Telefones, utilizadores e senhas ficam de fora. Cada pedido fica registado.</p>
+    <div class="botoes"><button id="nao">Recusar</button><button class="principal" id="sim" style="margin-top:0">✓ Autorizar</button></div>`;
+  document.getElementById('sim').onclick = async (e) => {
+    e.target.disabled = true; e.target.textContent = 'A autorizar…';
+    const { error } = await sb.auth.oauth.approveAuthorization(idPedido);
+    if (error) ecraFim('Não foi possível autorizar: ' + (error.message || 'erro') + '. Volte ao Claude e tente outra vez.');
+  };
+  document.getElementById('nao').onclick = recusar;
+}
+
+async function recusar() {
+  const { error } = await sb.auth.oauth.denyAuthorization(idPedido);
+  if (error) ecraFim('Pedido recusado. Pode fechar esta página.');
+}
+
+function ecraSemAcesso() {
+  caixa.innerHTML = `
+    <h1>Esta conta não tem acesso aos dados</h1>
+    <p>A sua conta da app de rega não está autorizada a ligar o Claude aos dados. Fale com o gestor.</p>
+    <button class="principal" id="v">Voltar ao Claude</button>`;
+  document.getElementById('v').onclick = recusar;
+}
+
+function ecraFim(msg) { caixa.innerHTML = `<p>${esc(msg)}</p>`; }
+
+if (!sb) ecraFim('Não foi possível carregar a página. Verifique a rede e abra-a outra vez.');
+else if (!idPedido) ecraFim('Esta página abre-se a partir do Claude, quando se liga o conector «Rega Coco — dados da rega».');
+else ecraEntrar();
+</script>
+</body>
+</html>

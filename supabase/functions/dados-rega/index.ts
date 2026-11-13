@@ -3,19 +3,20 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 
 // Endereço SÓ DE LEITURA dos dados da Rega Coco e conector (MCP) para o Claude (13/11/2026, Valdo).
-// Para quem tem uma chave (tabela api_chaves; o Valdo cria-a no SQL Editor: select api_criar_chave('Nome');).
+// Entrada por utilizador e senha da app (OAuth 2.1 do Supabase Auth, página autorizar.html no GitHub Pages);
+// só lêem as pessoas da lista api_utilizadores (o Valdo dá o acesso no SQL Editor: select api_autorizar('dalmar');).
 // Não escreve nada nos dados da rega. Só lê pela função api_dados, regista cada pedido em api_acessos e
 // assina links das fotografias (1 h). Telefones, utilizadores, senhas, PIN e código ficam de fora.
-//   Conector (Claude):   POST .../functions/v1/dados-rega/k/<chave>/mcp
-//   Dados (navegador):   GET  .../k/<chave>/dados/<tipo>?de=AAAA-MM-DD&ate=AAAA-MM-DD[&comunidade=][&equipa=][&formato=csv]
-//   Excel:               GET  .../k/<chave>/excel?de=&ate=     (ou o link de 1 h que o conector devolve)
-//   Fotografia:          GET  .../k/<chave>/foto?ref=<bucket/caminho>
+//   Conector (Claude):   .../functions/v1/dados-rega/mcp            (sem token: 401 com o endereço dos metadados)
+//   Metadados:           .../functions/v1/dados-rega/.well-known/oauth-protected-resource
+//   Página de entrada:   POST .../entrada  (regista a entrada e diz se a conta pode ler)
+//   Dados, Excel, foto:  .../dados/<tipo>?de=&ate=[&formato=csv], .../excel?de=&ate=, .../foto?ref=  (com o token)
 
 const TIPOS = ["resumo", "regas", "equipas", "dias_sem_rega", "campos", "recontagens", "manutencao", "acompanhamentos",
   "queimadas", "chuva", "monitorias", "idas_agua"] as const;
 const BUCKETS = ["rega-fotos", "recontagem-fotos", "manutencao-fotos", "chuva-fotos", "monitoria-fotos"];
 const MAX_DIAS = 92;
-const VERSAO = "1.0";
+const VERSAO = "2.0";
 
 function encodeBase64(u: Uint8Array) {
   let s = "";
@@ -138,15 +139,15 @@ async function bytesFoto(ref: string) {
   return new Uint8Array(await data.arrayBuffer());
 }
 
-// ---------- link do Excel sem a chave (válido 1 h) ----------
+// ---------- link do Excel sem o token no endereço (válido 1 h) ----------
 const enc = new TextEncoder();
 const b64u = (u: Uint8Array) => encodeBase64(u).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 async function hmac(txt: string) {
   const k = await crypto.subtle.importKey("raw", enc.encode("dados-rega:" + service), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return b64u(new Uint8Array(await crypto.subtle.sign("HMAC", k, enc.encode(txt))));
 }
-async function tokenExcel(chave: string, q: Record<string, string | undefined>) {
-  const corpo = b64u(enc.encode(JSON.stringify({ c: chave, e: Math.floor(Date.now() / 1000) + 3600, ...q })));
+async function tokenExcel(perfilId: string, q: Record<string, string | undefined>) {
+  const corpo = b64u(enc.encode(JSON.stringify({ c: perfilId, e: Math.floor(Date.now() / 1000) + 3600, ...q })));
   return corpo + "." + (await hmac(corpo));
 }
 async function lerToken(t: string) {
@@ -213,7 +214,7 @@ const FERRAMENTAS = [
 const INSTRUCOES = "Dados da app de rega Rega Coco (só leitura). Comece por ler_dados com tipo 'resumo' para o período pedido; " +
   "use 'equipas' para o dia de cada equipa e 'regas' para o detalhe. Não invente números: se um dado não vem nas respostas, diga que falta.";
 
-async function chamarFerramenta(nome: string, a: any, base: string, chaveId: string) {
+async function chamarFerramenta(nome: string, a: any, base: string, perfilId: string) {
   if (nome === "ler_dados") {
     const r = await dados(a.tipo, a.de, a.ate, a.comunidade, a.equipa);
     if (!Array.isArray(r.dados)) return { conteudo: [{ type: "text", text: JSON.stringify(r) }], linhas: 1 };
@@ -232,7 +233,7 @@ async function chamarFerramenta(nome: string, a: any, base: string, chaveId: str
   }
   if (nome === "link_excel") {
     const p = periodo("regas", a.de, a.ate);
-    const t = await tokenExcel(chaveId, { de: p.de!, ate: p.ate!, comunidade: a.comunidade, equipa: a.equipa });
+    const t = await tokenExcel(perfilId, { de: p.de!, ate: p.ate!, comunidade: a.comunidade, equipa: a.equipa });
     return { conteudo: [{ type: "text", text: `Excel de ${p.de} a ${p.ate} (link válido 1 hora): ${base}/excel?t=${t}` }], linhas: 0 };
   }
   throw new Erro(400, "Ferramenta desconhecida");
@@ -271,7 +272,23 @@ async function mcp(msg: any, base: string, chave: any, reg: (accao: string, para
   return err(-32601, "Método não suportado");
 }
 
-// ---------- pedido ----------
+// ---------- quem pede (entrada por utilizador e senha: OAuth 2.1 do Supabase Auth) ----------
+// O conector do Claude recebe um token do Supabase Auth depois de a pessoa entrar com o utilizador e a senha da app
+// na página autorizar.html. Só as pessoas da lista api_utilizadores (api_autorizar no SQL Editor) lêem os dados.
+function claimsDe(tok: string): any {
+  try {
+    const p = tok.split(".")[1].replaceAll("-", "+").replaceAll("_", "/");
+    return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(p + "===".slice((p.length + 3) % 4)), (c) => c.charCodeAt(0))));
+  } catch { return {}; }
+}
+async function quemPede(req: Request) {
+  const tok = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  if (!tok) return { estado: "sem" as const };
+  const { data, error } = await admin.auth.getUser(tok);
+  if (error || !data?.user) return { estado: "invalido" as const };
+  return { estado: "ok" as const, uid: data.user.id, client: claimsDe(tok).client_id || null };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const t0 = Date.now();
@@ -283,19 +300,36 @@ Deno.serve(async (req) => {
   const agente = req.headers.get("user-agent");
   const q = (k: string) => u.searchParams.get(k) || undefined;
   const base = `${url}/functions/v1/dados-rega`;
+  const recurso = `${base}/mcp`;
+  const metadados = `${base}/.well-known/oauth-protected-resource`;
+  const accao = resto.join("/");
+  let perfil: string | null = null, client: string | null = null;
+  const via = accao === "mcp" ? "mcp" : accao === "entrada" ? "entrada" : "http";
+  const reg = async (a: string, param: unknown, linhas: number, estado: number) => {
+    await admin.rpc("api_registar2", { p_perfil: perfil, p_client: client, p_ip: ip, p_agente: agente, p_via: via, p_accao: a,
+      p_param: param ?? null, p_linhas: linhas, p_ms: Date.now() - t0, p_estado: estado });
+  };
 
-  // link do Excel com token (sem a chave)
-  let chaveTxt: string | null = null, via = "http", accao = "";
-  let chave: any = null;
+  // metadados do recurso protegido (RFC 9728): diz ao Claude onde a pessoa entra (Supabase Auth)
+  if (resto[0] === ".well-known" && resto[1] === "oauth-protected-resource") {
+    return json(200, {
+      resource: recurso,
+      authorization_servers: [`${url}/auth/v1`],
+      bearer_methods_supported: ["header"],
+      resource_name: "Rega Coco — dados da rega (só leitura)",
+    });
+  }
+
+  // link do Excel de 1 hora (sem token no endereço; assinado pelo servidor)
   if (resto[0] === "excel" && q("t")) {
     const tk = await lerToken(q("t")!);
     if (!tk) return json(401, { erro: "Link expirado ou inválido. Peça um link novo ao conector." });
-    const { data: c } = await admin.from("api_chaves").select("id,nome,limite_hora,activa").eq("id", tk.c).maybeSingle();
-    if (!c?.activa) return json(401, { erro: "Chave desligada" });
-    chave = { id: c.id, nome: c.nome };
+    perfil = tk.c;
+    const { data: v } = await admin.rpc("api_validar_perfil", { p_perfil: tk.c });
+    if (!v) { await reg("excel", null, 0, 403); return json(403, { erro: "Acesso desligado" }); }
     try {
       const x = await excel(tk.de, tk.ate, tk.comunidade, tk.equipa);
-      await admin.rpc("api_registar", { p_chave: c.id, p_ip: ip, p_agente: agente, p_via: "link", p_accao: "excel",
+      await admin.rpc("api_registar2", { p_perfil: tk.c, p_client: null, p_ip: ip, p_agente: agente, p_via: "link", p_accao: "excel",
         p_param: { de: tk.de, ate: tk.ate, comunidade: tk.comunidade, equipa: tk.equipa }, p_linhas: x.linhas, p_ms: Date.now() - t0, p_estado: 200 });
       return new Response(x.buf, { headers: { ...cors, "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${x.nome}"` } });
@@ -304,21 +338,24 @@ Deno.serve(async (req) => {
     }
   }
 
-  if (resto[0] === "k" && resto[1]) { chaveTxt = resto[1]; accao = resto[2] || ""; }
-  else {
-    chaveTxt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "") || null;
-    accao = resto[0] || "";
+  // as chaves no endereço da versão anterior deixaram de valer
+  if (resto[0] === "k") return json(410, { erro: "Este endereço já não é usado. Ligue o conector a " + recurso + " e entre com o utilizador e a senha da app." });
+
+  const w = await quemPede(req);
+  if (w.estado !== "ok") {
+    await reg(accao === "mcp" && w.estado === "sem" ? "mcp:sem-token" : accao || "(sem acção)", null, 0, 401);
+    return json(401, { erro: "Entre com o utilizador e a senha da app" },
+      { "WWW-Authenticate": `Bearer resource_metadata="${metadados}"` });
   }
-  if (accao === "mcp") via = "mcp";
+  perfil = w.uid; client = w.client;
+  const { data: v } = await admin.rpc("api_validar_perfil", { p_perfil: w.uid });
 
-  const reg = async (a: string, param: unknown, linhas: number, estado: number) => {
-    await admin.rpc("api_registar", { p_chave: chave?.id || null, p_ip: ip, p_agente: agente, p_via: via, p_accao: a,
-      p_param: param ?? null, p_linhas: linhas, p_ms: Date.now() - t0, p_estado: estado });
-  };
-
-  const { data: v } = await admin.rpc("api_validar", { p_chave: chaveTxt || "" });
-  if (!v) { await reg(accao || "(sem acção)", null, 0, 401); return json(401, { erro: "Chave inválida" }); }
-  chave = v;
+  // a página de entrada pergunta se esta pessoa pode ler os dados (fica registada a entrada, com o IP do navegador)
+  if (accao === "entrada") {
+    await reg("entrada", null, 0, v ? 200 : 403);
+    return json(200, { autorizado: !!v, nome: v?.nome || null });
+  }
+  if (!v) { await reg(accao || "(sem acção)", null, 0, 403); return json(403, { erro: "Esta conta não tem acesso aos dados. Fale com o gestor." }); }
   if (v.pedidos_hora >= v.limite) { await reg(accao, null, 0, 429); return json(429, { erro: "Demasiados pedidos nesta hora. Tente mais tarde." }); }
 
   try {
@@ -326,16 +363,15 @@ Deno.serve(async (req) => {
       if (req.method !== "POST") return new Response(null, { status: 405, headers: { ...cors, Allow: "POST" } });
       let corpo: any;
       try { corpo = await req.json(); } catch { return json(400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "JSON inválido" } }); }
-      const kbase = `${base}`;
       if (Array.isArray(corpo)) {
-        const rs = (await Promise.all(corpo.map((m) => mcp(m, kbase, v, reg)))).filter(Boolean);
+        const rs = (await Promise.all(corpo.map((m) => mcp(m, base, v, reg)))).filter(Boolean);
         return rs.length ? json(200, rs) : new Response(null, { status: 202, headers: cors });
       }
-      const r = await mcp(corpo, kbase, v, reg);
+      const r = await mcp(corpo, base, v, reg);
       return r ? json(200, r) : new Response(null, { status: 202, headers: cors });
     }
-    if (accao === "dados") {
-      const tipo = resto[resto[0] === "k" ? 3 : 1] || "resumo";
+    if (resto[0] === "dados") {
+      const tipo = resto[1] || "resumo";
       const r = await dados(tipo, q("de"), q("ate"), q("comunidade"), q("equipa"));
       const n = Array.isArray(r.dados) ? (r.dados as any[]).length : 1;
       await reg("dados/" + tipo, Object.fromEntries(u.searchParams), n, 200);
