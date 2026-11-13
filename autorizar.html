@@ -45,6 +45,10 @@ const CFG = {
   dominio: 'rega-coco.example.com',
 };
 const FUNCAO = CFG.url + '/functions/v1/dados-rega';
+// Só o Claude pode receber a autorização (13/11/2026, Valdo, antes de ligar o registo dinâmico de aplicações):
+// uma aplicação registada por outra pessoa, que mande de volta para outro endereço, é recusada sem mostrar «Autorizar».
+const DESTINOS = ['claude.ai', 'claude.com'];
+function destinoOk(u) { try { const x = new URL(u); return x.protocol === 'https:' && DESTINOS.includes(x.host); } catch (e) { return false; } }
 const caixa = document.getElementById('caixa');
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const idPedido = new URLSearchParams(location.search).get('authorization_id');
@@ -86,9 +90,14 @@ async function entrar(ev) {
     const resp = await fetch(FUNCAO + '/entrada', { method: 'POST', headers: { authorization: 'Bearer ' + data.session.access_token } });
     r = await resp.json();
   } catch (e) { return ecraEntrar('Sem ligação ao servidor. Tente de novo.'); }
-  if (!r?.autorizado) return ecraSemAcesso();
   const det = await sb.auth.oauth.getAuthorizationDetails(idPedido);
   if (det.error) return ecraFim('Este pedido já não vale (pode ter expirado). Volte ao Claude e ligue o conector outra vez.');
+  const destino = det.data?.authorization_id ? det.data?.redirect_uri : det.data?.redirect_url;
+  if (!destinoOk(destino)) {
+    try { await sb.auth.oauth.denyAuthorization(idPedido, { skipBrowserRedirect: true }); } catch (e) { /* recusado na mesma: não se autoriza */ }
+    return ecraFim('Este pedido não vem do Claude (iria para ' + anfitriao(destino) + '). Por segurança foi recusado. Se não pediu esta ligação, avise o gestor.');
+  }
+  if (!r?.autorizado) return ecraSemAcesso();
   if (det.data?.redirect_url && !det.data?.authorization_id) { location.assign(det.data.redirect_url); return; }
   ecraAutorizar(r.nome, det.data);
 }
