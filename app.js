@@ -3683,7 +3683,9 @@ function baseSaida(a) {
 }
 const contaRonda = (a) => (souActivista() || porEquipa(a)) && hojeISO() >= POR_TERMINAR_INICIO;
 function ecraSaida(msg = '') {
-  const ent = LS.get('emCurso'), a = S.areas.find((x) => x.id === ent.area_id);
+  const ent = LS.get('emCurso'); if (!ent) return fecharFolha();
+  const a = S.areas.find((x) => x.id === ent.area_id);
+  if (!a) return fichaEmCursoFora(ent.area_id);   // v236: o campo saiu da lista com a rega em curso (Ibraimo, 13/11: «Terminei» não respondia)
   folha(`${msg}<h2>${esc(a.produtor)}</h2><p class="pequeno">Entrada às ${fmtHora(ent.entrada_em)}</p>
    ${ent.sem_vivas ? `<div class="msg info">🥀 <span>Sem plantas vivas para regar: 0 plantas regadas. Escreva quantas plantas encontrou mortas ou secas.</span></div>` : ''}
    <label>Plantas regadas neste campo<input id="s-plantas" type="number" inputmode="numeric" min="0" value="${ent.sem_vivas ? 0 : ent.plantas_escritas ?? ''}"${ent.sem_vivas ? ' readonly' : ''}></label>
@@ -3736,7 +3738,9 @@ function avisoFalta(a) {
   el.innerHTML = `<div class="msg ${escolheu ? 'info' : 'erro'}">Regou ${p} de ${base} plantas. Escolha porque não regou ${base - p} plantas (obrigatório).${fica}</div>`;
 }
 async function marcarSaida() {
-  const ent = LS.get('emCurso'), a = S.areas.find((x) => x.id === ent.area_id);
+  const ent = LS.get('emCurso'); if (!ent) return fecharFolha();
+  const a = S.areas.find((x) => x.id === ent.area_id);
+  if (!a) return fichaEmCursoFora(ent.area_id);   // v236
   const semFoto = ['entrada', 'rega', 'saida'].find((t) => !ent.fotos?.[t]);
   if (semFoto) { alert(FALTA_FOTO[semFoto]); if (semFoto !== 'saida') ecraFotoRega(semFoto); return; }
   const plantas = ent.sem_vivas ? 0 : parseInt($('#s-plantas').value, 10);
