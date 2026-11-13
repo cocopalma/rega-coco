@@ -6,10 +6,10 @@
 
 -- 1. excepção por pessoa: ver as recontagens antes da validação
 alter table public.api_utilizadores add column if not exists ve_recontagens_por_validar boolean not null default false;
-update public.api_utilizadores a set ve_recontagens_por_validar = true
-  from auth.users u
- where u.id = a.perfil_id
-   and lower(u.email) in ('etevaldo.cheveia@jfs.co.mz', 'dalmar@rega-coco.example.com');
+-- por perfil_id (revisão do Claude Code, 13/11/2026), os dois já estão em api_utilizadores:
+-- 8a1b9364-… = Etevaldo Cheveia (Valdo), e99218fc-… = Dalmar Santos
+update public.api_utilizadores set ve_recontagens_por_validar = true
+ where perfil_id in ('8a1b9364-5b17-464a-b30b-f52136036c2f', 'e99218fc-573d-48c2-8f79-7a24c3d5ba59');
 
 -- 2. papéis que podem ler pelo conector (os mesmos que vêem todos os campos na app; activista, oficial de M&E e
 --    chefe de manutenção não) e sessão de quem pede, só dentro da chamada
