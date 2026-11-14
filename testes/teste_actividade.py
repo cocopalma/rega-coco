@@ -1,5 +1,6 @@
 # Cava-roda e mulching quando não há rega (ramo cc-manutencao, decisões do Valdo de 13–14/11/2026). Servidor simulado.
-# PAPEL=activista (por defeito) ou tecnico (regista pela equipa); LING=en / sw.
+# PAPEL=activista (por defeito), tecnico ou gestor (registam pela equipa; o gestor activa as horas extras na ficha); LING=en / sw.
+# 17 «O meu dia» (técnico): equipa sem nada a cinzento até às 15:30 («pode começar até às 15:30»), a vermelho depois.
 # Passos: 1 motivo obrigatório; 2 início do dia (activista); 3 entrada com GPS e fotografia do início; 4 rega bloqueada com a
 # actividade em curso; 5 fim sem a fotografia durante recusado; 6 mais plantas do que as vivas recusado; 7 fim sem rede fica na fila;
 # 8 com rede vai para o servidor (3 fotografias + gravar_actividade); 9 depois das 15:30 o botão não aparece; 10 rega em curso
@@ -38,7 +39,7 @@ def mock(route):
     if "/rpc/gravar_actividade" in u: rec["act"].append(json.loads(r.post_data)); return ok({"id": json.loads(r.post_data)["p"]["id"], "manutencao": True, "excedente": {"cavaroda": 0, "mulching": 0}})
     if "/rpc/actividades_campo_lista" in u: return ok({"cavaroda": 10 + sum(a["p"]["cavaroda"] for a in rec["act"]), "mulching": 5 + sum(a["p"]["mulching"] for a in rec["act"]), "lista": [{"id": a["p"]["id"], "data": "2026-11-16", "motivo": a["p"]["motivo"], "entrada_em": a["p"]["entrada_em"], "saida_em": a["p"]["saida_em"], "pessoas": a["p"]["pessoas"], "cavaroda": a["p"]["cavaroda"], "mulching": a["p"]["mulching"], "equipa": "Activista Exemplo", "quem": "Pessoa Teste", "foto_entrada": a["p"]["foto_entrada"], "foto_durante": a["p"]["foto_durante"], "foto_saida": a["p"]["foto_saida"], "excedente": 0} for a in rec["act"]]})
     if "/rpc/meu_dia" in u: return ok({"data": "2026-11-16", "hora_chegada": "06:30", "fechado_em": None, "alertas": [], "monitoria_hoje": 0, "monitoria_falhas_ontem": 0, "sem_equipa": 0, "por_aprovar": [], "por_terminar": [],
-        "equipas": [{"id": ACT, "nome": "Activista Exemplo", "comunidade": "Farol", "regas": 0, "plantas": 0, "chegada": None, "sem_rega": None, "comecou": "2026-11-16T07:00:00Z", "motivos": [], "actividade": {"campos": 1, "cavaroda": 30, "mulching": 20} if rec["act"] else None}]})
+        "equipas": [{"id": "33333333-3333-3333-3333-333333333333", "nome": "Equipa Parada", "comunidade": "Farol", "regas": 0, "plantas": 0, "chegada": None, "sem_rega": None, "comecou": None, "motivos": [], "actividade": None}, {"id": ACT, "nome": "Activista Exemplo", "comunidade": "Farol", "regas": 0, "plantas": 0, "chegada": None, "sem_rega": None, "comecou": "2026-11-16T07:00:00Z", "motivos": [], "actividade": {"campos": 1, "cavaroda": 30, "mulching": 20} if rec["act"] else None}]})
     if "/rpc/" in u: return ok([])
     if "/rest/v1/" in u: return ok([]) if r.method == "GET" else route.fulfill(status=201, body="")
     return route.fulfill(status=201, body="")
@@ -128,10 +129,15 @@ with sync_playwright() as p:
         passo("14a às 16:00 sem «Cheguei» nem cava-roda", pg.locator("#aviso-depois").count() == 1 and not pg.is_visible("#b-act") and pg.locator("#folha-c button.principal").count() == 0)
     pg.evaluate("S.motTec = {id:'PR6-1', m:'O telemóvel do activista está avariado ou sem bateria'}; marcarEntrada('PR6-1')"); pg.wait_for_timeout(800)
     passo("14b entrada da rega recusada às 16:00", pg.locator("#msg-depois").count() == 1 and pg.evaluate("!localStorage.getItem('rega.emCurso')"))
-    if PAPEL != "activista":
+    if PAPEL == "gestor":
+        # 15: o gestor activa as horas extras na ficha do campo (não tem «O meu dia»)
+        pg.evaluate("abrirFicha('PR6-1')"); pg.wait_for_timeout(300); pg.click("#he-ficha"); pg.wait_for_timeout(2500)
+        pg.evaluate("abrirFicha('PR6-1')"); pg.wait_for_timeout(300)
+        passo("15 gestor activou horas extras na ficha (quem e a hora)", len(rec["he"]) == 1 and rec["he"][0]["p_em"] and "⏰" in pg.inner_text("#he-ficha"), pg.inner_text("#he-ficha"))
+    elif PAPEL != "activista":
         # 15: o técnico activa as horas extras no «O meu dia»
         pg.evaluate("fecharFolha(); window.__TAR_ABERTAS = true; mudar('hoje')"); pg.wait_for_timeout(1500)
-        pg.locator("#meu-dia .he-btn").first.click(); pg.wait_for_timeout(2500)
+        pg.locator(f"#meu-dia .he-btn[onclick*='{ACT}']").click(); pg.wait_for_timeout(2500)
         passo("15 horas extras activadas e enviadas (quem e a hora)", len(rec["he"]) == 1 and rec["he"][0]["p_activista"] == ACT and rec["he"][0]["p_em"] and pg.locator("#meu-dia .he-ok").count() == 1,
               pg.inner_text("#meu-dia .he-ok") if pg.locator("#meu-dia .he-ok").count() else "")
     else:
@@ -144,7 +150,15 @@ with sync_playwright() as p:
     pg.evaluate("S.motTec = {id:'PR6-1', m:'O telemóvel do activista está avariado ou sem bateria'}; marcarEntrada('PR6-1')"); pg.wait_for_timeout(1500)
     # (o GPS falso do teste pode falhar depois de mexer no relógio; aqui só interessa que a regra das 15:30 já não recusa)
     passo("16c entrada da rega já não é recusada pela hora", pg.locator("#msg-depois").count() == 0 and "15:30" not in folha())
-    if PAPEL != "activista":
+    if PAPEL == "tecnico":
+        # 17: «O meu dia» às 15:00 e às 15:40
+        pg.clock.set_system_time("2026-11-16T15:00:00+02:00"); pg.evaluate("fecharFolha(); mudar('hoje')"); pg.wait_for_timeout(1500)
+        t1 = pg.inner_text("#meu-dia")
+        pg.clock.set_system_time("2026-11-16T15:40:00+02:00"); pg.evaluate("desenharHoje()"); pg.wait_for_timeout(1500)
+        t2 = pg.inner_text("#meu-dia")
+        passo("17 equipa sem rega: 15:30 a cinzento, depois falta o motivo", "15:30" in t1 and "18:00" not in t1.split("Equipa Parada")[1][:80] and "15:30" not in t2.split("Equipa Parada")[1][:60],
+              (t1.split("Equipa Parada")[1][:60] + " || " + t2.split("Equipa Parada")[1][:60]).replace("\n", " "))
+    if PAPEL == "tecnico":
         pg.evaluate("fecharFolha(); mudar('hoje')"); pg.wait_for_timeout(1500)
         t = pg.inner_text("#e-hoje")
         passo("11 «O meu dia» mostra a 🌱", "🌱" in t, [l for l in t.split("\n") if "🌱" in l][:2])

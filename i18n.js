@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    // cc-manutencao-15h30
+    "Ainda sem rega · pode começar até às 15:30": "No watering yet · can start until 15:30", "Activar horas extras hoje para a equipa de": "Activate overtime today for the team of",
     // cc-manutencao-etiquetas
     "Esconder etiquetas": "Hide labels", "Tocar para fechar a etiqueta": "Tap to close the label", "Toque num campo para ver a etiqueta; toque outra vez para abrir a ficha.": "Tap a field to see its label; tap again to open the field sheet.",
     // cc-manutencao-horas-extras

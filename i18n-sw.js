@@ -3,6 +3,8 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    // cc-manutencao-15h30
+    "Ainda sem rega · pode começar até às 15:30": "Bado hakuna umwagiliaji · inaweza kuanza hadi saa 15:30", "Activar horas extras hoje para a equipa de": "Washa saa za ziada leo kwa timu ya",
     // cc-manutencao-etiquetas
     "Esconder etiquetas": "Ficha lebo", "Tocar para fechar a etiqueta": "Gusa ili kufunga lebo", "Toque num campo para ver a etiqueta; toque outra vez para abrir a ficha.": "Gusa shamba kuona lebo yake; gusa tena kufungua fomu ya shamba.",
     // cc-manutencao-horas-extras

@@ -50,7 +50,7 @@ insert into public.config (chave, valor)
 select 'hora_limite_inicio', to_jsonb('15:30'::text)
 where not exists (select 1 from public.config where chave = 'hora_limite_inicio');
 
--- ---------- horas extras (técnico ou supervisor da equipa activam, na app, para esse dia) ----------
+-- ---------- horas extras (técnico ou supervisor da equipa, ou o gestor, activam na app, para esse dia) ----------
 create table public.horas_extras (
   id uuid primary key,
   activista_id uuid not null references public.activistas(id),
@@ -75,7 +75,8 @@ create or replace function public.activar_horas_extras(p_id uuid, p_activista uu
 returns json language plpgsql security definer set search_path to '' as $$
 declare v_hoje date := (now() at time zone 'Africa/Maputo')::date; r record;
 begin
-  if privado.meu_papel() not in ('tecnico', 'supervisor') or privado.so_teste() or not privado.equipa_minha(p_activista) then raise exception 'sem acesso'; end if;
+  -- técnico e supervisor: as suas equipas; gestor: qualquer equipa (15/11/2026, Valdo)
+  if privado.so_teste() or not (privado.meu_papel() = 'gestor' or (privado.meu_papel() in ('tecnico', 'supervisor') and privado.equipa_minha(p_activista))) then raise exception 'sem acesso'; end if;
   if p_data < v_hoje - 1 or p_data > v_hoje then raise exception 'Data inválida'; end if;
   select h.id, h.activado_em, pf.nome into r from public.horas_extras h left join public.perfis pf on pf.id = h.activado_por
     where h.activista_id = p_activista and h.data = p_data and not h.removido;

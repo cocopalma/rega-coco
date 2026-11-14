@@ -3449,6 +3449,12 @@ function abrirFicha(id, nota = '') {
       (pela ? `<p class="pequeno" style="margin:4px 0 0;text-align:center">Rega de teste: não conta para a equipa.</p>` : '') + botaoAct(a);
     if (pela) pelaBtn = `<button class="btn sec" onclick="ecraRegaPelaEquipa('${esc(a.id)}')">🤝 Regar pela equipa (conta na ronda)</button>`;
   }
+  // horas extras (15/11/2026, Valdo: também o gestor): na ficha, para a equipa deste campo, depois das 15:30
+  if (podeActivarHE() && a.activista_id && meuCampo(a) && !dentroHora()) {
+    const h = horasExtras(a.activista_id);
+    acc += h ? `<p class="pequeno" id="he-ficha">${textoHorasExtras(h)}</p>`
+      : `<button class="btn sec" id="he-ficha" onclick="activarHorasExtras('${esc(a.activista_id)}');abrirFicha('${esc(a.id)}')">⏰ <span>Activar horas extras hoje para a equipa de</span> <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span></button>`;
+  }
   const alheio = !meuCampo(a); S.soVer = alheio;
   folha(`${nota}<h2 style="margin:0">${esc(a.produtor)}</h2>
    <p class="pequeno" style="margin:2px 0 6px">${esc(a.pr)}-${a.area_n ?? '—'} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''}</p>
@@ -5349,7 +5355,7 @@ async function carregarHorasExtras() {
   try { const r = await sb.rpc('horas_extras_lista'); if (!r.error && Array.isArray(r.data)) LS.set('horasExtras', r.data); } catch {}
 }
 // técnico/supervisor: activar as horas extras de uma equipa para hoje (funciona sem rede; fica quem activou e a hora)
-const podeActivarHE = () => ['tecnico', 'supervisor'].includes(S.perfil?.papel) && !S.perfil?.so_teste;
+const podeActivarHE = () => ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) && !S.perfil?.so_teste;   // gestor: 15/11/2026, Valdo
 function activarHorasExtras(act) {
   if (!podeActivarHE() || horasExtras(act)) return;
   if (!confirm(`Activar horas extras hoje para a equipa de ${nomeAct(act)}? Depois das 15:30 a equipa pode começar regas e cava-roda e mulching. Fica registado que foi activado por si, a esta hora.`)) return;
@@ -6092,7 +6098,7 @@ function cartaoMeuDia() {
   const motivosDe = (e) => (e.motivos || (e.sem_rega ? [{ motivo: e.sem_rega }] : [])).map((m) => cp.has(m.id) ? { ...m, por_confirmar: false, confirmado_nome: S.perfil?.nome, pendente: true } : m);
   const falta = eqs.filter((e) => !e.regas && !e.comecou && !e.actividade && !motivosDe(e).length);
   const porConf = eqs.reduce((n, e) => n + motivosDe(e).filter((m) => m.por_confirmar).length, 0);
-  const cedo = d.data === hojeISO() && new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour12: false }) < '18:00';
+  const cedo = d.data === hojeISO() && horaTrabalho() < HORA_LIMITE_INICIO;   // 15/11/2026, Valdo: fim do trabalho no campo às 15:30 (antes 18:00)
   const linhaMot = (e, m) => `<div class="pequeno" style="margin:2px 0 6px 8px">⚠️ <span>${esc(nomeMotivoDsr(m.motivo))}</span>${m.ate ? ` · <span>até</span> ${fmtData(m.ate)}` : ''}${m.produtor ? ` · <span class="sem-trad">${esc(m.produtor)}</span>` : ''}${m.descricao ? ` · <span class="sem-trad">${esc(m.descricao)}</span>` : ''}
       ${m.quem ? `<br><span>Registado por</span> <span class="sem-trad">${esc(m.quem)}</span>` : ''}${m.por_confirmar ? ` · <b style="color:var(--erro,#c62828)">por confirmar</b> <button class="chip" onclick="ecraConfirmarDsr('${e.id}','${m.id}')">Confirmar</button>`
         : m.confirmado_nome && m.papel_quem === 'activista' ? ` · ✓ <span>confirmado por</span> <span class="sem-trad">${esc(m.confirmado_nome)}</span>${m.pendente ? ' (<span>por enviar</span>)' : ''}` : ''}</div>`;
@@ -6108,7 +6114,7 @@ function cartaoMeuDia() {
         : e.actividade ? `🌱 <span>Cava-roda e mulching</span>`
         : e.comecou ? `🟢 <span>Começou às</span> ${fmtHora(e.comecou)}`
         : ms.length ? `<span>Sem rega</span>: ${esc(nomeMot(ms.map((m) => m.motivo).join(', ')))}`
-        : cedo ? `<span style="color:var(--suave,#777)">Ainda sem rega · pode regar até às 18:00</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`
+        : cedo ? `<span style="color:var(--suave,#777)">Ainda sem rega · pode começar até às 15:30</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`
         : `<span style="color:var(--erro,#c62828)">Não regou hoje · falta o motivo</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`}</b></div>` + linhaActEquipa(e) + linhaHorasExtras(e) + ms.filter((m) => m.id).map((m) => linhaMot(e, m)).join(''); }).join('') +
     `<div class="pequeno" style="margin:6px 0">🟢 = <span>a equipa começou o dia na app</span> ${info('<span>A equipa começou o dia na app (rega em curso ou ainda por enviar). Se a equipa estiver sem rede, o início só chega quando o telefone tiver rede; se até ao fim do dia nada chegar, registe «A equipa regou, mas não registou na app».</span>')}</div>`,
     `${eqs.length - falta.length} / ${eqs.length} <span>com rega, a trabalhar ou com motivo</span>${porConf ? ` · ${num(porConf)} <span>motivos por confirmar</span>` : ''}`]);
