@@ -3287,6 +3287,7 @@ function ecraCoordenada(id) {
       Telefone parado, à altura do peito, ecrã para cima. Espere 30 a 60 segundos até a precisão baixar.</div>
     <div class="cartao"><div class="lin"><span>Precisão agora</span><b id="c-prec">a ler…</b></div>
       <div class="lin"><span>Coordenada</span><b id="c-pos">—</b></div></div>
+    <div id="c-lim"></div>
     <p class="pequeno">Só pode gravar com precisão de ${CFG.precisaoCoord} m ou melhor. O ideal é ${CFG.precisaoIdeal} m ou menos.</p>
     <button class="btn" id="c-gravar" disabled onclick="gravarCoordenada()">Gravar esta coordenada</button>
     <button class="btn sec" onclick="pararVigia();abrirFicha('${esc(id)}')">Cancelar</button>`);
@@ -3300,17 +3301,33 @@ function ecraCoordenada(id) {
     el.style.color = melhor.precisao <= CFG.precisaoIdeal ? '#1b5e20' : melhor.precisao <= CFG.precisaoCoord ? '#ef8f00' : '#c62828';
     $('#c-pos').textContent = `${melhor.lat.toFixed(6)}, ${melhor.lon.toFixed(6)}`;
     $('#c-gravar').disabled = melhor.precisao > CFG.precisaoCoord;
+    avisoLimiteLonge(a, melhor);
   }, (e) => { const el = $('#c-prec'); if (el) el.textContent = e.code === 1 ? 'sem autorização de localização' : 'sem sinal de GPS'; },
   { enableHighAccuracy: true, maximumAge: 1000, timeout: 60000 });
+}
+// v238 (14/11/2026, sugestão do Shella pelo 💡): com limite, a entrada usa o limite e não a coordenada. Se a pessoa está
+// longe do limite, corrigir só a coordenada não resolve: a app diz para medir a área.
+const kmOuM = (d) => d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1).replace('.', ',') + ' km';
+function limiteLonge(a, x) { return temPoligono(a) && x ? distPoligono(x.lat, x.lon, a.poligono) : 0; }
+function avisoLimiteLonge(a, x) {
+  const el = $('#c-lim'); if (!el) return;
+  const d = limiteLonge(a, x);
+  if (d <= CFG.margemPoligono) { el.innerHTML = ''; return; }
+  if (el.dataset.d === String(Math.round(d / 10))) return;
+  el.dataset.d = String(Math.round(d / 10));
+  el.innerHTML = `<div class="msg erro"><b>⚠️ O limite deste campo fica longe daqui.</b> Distância ao limite: <b>${kmOuM(d)}</b>.<br>
+    A entrada no campo usa o limite, não a coordenada: corrigir só a coordenada não resolve. Meça a área a andar à volta do campo.</div>
+    <button class="btn" id="c-medir" onclick="pararVigia();ecraMedir('${esc(a.id)}')">📐 Medir a área (andar à volta do campo)</button>`;
 }
 function gravarCoordenada() {
   const x = S.coordPendente; if (!x || x.precisao > CFG.precisaoCoord) return;
   pararVigia();
   const a = S.areas.find((y) => y.id === x.area_id);
+  const longe = limiteLonge(a, x) > CFG.margemPoligono;
   a.latitude = x.lat; a.longitude = x.lon; a.limites_abertos = false; LS.set('areas', S.areas);    // aparece já no mapa deste telefone
   porNaFilaAlt({ tipo: 'coord', ...x }); S.coordPendente = null; desenharMapa(); desenharLista();
   if (!a.activista_id && podeAtribuir(a)) return ecraAtribuir(a.id, '<div class="msg ok">Coordenada gravada. Agora atribua o campo a um activista.</div>');
-  abrirFicha(a.id, '<div class="msg ok">Coordenada gravada.</div>');
+  abrirFicha(a.id, '<div class="msg ok">Coordenada gravada.</div>' + (longe ? '<div class="msg erro" id="c-lim-ficha">A entrada continua a usar o limite antigo, que fica longe deste ponto. Para o corrigir: «Gerir o campo» › «🔓 Abrir a correcção da coordenada e da área» e depois «📐 Medir a área de novo».</div>' : ''));
 }
 // activistas ordenados pela distância do campo mais próximo que já têm na lista
 function activistasProximos(a) {
