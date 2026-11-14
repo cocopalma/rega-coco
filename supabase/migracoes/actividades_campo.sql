@@ -5,7 +5,9 @@
 --  - Segue o padrão da rega: entrada com GPS, pessoas e fotografia; fotografia durante; saída com GPS, plantas com cava-roda e com
 --    mulching feitas NESSE DIA e fotografia. Pelo menos 1 planta numa das duas; sem mínimo de pessoas. Sem registo do material.
 --  - O motivo (constrangimento) é sempre pedido ao abrir; pode ser no mesmo dia que uma rega. O técnico não confirma.
---  - Não se começa depois das 15:30 (config.actividade_hora_limite); a que está em curso pode ser terminada e conta para esse dia.
+--  - Fim do trabalho no campo às 15:30 (config.hora_limite_inicio), para a rega e a cava-roda: depois disso não se começa nada novo, salvo
+--    com «horas extras» activadas pelo técnico ou pelo supervisor para essa equipa nesse dia (tabela horas_extras). O que está em curso
+--    pode ser terminado e conta para esse dia. «Fechar o dia» continua até às 18:00. As regas de teste não têm limite.
 --  - Conta como dia de trabalho: o activista regista o início do dia (jornadas) antes de começar, como na rega; quando o registo é
 --    do técnico/supervisor pela equipa, esta função cria o início do dia se ainda não houver nenhum (R1, «O meu dia», «Fechar o dia»
 --    e cumprimento já aceitam o início do dia).
@@ -45,8 +47,71 @@ alter table public.actividades_campo enable row level security;   -- sem políti
 create trigger guarda_so_teste before insert or delete or update on public.actividades_campo for each row execute function privado.guarda_so_teste();
 
 insert into public.config (chave, valor)
-select 'actividade_hora_limite', to_jsonb('15:30'::text)
-where not exists (select 1 from public.config where chave = 'actividade_hora_limite');
+select 'hora_limite_inicio', to_jsonb('15:30'::text)
+where not exists (select 1 from public.config where chave = 'hora_limite_inicio');
+
+-- ---------- horas extras (técnico ou supervisor da equipa activam, na app, para esse dia) ----------
+create table public.horas_extras (
+  id uuid primary key,
+  activista_id uuid not null references public.activistas(id),
+  data date not null,
+  activado_por uuid not null default auth.uid(),
+  activado_em timestamptz not null,           -- hora do telefone de quem activou (pode ter sido sem rede)
+  recebido_em timestamptz not null default now(),
+  papel text,
+  removido boolean not null default false
+);
+create unique index horas_extras_equipa_dia on public.horas_extras (activista_id, data) where not removido;
+alter table public.horas_extras enable row level security;   -- sem políticas: só pelas RPC
+create trigger guarda_so_teste before insert or delete or update on public.horas_extras for each row execute function privado.guarda_so_teste();
+
+-- pode começar (rega ou cava-roda) a esta hora? até às 15:30, ou com horas extras dessa equipa nesse dia
+create or replace function privado.pode_comecar(p_activista uuid, p_em timestamptz) returns boolean language sql stable security definer set search_path to '' as $$
+  select to_char(p_em at time zone 'Africa/Maputo', 'HH24:MI') <= coalesce((select c.valor #>> '{}' from public.config c where c.chave = 'hora_limite_inicio'), '15:30')
+      or exists (select 1 from public.horas_extras h where h.activista_id = p_activista and h.data = (p_em at time zone 'Africa/Maputo')::date and not h.removido);
+$$;
+
+create or replace function public.activar_horas_extras(p_id uuid, p_activista uuid, p_data date, p_em timestamptz)
+returns json language plpgsql security definer set search_path to '' as $$
+declare v_hoje date := (now() at time zone 'Africa/Maputo')::date; r record;
+begin
+  if privado.meu_papel() not in ('tecnico', 'supervisor') or privado.so_teste() or not privado.equipa_minha(p_activista) then raise exception 'sem acesso'; end if;
+  if p_data < v_hoje - 1 or p_data > v_hoje then raise exception 'Data inválida'; end if;
+  select h.id, h.activado_em, pf.nome into r from public.horas_extras h left join public.perfis pf on pf.id = h.activado_por
+    where h.activista_id = p_activista and h.data = p_data and not h.removido;
+  if r.id is not null then return json_build_object('id', r.id, 'ja', true, 'por', r.nome, 'em', r.activado_em); end if;
+  insert into public.horas_extras (id, activista_id, data, activado_por, activado_em, papel)
+  values (p_id, p_activista, p_data, auth.uid(), least(coalesce(p_em, now()), now()), privado.meu_papel()) on conflict (id) do nothing;
+  return json_build_object('id', p_id, 'ja', false);
+end $$;
+revoke all on function public.activar_horas_extras(uuid, uuid, date, timestamptz) from public, anon;
+grant execute on function public.activar_horas_extras(uuid, uuid, date, timestamptz) to authenticated;
+
+-- horas extras de hoje e de ontem das equipas que a pessoa vê (activista: a sua)
+create or replace function public.horas_extras_lista() returns json language plpgsql stable security definer set search_path to '' as $$
+declare v_papel text := privado.meu_papel(); v_meu uuid; v_hoje date := (now() at time zone 'Africa/Maputo')::date;
+begin
+  if v_papel is null then return '[]'::json; end if;
+  if v_papel = 'activista' then select pf.activista_id into v_meu from public.perfis pf where pf.id = auth.uid(); end if;
+  return coalesce((select json_agg(json_build_object('id', h.id, 'activista_id', h.activista_id, 'data', h.data, 'por', pf.nome, 'papel', h.papel, 'em', h.activado_em))
+    from public.horas_extras h left join public.perfis pf on pf.id = h.activado_por
+    where not h.removido and h.data >= v_hoje - 1
+      and (case when v_papel = 'activista' then h.activista_id = v_meu
+                when v_papel in ('tecnico', 'supervisor') then h.activista_id in (select privado.ids_visiveis())
+                else v_papel in ('gestor', 'director', 'me') end)), '[]'::json);
+end $$;
+revoke all on function public.horas_extras_lista() from public, anon;
+grant execute on function public.horas_extras_lista() to authenticated;
+
+-- rega: a entrada de uma rega real depois das 15:30 só com horas extras (as de teste não têm limite)
+create or replace function privado.rega_hora_limite() returns trigger language plpgsql security definer set search_path to '' as $$
+begin
+  if not new.teste and new.entrada_em is not null and not privado.pode_comecar(new.activista_id, new.entrada_em) then
+    raise exception 'Depois das 15:30 só se começa uma rega com horas extras activadas pelo técnico ou pelo supervisor' using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+create trigger rega_hora_limite before insert on public.registos_rega for each row execute function privado.rega_hora_limite();
 
 -- ---------- gravar (uma só chamada, no fim, como a rega) ----------
 create or replace function public.gravar_actividade(p jsonb)
@@ -58,7 +123,7 @@ declare
   v_mot text := p->>'motivo'; v_mtx text := nullif(trim(coalesce(p->>'motivo_texto', '')), '');
   v_mtec text := nullif(trim(coalesce(p->>'motivo_tecnico', '')), ''); v_apoio uuid := nullif(p->>'apoio_id', '')::uuid;
   v_papel text := privado.meu_papel(); v_meu uuid; v_d date; v_hoje date := (now() at time zone 'Africa/Maputo')::date;
-  v_lim text := coalesce((select c.valor #>> '{}' from public.config c where c.chave = 'actividade_hora_limite'), '15:30');
+
   a record; n int; uc int; um int; nc int; nm int; v_man uuid; v_pess int := nullif(p->>'pessoas', '')::int;
 begin
   if v_id is null or v_area is null or v_act is null or v_ent is null or v_sai is null then raise exception 'Dados em falta'; end if;
@@ -82,7 +147,7 @@ begin
   -- datas e hora: o dia é o da entrada (hora do telefone); não se começa depois das 15:30
   v_d := (v_ent at time zone 'Africa/Maputo')::date;
   if v_d < v_hoje - 7 or v_d > v_hoje + 1 then raise exception 'Data inválida'; end if;
-  if to_char(v_ent at time zone 'Africa/Maputo', 'HH24:MI') > v_lim then raise exception 'Depois das % já não se começa a cava-roda e o mulching', v_lim; end if;
+  if not privado.pode_comecar(v_act, v_ent) then raise exception 'Depois das 15:30 só se começa a cava-roda e o mulching com horas extras activadas pelo técnico ou pelo supervisor'; end if;
   if v_sai < v_ent then raise exception 'A saída é antes da entrada'; end if;
   -- fotografias e plantas
   if coalesce(p->>'foto_entrada', '') = '' or coalesce(p->>'foto_durante', '') = '' or coalesce(p->>'foto_saida', '') = '' then raise exception 'Faltam fotografias'; end if;
@@ -194,4 +259,6 @@ begin if position(a in d) = 0 then raise exception 'meu_dia: texto não encontra
 -- drop function public.painel_actividades(date, date); drop function public.actividades_campo_lista(text); drop function public.gravar_actividade(jsonb);
 -- A tabela actividades_campo e as linhas acrescentadas a manutencao_registos podem ficar (a app anterior não as usa; as linhas da
 -- manutenção são totais válidos). Para as tirar dos totais: update manutencao_registos set removido = true where id in (select manut_registo_id from actividades_campo);
--- delete from public.config where chave = 'actividade_hora_limite';
+-- drop trigger rega_hora_limite on public.registos_rega; drop function privado.rega_hora_limite();
+-- drop function public.horas_extras_lista(); drop function public.activar_horas_extras(uuid, uuid, date, timestamptz); drop function privado.pode_comecar(uuid, timestamptz);
+-- delete from public.config where chave = 'hora_limite_inicio';   (a tabela horas_extras pode ficar)

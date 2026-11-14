@@ -369,6 +369,11 @@
     meus_activistas: () => vis() || [], minhas_comunidades: () => (papel === 'tecnico' ? ['Exemplo Norte'] : papel === 'supervisor' ? ['Exemplo Norte', 'Exemplo Sul'] : []),
     monitoria_escala_ver: () => (['tecnico', 'supervisor'].includes(papel) ? { n_dias: 1, campos: 2, pausa: false, eu_monitor: true, meus: DB.escala || null, pessoas: [{ id: EU, nome: 'Eu', papel, dias: DB.escala || null, eu: true }, { id: 'x1', nome: 'Técnica Sul', papel: 'tecnico', dias: [1], eu: false }] } : null),
     apoios_lista: () => [], apoio_sugestoes: () => [], apoio_candidatos: () => [], criar_apoio: () => null, terminar_apoio: () => null,
+    // horas extras depois das 15:30 (técnico ou supervisor activam para a equipa, nesse dia)
+    horas_extras_lista: () => (DB.he || []).filter((h) => h.data >= dia(1) && (papel !== 'activista' || (DB.userAct || {})[h.activista_id] === U.activista)),
+    activar_horas_extras: (a) => { DB.he ||= []; const j = DB.he.find((h) => h.activista_id === a.p_activista && h.data === a.p_data);
+      if (j) return { id: j.id, ja: true, por: j.por, em: j.em };
+      DB.he.push({ id: a.p_id, activista_id: a.p_activista, data: a.p_data, por: NOMES[papel] || 'Eu', papel, em: a.p_em || new Date().toISOString() }); return { id: a.p_id, ja: false }; },
     // cava-roda e mulching quando não há rega (ramo cc-manutencao): guardados na base de exemplo
     gravar_actividade: (a) => { const x = a.p || {}; DB.act ||= []; if (DB.act.some((y) => y.id === x.id)) return { id: x.id, ja: true };
       DB.act.push({ ...x, data: dia(0), equipa: nomeAct(x.activista_id), quem: NOMES[papel] || 'Eu', removido: false });

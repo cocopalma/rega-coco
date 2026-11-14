@@ -441,11 +441,13 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'meta_mot' ? await sb.rpc('gravar_meta_motivo', { p_id: x.mm_id, p_activista: x.activista_id, p_data: x.data, p_motivo: x.motivo })   // v226
         : x.tipo === 'retirar' ? await sb.rpc('retirar_da_rega', { p_area: x.area_id, p_motivo: x.motivo, p_obs: x.obs || null, p_em: x.em })   // v205
         : x.tipo === 'agua' ? await sb.rpc('gravar_recolha_agua', { p_id: x.agua_id, p_activista: x.activista_id, p_em: x.em, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao })   // v235
+        : x.tipo === 'horas_extras' ? await sb.rpc('activar_horas_extras', { p_id: x.he_id, p_activista: x.activista_id, p_data: x.data, p_em: x.em })
         : x.tipo === 'chefe_man' ? await sb.rpc('atribuir_chefe_manut', { p_area: x.area_id, p_chefe: x.chefe_id, p_motivo: x.motivo })   // v235
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
       if (r4.error && erroPassageiro(r4.error)) { erro = r4.error.message; sessao = erroSessao(r4.error); break; }   // sem rede: fica na fila
       if (r4.error) { marcarRecusa('filaAlt', x, r4.error, x.tipo || 'atrib'); recusadas++; continue; }   // recusado: fica na fila, marcado (antes saía e perdia-se)
-      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot', 'agua', 'chefe_man'].includes(x.tipo)) alteradas++;
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot', 'agua', 'chefe_man', 'horas_extras'].includes(x.tipo)) alteradas++;
+      if (x.tipo === 'horas_extras') carregarHorasExtras();
       if (x.tipo === 'chefe_man') S.manutMudou = true;
     }
   }
@@ -550,6 +552,7 @@ async function carregarEstado(pronto) {
   LS.set('estado', S.estado); LS.set('estadoEm', new Date().toISOString());
   // v155: os pedidos seguintes saem ao mesmo tempo (antes eram uns atrás dos outros)
   const papel = S.perfil?.papel, tarefas = [];
+  tarefas.push(carregarHorasExtras());                   // horas extras de hoje (15:30)
   tarefas.push(carregarTrilhos().catch(() => {}));       // v193: trilhos para a navegação (só o que mudou)
   if (!['cliente', 'oficial_me'].includes(papel)) tarefas.push(sb.rpc('planos_lista').then((q) => { if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data); }));
   if (VER_MEMBROS.includes(papel))                       // nomes das pessoas de cada equipa (v135, lista do RH de 23/10/2026)
@@ -3428,7 +3431,9 @@ function abrirFicha(id, nota = '') {
     acc = (sem ? `<div class="msg info">📵 <span>${esc(nomeAct(a.activista_id))} não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele.</span></div>` : '') +
       (bl ? `<div class="msg erro">💧 <span>Este campo já recebeu água. A equipa ainda tem</span> <b>${bl.length}</b> <span>campos que nunca receberam água: regue esses primeiro. Para regar este campo, o supervisor tem de autorizar (pode ser já para hoje).</span></div>
         <button class="btn" onclick="ecraBloqueioAgua('${esc(a.id)}')">💧 Ver os campos que nunca receberam água</button>`
+        : (souActivista() || sem) && !podeComecar(actDe(a)) ? `<div class="msg info" id="aviso-depois">⏰ <span>${MSG_DEPOIS}</span></div>`
         : `<button class="btn principal" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`) +
+      ((souActivista() || sem) && !dentroHora() && horasExtras(actDe(a)) ? `<p class="pequeno" style="margin:4px 0 0;text-align:center">${textoHorasExtras(horasExtras(actDe(a)))}</p>` : '') +
       (pela ? `<p class="pequeno" style="margin:4px 0 0;text-align:center">Rega de teste: não conta para a equipa.</p>` : '') + botaoAct(a);
     if (pela) pelaBtn = `<button class="btn sec" onclick="ecraRegaPelaEquipa('${esc(a.id)}')">🤝 Regar pela equipa (conta na ronda)</button>`;
   }
@@ -3580,6 +3585,10 @@ async function marcarEntrada(id, motivoIt = null, motivoSug = null) {
   if ((LS.get('semMotivo', []) || []).length) return ecraSemMotivo();   // v115: primeiro o motivo das regas fora da lista
   const a = S.areas.find((x) => x.id === id);
   const minha = souActivista() && a.activista_id === S.perfil.activista_id, apoio = apoioMeu(id);
+  if ((souActivista() || porEquipa(a)) && !podeComecar(actDe(a))) {        // 15:30 (14/11/2026, Valdo); o servidor também recusa
+    await carregarHorasExtras();                                         // talvez o técnico já tenha activado: pergunta ao servidor
+    if (!podeComecar(actDe(a))) return abrirFicha(id, `<div class="msg erro" id="msg-depois">${MSG_DEPOIS}</div>`);
+  }
   if (apoio && situacao(a).cod === 'feita') return abrirFicha(id, `<div class="msg erro">Este campo já foi regado nesta ronda da equipa de ${esc(nomeAct(a.activista_id))}.</div>`);
   if ((souActivista() && minha) || porEquipa(a)) {             // v204: primeiro os campos que nunca receberam água
     const bl = bloqueioAgua(a); if (bl) return ecraBloqueioAgua(id);
@@ -5298,7 +5307,11 @@ async function enviarAcomp() {
 // cava-roda e com mulching feitas hoje e fotografia. Conta como dia de trabalho. Não se começa depois das 15:30; a que está em curso
 // pode ser terminada. Pode ser no mesmo dia que uma rega (antes ou depois), mas nunca as duas em curso ao mesmo tempo.
 // Técnico, supervisor e gestor podem registar pela equipa (motivo obrigatório). Funciona sem rede (fila filaAct, fotografias em IndexedDB).
-const ACT_HORA_LIMITE = '15:30';
+// Fim do trabalho no campo (Valdo, 14/11/2026): depois das 15:30 não se começa nada novo (rega nem cava-roda), salvo com «horas extras»
+// activadas pelo técnico ou pelo supervisor para essa equipa nesse dia. O que está em curso pode ser terminado. «Fechar o dia» fica às 18:00.
+// Só vale para o que conta para a equipa (regas reais e cava-roda); as regas de teste do técnico/supervisor não têm limite.
+const HORA_LIMITE_INICIO = '15:30';
+const ACT_HORA_LIMITE = HORA_LIMITE_INICIO;
 const MOTIVOS_ACT = [['tuk_tuk', 'O tuk-tuk não chegou'], ['avaria_tuk_tuk', 'Tuk-tuk avariado ou sem combustível'], ['avaria_camiao', 'Camião avariado'],
   ['sem_agua', 'Sem água na fonte ou no poço'], ['chuva', 'Choveu: não foi preciso regar'], ['material', 'Falta de material (bidões, regadores)'], ['outro', 'Outro motivo']];
 const MANUT_COM_ACT = ['Quiwia', 'Farol'];   // só para o aviso no ecrã; quem decide é o servidor (manutencao_comunidades)
@@ -5307,8 +5320,33 @@ const actCurso = () => LS.get('actCurso');
 const filaAct = () => LS.get('filaAct', []) || [];
 const horaMinMaputo = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour12: false }).slice(0, 5);   // «HH:MM»
 // na simulação pode-se escolher a hora (sessionStorage rega.demo.hora, «HH:MM»), para mostrar antes e depois das 15:30 a qualquer hora
-const horaAct = () => { if (window.DEMO) { try { const h = sessionStorage.getItem('rega.demo.hora'); if (/^\d\d:\d\d$/.test(h || '')) return h; } catch {} } return horaMinMaputo(); };
-const actDentroHora = () => horaAct() <= ACT_HORA_LIMITE;
+// na simulação pode-se escolher a hora (sessionStorage rega.demo.hora, «HH:MM»); vale para a rega e para a cava-roda
+const horaSimulada = () => { if (window.DEMO) { try { const h = sessionStorage.getItem('rega.demo.hora'); if (/^\d\d:\d\d$/.test(h || '')) return h; } catch {} } return null; };
+const horaTrabalho = () => (typeof window.__HORA_TESTE === 'string' ? window.__HORA_TESTE : null) || horaSimulada() || horaMinMaputo();   // __HORA_TESTE: só nos testes
+const dentroHora = () => horaTrabalho() <= HORA_LIMITE_INICIO;
+const actDentroHora = dentroHora;
+// horas extras de hoje para uma equipa: do servidor (LS horasExtras) ou activadas neste telefone e ainda por enviar
+const horasExtras = (act, dia = hojeISO()) => !act ? null : (LS.get('horasExtras', []) || []).find((h) => h.activista_id === act && h.data === dia)
+  || (LS.get('filaAlt', []) || []).filter((x) => x.tipo === 'horas_extras' && x.activista_id === act && x.data === dia).map((x) => ({ ...x, por: S.perfil?.nome, em: x.em, local: true }))[0] || null;
+const podeComecar = (act) => dentroHora() || !!horasExtras(act);
+const actDe = (a) => (souActivista() ? S.perfil?.activista_id : a?.activista_id);
+const textoHorasExtras = (h) => `⏰ <span>Horas extras hoje, activadas por</span> <b class="sem-trad">${esc(h.por || '')}</b> <span>às</span> ${fmtHora(h.em)}${h.local ? ' (<span>por enviar</span>)' : ''}`;
+const MSG_DEPOIS = 'Depois das 15:30 não se começa uma rega nem cava-roda e mulching. Só com horas extras activadas pelo técnico ou pelo supervisor para esta equipa, hoje.';
+async function carregarHorasExtras() {
+  if (!navigator.onLine) return;
+  try { const r = await sb.rpc('horas_extras_lista'); if (!r.error && Array.isArray(r.data)) LS.set('horasExtras', r.data); } catch {}
+}
+// técnico/supervisor: activar as horas extras de uma equipa para hoje (funciona sem rede; fica quem activou e a hora)
+const podeActivarHE = () => ['tecnico', 'supervisor'].includes(S.perfil?.papel) && !S.perfil?.so_teste;
+function activarHorasExtras(act) {
+  if (!podeActivarHE() || horasExtras(act)) return;
+  if (!confirm(`Activar horas extras hoje para a equipa de ${nomeAct(act)}? Depois das 15:30 a equipa pode começar regas e cava-roda e mulching. Fica registado que foi activado por si, a esta hora.`)) return;
+  const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), tipo: 'horas_extras', he_id: crypto.randomUUID(), activista_id: act, data: hojeISO(), em: new Date().toISOString() }); LS.set('filaAlt', f);
+  actSync(); sincronizar(true); aviso('Horas extras activadas.', 'ok'); if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
+}
+const linhaHorasExtras = (e) => { const h = horasExtras(e.id);
+  return h ? `<div class="pequeno he-ok" style="margin:0 0 6px 8px">${textoHorasExtras(h)}</div>`
+    : podeActivarHE() ? `<div style="margin:0 0 6px 8px"><button class="chip he-btn" onclick="activarHorasExtras('${esc(e.id)}')">⏰ <span>Activar horas extras hoje</span></button></div>` : ''; };
 // quem pode: o activista nos campos da sua lista ou em apoio; técnico/supervisor/gestor pela equipa (campo da sua lista, com activista)
 function podeAct(a) {
   if (!a || S.perfil?.so_teste) return false;
@@ -5317,7 +5355,7 @@ function podeAct(a) {
 }
 function botaoAct(a) {
   if (!podeAct(a)) return '';
-  if (!actDentroHora()) return `<p class="pequeno" style="margin:6px 0;text-align:center">🌱 <span>Cava-roda e mulching: depois das 15:30 já não se começa.</span></p>`;
+  if (!podeComecar(actDe(a))) return `<p class="pequeno" style="margin:6px 0;text-align:center">🌱 <span>Cava-roda e mulching: depois das 15:30 só com horas extras.</span></p>`;
   return `<button class="btn sec" id="b-act" onclick="ecraActMotivo('${esc(a.id)}')">🌱 <span>Cava-roda e mulching (sem rega)</span></button>`;
 }
 // 1. motivo (constrangimento), sempre; e, para o técnico/supervisor, porque regista pela equipa
@@ -5325,7 +5363,7 @@ function ecraActMotivo(id) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   if (LS.get('emCurso')) return abrirFicha(id, '<div class="msg erro">Tem uma rega em curso. Marque primeiro a saída da rega.</div>');
   if (actCurso()) return abrirFicha(actCurso().area_id);
-  if (!actDentroHora()) return abrirFicha(id, '<div class="msg erro">Depois das 15:30 já não se começa a cava-roda e o mulching.</div>');
+  if (!podeComecar(actDe(a))) return abrirFicha(id, `<div class="msg erro">${MSG_DEPOIS}</div>`);
   const tec = !souActivista();
   folha(`<h2>🌱 Cava-roda e mulching</h2><p class="pequeno"><span class="sem-trad">${esc(a.produtor || '')} · ${esc(a.pr || '')}-${a.area_n ?? '—'}</span> · ${esc(a.comunidade || '')}</p>
     <div class="msg info"><span>Quando não há rega, a equipa faz cava-roda e mulching nos campos. Conta como dia de trabalho. Como na rega: fotografia no início, durante e no fim, e o GPS no campo.</span></div>
@@ -5355,6 +5393,7 @@ function ecraActMotivo(id) {
 async function actEntrada(id) {
   const a = S.areas.find((x) => x.id === id), pend = S.actPend;
   if (!a || !pend || pend.id !== id) return abrirFicha(id);
+  if (!podeComecar(actDe(a))) return abrirFicha(id, `<div class="msg erro">${MSG_DEPOIS}</div>`);
   if (souActivista() && S.perfil.activista_id && !jornadaHoje()) return ecraJornada('act:' + id);   // conta como dia de trabalho
   folha(FOLHA_GPS('A confirmar que está no campo.'));
   let g; try { g = await validarPosicao(a); } catch (e) { return abrirFicha(id, `<div class="msg erro">${esc(e.message)}</div>`); }
@@ -6058,7 +6097,7 @@ function cartaoMeuDia() {
         : e.comecou ? `🟢 <span>Começou às</span> ${fmtHora(e.comecou)}`
         : ms.length ? `<span>Sem rega</span>: ${esc(nomeMot(ms.map((m) => m.motivo).join(', ')))}`
         : cedo ? `<span style="color:var(--suave,#777)">Ainda sem rega · pode regar até às 18:00</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`
-        : `<span style="color:var(--erro,#c62828)">Não regou hoje · falta o motivo</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`}</b></div>` + linhaActEquipa(e) + ms.filter((m) => m.id).map((m) => linhaMot(e, m)).join(''); }).join('') +
+        : `<span style="color:var(--erro,#c62828)">Não regou hoje · falta o motivo</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`}</b></div>` + linhaActEquipa(e) + linhaHorasExtras(e) + ms.filter((m) => m.id).map((m) => linhaMot(e, m)).join(''); }).join('') +
     `<div class="pequeno" style="margin:6px 0">🟢 = <span>a equipa começou o dia na app</span> ${info('<span>A equipa começou o dia na app (rega em curso ou ainda por enviar). Se a equipa estiver sem rede, o início só chega quando o telefone tiver rede; se até ao fim do dia nada chegar, registe «A equipa regou, mas não registou na app».</span>')}</div>`,
     `${eqs.length - falta.length} / ${eqs.length} <span>com rega, a trabalhar ou com motivo</span>${porConf ? ` · ${num(porConf)} <span>motivos por confirmar</span>` : ''}`]);
   // 2. regas com aviso
@@ -6782,7 +6821,9 @@ function faixaDemo() {
   const f = $('#demo-faixa'); if (!f) return;
   if (!window.DEMO) { f.style.display = 'none'; return; }
   f.style.display = 'flex';
-  f.innerHTML = `<span style="flex:1">🎬 <b>Simulação</b> · ${esc(nomeFuncaoDemo(DEMO.papel))}</span><button onclick="ecraDemo()">Mudar</button><button onclick="DEMO.terminar()">Terminar</button>`;
+  const hs = horaSimulada();
+  f.innerHTML = `<span style="flex:1">🎬 <b>Simulação</b> · ${esc(nomeFuncaoDemo(DEMO.papel))}<br><span id="demo-hora" style="font-size:12px">🕘 ${hs || horaMinMaputo()} · <span>${hs ? 'hora simulada' : 'hora real do relógio'}</span></span></span><button onclick="ecraDemo()">Mudar</button><button onclick="DEMO.terminar()">Terminar</button>`;
+  if (!hs && !S.demoRelogio) S.demoRelogio = setInterval(() => { const e = $('#demo-hora'); if (e) e.innerHTML = `🕘 ${horaMinMaputo()} · <span>hora real do relógio</span>`; }, 20000);
 }
 function ecraDemo() {
   folha(`<h2>🎬 Modo simulação</h2><p class="pequeno">Está a ver a app como ${esc(nomeFuncaoDemo(DEMO.papel))}. Nada é gravado no servidor.</p>

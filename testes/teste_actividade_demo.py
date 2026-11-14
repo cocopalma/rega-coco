@@ -9,7 +9,7 @@ def passo(k, v, extra=""): res[k] = bool(v); print(k, "OK" if v else "FALHOU", e
 with sync_playwright() as p:
     b = p.chromium.launch()
     PAPEL["v"] = "gestor"
-    ctx, pg = contexto(b); pg.clock.install(time="2026-11-16T09:00:00+02:00")
+    ctx, pg = contexto(b); pg.clock.install(time="2026-11-16T09:00:00+02:00"); pg.add_init_script("delete window.__HORA_TESTE;")   # a hora vem do relógio do teste
     entrar(pg, "tecnico", "segredo12"); pg.wait_for_selector("#app", state="visible"); pg.wait_for_timeout(2500); pg.evaluate(f"fecharFolha(); escolherLingua('{LG}')"); pg.wait_for_timeout(800)
     PEDIDOS["contar"] = True; PEDIDOS["n"] = 0
     demo(pg, "activista"); pg.evaluate("fecharFolha()")
@@ -37,6 +37,18 @@ with sync_playwright() as p:
     fr = next((f for f in pg.frames if "painel.html" in f.url), None)
     tp = fr.inner_text("#s-act") if fr and fr.locator("#s-act").count() and fr.is_visible("#s-act") else ""
     passo("4b painel: secção da cava-roda", "25" in tp, tp[:160].replace("\n", " | "))
+    # 6: hora simulada 16:00 (vale para a rega e para a cava-roda) e horas extras
+    pg.evaluate("sessionStorage.setItem('rega.demo.hora', '16:00')"); demo(pg, "activista"); pg.evaluate("fecharFolha()")
+    fx = pg.inner_text("#demo-faixa"); passo("6a faixa mostra a hora usada", "16:00" in fx, fx.replace("\n", " | "))
+    pg.evaluate(f"DEMO.irPara('{id}')"); ficha(pg, id)
+    passo("6b às 16:00 sem «Cheguei» nem cava-roda", pg.locator("#aviso-depois").count() == 1 and not pg.is_visible("#b-act"))
+    demo(pg, "tecnico"); pg.evaluate("fecharFolha(); window.__TAR_ABERTAS = true; mudar('hoje')"); pg.wait_for_timeout(3000)
+    pg.locator("#meu-dia .he-btn").first.click(); pg.wait_for_timeout(2500)
+    passo("6c técnico activou horas extras", DB(pg, "(D.he||[]).length") == 1 and pg.locator("#meu-dia .he-ok").count() >= 1)
+    demo(pg, "activista"); pg.evaluate(f"fecharFolha(); DEMO.irPara('{id}')"); ficha(pg, id)
+    passo("6d com horas extras: «Cheguei» e cava-roda às 16:00", pg.locator("#folha-c button.principal").count() == 1 and pg.is_visible("#b-act"))
+    pg.evaluate("sessionStorage.removeItem('rega.demo.hora')"); pg.evaluate("faixaDemo()")
+    passo("6e hora real do relógio", "16:00" not in pg.inner_text("#demo-faixa") and "09:00" in pg.inner_text("#demo-faixa"), pg.inner_text("#demo-faixa").replace("\n", " | "))
     passo("5 nada saiu para o servidor", PEDIDOS["n"] == 0, f"pedidos={PEDIDOS['n']}")
     pg.screenshot(path=f"/home/claude/rega-test/actividade_demo_{LG}.png")
     print("RESULTADO:", "OK" if all(res.values()) and not erros else "FALHOU")

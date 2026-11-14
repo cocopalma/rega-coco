@@ -4,7 +4,10 @@ import sys, runpy
 from playwright.sync_api._generated import Browser, Page
 _orig = Browser.new_context
 def _nc(self, *a, **k):
-    ctx = _orig(self, *a, **k); ctx.add_init_script("window.__TAR_ABERTAS = true;"); return ctx
+    ctx = _orig(self, *a, **k); ctx.add_init_script("window.__TAR_ABERTAS = true;")
+    # fim do trabalho no campo às 15:30 (14/11/2026): os testes antigos marcam entradas a qualquer hora; fixa a hora de trabalho às 09:00
+    # (os testes da regra das 15:30 usam o relógio do Playwright e apagam esta marca: «delete window.__HORA_TESTE»)
+    ctx.add_init_script("window.__HORA_TESTE = '09:00';"); return ctx
 Browser.new_context = _nc
 _sel = Page.select_option
 def _so(self, selector, value=None, **k):

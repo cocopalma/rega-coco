@@ -3,6 +3,8 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    // cc-manutencao-horas-extras
+    "Depois das 15:30 não se começa uma rega nem cava-roda e mulching. Só com horas extras activadas pelo técnico ou pelo supervisor para esta equipa, hoje.": "Baada ya saa 15:30 hakuanzishwi umwagiliaji wala kupalilia duara na matandazo. Ni kwa saa za ziada tu zilizowashwa na fundi au msimamizi kwa timu hii, leo.", "Cava-roda e mulching: depois das 15:30 só com horas extras.": "Kupalilia duara na matandazo: baada ya saa 15:30 ni kwa saa za ziada tu.", "Horas extras hoje, activadas por": "Saa za ziada leo, zimewashwa na", "Activar horas extras hoje": "Washa saa za ziada leo", "Horas extras activadas.": "Saa za ziada zimewashwa.", "hora simulada": "saa ya kuigiza", "hora real do relógio": "saa halisi ya saa",
     // cc-manutencao-falta
     "Cava-roda:": "Kupalilia duara:", "Mulching:": "Matandazo:", "feitas": "zimefanyika", "faltam": "zimebaki", "Cava-roda completa": "Kupalilia duara kumekamilika", "Mulching completo": "Matandazo yamekamilika", "plantas para cava-roda": "mimea ya kupalilia duara", "plantas para mulching": "mimea ya matandazo", "neste campo.": "katika shamba hili.", "Já feitas neste campo em dias anteriores:": "Zilizofanyika tayari katika shamba hili siku zilizopita:",
     // cc-manutencao

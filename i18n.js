@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    // cc-manutencao-horas-extras
+    "Depois das 15:30 não se começa uma rega nem cava-roda e mulching. Só com horas extras activadas pelo técnico ou pelo supervisor para esta equipa, hoje.": "After 15:30 no watering or ring weeding and mulching can be started. Only with overtime activated by the technician or the supervisor for this team, today.", "Cava-roda e mulching: depois das 15:30 só com horas extras.": "Ring weeding and mulching: after 15:30 only with overtime.", "Horas extras hoje, activadas por": "Overtime today, activated by", "Activar horas extras hoje": "Activate overtime today", "Horas extras activadas.": "Overtime activated.", "hora simulada": "simulated time", "hora real do relógio": "real clock time",
     // cc-manutencao-falta
     "Cava-roda:": "Ring weeding:", "Mulching:": "Mulching:", "feitas": "done", "faltam": "missing", "Cava-roda completa": "Ring weeding complete", "Mulching completo": "Mulching complete", "plantas para cava-roda": "plants for ring weeding", "plantas para mulching": "plants for mulching", "neste campo.": "in this field.", "Já feitas neste campo em dias anteriores:": "Already done in this field on previous days:",
     // cc-manutencao
