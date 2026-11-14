@@ -5326,7 +5326,7 @@ async function enviarAcomp() {
 // pode ser terminada. Pode ser no mesmo dia que uma rega (antes ou depois), mas nunca as duas em curso ao mesmo tempo.
 // Técnico, supervisor e gestor podem registar pela equipa (motivo obrigatório). Funciona sem rede (fila filaAct, fotografias em IndexedDB).
 // Fim do trabalho no campo (Valdo, 14/11/2026): depois das 15:30 não se começa nada novo (rega nem cava-roda), salvo com «horas extras»
-// activadas pelo técnico ou pelo supervisor para essa equipa nesse dia. O que está em curso pode ser terminado. «Fechar o dia» fica às 18:00.
+// activadas pelo técnico, pelo supervisor ou pelo gestor para essa equipa nesse dia. O que está em curso pode ser terminado. «Fechar o dia» fica às 18:00.
 // Só vale para o que conta para a equipa (regas reais e cava-roda); as regas de teste do técnico/supervisor não têm limite.
 const HORA_LIMITE_INICIO = '15:30';
 const ACT_HORA_LIMITE = HORA_LIMITE_INICIO;
@@ -5349,7 +5349,7 @@ const horasExtras = (act, dia = hojeISO()) => !act ? null : (LS.get('horasExtras
 const podeComecar = (act) => dentroHora() || !!horasExtras(act);
 const actDe = (a) => (souActivista() ? S.perfil?.activista_id : a?.activista_id);
 const textoHorasExtras = (h) => `⏰ <span>Horas extras hoje, activadas por</span> <b class="sem-trad">${esc(h.por || '')}</b> <span>às</span> ${fmtHora(h.em)}${h.local ? ' (<span>por enviar</span>)' : ''}`;
-const MSG_DEPOIS = 'Depois das 15:30 não se começa uma rega nem cava-roda e mulching. Só com horas extras activadas pelo técnico ou pelo supervisor para esta equipa, hoje.';
+const MSG_DEPOIS = 'Depois das 15:30 não se começa uma rega nem cava-roda e mulching. Só com horas extras activadas pelo técnico, pelo supervisor ou pelo gestor para esta equipa, hoje.';
 async function carregarHorasExtras() {
   if (!navigator.onLine) return;
   try { const r = await sb.rpc('horas_extras_lista'); if (!r.error && Array.isArray(r.data)) LS.set('horasExtras', r.data); } catch {}

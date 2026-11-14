@@ -6,7 +6,7 @@
 --    mulching feitas NESSE DIA e fotografia. Pelo menos 1 planta numa das duas; sem mínimo de pessoas. Sem registo do material.
 --  - O motivo (constrangimento) é sempre pedido ao abrir; pode ser no mesmo dia que uma rega. O técnico não confirma.
 --  - Fim do trabalho no campo às 15:30 (config.hora_limite_inicio), para a rega e a cava-roda: depois disso não se começa nada novo, salvo
---    com «horas extras» activadas pelo técnico ou pelo supervisor para essa equipa nesse dia (tabela horas_extras). O que está em curso
+--    com «horas extras» activadas pelo técnico, pelo supervisor ou pelo gestor para essa equipa nesse dia (tabela horas_extras). O que está em curso
 --    pode ser terminado e conta para esse dia. «Fechar o dia» continua até às 18:00. As regas de teste não têm limite.
 --  - Conta como dia de trabalho: o activista regista o início do dia (jornadas) antes de começar, como na rega; quando o registo é
 --    do técnico/supervisor pela equipa, esta função cria o início do dia se ainda não houver nenhum (R1, «O meu dia», «Fechar o dia»
@@ -108,7 +108,7 @@ grant execute on function public.horas_extras_lista() to authenticated;
 create or replace function privado.rega_hora_limite() returns trigger language plpgsql security definer set search_path to '' as $$
 begin
   if not new.teste and new.entrada_em is not null and not privado.pode_comecar(new.activista_id, new.entrada_em) then
-    raise exception 'Depois das 15:30 só se começa uma rega com horas extras activadas pelo técnico ou pelo supervisor' using errcode = 'P0001';
+    raise exception 'Depois das 15:30 só se começa uma rega com horas extras activadas pelo técnico, pelo supervisor ou pelo gestor' using errcode = 'P0001';
   end if;
   return new;
 end $$;
@@ -148,7 +148,7 @@ begin
   -- datas e hora: o dia é o da entrada (hora do telefone); não se começa depois das 15:30
   v_d := (v_ent at time zone 'Africa/Maputo')::date;
   if v_d < v_hoje - 7 or v_d > v_hoje + 1 then raise exception 'Data inválida'; end if;
-  if not privado.pode_comecar(v_act, v_ent) then raise exception 'Depois das 15:30 só se começa a cava-roda e o mulching com horas extras activadas pelo técnico ou pelo supervisor'; end if;
+  if not privado.pode_comecar(v_act, v_ent) then raise exception 'Depois das 15:30 só se começa a cava-roda e o mulching com horas extras activadas pelo técnico, pelo supervisor ou pelo gestor'; end if;
   if v_sai < v_ent then raise exception 'A saída é antes da entrada'; end if;
   -- fotografias e plantas
   if coalesce(p->>'foto_entrada', '') = '' or coalesce(p->>'foto_durante', '') = '' or coalesce(p->>'foto_saida', '') = '' then raise exception 'Faltam fotografias'; end if;

@@ -127,6 +127,7 @@ with sync_playwright() as p:
     pg.clock.set_system_time("2026-11-16T16:00:00+02:00"); pg.evaluate("abrirFicha('PR6-1')"); pg.wait_for_timeout(300)
     if PAPEL == "activista":
         passo("14a às 16:00 sem «Cheguei» nem cava-roda", pg.locator("#aviso-depois").count() == 1 and not pg.is_visible("#b-act") and pg.locator("#folha-c button.principal").count() == 0)
+        ta = pg.inner_text("#aviso-depois"); passo("14c o aviso diz técnico, supervisor ou gestor", any(w in ta for w in ("pelo gestor", "the manager", "meneja")), ta)
     pg.evaluate("S.motTec = {id:'PR6-1', m:'O telemóvel do activista está avariado ou sem bateria'}; marcarEntrada('PR6-1')"); pg.wait_for_timeout(800)
     passo("14b entrada da rega recusada às 16:00", pg.locator("#msg-depois").count() == 1 and pg.evaluate("!localStorage.getItem('rega.emCurso')"))
     if PAPEL == "gestor":
