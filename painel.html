@@ -221,6 +221,11 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <p style="margin:8px 0"><button class="foto-btn" id="b-med-csv" type="button">⬇ Descarregar a tabela (Excel, .csv)</button></p>
     <div class="tabela" id="t-med" style="max-height:none"></div></section>
 
+  <section class="card sec" id="s-act" hidden><h2>🌱 Cava-roda e mulching (dias sem rega)</h2>
+    <p class="desc">Quando não há rega (o tuk-tuk não chegou, avaria, sem água…), a equipa faz cava-roda e mulching nos campos. Cada registo tem o GPS no campo e três fotografias (início, durante, fim). Os números são as plantas feitas nesse dia. Em Quiwia e Farol somam-se também ao total da manutenção.</p>
+    <div class="grelha kpis" id="k-act"></div>
+    <div class="tabela" id="t-act" style="max-height:none"></div></section>
+
   <section class="card sec" id="s-dsr" hidden><h2>⚠️ Dias sem rega (constrangimentos)</h2>
     <p class="desc">Registados pelo activista, técnico ou supervisor quando a equipa não pôde regar (o tuk-tuk não chegou, sem água, avaria…). "Parte do dia" = a rega parou a meio. Regas no dia = regas reais que a equipa fez nesse dia.</p>
     <div class="grelha kpis" id="k-dsr"></div>
@@ -909,7 +914,7 @@ function desenharPlantasMarcadas() {
 }
 // ---------- testes por pessoa (v91, 21/10/2026, Valdo: ver quem já testou e quem ainda não) ----------
 // Ao cliente o servidor devolve null e a secção fica escondida.
-let DTP = null, DMN = null, DSR = null, DCT = null;
+let DTP = null, DMN = null, DSR = null, DCT = null, DAC = null;
 const MOSTRAR_MANUT = true;   // v177 escondeu a secção por engano (Valdo queria tirar a manutenção do perfil de gestão, não do painel); v178 repôs
 // medições com a vara (v106, 23/10/2026, Valdo): só gestor, director e M&E (o servidor devolve null aos outros)
 let DMD = null;
@@ -988,6 +993,22 @@ function desenharManut() {
 }
 // Dias sem rega (v116, 26/10/2026, Valdo: "um campo de constrangimentos para casos de não haver rega para uma equipa, não chegar o tuk tuk")
 const MOT_DSR = { tuk_tuk: 'O tuk-tuk não chegou', avaria_tuk_tuk: 'Tuk-tuk avariado ou sem combustível', avaria_camiao: 'Camião avariado', sem_agua: 'Sem água na fonte ou no poço', chuva: 'Choveu: não foi preciso regar', material: 'Falta de material (bidões, regadores)', equipa: 'A equipa não compareceu', regou_sem_registo: 'A equipa regou, mas não registou na app', outro: 'Outro motivo' };
+// cava-roda e mulching quando não há rega (ramo cc-manutencao)
+function desenharActividades() {
+  const el = $('#s-act'); if (!el) return;
+  const L = Array.isArray(DAC) ? DAC : null; el.hidden = !L; if (!L) return;
+  const kpi = (rot, v, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${v}</div><div class="sub">${sub}</div></div>`;
+  const dias = new Set(L.map((x) => x.activista_id + '|' + x.data)).size, soma = (k) => L.reduce((n, x) => n + (x[k] || 0), 0);
+  $('#k-act').innerHTML = kpi('Dias de equipa com cava-roda e mulching', num(dias), `${num(new Set(L.map((x) => x.area_id)).size)} campos`) +
+    kpi('Plantas com cava-roda', num(soma('cavaroda')), 'feitas nesses dias') + kpi('Plantas com mulching', num(soma('mulching')), 'feitas nesses dias');
+  if (!L.length) { $('#t-act').innerHTML = '<div class="vazio">Nenhuma cava-roda nem mulching registados no período.</div>'; return; }
+  const h = (t) => t ? new Date(t).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) : '';
+  const f = (c, k, t) => c[k] ? `<button class="foto-btn" type="button" onclick="verFotoBalde('rega-fotos', '${esc(c[k])}')">📷 ${t}</button>` : '';
+  tabela('#t-act', [['Data'], ['Equipa (activista)'], ['Comunidade'], ['Produtor'], ['Horas'], ['Motivo'], ['Pessoas', 1], ['Cava-roda', 1], ['Mulching', 1], ['Registado por'], ['Fotografias']],
+    L.map((x) => [fmtData(x.data), esc(x.equipa || ''), esc(x.comunidade || '') + (x.zona ? ' › ' + esc(x.zona) : ''), `<span class="sem-trad">${esc(x.produtor || '')}</span> · ${esc(x.area_id || '')}`,
+      `${h(x.entrada_em)}–${h(x.saida_em)}`, (MOT_DSR[x.motivo] || esc(x.motivo)) + (x.motivo_texto ? ` · <span class="sem-trad">${esc(x.motivo_texto)}</span>` : ''), num(x.pessoas || 0), num(x.cavaroda || 0), num(x.mulching || 0),
+      esc(x.quem || '') + (x.motivo_tecnico ? ' 🤝' : ''), (f(x, 'foto_entrada', 'Início') + f(x, 'foto_durante', 'Durante') + f(x, 'foto_saida', 'Fim')) || '—']));
+}
 function desenharDiasSemRega() {
   const el = $('#s-dsr'); if (!el) return;
   const L = Array.isArray(DSR) ? DSR : null; el.hidden = !L; if (!L) return;
@@ -1123,7 +1144,8 @@ async function buscarPeriodo(p) {
   const na = await sb.rpc('painel_nunca_agua', { p_de: de, p_ate: ate });
   const mx = await sb.rpc('painel_meta_causas', { p_de: de, p_ate: ate });
   const pv = await sb.rpc('painel_plantas_vivas', { p_de: de, p_ate: ate });
-  return { DPV: pv.error ? null : pv.data, DMX: mx.error ? null : mx.data, DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
+  const ac = await sb.rpc('painel_actividades', { p_de: de, p_ate: ate });
+  return { DAC: ac.error ? null : ac.data, DPV: pv.error ? null : pv.data, DMX: mx.error ? null : mx.data, DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
 }
 // uma só cópia por período (v168, 01/11/2026: o espaço do aparelho encheu): apaga as cópias desse período de outros dias e, se
 // mesmo assim não couber, as outras cópias do painel; períodos escolhidos à mão (de… até…) só fica o que se está a ver
@@ -1161,7 +1183,7 @@ function semPeriodoGuardado() {
 async function carregar(mudou = false) {
   const c = (!D || mudou) && lerCache();
   if (mudou && !c && !navigator.onLine) { semPeriodoGuardado(); return; }
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; DMX = c.DMX || null; DPV = c.DPV || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; DMX = c.DMX || null; DPV = c.DPV || null; DAC = c.DAC || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
@@ -1177,6 +1199,7 @@ async function carregar(mudou = false) {
   const pNa = sb.rpc('painel_nunca_agua', { p_de: de, p_ate: ate });
   const pMx = sb.rpc('painel_meta_causas', { p_de: de, p_ate: ate });
   const pPv = sb.rpc('painel_plantas_vivas', { p_de: de, p_ate: ate });
+  const pAc = sb.rpc('painel_actividades', { p_de: de, p_ate: ate });
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa2', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   const rec = await pRec; DR = rec.error ? null : rec.data;
   const pl = await pPl; DPL = pl.error ? null : pl.data;
@@ -1190,15 +1213,16 @@ async function carregar(mudou = false) {
   const na = await pNa; DNA = na.error ? null : na.data;
   const mx = await pMx; DMX = mx.error ? null : mx.data;
   const pv = await pPv; DPV = pv.error ? null : pv.data;
+  const acx = await pAc; DAC = acx.error ? null : acx.data;
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) { if (erroDeRede(error)) avisoRede(c || { antigo: null }); return; }   // sem rede: fica o último painel guardado
   if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas();
+  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas();
   arrumarCache();   // fica uma cópia por período (a mais recente), para ver sem rede
-  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, DMX, DPV, em: Date.now() });
+  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, DMX, DPV, DAC, em: Date.now() });
   setTimeout(() => guardarOutrosPeriodos().catch(() => {}), 1500);
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
@@ -1214,7 +1238,7 @@ $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar()
 $('#b-act').onclick = carregar;
 $('#b-sair').onclick = async () => { try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {} await sb.auth.signOut(); location.reload(); };
 document.querySelectorAll('#v-meta button').forEach((b) => b.onclick = () => { VM = b.dataset.v; try { localStorage.setItem('rega.painel.meta', VM); } catch {} desenharMeta(); });
-let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }, 150); });
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
 if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }

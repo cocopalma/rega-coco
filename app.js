@@ -359,7 +359,7 @@ function marcarRecusa(fila, item, e, tabela) {
 }
 // os envios que ainda deitam fora o que o servidor recusa passam a deixar rasto em problemas_app
 function avisoRecusado(e, txt, tipo) { problemaApp('envio_descartado', String(e?.message || ''), { codigo: e?.code || null }); aviso(txt, tipo); }
-const FILAS_RECUSA = ['fila', 'filaJ', 'filaAlt', 'filaChuva'];
+const FILAS_RECUSA = ['fila', 'filaJ', 'filaAlt', 'filaChuva', 'filaAct'];
 const recusados = () => FILAS_RECUSA.flatMap((f) => (LS.get(f, []) || []).filter((x) => x && x._recusa).map((x) => ({ fila: f, x })));
 let aSincronizar = false, aSincronizarDesde = 0, sincN = 0;
 const LIMITE_SINC_MS = 5 * 60 * 1000;
@@ -449,6 +449,7 @@ async function sincronizarAgora(silencioso) {
       if (x.tipo === 'chefe_man') S.manutMudou = true;
     }
   }
+  if (!erro && filaAct().length) erro = await enviarAct();   // cava-roda e mulching (depois do início do dia)
   if (!erro) erro = await enviarPercurso();
   if (!erro && podeVerPercursos() && Date.now() - (S.percActEm || 0) > 15 * 60 * 1000) { S.percActEm = Date.now(); actualizarPercursos(hojeISO()).catch(() => {}); }
   if (!erro) erro = await enviarMonitorias();
@@ -483,7 +484,7 @@ async function sincronizarAgora(silencioso) {
   if ($('#pe-lista')) ecraPorEnviar();   // ecrã «Registos por enviar» aberto: actualiza
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaAcomp', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length + LS.get('filaCoq', []).length + LS.get('filaMed', []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaAcomp', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length + LS.get('filaCoq', []).length + LS.get('filaMed', []).length + (LS.get('filaAct', []) || []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   const nr = recusados().length;
   b.textContent = n ? (nr ? `${n} por enviar · ${nr} recusado(s)` : `${n} por enviar`) : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0 && !nr); b.classList.toggle('recusa', nr > 0);
@@ -676,7 +677,8 @@ function ecraDefinicoes() {
 async function sair() {
   if (window.DEMO) return ecraDemo();                     // modo apresentação: "Sair" termina a apresentação
   // v164 (Atoquei, 30/10: regas que não chegaram): uma rega com entrada marcada perdia-se sem aviso ao sair
-  const emc = LS.get('emCurso');
+  const emc = LS.get('emCurso'), eact = actCurso();
+  if (eact) { alert(`Tem a cava-roda e o mulching em curso (${eact.produtor || eact.area_id}, início às ${fmtHora(eact.entrada_em)}). Marque primeiro o fim na ficha do campo.`); return abrirFicha(eact.area_id); }
   if (emc) { alert(`Tem uma rega em curso (${emc.produtor || emc.area_id}, entrada às ${fmtHora(emc.entrada_em)}). Se sair agora, esta rega perde-se. Marque primeiro a saída na ficha do campo.`); return abrirFicha(emc.area_id); }
   if (filaRegistos().length && !confirm('Há registos por enviar. Se sair agora, ficam no telefone e são enviados no próximo login deste utilizador. Sair?')) return;
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
@@ -2449,7 +2451,7 @@ async function regsManut(id) {
   el.innerHTML = L2.map((x) => `<div class="lin" style="display:block;padding:6px 0;border-bottom:1px solid #eee">
     <div><b>${fmtData(x.data)}</b> · <span>cava-roda</span> ${num(x.cavaroda)} · <span>mulching</span> ${num(x.mulching)}${x.pessoas != null ? ` · ${num(x.pessoas)} <span>sazonais</span>` : ''}${x.quem ? ' · ' + esc(x.quem) : ''}${x.local ? ' · <span>no telefone</span>' : ''}</div>
     ${x.obs ? `<div class="sem-trad">${esc(x.obs)}</div>` : ''}
-    <div class="chips" style="margin-top:4px">${x.foto_path ? `<button class="chip" onclick="verFoto('manutencao-fotos', '${esc(x.foto_path)}', '${esc(fmtData(x.data))}')">📷 <span>Fotografia</span></button>` : ''}
+    <div class="chips" style="margin-top:4px">${x.foto_path ? `<button class="chip" onclick="verFoto(${String(x.foto_path).startsWith('rega-fotos:') ? `'rega-fotos', '${esc(x.foto_path.slice(11))}'` : `'manutencao-fotos', '${esc(x.foto_path)}'`}, '${esc(fmtData(x.data))}')">📷 <span>Fotografia</span></button>` : ''}
     ${escreveManut() || (registaManut() && (x.local || x.feito_por === S.perfil?.id)) ? `<button class="chip" onclick="removerRegManut('${esc(x.id)}', '${esc(id)}', ${x.local ? 'true' : 'false'})">Remover (engano)</button>` : ''}</div></div>`).join('');
 }
 function ecraRegManut(id) {
@@ -3404,7 +3406,10 @@ function abrirFicha(id, nota = '') {
   const d = S.pos ? distCampo(a, S.pos) : null;
   const podeRegar = PODE_REGAR.includes(S.perfil.papel) && (S.perfil.papel === 'activista' || a.activista_id);
   let acc = '', pelaBtn = '';
-  if (emCurso && emCurso.area_id === a.id) acc = (emCurso.motivo_tecnico ? `<div class="msg info">🤝 <span>Rega pela equipa: conta na ronda da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>.</div>` : '') + (emCurso.agua_em
+  const ac = actCurso();
+  if (ac && ac.area_id === a.id) acc = fichaActCurso(ac);
+  else if (ac) acc = `<div class="msg info">🌱 <span>Tem a cava-roda e o mulching de outro campo em curso. Termine primeiro.</span></div><button class="btn sec" onclick="abrirFicha('${esc(ac.area_id)}')">Abrir o campo em curso</button>`;
+  else if (emCurso && emCurso.area_id === a.id) acc = (emCurso.motivo_tecnico ? `<div class="msg info">🤝 <span>Rega pela equipa: conta na ronda da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>.</div>` : '') + (emCurso.agua_em
       ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>`
       : emCurso.sem_vivas
       ? `<div class="msg info">🥀 <span>Sem plantas vivas para regar: tire a fotografia das plantas mortas ou secas e marque a saída com 0 plantas regadas.</span></div>
@@ -3424,7 +3429,7 @@ function abrirFicha(id, nota = '') {
       (bl ? `<div class="msg erro">💧 <span>Este campo já recebeu água. A equipa ainda tem</span> <b>${bl.length}</b> <span>campos que nunca receberam água: regue esses primeiro. Para regar este campo, o supervisor tem de autorizar (pode ser já para hoje).</span></div>
         <button class="btn" onclick="ecraBloqueioAgua('${esc(a.id)}')">💧 Ver os campos que nunca receberam água</button>`
         : `<button class="btn principal" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`) +
-      (pela ? `<p class="pequeno" style="margin:4px 0 0;text-align:center">Rega de teste: não conta para a equipa.</p>` : '');
+      (pela ? `<p class="pequeno" style="margin:4px 0 0;text-align:center">Rega de teste: não conta para a equipa.</p>` : '') + botaoAct(a);
     if (pela) pelaBtn = `<button class="btn sec" onclick="ecraRegaPelaEquipa('${esc(a.id)}')">🤝 Regar pela equipa (conta na ronda)</button>`;
   }
   const alheio = !meuCampo(a); S.soVer = alheio;
@@ -3452,9 +3457,10 @@ function abrirFicha(id, nota = '') {
     ${linhaOutraEquipa(a, s)}
     ${s.pt ? `<div class="msg info">⏳ <span>Rega a meio nesta ronda: regadas</span> ${num(s.pt.regadas)} <span>de</span> ${num(plantasN(a))} <span>plantas</span>${s.pt.data ? ` (${fmtData(s.pt.data)})` : ''}. <span>O campo só fecha quando regarem as que faltam, ou se as que faltam forem mudas secas ou mortas.</span></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   ${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a, true)}${avisoCampo(a.id)}${cartaoAutorizacao(a, alheio)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (simulação)</button><p class="pequeno" style="margin:0 0 6px">Só na simulação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${parFicha(a, pelaBtn)}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-mon"></div>`);
+   ${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a, true)}${avisoCampo(a.id)}${cartaoAutorizacao(a, alheio)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (simulação)</button><p class="pequeno" style="margin:0 0 6px">Só na simulação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${parFicha(a, pelaBtn)}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-act"></div><div id="f-mon"></div>`);
   S.soVer = false;
-  if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }   // a pedido, não atrasa a ficha
+  if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }
+  actividadesDoCampo(a.id);   // também sem rede (as do telefone)   // a pedido, não atrasa a ficha
 }
 
 // ---------- entrada ----------
@@ -3534,7 +3540,8 @@ function guardarJornada(depois) {
     f.push({ id: crypto.randomUUID(), tipo: 'presencas', pres_id: j.presId, activista_id: j.activista_id, data: j.data, presentes, outros }); LS.set('filaAlt', f);
   }
   actSync(); sincronizar(true);
-  if (depois) marcarEntrada(depois); else { fecharFolha(); if ($('#e-hoje').classList.contains('on')) desenharHoje(); }
+  if (typeof depois === 'string' && depois.startsWith('act:')) actEntrada(depois.slice(4));
+  else if (depois) marcarEntrada(depois); else { fecharFolha(); if ($('#e-hoje').classList.contains('on')) desenharHoje(); }
 }
 
 // v164 (Julia Jaime 30/10 e Martins 31/10: "não sai a marcação de entrada"): estavam a 440 e 520 m do campo, junto de outro campo.
@@ -3569,6 +3576,7 @@ function verNoMapaCampo(id) {
   }, 60);
 }
 async function marcarEntrada(id, motivoIt = null, motivoSug = null) {
+  if (actCurso()) return abrirFicha(id, '<div class="msg erro">🌱 <span>Tem a cava-roda e o mulching em curso. Marque primeiro o fim.</span></div>');
   if ((LS.get('semMotivo', []) || []).length) return ecraSemMotivo();   // v115: primeiro o motivo das regas fora da lista
   const a = S.areas.find((x) => x.id === id);
   const minha = souActivista() && a.activista_id === S.perfil.activista_id, apoio = apoioMeu(id);
@@ -5284,6 +5292,204 @@ async function enviarAcomp() {
   }
   return null;
 }
+// ---------- Cava-roda e mulching quando não há rega (ramo cc-manutencao, decisões do Valdo de 13–14/11/2026) ----------
+// Quando falta o tuk-tuk, ou por outra razão não há rega, a equipa faz cava-roda e mulching nos campos da sua lista (ou em apoio).
+// Segue o padrão da rega: motivo → (início do dia) → entrada com GPS e fotografia → fotografia durante → saída com GPS, plantas com
+// cava-roda e com mulching feitas hoje e fotografia. Conta como dia de trabalho. Não se começa depois das 15:30; a que está em curso
+// pode ser terminada. Pode ser no mesmo dia que uma rega (antes ou depois), mas nunca as duas em curso ao mesmo tempo.
+// Técnico, supervisor e gestor podem registar pela equipa (motivo obrigatório). Funciona sem rede (fila filaAct, fotografias em IndexedDB).
+const ACT_HORA_LIMITE = '15:30';
+const MOTIVOS_ACT = [['tuk_tuk', 'O tuk-tuk não chegou'], ['avaria_tuk_tuk', 'Tuk-tuk avariado ou sem combustível'], ['avaria_camiao', 'Camião avariado'],
+  ['sem_agua', 'Sem água na fonte ou no poço'], ['chuva', 'Choveu: não foi preciso regar'], ['material', 'Falta de material (bidões, regadores)'], ['outro', 'Outro motivo']];
+const MANUT_COM_ACT = ['Quiwia', 'Farol'];   // só para o aviso no ecrã; quem decide é o servidor (manutencao_comunidades)
+const FOTOS_ACT = { entrada: 'Fotografia do início', durante: 'Fotografia durante o trabalho', saida: 'Fotografia do fim' };
+const actCurso = () => LS.get('actCurso');
+const filaAct = () => LS.get('filaAct', []) || [];
+const horaMinMaputo = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour12: false }).slice(0, 5);   // «HH:MM»
+const actDentroHora = () => horaMinMaputo() <= ACT_HORA_LIMITE;
+// quem pode: o activista nos campos da sua lista ou em apoio; técnico/supervisor/gestor pela equipa (campo da sua lista, com activista)
+function podeAct(a) {
+  if (!a || S.perfil?.so_teste) return false;
+  if (souActivista()) return !!S.perfil.activista_id && (a.activista_id === S.perfil.activista_id || !!apoioMeu(a.id));
+  return podeTecEquipa(a);
+}
+function botaoAct(a) {
+  if (!podeAct(a)) return '';
+  if (!actDentroHora()) return `<p class="pequeno" style="margin:6px 0;text-align:center">🌱 <span>Cava-roda e mulching: depois das 15:30 já não se começa.</span></p>`;
+  return `<button class="btn sec" id="b-act" onclick="ecraActMotivo('${esc(a.id)}')">🌱 <span>Cava-roda e mulching (sem rega)</span></button>`;
+}
+// 1. motivo (constrangimento), sempre; e, para o técnico/supervisor, porque regista pela equipa
+function ecraActMotivo(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  if (LS.get('emCurso')) return abrirFicha(id, '<div class="msg erro">Tem uma rega em curso. Marque primeiro a saída da rega.</div>');
+  if (actCurso()) return abrirFicha(actCurso().area_id);
+  if (!actDentroHora()) return abrirFicha(id, '<div class="msg erro">Depois das 15:30 já não se começa a cava-roda e o mulching.</div>');
+  const tec = !souActivista();
+  folha(`<h2>🌱 Cava-roda e mulching</h2><p class="pequeno"><span class="sem-trad">${esc(a.produtor || '')} · ${esc(a.pr || '')}-${a.area_n ?? '—'}</span> · ${esc(a.comunidade || '')}</p>
+    <div class="msg info"><span>Quando não há rega, a equipa faz cava-roda e mulching nos campos. Conta como dia de trabalho. Como na rega: fotografia no início, durante e no fim, e o GPS no campo.</span></div>
+    ${tec ? `<div class="msg info"><span>Fica registado em nome da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>, <span>como feito por si.</span></div>` : ''}
+    <label>Porque não há rega agora? (obrigatório)</label><div class="chips" id="ac-mot">${MOTIVOS_ACT.map(([k, t]) => `<button class="chip" data-k="${k}">${t}</button>`).join('')}</div>
+    <textarea id="ac-mtx" rows="2" placeholder="Observação (obrigatória em «Outro motivo» e na falta de material)"></textarea>
+    ${tec ? `<label>Porque regista pela equipa? (obrigatório)</label><div class="chips" id="ac-tec">${MOTIVOS_TEC.slice(0, 2).concat('Outro motivo').map((m, k) => `<button class="chip" data-k="${k}">${m}</button>`).join('')}</div>
+      <textarea id="ac-ttx" rows="2" placeholder="Explique (obrigatório em «Outro motivo»)"></textarea>` : ''}
+    <button class="btn" id="ac-ok">Continuar</button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Voltar</button>`);
+  ['#ac-mot', '#ac-tec'].forEach((g) => document.querySelectorAll(`${g} .chip`).forEach((b) => b.onclick = () => document.querySelectorAll(`${g} .chip`).forEach((c) => c.classList.toggle('on', c === b))));
+  $('#ac-ok').onclick = () => {
+    const k = $('#ac-mot .chip.on')?.dataset.k, txt = $('#ac-mtx').value.trim();
+    if (!k) { alert('Escolha porque não há rega.'); return; }
+    if (['outro', 'material'].includes(k) && txt.length < 3) { alert('Escreva o motivo.'); return; }
+    let mtec = null;
+    if (tec) {
+      const t = $('#ac-tec .chip.on')?.dataset.k, tt = $('#ac-ttx').value.trim();
+      if (t == null) { alert('Escolha porque regista pela equipa.'); return; }
+      if (+t === 2 && tt.length < 3) { alert('Escreva porque regista pela equipa.'); return; }
+      mtec = (+t === 2 ? 'Outro motivo' : MOTIVOS_TEC[+t]) + (tt ? ': ' + tt : '');
+    }
+    S.actPend = { id, motivo: k, motivo_texto: txt || null, motivo_tecnico: mtec };
+    actEntrada(id);
+  };
+}
+// 2. início do dia (activista) e entrada com GPS
+async function actEntrada(id) {
+  const a = S.areas.find((x) => x.id === id), pend = S.actPend;
+  if (!a || !pend || pend.id !== id) return abrirFicha(id);
+  if (souActivista() && S.perfil.activista_id && !jornadaHoje()) return ecraJornada('act:' + id);   // conta como dia de trabalho
+  folha(FOLHA_GPS('A confirmar que está no campo.'));
+  let g; try { g = await validarPosicao(a); } catch (e) { return abrirFicha(id, `<div class="msg erro">${esc(e.message)}</div>`); }
+  if (g.valido === false) return abrirFicha(id, `<div class="msg erro">Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Só pode começar a cava-roda e o mulching até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'} do campo.${dicaGpsFraco(g)}</div>${campoJunto(id, g)}`);
+  const apoio = apoioMeu(id);
+  const x = { id: crypto.randomUUID(), area_id: id, produtor: a.produtor || null, comunidade: a.comunidade || null,
+    activista_id: souActivista() ? S.perfil.activista_id : a.activista_id, motivo: pend.motivo, motivo_texto: pend.motivo_texto, motivo_tecnico: pend.motivo_tecnico,
+    apoio_id: apoio ? apoio.id : null, entrada_em: new Date().toISOString(), entrada_lat: g.lat, entrada_lon: g.lon, entrada_precisao_m: g.precisao, entrada_dist_m: g.dist, fotos: {} };
+  S.actPend = null; LS.set('actCurso', x);
+  ecraFotoAct('entrada', `<div class="msg ok">Início marcado às ${fmtHora(x.entrada_em)}${g.dist === 0 ? ' · dentro do campo' : g.dist != null ? ` · a ${g.dist} m do campo` : ''}.</div>`);
+}
+// 3. fotografias (início, durante; a do fim tira-se no ecrã do fim)
+async function guardarFotoAct(tipo, foto, meta) {
+  const x = actCurso(); if (!x || !foto) return false;
+  const k = `act-${x.id}-${tipo}`;
+  try { foto = await carimbarFoto(foto, meta || { origem: null, tirada: null, fonte: null }); } catch {}
+  try { await FOTOS.guardar(k, foto); } catch { S.fotosMem = { ...(S.fotosMem || {}), [k]: foto }; }
+  x.fotos = { ...(x.fotos || {}), [tipo]: new Date().toISOString() }; LS.set('actCurso', x); LS.del('rascAct');
+  return true;
+}
+function ecraFotoAct(tipo, nota = '', r = null) {
+  const x = actCurso(); if (!x) return;
+  const ajuda = { entrada: 'Fotografia da equipa no campo, ao começar.', durante: 'Fotografia da equipa a fazer a cava-roda ou o mulching.' }[tipo];
+  folha(`${nota}${r?.camara ? AVISO_CAMARA : ''}<h2>${FOTOS_ACT[tipo]}</h2><p class="pequeno">${ajuda} <span>Obrigatória.</span></p>
+    ${campoFoto('fa-foto', FOTOS_ACT[tipo])}
+    <button class="btn sec" onclick="LS.del('rascAct');abrirFicha('${esc(x.area_id)}')">${tipo === 'entrada' ? 'Tirar depois' : 'Voltar'}</button>`);
+  rascGuardar('rascAct', { perfil: S.perfil?.id, tipo, camara: false });
+  ligarFoto('fa-foto', 'rascAct', async (foto, meta) => {
+    if (!foto) return;
+    await guardarFotoAct(tipo, foto, meta);
+    abrirFicha(x.area_id, `<div class="msg ok">${FOTOS_ACT[tipo]} guardada.</div>`);
+  });
+}
+// cartão na ficha com a actividade em curso
+function fichaActCurso(x) {
+  const f = x.fotos || {};
+  const lin = (t) => `<div class="lin"><span>📷 ${FOTOS_ACT[t]}</span><b>${f[t] ? `<span style="color:var(--ok,#2e7d32)">✓ ${fmtHora(f[t])}</span> <button class="chip" onclick="ecraFotoAct('${t}')">Tirar outra</button>` : `<button class="chip" onclick="ecraFotoAct('${t}')">Tirar</button>`}</b></div>`;
+  return `<div class="msg info" id="act-curso">🌱 <span>Cava-roda e mulching em curso desde</span> ${fmtHora(x.entrada_em)} · <span>${esc(nomeMotivoAct(x.motivo))}</span>${x.motivo_tecnico ? `<br>🤝 <span>Pela equipa de</span> <b class="sem-trad">${esc(nomeAct(x.activista_id))}</b>` : ''}</div>
+    <div class="cartao" style="margin:8px 0"><div class="lin"><span><b>Fotografias</b></span><span class="pequeno">obrigatórias</span></div>${lin('entrada')}${lin('durante')}
+    <p class="pequeno" style="margin:4px 0 0">A fotografia do fim tira-se ao marcar o fim.</p></div>
+    <button class="btn aviso" id="b-act-fim" onclick="ecraFimAct()">Terminei — marcar o fim</button>
+    <button class="btn sec" onclick="anularAct()">↩️ Anular (comecei por engano)</button>`;
+}
+const nomeMotivoAct = (k) => (MOTIVOS_ACT.find((m) => m[0] === k) || [k, k])[1];
+function anularAct() {
+  const x = actCurso(); if (!x) return;
+  if (!confirm('Anular a cava-roda e o mulching em curso? Nada fica registado.')) return;
+  for (const t of Object.keys(x.fotos || {})) FOTOS.apagar(`act-${x.id}-${t}`).catch(() => {});
+  LS.del('actCurso'); LS.del('rascAct'); problemaApp('actividade_anulada', 'Cava-roda e mulching anulados', { area: x.area_id, entrada: x.entrada_em });
+  abrirFicha(x.area_id);
+}
+// 4. fim: plantas feitas hoje, pessoas, observação, fotografia e GPS
+function ecraFimAct(msg = '', r = null) {
+  const x = actCurso(); if (!x) return;
+  const a = S.areas.find((y) => y.id === x.area_id);
+  if (!a) return fichaEmCursoFora(x.area_id);
+  if (!x.fotos?.entrada || !x.fotos?.durante) { alert('Tire primeiro a fotografia do início e a fotografia durante o trabalho.'); return abrirFicha(x.area_id); }
+  const n = plantasN(a), man = MANUT_COM_ACT.includes(a.comunidade), rs = x.rascFim || {};
+  const pess = rs.pessoas ?? (x.motivo_tecnico ? presTec(x.activista_id)?.pessoas : jornadaHoje()?.pessoas) ?? '';
+  S.actFoto = null;
+  folha(`${msg}${r?.camara ? AVISO_CAMARA : ''}<h2>🌱 <span>Fim da cava-roda e do mulching</span></h2><p class="pequeno"><span class="sem-trad">${esc(a.produtor || '')} · ${esc(a.pr || '')}-${a.area_n ?? '—'}</span> · <span>início às</span> ${fmtHora(x.entrada_em)}</p>
+    <p class="pequeno"><span>Plantas vivas no campo:</span> <b>${n ? num(n) : '—'}</b></p>
+    <label>Plantas com cava-roda feitas hoje<input id="af-cav" type="number" inputmode="numeric" min="0" max="${n || 20000}" value="${rs.cav ?? ''}"></label>
+    <label>Plantas com mulching feitas hoje<input id="af-mul" type="number" inputmode="numeric" min="0" max="${n || 20000}" value="${rs.mul ?? ''}"></label>
+    <div id="af-aviso"></div>
+    ${man ? `<div class="msg info"><span>Em Quiwia e Farol estes números somam-se ao total da manutenção deste campo, até às plantas vivas do campo.</span></div>` : ''}
+    <label>Pessoas que trabalharam neste campo<input id="af-pess" type="number" inputmode="numeric" min="1" max="30" value="${pess}"></label>
+    <textarea id="af-obs" rows="2" placeholder="Observação (opcional)">${esc(rs.obs || '')}</textarea>
+    ${campoFoto('af-foto', FOTOS_ACT.saida + ' (obrigatória)')}
+    <img id="af-prev" alt="" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:8px">
+    <div id="af-msg"></div>
+    <button class="btn" id="af-ok" onclick="marcarFimAct()">Marcar o fim e guardar</button><button class="btn sec" onclick="abrirFicha('${esc(x.area_id)}')">Voltar</button>`);
+  const guardar = () => { const y = actCurso(); if (!y) return; y.rascFim = { cav: $('#af-cav').value, mul: $('#af-mul').value, pessoas: $('#af-pess').value, obs: $('#af-obs').value }; LS.set('actCurso', y); avisoAct(n); };
+  ['#af-cav', '#af-mul', '#af-pess', '#af-obs'].forEach((s) => $(s).addEventListener('input', guardar)); avisoAct(n);
+  rascGuardar('rascAct', { perfil: S.perfil?.id, tipo: 'saida', camara: false });
+  ligarFoto('af-foto', 'rascAct', (foto, meta) => { S.actFoto = foto; S.actFotoMeta = meta; const img = $('#af-prev'); if (foto) { img.src = URL.createObjectURL(foto); img.style.display = ''; } else img.style.display = 'none'; });
+}
+function avisoAct(n) {
+  const c = parseInt($('#af-cav')?.value, 10) || 0, m = parseInt($('#af-mul')?.value, 10) || 0, e = $('#af-aviso'); if (!e) return;
+  e.innerHTML = n && (c > n || m > n) ? `<div class="msg erro"><span>Escreveu mais plantas do que as plantas vivas do campo</span> (${num(n)}). <span>Conte de novo.</span></div>` : '';
+}
+async function marcarFimAct() {
+  const x = actCurso(); if (!x) return;
+  const a = S.areas.find((y) => y.id === x.area_id); if (!a) return fichaEmCursoFora(x.area_id);
+  const n = plantasN(a), cav = $('#af-cav').value === '' ? 0 : parseInt($('#af-cav').value, 10), mul = $('#af-mul').value === '' ? 0 : parseInt($('#af-mul').value, 10);
+  const pessoas = parseInt($('#af-pess').value, 10), erro = (t) => { $('#af-msg').innerHTML = `<div class="msg erro">${t}</div>`; };
+  if (!(cav >= 0) || !(mul >= 0)) return erro('Escreva números de plantas válidos.');
+  if (cav + mul < 1) return erro('Escreva quantas plantas tiveram cava-roda ou mulching hoje (pelo menos 1).');
+  if (n && (cav > n || mul > n)) return erro(`Escreveu mais plantas do que as plantas vivas do campo (${num(n)}). Conte de novo.`);
+  if (!(pessoas >= 1 && pessoas <= 30)) return erro('Escreva quantas pessoas trabalharam (1 a 30).');
+  if (!S.actFoto) return erro('Tire a fotografia do fim.');
+  $('#af-ok').disabled = true; $('#af-msg').innerHTML = '<p class="pequeno">A ler o GPS…</p>';
+  let g; try { g = await validarPosicao(a); } catch (e) { $('#af-ok').disabled = false; return erro(esc(e.message)); }
+  if (g.valido === false) { $('#af-ok').disabled = false; return erro(`O fim não foi gravado. Está a ${g.dist} m do campo (precisão ±${g.precisao} m). Marque o fim no campo (até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'}).${dicaGpsFraco(g)}`); }
+  await guardarFotoAct('saida', S.actFoto, S.actFotoMeta);
+  const y = actCurso() || x, { fotos, rascFim, ...base } = y;
+  const reg = { ...base, saida_em: new Date().toISOString(), saida_lat: g.lat, saida_lon: g.lon, saida_precisao_m: g.precisao, saida_dist_m: g.dist,
+    cavaroda: cav, mulching: mul, pessoas, observacao: $('#af-obs').value.trim() || null, data: y.entrada_em ? new Date(y.entrada_em).toLocaleDateString('sv-SE') : hojeISO(), fotos: Object.keys(fotos || {}) };
+  const f = filaAct(); f.push(reg); LS.set('filaAct', f); LS.del('actCurso'); LS.del('rascAct'); S.actFoto = null;
+  const j = jornadaHoje(); if (souActivista() && j && j.pessoas !== pessoas) { j.pessoas = pessoas; LS.set('jornada', j); }
+  actSync(); aviso(`Cava-roda e mulching guardados: ${num(cav)} cava-roda · ${num(mul)} mulching.`, 'ok'); abrirFicha(x.area_id); sincronizar(true);
+}
+// envio: as três fotografias para rega-fotos e depois a RPC; recusado fica no telefone, marcado (como a rega, v233)
+async function enviarAct() {
+  for (const x of [...filaAct()].sort((p, q) => (p._recusa ? 1 : 0) - (q._recusa ? 1 : 0))) {
+    const { _recusa, fotos, produtor, comunidade, ...p } = x, cam = {};
+    for (const t of ['entrada', 'durante', 'saida']) {
+      const k = `act-${x.id}-${t}`; let b = null; try { b = await FOTOS.ler(k); } catch {} b = b || S.fotosMem?.[k] || null;
+      const caminho = `${S.perfil.id}/${k}.jpg`;
+      if (b) { const up = await sb.storage.from('rega-fotos').upload(caminho, b, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; cam[t] = caminho; }
+      else if (x._enviadas?.[t]) cam[t] = x._enviadas[t];
+    }
+    if (!cam.entrada || !cam.durante || !cam.saida) { marcarRecusa('filaAct', x, { code: 'FOTO', message: 'Faltam fotografias no telefone' }, 'actividades_campo'); continue; }
+    const r = await sb.rpc('gravar_actividade', { p: { ...p, foto_entrada: cam.entrada, foto_durante: cam.durante, foto_saida: cam.saida } });
+    if (r.error && erroPassageiro(r.error)) return r.error.message;
+    if (r.error) { LS.set('filaAct', filaAct().map((y) => y.id === x.id ? { ...y, _enviadas: cam } : y)); marcarRecusa('filaAct', x, r.error, 'actividades_campo'); continue; }
+    LS.set('filaAct', filaAct().filter((y) => y.id !== x.id));
+    for (const t of ['entrada', 'durante', 'saida']) { try { await FOTOS.apagar(`act-${x.id}-${t}`); } catch {} }
+    const ex = r.data?.excedente; if (ex && (ex.cavaroda || ex.mulching)) aviso(`Manutenção: o total do campo ${produtor || x.area_id} chegou às plantas vivas; ${num((ex.cavaroda || 0) + (ex.mulching || 0))} plantas a mais não contaram no total.`, 'info');
+  }
+  return null;
+}
+// ficha: actividades deste campo (servidor + as que ainda estão no telefone)
+async function actividadesDoCampo(id) {
+  const loc = filaAct().filter((x) => x.area_id === id).map((x) => ({ ...x, quem: S.perfil?.nome, equipa: nomeAct(x.activista_id), local: true }));
+  let serv = [];
+  if (navigator.onLine) { try { const r = await sb.rpc('actividades_campo_lista', { p_area: id }); if (!r.error && Array.isArray(r.data)) serv = r.data; } catch {} }
+  const el = $('#f-act'), l = [...loc, ...serv.filter((s) => !loc.some((y) => y.id === s.id))];
+  if (!el || !l.length) return;
+  const foto = (c, t) => c[`foto_${t}`] ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(c['foto_' + t])}', '${esc(FOTOS_ACT[t])}')">📷 <span>${{ entrada: 'Início', durante: 'Durante', saida: 'Fim' }[t]}</span></button>` : '';
+  el.innerHTML = `<div class="cartao" style="margin-top:10px"><h3 style="font-size:14px;margin:0 0 4px">🌱 <span>Cava-roda e mulching deste campo</span></h3>` + l.map((c) => `<div style="padding:4px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
+    <div><b>${fmtData(c.data)}</b> · ${fmtHora(c.entrada_em)}–${fmtHora(c.saida_em)} · <span>cava-roda</span> ${num(c.cavaroda)} · <span>mulching</span> ${num(c.mulching)}${c.pessoas ? ` · ${num(c.pessoas)} <span>pessoas</span>` : ''}</div>
+    <div class="pequeno"><span>${esc(nomeMotivoAct(c.motivo))}</span>${c.motivo_texto ? ` · <span class="sem-trad">${esc(c.motivo_texto)}</span>` : ''} · <span class="sem-trad">${esc(c.equipa || '')}</span>${c.motivo_tecnico ? ` · 🤝 <span>registado por</span> <span class="sem-trad">${esc(c.quem || '')}</span>` : ''}${c.local ? ' · <span>no telefone (por enviar)</span>' : ''}${c.excedente ? ` · <span>a mais no total da manutenção:</span> ${num(c.excedente)}` : ''}</div>
+    ${c.observacao ? `<div class="pequeno sem-trad">${esc(c.observacao)}</div>` : ''}${c.local ? '' : `<div class="chips" style="margin-top:4px">${foto(c, 'entrada')}${foto(c, 'durante')}${foto(c, 'saida')}</div>`}</div>`).join('') + '</div>';
+}
+// «O meu dia» (técnico/supervisor): o que a equipa fez hoje de cava-roda e mulching
+const linhaActEquipa = (e) => e.actividade ? `<div class="pequeno" style="margin:0 0 6px 8px">🌱 <span>Cava-roda</span> ${num(e.actividade.cavaroda || 0)} · <span>Mulching</span> ${num(e.actividade.mulching || 0)} (${num(e.actividade.campos || 0)} <span>campos</span>)</div>` : '';
 // v195 (02/11/2026, sugestão do Raul pelo 💡 às 09:47): ao confirmar uma rega com ⚠️, contou menos plantas vivas do que as regadas
 // e a app mandava "corrigir na ficha", mas não encontrava onde (a lista das regas fica no fim da ficha). Agora abre logo a correcção.
 async function corrigirRegaAgora(rid, areaId, contadas) {
@@ -5808,7 +6014,7 @@ function cartaoMeuDia() {
   const corrPend = new Set(LS.get('filaAlt', []).filter((x) => x.tipo === 'plantas_rega').map((x) => x.registo_id));
   const d = c.d, eqs = d.equipas || [], al = (d.alertas || []).filter((x) => !(x.tipo !== 'foto_data' && corrPend.has(x.registo_id))), cp = confPendentes();
   const motivosDe = (e) => (e.motivos || (e.sem_rega ? [{ motivo: e.sem_rega }] : [])).map((m) => cp.has(m.id) ? { ...m, por_confirmar: false, confirmado_nome: S.perfil?.nome, pendente: true } : m);
-  const falta = eqs.filter((e) => !e.regas && !e.comecou && !motivosDe(e).length);
+  const falta = eqs.filter((e) => !e.regas && !e.comecou && !e.actividade && !motivosDe(e).length);
   const porConf = eqs.reduce((n, e) => n + motivosDe(e).filter((m) => m.por_confirmar).length, 0);
   const cedo = d.data === hojeISO() && new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour12: false }) < '18:00';
   const linhaMot = (e, m) => `<div class="pequeno" style="margin:2px 0 6px 8px">⚠️ <span>${esc(nomeMotivoDsr(m.motivo))}</span>${m.ate ? ` · <span>até</span> ${fmtData(m.ate)}` : ''}${m.produtor ? ` · <span class="sem-trad">${esc(m.produtor)}</span>` : ''}${m.descricao ? ` · <span class="sem-trad">${esc(m.descricao)}</span>` : ''}
@@ -5823,10 +6029,11 @@ function cartaoMeuDia() {
     eqs.map((e) => { const ms = motivosDe(e);
       const tec = S.perfil.papel !== 'tecnico' ? tecDe({ activista_id: e.id }) : '';   // v178: o supervisor vê o técnico de cada equipa
       return `<div class="lin"><span><span class="sem-trad">${esc(e.nome)}</span>${tec ? `<br><span class="pequeno">👷 <span class="sem-trad">${esc(tec)}</span></span>` : ''}</span><b>${e.regas ? `✓ ${num(e.regas)} <span>campos</span> · ${num(e.plantas)} <span>plantas</span>`
+        : e.actividade ? `🌱 <span>Cava-roda e mulching</span>`
         : e.comecou ? `🟢 <span>Começou às</span> ${fmtHora(e.comecou)}`
         : ms.length ? `<span>Sem rega</span>: ${esc(nomeMot(ms.map((m) => m.motivo).join(', ')))}`
         : cedo ? `<span style="color:var(--suave,#777)">Ainda sem rega · pode regar até às 18:00</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`
-        : `<span style="color:var(--erro,#c62828)">Não regou hoje · falta o motivo</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`}</b></div>` + ms.filter((m) => m.id).map((m) => linhaMot(e, m)).join(''); }).join('') +
+        : `<span style="color:var(--erro,#c62828)">Não regou hoje · falta o motivo</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`}</b></div>` + linhaActEquipa(e) + ms.filter((m) => m.id).map((m) => linhaMot(e, m)).join(''); }).join('') +
     `<div class="pequeno" style="margin:6px 0">🟢 = <span>a equipa começou o dia na app</span> ${info('<span>A equipa começou o dia na app (rega em curso ou ainda por enviar). Se a equipa estiver sem rede, o início só chega quando o telefone tiver rede; se até ao fim do dia nada chegar, registe «A equipa regou, mas não registou na app».</span>')}</div>`,
     `${eqs.length - falta.length} / ${eqs.length} <span>com rega, a trabalhar ou com motivo</span>${porConf ? ` · ${num(porConf)} <span>motivos por confirmar</span>` : ''}`]);
   // 2. regas com aviso
@@ -6503,6 +6710,8 @@ function retomarRascunhos() {
       if (rf.tipo === 'saida') { ecraSaida(); $('#folha-c').insertAdjacentHTML('afterbegin', AVISO_CAMARA); return; }
       return ecraFotoRega(rf.tipo, '', rf);
     }
+    const rt = rascLer('rascAct'), xa = actCurso();
+    if (rt && rt.camara && rt.perfil === S.perfil?.id && xa && S.areas.some((x) => x.id === xa.area_id)) return rt.tipo === 'saida' ? ecraFimAct('', rt) : ecraFotoAct(rt.tipo, '', rt);
     const ra = rascLer('rascAcomp');
     if (ra && ra.camara && ra.perfil === S.perfil?.id && S.areas.some((x) => x.id === ra.area)) return ecraAcompanhar(ra.area, ra);
     const rq = rascLer('rascQueim');

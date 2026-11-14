@@ -369,6 +369,13 @@
     meus_activistas: () => vis() || [], minhas_comunidades: () => (papel === 'tecnico' ? ['Exemplo Norte'] : papel === 'supervisor' ? ['Exemplo Norte', 'Exemplo Sul'] : []),
     monitoria_escala_ver: () => (['tecnico', 'supervisor'].includes(papel) ? { n_dias: 1, campos: 2, pausa: false, eu_monitor: true, meus: DB.escala || null, pessoas: [{ id: EU, nome: 'Eu', papel, dias: DB.escala || null, eu: true }, { id: 'x1', nome: 'Técnica Sul', papel: 'tecnico', dias: [1], eu: false }] } : null),
     apoios_lista: () => [], apoio_sugestoes: () => [], apoio_candidatos: () => [], criar_apoio: () => null, terminar_apoio: () => null,
+    // cava-roda e mulching quando não há rega (ramo cc-manutencao): guardados na base de exemplo
+    gravar_actividade: (a) => { const x = a.p || {}; DB.act ||= []; if (DB.act.some((y) => y.id === x.id)) return { id: x.id, ja: true };
+      DB.act.push({ ...x, data: dia(0), equipa: nomeAct(x.activista_id), quem: NOMES[papel] || 'Eu', removido: false });
+      if (papel !== 'activista' && !DB.jornadas.some((j) => j.activista_id === x.activista_id && j.data === dia(0))) DB.jornadas.push({ id: uid(), activista_id: x.activista_id, data: dia(0), pessoas: x.pessoas || 1, inicio_em: x.entrada_em });
+      return { id: x.id, manutencao: false, excedente: { cavaroda: 0, mulching: 0 } }; },
+    actividades_campo_lista: (a) => (DB.act || []).filter((x) => x.area_id === a.p_area && !x.removido).map((x) => ({ ...x, excedente: 0 })).reverse(),
+    painel_actividades: () => (['activista', 'oficial_me'].includes(papel) ? null : (DB.act || []).filter((x) => !x.removido).map((x) => { const ar = area(x.area_id) || {}; return { ...x, produtor: ar.produtor, comunidade: ar.comunidade, zona: ar.zona, excedente: 0, manutencao: false }; }).reverse()),
     acompanhamentos_campo: () => [], gravar_acompanhamento: (a) => ({ id: a.p_id, teste: false }), remover_acompanhamento: () => null,
     gravar_monitoria_escala: (a) => { DB.escala = (a.p_dias || []).slice().sort(); guardarDB(); return { dias: DB.escala }; },
     monitoria_lista: () => { const l = DB.amostras.filter((m) => m.verificador_id === EU); return l.filter((m) => m.data_rega >= dia(2)).map((m) => ({ amostra_id: m.id, data_rega: m.data_rega, area_id: m.area_id, activista_id: m.activista_id, feita: DB.monitorias.some((x) => x.amostra_id === m.id) })); },
@@ -419,6 +426,7 @@
         return { id: t.id, nome: t.nome, comunidade: t.comunidade_principal, sem_telefone: false, regas: l.length, plantas: l.reduce((x, r) => x + r.plantas_regadas, 0),
           chegada: l.map((r) => r.entrada_em).sort()[0] || null, sem_rega: sr.length ? sr.join(', ') : null, comecou: null,
           agua: ((DB.agua || []).filter((w) => w.activista_id === t.id && w.data === hoje).map((w) => w.em).sort()[0]) || null,   // v235
+          actividade: (() => { const l = (DB.act || []).filter((x) => x.activista_id === t.id && x.data === hoje && !x.removido); return l.length ? { campos: new Set(l.map((x) => x.area_id)).size, cavaroda: l.reduce((n, x) => n + (x.cavaroda || 0), 0), mulching: l.reduce((n, x) => n + (x.mulching || 0), 0) } : null; })(),
           motivos: ms.map((d) => ({ id: d.id, motivo: d.motivo, descricao: d.descricao, todo_dia: d.todo_dia, data: d.data, ate: d.ate || null, quem: d.quem, papel_quem: d.papel_quem || 'tecnico',
             criado_em: d.criado_em, por_confirmar: d.papel_quem === 'activista' && !d.confirmado_em, confirmado_nome: d.confirmado_nome || null, confirmado_em: d.confirmado_em || null })) }; });
       const base = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
@@ -433,7 +441,7 @@
         por_aprovar: DB.areas.filter((a) => a.poligono_proposto && ids.includes(a.activista_id)).map((a) => ({ area_id: a.id, produtor: a.produtor, comunidade: a.comunidade, equipa: nomeAct(a.activista_id), area_m2: a.area_m2_proposta, proposta_em: a.proposta_em, quem: nomeAct(a.activista_id) })),
         por_terminar: est.filter((e) => e.por_terminar && ids.includes(area(e.area_id).activista_id)).map((e) => { const a = area(e.area_id); return { area_id: a.id, produtor: a.produtor, equipa: nomeAct(a.activista_id), base: base(a), regadas: e.plantas_ronda, data: e.data_parcial }; }) };
     },
-    fechar_dia: () => { const hoje = dia(0), m = RPC.meu_dia(); const falta = (m?.equipas || []).filter((e) => !e.regas && !e.sem_rega);
+    fechar_dia: () => { const hoje = dia(0), m = RPC.meu_dia(); const falta = (m?.equipas || []).filter((e) => !e.regas && !e.sem_rega && !e.actividade);
       if (falta.length) throw Object.assign(new Error('Ainda sem rega nem motivo: ' + falta.map((e) => e.nome).join(', ')), { erro400: true });
       (DB.fechos ||= {})[EU + hoje] = new Date().toISOString(); return DB.fechos[EU + hoje]; },
     confirmar_rega2: (a) => { const r = DB.registos.find((x) => x.id === a.p_id); if (!r) return null;
