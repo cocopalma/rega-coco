@@ -29,7 +29,7 @@ with sync_playwright() as p:
     pg.click("#af-ok"); pg.wait_for_timeout(3500)
     n = DB(pg, "(D.act||[]).length")
     passo("2 gravada na base de exemplo", n == 1, f"actividades={n}")
-    pg.wait_for_timeout(800); passo("3 ficha mostra a actividade", "25" in pg.inner_text("#f-act"), pg.inner_text("#f-act")[:100].replace("\n", " | "))
+    pg.wait_for_timeout(800); passo("3 ficha mostra a actividade", "25" in pg.inner_text("#f-cav"), pg.inner_text("#f-cav")[:100].replace("\n", " | "))
     demo(pg, "tecnico"); pg.evaluate("fecharFolha(); window.__TAR_ABERTAS = true; mudar('hoje')"); pg.wait_for_timeout(3500)
     t = pg.inner_text("#meu-dia")
     passo("4 técnico: «O meu dia» mostra a 🌱", "🌱" in t, [l for l in t.split("\n") if "🌱" in l][:2])

@@ -684,7 +684,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl', 'actTot'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -3457,7 +3457,7 @@ function abrirFicha(id, nota = '') {
     ${linhaOutraEquipa(a, s)}
     ${s.pt ? `<div class="msg info">⏳ <span>Rega a meio nesta ronda: regadas</span> ${num(s.pt.regadas)} <span>de</span> ${num(plantasN(a))} <span>plantas</span>${s.pt.data ? ` (${fmtData(s.pt.data)})` : ''}. <span>O campo só fecha quando regarem as que faltam, ou se as que faltam forem mudas secas ou mortas.</span></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   ${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a, true)}${avisoCampo(a.id)}${cartaoAutorizacao(a, alheio)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (simulação)</button><p class="pequeno" style="margin:0 0 6px">Só na simulação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${parFicha(a, pelaBtn)}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-act"></div><div id="f-mon"></div>`);
+   ${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a, true)}${avisoCampo(a.id)}${cartaoAutorizacao(a, alheio)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (simulação)</button><p class="pequeno" style="margin:0 0 6px">Só na simulação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${parFicha(a, pelaBtn)}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-cav"></div><div id="f-mon"></div>`);
   S.soVer = false;
   if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }
   actividadesDoCampo(a.id);   // também sem rede (as do telefone)   // a pedido, não atrasa a ficha
@@ -5398,6 +5398,21 @@ function fichaActCurso(x) {
     <button class="btn aviso" id="b-act-fim" onclick="ecraFimAct()">Terminei — marcar o fim</button>
     <button class="btn sec" onclick="anularAct()">↩️ Anular (comecei por engano)</button>`;
 }
+// Totais feitos no campo (todos os dias, não só hoje): o servidor soma os registos (actividades_campo_lista); o telefone guarda
+// essa soma (LS actTot) e junta o que ainda está na fila. Faltam = plantas vivas − feitas (nunca abaixo de 0).
+function totaisAct(id) {
+  const t = (LS.get('actTot', {}) || {})[id] || { c: 0, m: 0 };
+  return filaAct().filter((x) => x.area_id === id).reduce((r, x) => ({ c: r.c + (x.cavaroda || 0), m: r.m + (x.mulching || 0) }), { c: t.c || 0, m: t.m || 0 });
+}
+function somarActTot(id, c, m) { const o = LS.get('actTot', {}) || {}, t = o[id] || { c: 0, m: 0 }; o[id] = { c: (t.c || 0) + c, m: (t.m || 0) + m }; LS.set('actTot', o); }
+// «Cava-roda: feitas A de B · faltam C» / «Cava-roda completa»
+function linhaFaltaAct(rot, completo, feitas, n) {
+  if (!n) return `<div class="lin"><span>${rot}</span><b><span>feitas</span> ${num(feitas)}</b></div>`;
+  return feitas >= n ? `<div class="lin act-falta"><span>${rot}</span><b style="color:var(--ok,#2e7d32)">✓ <span>${completo}</span> (${num(Math.min(feitas, n))} <span>de</span> ${num(n)})</b></div>`
+    : `<div class="lin act-falta"><span>${rot}</span><b><span>feitas</span> ${num(feitas)} <span>de</span> ${num(n)} · <span>faltam</span> ${num(n - feitas)}</b></div>`;
+}
+const resumoFaltaAct = (a) => { const t = totaisAct(a.id), n = plantasN(a);
+  return linhaFaltaAct('Cava-roda:', 'Cava-roda completa', t.c, n) + linhaFaltaAct('Mulching:', 'Mulching completo', t.m, n); };
 const nomeMotivoAct = (k) => (MOTIVOS_ACT.find((m) => m[0] === k) || [k, k])[1];
 function anularAct() {
   const x = actCurso(); if (!x) return;
@@ -5434,7 +5449,12 @@ function ecraFimAct(msg = '', r = null) {
 }
 function avisoAct(n) {
   const c = parseInt($('#af-cav')?.value, 10) || 0, m = parseInt($('#af-mul')?.value, 10) || 0, e = $('#af-aviso'); if (!e) return;
-  e.innerHTML = n && (c > n || m > n) ? `<div class="msg erro"><span>Escreveu mais plantas do que as plantas vivas do campo</span> (${num(n)}). <span>Conte de novo.</span></div>` : '';
+  if (n && (c > n || m > n)) { e.innerHTML = `<div class="msg erro"><span>Escreveu mais plantas do que as plantas vivas do campo</span> (${num(n)}). <span>Conte de novo.</span></div>`; return; }
+  const x = actCurso(); if (!n || !x) { e.innerHTML = ''; return; }
+  const t = totaisAct(x.area_id), fc = Math.max(0, n - t.c - c), fm = Math.max(0, n - t.m - m);
+  const ant = t.c || t.m ? `<div class="pequeno"><span>Já feitas neste campo em dias anteriores:</span> <span>cava-roda</span> ${num(t.c)} · <span>mulching</span> ${num(t.m)}</div>` : '';
+  const partes = [fc ? `<span>Faltam</span> ${num(fc)} <span>plantas para cava-roda</span>` : `✓ <span>Cava-roda completa</span>`, fm ? `<span>Faltam</span> ${num(fm)} <span>plantas para mulching</span>` : `✓ <span>Mulching completo</span>`];
+  e.innerHTML = `<div class="msg info" id="af-falta">${partes.join(' · ')} <span>neste campo.</span>${ant}</div>`;
 }
 async function marcarFimAct() {
   const x = actCurso(); if (!x) return;
@@ -5471,7 +5491,7 @@ async function enviarAct() {
     const r = await sb.rpc('gravar_actividade', { p: { ...p, foto_entrada: cam.entrada, foto_durante: cam.durante, foto_saida: cam.saida } });
     if (r.error && erroPassageiro(r.error)) return r.error.message;
     if (r.error) { LS.set('filaAct', filaAct().map((y) => y.id === x.id ? { ...y, _enviadas: cam } : y)); marcarRecusa('filaAct', x, r.error, 'actividades_campo'); continue; }
-    LS.set('filaAct', filaAct().filter((y) => y.id !== x.id));
+    LS.set('filaAct', filaAct().filter((y) => y.id !== x.id)); somarActTot(x.area_id, x.cavaroda || 0, x.mulching || 0);
     for (const t of ['entrada', 'durante', 'saida']) { try { await FOTOS.apagar(`act-${x.id}-${t}`); } catch {} }
     const ex = r.data?.excedente; if (ex && (ex.cavaroda || ex.mulching)) aviso(`Manutenção: o total do campo ${produtor || x.area_id} chegou às plantas vivas; ${num((ex.cavaroda || 0) + (ex.mulching || 0))} plantas a mais não contaram no total.`, 'info');
   }
@@ -5481,11 +5501,14 @@ async function enviarAct() {
 async function actividadesDoCampo(id) {
   const loc = filaAct().filter((x) => x.area_id === id).map((x) => ({ ...x, quem: S.perfil?.nome, equipa: nomeAct(x.activista_id), local: true }));
   let serv = [];
-  if (navigator.onLine) { try { const r = await sb.rpc('actividades_campo_lista', { p_area: id }); if (!r.error && Array.isArray(r.data)) serv = r.data; } catch {} }
-  const el = $('#f-act'), l = [...loc, ...serv.filter((s) => !loc.some((y) => y.id === s.id))];
-  if (!el || !l.length) return;
+  if (navigator.onLine) { try { const r = await sb.rpc('actividades_campo_lista', { p_area: id });
+    if (!r.error && r.data && Array.isArray(r.data.lista)) { serv = r.data.lista; const o = LS.get('actTot', {}) || {}; o[id] = { c: r.data.cavaroda || 0, m: r.data.mulching || 0 }; LS.set('actTot', o); } } catch {} }
+  const el = $('#f-cav'), l = [...loc, ...serv.filter((s) => !loc.some((y) => y.id === s.id))], a = S.areas.find((y) => y.id === id), t = totaisAct(id);
+  if (!el || !a || (!l.length && !t.c && !t.m && !podeAct(a))) return;
+  const res = `<div id="act-tot">${resumoFaltaAct(a)}</div>`;
+  if (!l.length) { el.innerHTML = `<div class="cartao" style="margin-top:10px"><h3 style="font-size:14px;margin:0 0 4px">🌱 <span>Cava-roda e mulching deste campo</span></h3>${res}</div>`; return; }
   const foto = (c, t) => c[`foto_${t}`] ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(c['foto_' + t])}', '${esc(FOTOS_ACT[t])}')">📷 <span>${{ entrada: 'Início', durante: 'Durante', saida: 'Fim' }[t]}</span></button>` : '';
-  el.innerHTML = `<div class="cartao" style="margin-top:10px"><h3 style="font-size:14px;margin:0 0 4px">🌱 <span>Cava-roda e mulching deste campo</span></h3>` + l.map((c) => `<div style="padding:4px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
+  el.innerHTML = `<div class="cartao" style="margin-top:10px"><h3 style="font-size:14px;margin:0 0 4px">🌱 <span>Cava-roda e mulching deste campo</span></h3>${res}` + l.map((c) => `<div style="padding:4px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
     <div><b>${fmtData(c.data)}</b> · ${fmtHora(c.entrada_em)}–${fmtHora(c.saida_em)} · <span>cava-roda</span> ${num(c.cavaroda)} · <span>mulching</span> ${num(c.mulching)}${c.pessoas ? ` · ${num(c.pessoas)} <span>pessoas</span>` : ''}</div>
     <div class="pequeno"><span>${esc(nomeMotivoAct(c.motivo))}</span>${c.motivo_texto ? ` · <span class="sem-trad">${esc(c.motivo_texto)}</span>` : ''} · <span class="sem-trad">${esc(c.equipa || '')}</span>${c.motivo_tecnico ? ` · 🤝 <span>registado por</span> <span class="sem-trad">${esc(c.quem || '')}</span>` : ''}${c.local ? ' · <span>no telefone (por enviar)</span>' : ''}${c.excedente ? ` · <span>a mais no total da manutenção:</span> ${num(c.excedente)}` : ''}</div>
     ${c.observacao ? `<div class="pequeno sem-trad">${esc(c.observacao)}</div>` : ''}${c.local ? '' : `<div class="chips" style="margin-top:4px">${foto(c, 'entrada')}${foto(c, 'durante')}${foto(c, 'saida')}</div>`}</div>`).join('') + '</div>';

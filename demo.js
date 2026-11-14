@@ -374,7 +374,8 @@
       DB.act.push({ ...x, data: dia(0), equipa: nomeAct(x.activista_id), quem: NOMES[papel] || 'Eu', removido: false });
       if (papel !== 'activista' && !DB.jornadas.some((j) => j.activista_id === x.activista_id && j.data === dia(0))) DB.jornadas.push({ id: uid(), activista_id: x.activista_id, data: dia(0), pessoas: x.pessoas || 1, inicio_em: x.entrada_em });
       return { id: x.id, manutencao: false, excedente: { cavaroda: 0, mulching: 0 } }; },
-    actividades_campo_lista: (a) => (DB.act || []).filter((x) => x.area_id === a.p_area && !x.removido).map((x) => ({ ...x, excedente: 0 })).reverse(),
+    actividades_campo_lista: (a) => { const l = (DB.act || []).filter((x) => x.area_id === a.p_area && !x.removido);
+      return { lista: l.map((x) => ({ ...x, excedente: 0 })).reverse(), cavaroda: l.reduce((n, x) => n + (x.cavaroda || 0), 0), mulching: l.reduce((n, x) => n + (x.mulching || 0), 0) }; },
     painel_actividades: () => (['activista', 'oficial_me'].includes(papel) ? null : (DB.act || []).filter((x) => !x.removido).map((x) => { const ar = area(x.area_id) || {}; return { ...x, produtor: ar.produtor, comunidade: ar.comunidade, zona: ar.zona, excedente: 0, manutencao: false }; }).reverse()),
     acompanhamentos_campo: () => [], gravar_acompanhamento: (a) => ({ id: a.p_id, teste: false }), remover_acompanhamento: () => null,
     gravar_monitoria_escala: (a) => { DB.escala = (a.p_dias || []).slice().sort(); guardarDB(); return { dias: DB.escala }; },

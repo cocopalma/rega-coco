@@ -132,14 +132,16 @@ revoke all on function public.gravar_actividade(jsonb) from public, anon;
 grant execute on function public.gravar_actividade(jsonb) to authenticated;
 
 -- ---------- ler: actividades de um campo (ficha) ----------
+-- Devolve { lista (últimos 60 dias), cavaroda, mulching } — os dois totais somam TODOS os registos do campo (Valdo, 14/11/2026:
+-- a ficha e a saída mostram «feitas A de B · faltam C»; continua a guardar-se só o feito em cada dia).
 create or replace function public.actividades_campo_lista(p_area text)
 returns json language plpgsql stable security definer set search_path to '' as $$
 declare a record; v_papel text := privado.meu_papel(); v_meu uuid;
 begin
   select ar.activista_id, ar.comunidade into a from public.areas ar where ar.id = p_area;
-  if not found or not privado.le_area(a.activista_id, a.comunidade) then return '[]'::json; end if;
+  if not found or not privado.le_area(a.activista_id, a.comunidade) then return json_build_object('lista', '[]'::json, 'cavaroda', 0, 'mulching', 0); end if;
   if v_papel = 'activista' then select pf.activista_id into v_meu from public.perfis pf where pf.id = auth.uid(); end if;
-  return coalesce((select json_agg(json_build_object('id', x.id, 'data', x.data, 'motivo', x.motivo, 'motivo_texto', x.motivo_texto,
+  return json_build_object('lista', coalesce((select json_agg(json_build_object('id', x.id, 'data', x.data, 'motivo', x.motivo, 'motivo_texto', x.motivo_texto,
       'motivo_tecnico', x.motivo_tecnico, 'entrada_em', x.entrada_em, 'saida_em', x.saida_em, 'pessoas', x.pessoas,
       'cavaroda', x.cavaroda, 'mulching', x.mulching, 'excedente', x.cavaroda_excedente + x.mulching_excedente, 'manutencao', x.manut_registo_id is not null,
       'equipa', ac.nome, 'quem', pf.nome, 'observacao', x.observacao,
@@ -148,7 +150,9 @@ begin
       'foto_durante', case when v_papel <> 'activista' or x.user_id = auth.uid() then x.foto_durante end,
       'foto_saida', case when v_papel <> 'activista' or x.user_id = auth.uid() then x.foto_saida end) order by x.saida_em desc)
     from public.actividades_campo x join public.activistas ac on ac.id = x.activista_id left join public.perfis pf on pf.id = x.user_id
-    where x.area_id = p_area and not x.removido and x.data >= (now() at time zone 'Africa/Maputo')::date - 60), '[]'::json);
+    where x.area_id = p_area and not x.removido and x.data >= (now() at time zone 'Africa/Maputo')::date - 60), '[]'::json),
+    'cavaroda', (select coalesce(sum(x.cavaroda), 0) from public.actividades_campo x where x.area_id = p_area and not x.removido),
+    'mulching', (select coalesce(sum(x.mulching), 0) from public.actividades_campo x where x.area_id = p_area and not x.removido));
 end $$;
 revoke all on function public.actividades_campo_lista(text) from public, anon;
 grant execute on function public.actividades_campo_lista(text) to authenticated;
