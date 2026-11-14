@@ -1,3 +1,4 @@
+# NOTA (14/11/2026, ramo cc-manutencao): as etiquetas deixaram de aparecer sempre (só ao tocar no campo); este teste mostra agora 0 etiquetas. Ver teste_etiquetas_toque.py.
 # Fotografias obrigatórias na rega: entrada, evidência da rega e saída (15/10/2026). Sem rede e depois com rede.
 import json, subprocess, time, sys
 from playwright.sync_api import sync_playwright

@@ -832,30 +832,42 @@ function ligarFerramentas() {
   new MutationObserver(marca).observe(m, { subtree: true, attributes: true, attributeFilter: ['class'] }); marca();
 }
 function botaoRodar() { const b = $('#b-rodar'); if (!b) return; b.textContent = S.seguir ? '🧭 Norte' : '🧭 Rodar'; b.classList.toggle('on', !!S.seguir); }
-// etiqueta em cada campo à vista (zoom ≥ 15): nome do produtor, código do campo e plantas vivas, sem tocar (16/10/2026, Dalmar; 18/10 Valdo: nome completo e PR)
-const ZOOM_ROTULOS = 15, MAX_ROTULOS = 80;
+// Etiquetas dos campos (nome do produtor, código e plantas vivas). Desde 14/11/2026 (Valdo) não aparecem sempre: por defeito o mapa
+// mostra só os limites e os pontos. 1.º toque num campo mostra a etiqueta desse campo; 2.º toque no mesmo campo (com a etiqueta
+// aberta) abre a ficha. Podem ficar várias abertas; tocar na etiqueta fecha-a; «Esconder etiquetas» fecha todas. Antes (16/10, Dalmar;
+// 18/10, Valdo) todas as etiquetas à vista apareciam com zoom ≥ 15.
+S.etiq = new Set();
+const centroCampo = (a) => {
+  if (a.latitude != null) return [a.latitude, a.longitude];
+  const p = temPoligono(a) ? a.poligono : Array.isArray(a.poligono_proposto) && a.poligono_proposto.length >= 3 ? a.poligono_proposto : null;
+  return p ? [p.reduce((t, q) => t + q[1], 0) / p.length, p.reduce((t, q) => t + q[0], 0) / p.length] : null;
+};
 function desenharRotulos() {
-  if (!rotulos) return; rotulos.clearLayers();
-  if (mapa.getZoom() < ZOOM_ROTULOS) return;
-  const b = mapa.getBounds(), fa = $('#f-act')?.value, c = mapa.getCenter();
-  // os campos mais perto do centro do ecrã primeiro; uma etiqueta que tapasse outra já posta não aparece
-  // (aparece ao aproximar o mapa) — 18/10/2026, Valdo
-  const man = modoManut();
-  const L2 = (man ? camposManut() : visiveis()).filter((a) => a.latitude != null && b.contains([a.latitude, a.longitude]) && (man || !(fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa))) && (man || !S.planoIds || S.planoIds.has(a.id)))
-    .sort((x, y) => mapa.distance(c, [x.latitude, x.longitude]) - mapa.distance(c, [y.latitude, y.longitude]));
-  const postas = []; let n = 0;
-  const tapa = (r) => postas.some((p) => r.left < p.right + 2 && r.right > p.left - 2 && r.top < p.bottom + 2 && r.bottom > p.top - 2);
+  if (!rotulos) return;
+  // o Leaflet apaga as etiquetas com 200 ms de atraso (desvanecer); entretanto a antiga, invisível, ainda apanhava toques: sai já
+  rotulos.eachLayer((t) => { const e = t.getElement && t.getElement(); if (e) e.remove(); }); rotulos.clearLayers();
+  const man = modoManut(), fa = $('#f-act')?.value;
+  const L2 = (man ? camposManut() : visiveis()).filter((a) => S.etiq.has(a.id) && centroCampo(a) && (man || !(fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa))) && (man || !S.planoIds || S.planoIds.has(a.id)));
   for (const a of L2) {
-    if (n >= MAX_ROTULOS) break;
     const nome = String(a.produtor || '').trim() || '—';   // nome completo e código do campo (18/10/2026, Valdo)
     const pl = man ? `CR ${pctMan(a.cavaroda, a.plantas)}% · M ${pctMan(a.mulching, a.plantas)}%` : a.vivas > 0 ? `${num(a.vivas)} vivas` : `${num(a.instaladas || 0)} mudas`;
-    const t = L.tooltip({ permanent: true, direction: 'top', offset: [0, -6], className: 'rot-campo', interactive: false })
-      .setLatLng([a.latitude, a.longitude]).setContent(`${esc(nome)}<br><span class="rot-id">${esc(a.id)}</span> · <span>${pl}</span>`).addTo(rotulos);
-    const el = t.getElement(), r = el && el.getBoundingClientRect();
-    if (!r || !r.width) { n++; continue; }
-    if (tapa(r)) { rotulos.removeLayer(t); continue; }
-    postas.push(r); n++;
+    const t = L.tooltip({ permanent: true, direction: 'top', offset: [0, -6], className: 'rot-campo', interactive: true })
+      .setLatLng(centroCampo(a)).setContent(`${esc(nome)}<br><span class="rot-id">${esc(a.id)}</span> · <span>${pl}</span>`).addTo(rotulos);
+    const el = t.getElement();
+    if (el) { el.dataset.id = a.id; el.title = 'Tocar para fechar a etiqueta'; L.DomEvent.on(el, 'click', (e) => { L.DomEvent.stop(e); S.etiq.delete(a.id); desenharRotulos(); }); }
   }
+  botaoEtiquetas();
+}
+function botaoEtiquetas() {
+  const b = $('#b-etiq'); if (!b) return;
+  const n = rotulos ? rotulos.getLayers().length : 0;
+  b.style.display = n ? '' : 'none'; b.innerHTML = `🏷 <span>Esconder etiquetas</span> (${n})`;
+}
+function esconderEtiquetas() { S.etiq.clear(); desenharRotulos(); }
+// 1.º toque: mostra a etiqueta; 2.º toque no mesmo campo (etiqueta aberta): abre a ficha
+function tocarCampo(a, abrir) {
+  if (S.etiq.has(a.id)) return abrir(a.id);
+  S.etiq.add(a.id); desenharRotulos();
 }
 // ---------- percurso do dia (19/10/2026, pedido do Dalmar; decisões do Valdo) ----------
 // Grava por onde anda o telefone do activista só no trabalho: desde que regista as pessoas
@@ -1123,7 +1135,7 @@ function fecharRegua() {
 function pontoRegua(ll, nome = '') { if (!S.regua) return false; S.regua.push({ ll, nome }); desenharRegua(); return true; }
 function clicarCampo(e, a) {
   if (S.regua) { L.DomEvent.stopPropagation(e); pontoRegua(a.latitude != null ? [a.latitude, a.longitude] : [e.latlng.lat, e.latlng.lng], a.id); return; }
-  abrirFicha(a.id);
+  L.DomEvent.stopPropagation(e); tocarCampo(a, abrirFicha);
 }
 function desenharRegua() {
   if (!regua || !S.regua) return;
@@ -2363,7 +2375,7 @@ function desenharMapaManut(enquadrar) {
 }
 function clicarManut(e, c) {
   if (S.regua) { L.DomEvent.stopPropagation(e); pontoRegua([c.latitude, c.longitude], c.id); return; }
-  abrirFichaManut(c.id);
+  L.DomEvent.stopPropagation(e); tocarCampo(c, abrirFichaManut);
 }
 const linhaManut = (c) => `<span>Cava-roda</span> ${num(c.cavaroda || 0)}/${num(c.plantas)} (${pctMan(c.cavaroda, c.plantas)}%) · <span>Mulching</span> ${num(c.mulching || 0)}/${num(c.plantas)} (${pctMan(c.mulching, c.plantas)}%)`;
 function desenharListaManut() {

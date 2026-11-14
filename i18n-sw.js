@@ -3,6 +3,8 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    // cc-manutencao-etiquetas
+    "Esconder etiquetas": "Ficha lebo", "Tocar para fechar a etiqueta": "Gusa ili kufunga lebo", "Toque num campo para ver a etiqueta; toque outra vez para abrir a ficha.": "Gusa shamba kuona lebo yake; gusa tena kufungua fomu ya shamba.",
     // cc-manutencao-horas-extras
     "Depois das 15:30 não se começa uma rega nem cava-roda e mulching. Só com horas extras activadas pelo técnico ou pelo supervisor para esta equipa, hoje.": "Baada ya saa 15:30 hakuanzishwi umwagiliaji wala kupalilia duara na matandazo. Ni kwa saa za ziada tu zilizowashwa na fundi au msimamizi kwa timu hii, leo.", "Cava-roda e mulching: depois das 15:30 só com horas extras.": "Kupalilia duara na matandazo: baada ya saa 15:30 ni kwa saa za ziada tu.", "Horas extras hoje, activadas por": "Saa za ziada leo, zimewashwa na", "Activar horas extras hoje": "Washa saa za ziada leo", "Horas extras activadas.": "Saa za ziada zimewashwa.", "hora simulada": "saa ya kuigiza", "hora real do relógio": "saa halisi ya saa",
     // cc-manutencao-falta

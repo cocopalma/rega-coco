@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    // cc-manutencao-etiquetas
+    "Esconder etiquetas": "Hide labels", "Tocar para fechar a etiqueta": "Tap to close the label", "Toque num campo para ver a etiqueta; toque outra vez para abrir a ficha.": "Tap a field to see its label; tap again to open the field sheet.",
     // cc-manutencao-horas-extras
     "Depois das 15:30 não se começa uma rega nem cava-roda e mulching. Só com horas extras activadas pelo técnico ou pelo supervisor para esta equipa, hoje.": "After 15:30 no watering or ring weeding and mulching can be started. Only with overtime activated by the technician or the supervisor for this team, today.", "Cava-roda e mulching: depois das 15:30 só com horas extras.": "Ring weeding and mulching: after 15:30 only with overtime.", "Horas extras hoje, activadas por": "Overtime today, activated by", "Activar horas extras hoje": "Activate overtime today", "Horas extras activadas.": "Overtime activated.", "hora simulada": "simulated time", "hora real do relógio": "real clock time",
     // cc-manutencao-falta
