@@ -5306,7 +5306,9 @@ const FOTOS_ACT = { entrada: 'Fotografia do início', durante: 'Fotografia duran
 const actCurso = () => LS.get('actCurso');
 const filaAct = () => LS.get('filaAct', []) || [];
 const horaMinMaputo = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour12: false }).slice(0, 5);   // «HH:MM»
-const actDentroHora = () => horaMinMaputo() <= ACT_HORA_LIMITE;
+// na simulação pode-se escolher a hora (sessionStorage rega.demo.hora, «HH:MM»), para mostrar antes e depois das 15:30 a qualquer hora
+const horaAct = () => { if (window.DEMO) { try { const h = sessionStorage.getItem('rega.demo.hora'); if (/^\d\d:\d\d$/.test(h || '')) return h; } catch {} } return horaMinMaputo(); };
+const actDentroHora = () => horaAct() <= ACT_HORA_LIMITE;
 // quem pode: o activista nos campos da sua lista ou em apoio; técnico/supervisor/gestor pela equipa (campo da sua lista, com activista)
 function podeAct(a) {
   if (!a || S.perfil?.so_teste) return false;
