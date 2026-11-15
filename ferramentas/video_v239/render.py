@@ -72,11 +72,20 @@ def slide(i, tag, tit, pts, cap):
 if len(sys.argv) > 3:   # só as imagens, para rever
     for i in map(int, sys.argv[3].split(",")): slide(i, *CENAS[i]).save(f"{TMP}/rev_{i}.jpg", quality=88)
     sys.exit()
+# com voz: VOZ=ficheiro.mp3 CORTES="t1,t2,…" (fim de cada parágrafo da fala, em segundos, menos o último)
+VOZ = os.environ.get("VOZ"); DUR = None
+if VOZ:
+    tot = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", VOZ], capture_output=True, text=True).stdout)
+    ct = [0] + [float(x) + 0.2 for x in os.environ["CORTES"].split(",")] + [tot + 1.2]
+    assert len(ct) == len(CENAS) + 1, (len(ct), len(CENAS))
+    DUR = [round((ct[k + 1] - ct[k]) * 30) / 30 for k in range(len(CENAS))]
 lst = []
 for i, c in enumerate(CENAS):
     png = f"{TMP}/s{i}.png"; slide(i, *c).save(png)
-    dur = 5 if c[0] == "capa" else 5.5 + 2.2 * len(c[2]); mp4 = f"{TMP}/s{i}.mp4"; t = f"{TMP}/s{i}.tmp.mp4"
+    dur = DUR[i] if DUR else (5 if c[0] == "capa" else 5.5 + 2.2 * len(c[2])); mp4 = f"{TMP}/s{i}.mp4"; t = f"{TMP}/s{i}.tmp.mp4"
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", "30", "-i", png, "-vf", f"format=yuv420p,loop=-1:1,trim=duration={dur},fade=in:0:9,fade=out:st={dur - 0.3}:d=0.3", "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-r", "30", t], check=True)
     os.rename(t, mp4); lst.append(f"file '{mp4}'")
 open(TMP + "/l.txt", "w").write("\n".join(lst))
-subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", TMP + "/l.txt", "-c", "copy", "-movflags", "+faststart", OUT], check=True); print("feito", OUT)
+subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", TMP + "/l.txt", "-c", "copy", "-movflags", "+faststart", (TMP + "/mudo.mp4") if VOZ else OUT], check=True)
+if VOZ: subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", TMP + "/mudo.mp4", "-i", VOZ, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", OUT], check=True)
+print("feito", OUT)
