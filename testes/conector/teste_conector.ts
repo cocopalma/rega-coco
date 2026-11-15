@@ -3,7 +3,7 @@ const H = { authorization: "Bearer tok-dalmar", "content-type": "application/jso
 const call = async (name: string, args: any) => (await (await fetch(B + "/mcp", { method: "POST", headers: H, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) })).json()).result;
 const tl = (await (await fetch(B + "/mcp", { method: "POST", headers: H, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) })).json()).result.tools;
 console.log("ferramentas:", tl.map((t: any) => t.name).join(","), "tipos:", tl[0].inputSchema.properties.tipo.enum.length);
-for (const tipo of ["rondas","cumprimento","meta","tempos","tempos_campos","chegadas","nunca_agua","plantas_vivas","constrangimentos","planos","percursos","limites"]) {
+for (const tipo of ["rondas","cumprimento","meta","tempos","tempos_campos","chegadas","nunca_agua","plantas_vivas","constrangimentos","tuktuks","planos","percursos","limites"]) {
   const r = await call("ler_dados", { tipo, de: "2026-11-12", ate: "2026-11-12" });
   const o = JSON.parse(r.content[0].text);
   console.log(tipo, r.isError ? "ERRO " + r.content[0].text : `total=${o.total} extra=${!!o.extra} 1.ª=${JSON.stringify(o.linhas[0]).slice(0, 230)}`);
@@ -34,3 +34,11 @@ const lote2 = Array.from({ length: 3 }, (_, i) => ({ jsonrpc: "2.0", id: i, meth
 console.log("lote de 3:", (await fetch(B + "/mcp", { method: "POST", headers: H, body: JSON.stringify(lote2) })).status);
 const tx2 = x.match(/t=([^\s]+)/)![1]; const mal = tx2.slice(0, -2) + (tx2.endsWith("AA") ? "BB" : "AA");
 console.log("assinatura alterada:", (await fetch(B + "/excel?t=" + mal)).status);
+
+// v2.3: tuk-tuks
+const tk = JSON.parse((await call("ler_dados", { tipo: "tuktuks", de: "2026-11-16", ate: "2026-11-16" })).content[0].text);
+console.log("tuktuks:", tk.total, "viagens", tk.extra.viagens, JSON.stringify(tk.extra.viagens_por_tuk_tuk), "sem registo", tk.extra.chegadas_sem_tuk_tuk_registado, JSON.stringify(tk.linhas[0]));
+console.log("tuktuks filtro senga:", JSON.parse((await call("ler_dados", { tipo: "tuktuks", de: "2026-11-16", comunidade: "senga" })).content[0].text).total);
+console.log("folha Tuk-tuks:", JSON.stringify(XLSX.utils.sheet_to_json(wb.Sheets["Tuk-tuks"]).slice(0, 2)));
+const ok = tk.total === 4 && tk.extra.viagens === 2 && tk.extra.viagens_por_tuk_tuk["VGB1"] === 1 && tk.linhas[0].hora === "07:10" && wb.SheetNames.includes("Tuk-tuks");
+console.log(ok ? "V2.3 OK" : "V2.3 FALHOU");

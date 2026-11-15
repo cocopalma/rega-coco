@@ -25,7 +25,7 @@ const TIPOS = [...TIPOS_API, ...TIPOS_PAINEL];
 const SEM_PERIODO = ["campos", "limites", "planos"];
 const BUCKETS = ["rega-fotos", "recontagem-fotos", "manutencao-fotos", "chuva-fotos", "monitoria-fotos"];
 const MAX_DIAS = 92;
-const VERSAO = "2.2";
+const VERSAO = "2.3";
 const MAX_LOTE = 20; // v2.2: pedidos num lote MCP
 
 function encodeBase64(u: Uint8Array) {

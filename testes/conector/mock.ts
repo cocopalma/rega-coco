@@ -14,6 +14,11 @@ const P: any = {
     por_equipa: [{ nome: "Alafo Arlindo Jose", lista: 40, ronda: 2, comunidade: "Quiwia", regadas_ronda: 11, rondas_concluidas: [{ fim: "2026-11-12", dias: 17, ronda: 1, inicio: "2026-10-27" }] },
       { nome: "Azize", lista: 64, ronda: 1, comunidade: "Macala", regadas_ronda: 4, rondas_concluidas: null }],
     chegadas_agua: [{ data: "2026-11-12", equipa: "Alafo Arlindo Jose", comunidade: "Quiwia", primeira_agua: "06:17" }] },
+  tuktuks: { inicio: "2026-11-15", lista: ["01", "02", "VGB1"], chegadas: [
+    { data: "2026-11-16", hora: "2026-11-16T05:10:00+00:00", equipa: "Alafo Arlindo Jose", activista_id: "a", tecnico: "Guidion", supervisor: "Raul", campo: "PR1-1", produtor: "A", comunidade: "Quiwia", zona: null, tuk: "VGB1", outro: null, chegada: "nova", viagem: true, corrigido: false },
+    { data: "2026-11-16", hora: "2026-11-16T06:40:00+00:00", equipa: "Alafo Arlindo Jose", activista_id: "a", tecnico: "Guidion", supervisor: "Raul", campo: "PR2-1", produtor: "B", comunidade: "Quiwia", zona: null, tuk: "VGB1", outro: null, chegada: "mesmo_tanque", viagem: false, corrigido: false },
+    { data: "2026-11-16", hora: "2026-11-16T07:00:00+00:00", equipa: "Biena", activista_id: "b", tecnico: "Essumaila", supervisor: "Raul", campo: "PR3-1", produtor: "C", comunidade: "Senga", zona: null, tuk: null, outro: "azul sem número", chegada: "nova", viagem: true, corrigido: false },
+    { data: "2026-11-16", hora: "2026-11-16T07:30:00+00:00", equipa: "Biena", activista_id: "b", tecnico: "Essumaila", supervisor: "Raul", campo: "PR4-1", produtor: "D", comunidade: "Senga", zona: null, tuk: null, outro: null, chegada: null, viagem: false, corrigido: false }] },
   planos: [{ plano_id: "p1", equipa: "Alafo", dia: 1, ordem: 1, campo: "PR2188981-1", comunidade: "Quiwia" }],
   percursos: [{ activista_id: "a", equipa: "Biena Bachilo Usessene", n: 5, percurso: { regas: [{ area_id: "PR032358-1", entrada_em: "2026-11-12T04:27:42+00:00", saida_em: "2026-11-12T07:57:08+00:00", plantas: 7 }],
     pontos: [[40.455955, -10.847065, 1794457647, 5], [40.455782, -10.847162, 1794457707, 2], [40.455627, -10.847267, 1794457717, 2], [40.455453, -10.848058, 1794458412, 5], [40.455555, -10.847972, 1794458500, 14]] } }],
