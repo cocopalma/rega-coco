@@ -68,6 +68,13 @@ def main(dados, base):
     ver(sum(x['campos'] for x in eq) == r['campos_regados'], f'campos regados: soma das equipas = {r["campos_regados"]}')
     ver(sum(x['plantas'] for x in eq) == r['plantas_regadas'], f'plantas regadas: soma das equipas = {r["plantas_regadas"]}')
     ver(sum(x['pessoas'] or 0 for x in com) == r['pessoas'], f'pessoas: soma das equipas que regaram = {r["pessoas"]}')
+    tk = r.get('tuktuks')
+    if tk:  # v241: tuk-tuk em cada chegada da água
+        ver(tk['com_registo'] + tk['sem_registo'] == tk['chegadas_agua'], f'tuk-tuks: com registo + sem registo = {tk["chegadas_agua"]} chegadas da água')
+        ver(tk['viagens'] + tk['mesmo_tanque'] + tk['ja_estava'] == tk['com_registo'], 'tuk-tuks: viagens + mesma água + já estava = chegadas com registo')
+        ver(sum(x['viagens'] for x in tk['por_tuk']) == tk['viagens'], f'tuk-tuks: viagens por tuk-tuk = {tk["viagens"]}')
+        ver(sum(x['viagens'] for x in tk['por_equipa']) == tk['viagens'], 'tuk-tuks: viagens por equipa = total')
+        ver(tk['chegadas_agua'] <= r['regas'], 'tuk-tuks: chegadas da água ≤ regas')
     pc = r['por_comunidade']
     ver(sum(x['plantas'] for x in pc) == r['plantas_regadas'], 'plantas por comunidade = plantas regadas')
     ver(sum(x['campos'] for x in pc) == r['campos_regados'], 'campos por comunidade = campos regados')

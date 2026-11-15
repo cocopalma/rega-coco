@@ -252,6 +252,21 @@ def gerar(d):
         cartao(n(r['campos_nunca_receberam_agua']), 'campos nunca receberam água', 'nem na app nem no WhatsApp', 'alerta'),
     ]
 
+    # Tuk-tuks (v241): viagens por tuk-tuk e por equipa, do registo de cada chegada da água
+    tk = r.get('tuktuks') or {}
+    tuk_html = ''
+    if tk.get('inicio') and d['data'] >= tk['inicio'] and tk.get('chegadas_agua'):
+        pt, pe = tk.get('por_tuk') or [], tk.get('por_equipa') or []
+        mt = max([x['viagens'] for x in pt] or [0])
+        tuk_html = ('<h3>Tuk-tuks: viagens registadas na app</h3>'
+                    + f"<p><b>{n(tk['viagens'])}</b> viagens de <b>{len(pt)}</b> tuk-tuks, em {n(tk['com_registo'])} chegadas da água com tuk-tuk registado"
+                    + (f" (não contam como viagem: {n(tk['mesmo_tanque'])} com a mesma água do campo anterior e {n(tk['ja_estava'])} em que a água já estava no campo)" if tk['mesmo_tanque'] or tk['ja_estava'] else '')
+                    + '.' + (f" <span class=\"cinz\">{n(tk['sem_registo'])} chegadas da água sem tuk-tuk registado (telefone com versão antiga da app).</span>" if tk['sem_registo'] else '') + '</p>'
+                    + ''.join(barra(e('Tuk-tuk ' + x['tuk']), x['viagens'], mt, f"{x['viagens']} viagem" if x['viagens'] == 1 else f"{x['viagens']} viagens", cor='#0b6e8a',
+                                    sub=e(', '.join(pnome(z) for z in x['equipas']))) for x in pt)
+                    + ('<p class="cinz">Por equipa: ' + e(' · '.join(f"{pnome(x['equipa'])} {x['viagens']}" + (f" ({', '.join(x['tuks'])})" if x['tuks'] else '') for x in pe if x['viagens'])) + '</p>' if any(x['viagens'] for x in pe) else '')
+                    + '<p class="cinz">Viagem = o tuk-tuk chegou com água nova. Registo feito pelo activista em cada chegada da água.</p>')
+
     # Equipas que regaram: plantas
     mx = max([x['plantas'] for x in com] or [0])
     bar_com = ''.join(barra(e(x['activista']), x['plantas'], mx,
@@ -402,6 +417,8 @@ footer{{color:var(--c);font-size:12px;margin-top:24px;border-top:1px solid var(-
 {sem_html}
 
 {'<h3>O que dificultou a rega (registado na saída)</h3><ul>' + cons_html + '</ul>' if cons_html else ''}
+
+{tuk_html}
 
 <h3>Plantas regadas por comunidade</h3>
 {bar_com_c or '<p>—</p>'}

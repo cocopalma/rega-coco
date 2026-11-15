@@ -126,6 +126,26 @@ select json_build_object(
         'nunca_receberam_agua', coalesce((select n from nunca where nunca.activista_id = e.id), 0),
         'motivos_sem_rega', e.motivos, 'constrangimentos', e.constrangimentos)
         order by e.plantas desc, e.nome), '[]') from por_eq e),
+    -- v241 (15/11/2026, Valdo): tuk-tuk em cada chegada da água. viagem = chegada 'nova' (água nova);
+    -- 'mesmo_tanque' e 'ja_estava' não contam; sem_registo = água marcada sem tuk-tuk (telefone com versão antiga)
+    'tuktuks', json_build_object(
+      'inicio', (select valor #>> '{}' from public.config where chave = 'tuktuk_inicio'),
+      'chegadas_agua', (select count(*) from rg where agua_em is not null),
+      'com_registo', (select count(*) from rg where agua_em is not null and tuk_chegada is not null),
+      'sem_registo', (select count(*) from rg where agua_em is not null and tuk_chegada is null),
+      'viagens', (select count(*) from rg where tuk_chegada = 'nova'),
+      'mesmo_tanque', (select count(*) from rg where tuk_chegada = 'mesmo_tanque'),
+      'ja_estava', (select count(*) from rg where tuk_chegada = 'ja_estava'),
+      'por_tuk', (select coalesce(json_agg(x order by x.viagens desc, x.tuk), '[]') from (
+          select coalesce(rg.tuk_codigo, nullif(trim(rg.tuk_outro), ''), 'sem código') as tuk, (rg.tuk_codigo is not null) as tem_codigo,
+                 count(*)::int as viagens, array_agg(distinct a.nome order by a.nome) as equipas
+          from rg join public.activistas a on a.id = rg.activista_id where rg.tuk_chegada = 'nova' group by 1, 2) x),
+      'por_equipa', (select coalesce(json_agg(x order by x.viagens desc, x.equipa), '[]') from (
+          select a.nome as equipa, count(*) filter (where rg.tuk_chegada = 'nova')::int as viagens,
+                 count(*) filter (where rg.tuk_chegada is null)::int as sem_registo,
+                 array_remove(array_agg(distinct coalesce(rg.tuk_codigo, nullif(trim(rg.tuk_outro), '')) order by coalesce(rg.tuk_codigo, nullif(trim(rg.tuk_outro), ''))) filter (where rg.tuk_chegada = 'nova'), null) as tuks
+          from rg join public.activistas a on a.id = rg.activista_id where rg.agua_em is not null group by 1) x)
+    ),
     'por_comunidade', (select coalesce(json_agg(x order by x.plantas desc), '[]') from (
         select a.comunidade, count(*)::int as regas, count(distinct rg.area_id)::int as campos, sum(rg.plantas_regadas)::int as plantas
         from rg join public.areas a on a.id = rg.area_id group by a.comunidade) x)
