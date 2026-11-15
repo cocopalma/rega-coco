@@ -2610,6 +2610,52 @@ function ecraAvisosLista() {
   folha(`<h2>Avisos</h2>` + r.map((x) => x.k === 'lim' ? avisoSemLimite('').replace(/onclick="\$\('#f-sit'\)/g, `onclick="fecharFolha();$('#f-sit')`) :
     `<div class="msg info"><b>${num(x.n)}</b> <span>${x.t}</span>. ${passo(x.k)}</div>`).join(''));
 }
+// v240 (15/11/2026, sugestão do Valdo pelo 💡: "mostrar um resumo por comunidade, por activista, por técnico, por supervisor. E se
+// quiser-se ir ao detalhe entra-se no detalhe"): «Resumo por» na lista dos Campos. Com qualquer filtro (nunca recebeu água, por
+// regar…), em vez da lista corrida aparece uma linha por grupo com os campos e as plantas vivas; tocar desce um nível:
+// Técnico ou Supervisor → Comunidade → Equipa → Campos; Comunidade → Equipa → Campos; Activista → Campos. Um nível com um só
+// grupo salta-se sozinho. Só muda a forma de ver; usa os campos que já estão no telefone (funciona sem rede).
+const RESUMOS = { com: ['com', 'act'], act: ['act'], tec: ['tec', 'com', 'act'], sup: ['sup', 'com', 'act'] };
+const RESUMO_NOME = { com: 'Comunidade', act: 'Activista', tec: 'Técnico', sup: 'Supervisor' };
+const podeResumo = () => !!S.perfil && !souActivista() && S.perfil.papel !== 'oficial_me' && !S.selRet;
+const chaveResumo = (niv, a) => niv === 'com' ? (a.comunidade || '') : niv === 'act' ? (a.activista_id || '') : niv === 'tec' ? tecDe(a) : supDe(a);
+const nomeResumo = (niv, k) => k ? (niv === 'act' ? nomeAct(k) : k) : null;
+const semResumo = { com: 'Sem comunidade', act: 'Sem equipa', tec: 'Sem técnico', sup: 'Sem supervisor' };
+function setResumo(m) { S.resumo = m; S.resumoCam = []; LS.set('resumoLista', m); desenharLista(); $('#res-por')?.scrollIntoView({ block: 'start' }); }
+function resumoAbrir(i) { const g = (S.resumoGrupos || [])[i]; if (!g) return; S.resumoCam = (S.resumoEf || []).concat([{ k: g.k, auto: false }]); desenharLista(); $('#res-por')?.scrollIntoView({ block: 'start' }); }
+function resumoVoltar() { const c = (S.resumoEf || []).slice(); while (c.length) { const x = c.pop(); if (!x.auto) break; } S.resumoCam = c; desenharLista(); }
+// devolve { html, linhas }: html = cabeçalho (+ grupos); linhas = campos a mostrar (null quando se mostram grupos)
+function resumoLista(linhas) {
+  if (!podeResumo()) return { html: '', linhas };
+  const modo = RESUMOS[S.resumo] ? S.resumo : '';
+  const bt = (m, t) => `<button class="${modo === m ? 'on' : ''}" onclick="setResumo('${m}')">${t}</button>`;
+  let html = `<div class="res-por" id="res-por"><span class="res-lab">Resumo por</span><div class="res-bts">${bt('', 'Lista')}${Object.keys(RESUMOS).map((m) => bt(m, RESUMO_NOME[m])).join('')}</div></div>`;
+  if (!modo) return { html, linhas };
+  const niveis = RESUMOS[modo]; let L = linhas; const ef = [];
+  const grupos = (niv, LL) => { const M = new Map(); for (const x of LL) { const k = chaveResumo(niv, x.a); if (!M.has(k)) M.set(k, []); M.get(k).push(x); } return M; };
+  // caminho escolhido (se um filtro mudou e o grupo já não existe, o caminho corta-se aí)
+  for (const passo of S.resumoCam || []) { if (ef.length >= niveis.length) break; const G = grupos(niveis[ef.length], L); if (!G.has(passo.k)) break; ef.push({ k: passo.k, auto: !!passo.auto }); L = G.get(passo.k); }
+  // um nível (que não o primeiro) com um só grupo salta-se
+  while (ef.length > 0 && ef.length < niveis.length) { const G = grupos(niveis[ef.length], L); if (G.size !== 1) break; const k = [...G.keys()][0]; ef.push({ k, auto: true }); L = G.get(k); }
+  S.resumoEf = ef;
+  const vivas = (LL) => LL.reduce((t, x) => t + (x.a.vivas || 0), 0);
+  const nm = (niv, k) => nomeResumo(niv, k) != null ? `<span class="sem-trad">${esc(nomeResumo(niv, k))}</span>` : `<span>${semResumo[niv]}</span>`;
+  if (ef.length) html += `<button class="res-volta" id="res-volta" onclick="resumoVoltar()">‹ ${ef.map((x, i) => (i === 0 ? `<span>${RESUMO_NOME[niveis[0]]}</span>: ` : '') + nm(niveis[i], x.k)).join(' › ')}</button>`;
+  html += `<div class="res-tot" id="res-tot"><b>${num(L.length)}</b> <span>${L.length === 1 ? 'campo' : 'campos'}</span> · <b>${num(vivas(L))}</b> <span>plantas vivas</span></div>`;
+  if (ef.length >= niveis.length) { S.resumoGrupos = []; return { html, linhas: L }; }
+  const niv = niveis[ef.length], G = [...grupos(niv, L)].map(([k, LL]) => ({ k, LL, v: vivas(LL) })).sort((x, y) => y.LL.length - x.LL.length || y.v - x.v || String(x.k).localeCompare(String(y.k)));
+  S.resumoGrupos = G.map((g) => ({ k: g.k }));
+  const max = Math.max(1, ...G.map((g) => g.LL.length));
+  const lista = (arr) => arr.slice(0, 4).map((c) => `<span class="sem-trad">${esc(c)}</span>`).join(' · ') + (arr.length > 4 ? ` · +${arr.length - 4}` : '');
+  html += G.map((g, i) => {
+    const eq = new Set(g.LL.map((x) => x.a.activista_id).filter(Boolean)), coms = [...new Set(g.LL.map((x) => x.a.comunidade || '').filter(Boolean))].sort();
+    const det = niv === 'act' || !eq.size ? '' : ` · <b>${num(eq.size)}</b> <span>${eq.size === 1 ? 'equipa' : 'equipas'}</span>`;
+    return `<button class="res-g" data-k="${esc(String(g.k))}" onclick="resumoAbrir(${i})"><span class="res-n"><span class="res-nome">${niv === 'com' ? '📍 ' : ''}${nm(niv, g.k)}</span><b class="res-c">${num(g.LL.length)}</b></span>
+      <span class="res-d"><b>${num(g.v)}</b> <span>plantas vivas</span>${det}</span>${niv !== 'com' && coms.length ? `<span class="res-d">📍 ${lista(coms)}</span>` : ''}
+      <span class="res-bar"><i style="width:${Math.max(3, Math.round(100 * g.LL.length / max))}%"></i></span></button>`;
+  }).join('') + (G.length ? '' : '<p class="pequeno">Sem campos com estes filtros.</p>');
+  return { html, linhas: null };
+}
 function desenharLista() {
   if (modoManut()) return desenharListaManut();
   const amb = $('#f-ambito').value, com = $('#f-com').value, sit = $('#f-sit').value, txt = $('#f-txt').value.trim().toLowerCase();
@@ -2639,18 +2685,19 @@ function desenharLista() {
   $('#f-acc').style.display = podeVoltarRega() || podeRetirarVarios() ? '' : 'none';
   // C3: os avisos numa só linha
   const av = avisosLista(sit);
+  const res = resumoLista(linhas); if (res.linhas) linhas = res.linhas;   // v240: «Resumo por»
   $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
     (av.length ? `<button class="av-linha" id="av-lista" onclick="ecraAvisosLista()"><span>${av.map((x) => `<b>${num(x.n)}</b> <span>${x.t}</span>`).join(' · ')}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>` : '') +
     (S.selRet ? `<div class="msg info" id="sel-ret" style="background:#fff6e5;color:#5d3a00;position:sticky;top:0;z-index:5"><b>🗑 Retirar vários campos da rega</b><br><span>Toque nos campos para os escolher. Todos ficam com o mesmo motivo e a mesma justificação.</span><br>
       <b>${S.selRet.size}</b> <span>campos escolhidos</span>
       <div class="chips" style="margin-top:6px"><button class="chip" onclick="retirarTodosMostrados()">Escolher todos os da lista</button>${S.selRet.size ? '<button class="chip" onclick="S.selRet=new Set();desenharLista()">Limpar</button>' : ''}</div>
       <button class="btn aviso" ${S.selRet.size ? '' : 'disabled'} onclick="ecraRetirar([...S.selRet])">Continuar</button><button class="btn sec" onclick="retirarVarios(false)">Cancelar</button></div>` : '') +
-    `<p class="pequeno">${linhas.length} <span>campos</span> · <span>primeiro os que nunca receberam água, depois os que estão há mais tempo sem água</span></p>` +
+    res.html + (res.linhas ? `<p class="pequeno">${linhas.length} <span>campos</span> · <span>primeiro os que nunca receberam água, depois os que estão há mais tempo sem água</span></p>` +
     linhas.slice(0, 300).map(({ a, s, d, nun }) => `<div class="item${S.selRet && S.selRet.has(a.id) ? ' sel-ret' : ''}" data-id="${esc(a.id)}">${S.selRet ? (podeRetirar(a) ? `<input type="checkbox" class="cx-ret" ${S.selRet.has(a.id) ? 'checked' : ''} tabindex="-1">` : '<span class="cx-ret-no" title="Fora da sua lista">—</span>') : ''}<div class="it-c">
       <div class="it-cab"><div class="nome">${esc(a.produtor)}</div><span class="tag t-${s.cod}">${s.txt}</span></div>
       <div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
       <div class="it-tags">${nun ? '<span class="tag t-nunca">💧 <span>Nunca recebeu água</span></span>' : ''}${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${apoioDoCampo(a.id) ? `<span class="tag t-outra">🤝 <span>Apoio de</span> <span class="sem-trad">${esc(nomeAct(apoioDoCampo(a.id).ajuda_activista_id))}</span></span>` : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}</div>
-      </div>${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '');
+      </div>${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '') : '');
 }
 
 // ---------- mapa de plantas (15/10/2026, pedido do Dalmar; teste com gestor/director, supervisores e técnicos) ----------
@@ -6717,6 +6764,7 @@ function mostrarApp() {
   // desde 18/10/2026 (Valdo) o servidor só manda ao activista os seus campos: o filtro "As minhas / Todas" deixa de ter sentido
   const lp = ['supervisor', 'tecnico'].includes(papel);
   S.filtro = lp ? LS.get('filtroSup', 'meus') : 'todas';
+  S.resumo = LS.get('resumoLista', '') || ''; S.resumoCam = [];   // v240
   $('#f-ambito').value = S.filtro; $('#f-ambito').style.display = lp ? '' : 'none';
   $('#leg-teste').style.display = (PODE_REGAR.includes(papel) && papel !== 'activista') || VER_TESTES_EQ.includes(papel) ? '' : 'none';
   const opTq = document.querySelector('#f-sit option[value="testeq"]'); if (opTq) opTq.hidden = !VER_TESTES_EQ.includes(papel);

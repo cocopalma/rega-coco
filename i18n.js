@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (LINGUA === 'pt') return;
   document.documentElement.lang = LINGUA;
   const D = {
+    // v240
+    "Resumo por": "Summary by", "Lista": "List", "Sem comunidade": "No community", "Sem equipa": "No team", "Sem supervisor": "No supervisor", "equipa": "team", "Sem campos com estes filtros.": "No fields with these filters.",
     // cc-manutencao-15h30
     "Ainda sem rega · pode começar até às 15:30": "No watering yet · can start until 15:30", "Activar horas extras hoje para a equipa de": "Activate overtime today for the team of",
     // cc-manutencao-etiquetas

@@ -3,6 +3,8 @@
    D: frases exactas (chave = texto em português). R: frases com partes variáveis (as mesmas expressões do inglês). */
 'use strict';
 window.I18N_SW_D = {
+    // v240
+    "Resumo por": "Muhtasari kwa", "Lista": "Orodha", "Sem comunidade": "Hakuna jamii", "Sem equipa": "Hakuna timu", "Sem supervisor": "Hakuna msimamizi", "equipa": "timu", "Sem campos com estes filtros.": "Hakuna mashamba kwa vichujio hivi.",
     // cc-manutencao-15h30
     "Ainda sem rega · pode começar até às 15:30": "Bado hakuna umwagiliaji · inaweza kuanza hadi saa 15:30", "Activar horas extras hoje para a equipa de": "Washa saa za ziada leo kwa timu ya",
     // cc-manutencao-etiquetas
