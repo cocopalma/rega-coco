@@ -428,6 +428,7 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'planta_est' ? await sb.rpc('estado_planta', { p_id: x.planta_id, p_estado: x.estado, p_cavaroda: x.cavaroda, p_mulching: x.mulching, p_em: x.em })
         : x.tipo === 'planta_rem' ? await sb.rpc('remover_planta', { p_id: x.planta_id, p_em: x.em })
         : x.tipo === 'plantas_rega' ? await sb.rpc('corrigir_plantas_rega', { p_id: x.registo_id, p_plantas: x.plantas, p_motivo: x.motivo, p_em: x.em })
+        : x.tipo === 'tuk_rega' ? await sb.rpc('corrigir_tuk_rega', { p_id: x.registo_id, p_codigo: x.codigo, p_outro: x.outro, p_chegada: x.chegada, p_motivo: x.motivo, p_em: x.em })   // v241
         : x.tipo === 'aval_sug' ? await sb.rpc('avaliar_sugestao', { p_id: x.sug_id, p_estado: x.estado, p_nota: x.nota })
         : x.tipo === 'com_act' ? await sb.rpc('definir_comunidade_activista', { p_activista: x.activista_id, p_comunidade: x.comunidade })
         : x.tipo === 'membro' ? await sb.rpc('gravar_membro', { p_id: x.membro_id, p_activista: x.activista_id, p_nome: x.nome, p_activo: x.activo, p_motivo: x.motivo || null })
@@ -514,6 +515,7 @@ async function carregarTudo() {
   if (!lc.error && Array.isArray(lc.data)) { S.comunidades = lc.data; LS.set('comunidades', S.comunidades); }
   if (!po.error && Array.isArray(po.data)) { S.pocos = po.data; LS.set('pocos', S.pocos); }
   if (pv && !pv.error && Array.isArray(pv.data)) { S.pluvs = pv.data; LS.set('pluvs', S.pluvs); }
+  carregarTuks();
   if (!qm.error && Array.isArray(qm.data)) { S.queimadas = qm.data; LS.set('queimadas', S.queimadas); }
   if (!rc.error && Array.isArray(rc.data)) { S.recont = rc.data; LS.set('recont', S.recont); }
   if (['me', 'gestor'].includes(p.data.papel)) oficiais().catch(() => {});
@@ -580,7 +582,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.pluvs = LS.get('pluvs', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []); S.autoriz = LS.get('autoriz', []); S.fechSemPl = LS.get('fechSemPl', []); S.expansao = LS.get('expansao', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.pluvs = LS.get('pluvs', []); S.tuks = LS.get('tuks', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []); S.autoriz = LS.get('autoriz', []); S.fechSemPl = LS.get('fechSemPl', []); S.expansao = LS.get('expansao', []);
   return !!(S.perfil && S.areas.length);
 }
 
@@ -3424,7 +3426,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
     else if (x.tipo === 'aprovar') aplicarAprovacao(a, x.aprovar, x.motivo);
     else if (x.tipo === 'poligono' && x.proposta) { a.poligono_proposto = x.pontos; a.area_m2_proposta = x.area_m2; a.proposta_em = x.medido_em; }
     else if (x.tipo === 'poligono') { a.limites_abertos = false; a.poligono = x.pontos; a.area_m2 = x.area_m2; if (a.latitude == null) { const c = centroPontos(x.pontos); a.latitude = c[1]; a.longitude = c[0]; } }
-    else if (x.tipo === 'plantas_rega') {}                          // correcção das plantas de uma rega: não muda o campo
+    else if (x.tipo === 'plantas_rega' || x.tipo === 'tuk_rega') {}                          // correcção das plantas de uma rega: não muda o campo
     else if (['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'retirar'].includes(x.tipo)) {}           // resposta a uma sugestão, comunidade do activista: não mudam o campo
     else if (!String(x.tipo).startsWith('planta')) a.activista_id = x.activista_id; }
   for (const x of LS.get('filaRecG', [])) if (x.op === 'validar' && x.sim) { const a = lista.find((y) => y.id === x.area_id); if (a) a.vivas = x.vivas; }   // validação por enviar
@@ -3443,12 +3445,12 @@ function abrirFicha(id, nota = '') {
   if (ac && ac.area_id === a.id) acc = fichaActCurso(ac);
   else if (ac) acc = `<div class="msg info">🌱 <span>Tem a cava-roda e o mulching de outro campo em curso. Termine primeiro.</span></div><button class="btn sec" onclick="abrirFicha('${esc(ac.area_id)}')">Abrir o campo em curso</button>`;
   else if (emCurso && emCurso.area_id === a.id) acc = (emCurso.motivo_tecnico ? `<div class="msg info">🤝 <span>Rega pela equipa: conta na ronda da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>.</div>` : '') + (emCurso.agua_em
-      ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>`
+      ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>${emCurso.tuk ? `<div class="msg info"><span>🛺 Tuk-tuk:</span> <b class="sem-trad">${esc(tukNome(emCurso.tuk))}</b></div>` : ''}`
       : emCurso.sem_vivas
       ? `<div class="msg info">🥀 <span>Sem plantas vivas para regar: tire a fotografia das plantas mortas ou secas e marque a saída com 0 plantas regadas.</span></div>
          <button class="btn sec" onclick="semVivas(false)">Afinal há plantas vivas para regar</button>`
-      : `<button class="btn" onclick="marcarAgua(false)">💧 Chegou a água (tuk-tuk) agora</button>
-         <button class="btn sec" onclick="marcarAgua(true)">A água já estava no campo quando chegámos</button>
+      : `<button class="btn" onclick="pedirTuk(false)">💧 Chegou a água (tuk-tuk) agora</button>
+         <button class="btn sec" onclick="pedirTuk(true)">A água já estava no campo quando chegámos</button>
          <button class="btn sec" onclick="semVivas(true)">🥀 Não há plantas vivas para regar (mudas mortas ou secas)</button>`) + cartaoFotosRega(emCurso) +
     `<button class="btn aviso" onclick="ecraSaida()">Terminei — marcar saída</button>
      <button class="btn sec" onclick="ecraNaoRegou()">🚫 Não houve rega neste campo</button>` +
@@ -3671,8 +3673,60 @@ function confirmarAlerta() {
   LS.del('pendenteAlerta'); LS.set('emCurso', ent);
   ecraFotoRega('entrada', `<div class="msg ok">Entrada marcada às ${fmtHora(ent.entrada_em)} (campo fora da lista).</div>`);
 }
-function marcarAgua(jaEstava) {
+// ---------- Tuk-tuk em cada chegada da água (v241, 15/11/2026, Valdo: "tem de ficar registado, todos os dias, que tuk-tuk serviu que
+// equipa"; "O código do tuk-tuk vem escrito no tuk-tuk. Tendo uma lista dropdown facilita") ----------
+// Os códigos vêm da tabela tuktuks (do painel operacional do Dalmar) e ficam no telefone (funciona sem rede). Cada «Chegou a água
+// agora» é uma viagem do tuk-tuk; não conta como viagem nova: «a água já estava no campo» e o mesmo tuk-tuk com a mesma água do
+// campo anterior da equipa (a app pergunta). Sem lista no telefone (servidor antigo), a água marca-se como antes, sem tuk-tuk.
+async function carregarTuks() {
+  try { const r = await sb.from('tuktuks').select('codigo').eq('activo', true).order('ordem'); if (!r.error && Array.isArray(r.data) && r.data.length) { S.tuks = r.data.map((x) => x.codigo); LS.set('tuks', S.tuks); } } catch {}
+}
+const tukNome = (t) => (t && (t.codigo || t.outro)) || '';
+const tukDeHoje = (act) => { const u = LS.get('tukUlt'); return u && u.data === hojeISO() && u.act === (act || '') ? u.codigo : null; };
+function opcoesTuk() {
+  const rec = (LS.get('tukRec', []) || []).filter((c) => (S.tuks || []).includes(c)), resto = (S.tuks || []).filter((c) => !rec.includes(c));
+  const op = (c) => `<option value="${esc(c)}">${esc(c)}</option>`;
+  return `<option value="">— Escolha o tuk-tuk —</option>` + (rec.length ? `<optgroup label="Usados por esta equipa">${rec.map(op).join('')}</optgroup><optgroup label="Todos">${resto.map(op).join('')}</optgroup>` : resto.map(op).join(''))
+    + `<option value="?">Não sei o código / outro</option>`;
+}
+function campoTuk(jaEstava, act) {
+  return `<label>${jaEstava ? 'Que tuk-tuk deixou a água? (o código está escrito no tuk-tuk)' : 'Que tuk-tuk trouxe a água? (o código está escrito no tuk-tuk)'}<select id="tk-cod" data-ja="${jaEstava ? 1 : 0}" data-act="${esc(act || '')}" onchange="mudouTuk()">${opcoesTuk()}</select></label>
+    <label id="tk-out-l" style="display:none">Escreva o que sabe do tuk-tuk (ou «não sei»)<input id="tk-out" type="text" maxlength="60"></label>
+    <div id="tk-mesmo" hidden><div class="msg info"><span>É o mesmo tuk-tuk do campo anterior.</span> <b>Trouxe água nova ou é a mesma água do campo anterior?</b></div>
+      <div class="chips"><button type="button" class="chip" data-v="nova" onclick="escolheTanque(this)">Trouxe água nova (viagem nova)</button><button type="button" class="chip" data-v="mesmo_tanque" onclick="escolheTanque(this)">É a mesma água do campo anterior</button></div></div>`;
+}
+function mudouTuk() {
+  const el = $('#tk-cod'); if (!el) return; const v = el.value, ja = el.dataset.ja === '1';
+  $('#tk-out-l').style.display = v === '?' ? '' : 'none';
+  $('#tk-mesmo').hidden = ja || !v || v === '?' || tukDeHoje(el.dataset.act) !== v;
+}
+function escolheTanque(b) { document.querySelectorAll('#tk-mesmo .chip').forEach((x) => x.classList.toggle('on', x === b)); }
+function lerTuk() {                                              // null = falta escolher (já avisou)
+  const el = $('#tk-cod'); if (!el) return undefined; const v = el.value, ja = el.dataset.ja === '1';
+  if (!v) { alert('Escolha o tuk-tuk. O código está escrito no tuk-tuk.'); el.focus(); return null; }
+  let outro = null;
+  if (v === '?') { outro = $('#tk-out').value.trim(); if (outro.length < 2) { alert('Escreva o que sabe do tuk-tuk (ou «não sei»).'); $('#tk-out').focus(); return null; } }
+  let chegada = ja ? 'ja_estava' : 'nova';
+  if (!ja && !$('#tk-mesmo').hidden) { const on = document.querySelector('#tk-mesmo .chip.on'); if (!on) { alert('Diga se o tuk-tuk trouxe água nova ou se é a mesma água do campo anterior.'); return null; } chegada = on.dataset.v; }
+  return { codigo: v === '?' ? null : v, outro, chegada };
+}
+function guardarTukUsado(t, act) {
+  if (!t || !t.codigo) return;
+  LS.set('tukRec', [t.codigo, ...(LS.get('tukRec', []) || []).filter((c) => c !== t.codigo)].slice(0, 5));
+  if (t.chegada !== 'ja_estava') LS.set('tukUlt', { data: hojeISO(), act: act || '', codigo: t.codigo });
+}
+function pedirTuk(jaEstava) {
   const ent = LS.get('emCurso'); if (!ent) return;
+  if (!(S.tuks || []).length) return marcarAgua(jaEstava);
+  const a = S.areas.find((x) => x.id === ent.area_id) || {}, act = S.perfil.activista_id || a.activista_id || '';
+  folha(`<h2>${jaEstava ? 'A água já estava no campo' : '💧 Chegou a água'}</h2><p class="pequeno sem-trad">${esc(a.produtor || '')}</p>${campoTuk(jaEstava, act)}
+    <button class="btn" onclick="confirmarTuk(${jaEstava ? 'true' : 'false'})">Confirmar</button>
+    <button class="btn sec" onclick="abrirFicha('${esc(ent.area_id)}')">Voltar</button>`);
+}
+function confirmarTuk(jaEstava) { const t = lerTuk(); if (t === null) return; marcarAgua(jaEstava, t); }
+function marcarAgua(jaEstava, tuk) {
+  const ent = LS.get('emCurso'); if (!ent) return;
+  if (tuk) { ent.tuk = tuk; const a = S.areas.find((x) => x.id === ent.area_id) || {}; guardarTukUsado(tuk, S.perfil.activista_id || a.activista_id || ''); }
   ent.agua_em = jaEstava ? ent.entrada_em : new Date().toISOString();
   let nota = '';
   if (!jaEstava && ent.fotos?.rega && ent.fotos.rega < ent.agua_em) { delete ent.fotos.rega; if (ent.fotos_meta) delete ent.fotos_meta.rega; nota = `<div class="msg erro">A fotografia da rega foi tirada antes de chegar a água. Tire-a outra vez, agora com água.</div>`; }
@@ -3764,7 +3818,7 @@ function ecraSaida(msg = '') {
    ${(() => { const b = baseSaida(a); return b.ja ? `<div class="msg info">⏳ <span>Campo por terminar: já se regaram</span> ${num(b.ja)} <span>plantas nesta ronda. Faltam</span> ${num(b.resta)}. <span>Escreva só as plantas que regou agora.</span></div>` : ''; })()}
    <label>Pessoas que regaram este campo<input id="s-pessoas" type="number" inputmode="numeric" min="1" max="30" value="${(ent.motivo_tecnico && presTec(a.activista_id) ? presTec(a.activista_id).pessoas || '' : jornadaHoje()?.pessoas) ?? ''}"></label>
    ${ent.sem_vivas ? '' : ent.agua_em ? `<p class="pequeno">Água no campo às ${fmtHora(ent.agua_em)}.</p>`
-     : `<label>Hora a que chegou a água (tuk-tuk)<input id="s-agua" type="time"></label><p class="pequeno">Obrigatória: entre a entrada (${fmtHora(ent.entrada_em)}) e a fotografia da rega${ent.fotos?.rega ? ` (${fmtHora(ent.fotos.rega)})` : ''}. Se não chegou água, volte e use «🚫 Não houve rega neste campo».</p>`}
+     : `${(S.tuks || []).length ? campoTuk(false, S.perfil.activista_id || a.activista_id || '') : ''}<label>Hora a que chegou a água (tuk-tuk)<input id="s-agua" type="time"></label><p class="pequeno">Obrigatória: entre a entrada (${fmtHora(ent.entrada_em)}) e a fotografia da rega${ent.fotos?.rega ? ` (${fmtHora(ent.fotos.rega)})` : ''}. Se não chegou água, volte e use «🚫 Não houve rega neste campo».</p>`}
    <label>O que dificultou a rega neste campo?</label><p class="pequeno">Pode escolher mais do que um. Se nada dificultou, não escolha nenhum.</p>
    <div id="s-falta"></div>
    <div class="chips" id="s-chips">${TIPOS.map(([k, t, d]) => `<button class="chip op" data-k="${k}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
@@ -3838,6 +3892,7 @@ async function marcarSaida() {
   const mortas = tipos.includes('mudas_secas') ? parseInt($('#s-mortas').value, 10) : null;
   if (tipos.includes('mudas_secas') && !(mortas >= 0 && mortas <= 20000)) { alert('Escreva quantas plantas encontrou secas ou mortas.'); $('#s-mortas').focus(); return; }
   if (ent.sem_vivas && !(tipos.includes('mudas_secas') && mortas > 0)) { alert('Sem plantas vivas: escolha «Mudas secas ou mortas» e escreva quantas plantas encontrou mortas ou secas.'); return; }
+  if ($('#s-agua') && $('#tk-cod')) { const tk = lerTuk(); if (tk === null) return; ent.tuk = tk; guardarTukUsado(tk, S.perfil.activista_id || a.activista_id || ''); }
   ent.plantas_escritas = String(plantas); ent.rascSaida = { pessoas, tipos, obs, agua: hAgua || '', mortas }; LS.set('emCurso', ent);   // se o GPS falhar, o ecrã volta preenchido
   folha(FOLHA_GPS('A confirmar que ainda está no campo.'));
   // v118 (Razaque: "quando tento gravar volta para a página anterior"): a razão fica escrita no ecrã, não num aviso que desaparece
@@ -3855,6 +3910,7 @@ async function marcarSaida() {
     plano_id: ent.plano_id || null, plano_dia: ent.plano_dia ?? null, fora_itinerario: ent.fora_itinerario ?? null, motivo_itinerario: ent.motivo_itinerario || null,
     area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null, motivo_sugestao: ent.motivo_sugestao || null,
     motivo_repetir: ent.motivo_repetir || null, motivo_tecnico: ent.motivo_tecnico || null,
+    ...(ent.tuk && ent.agua_em ? { tuk_codigo: ent.tuk.codigo || null, tuk_outro: ent.tuk.outro || null, tuk_chegada: ent.tuk.chegada } : {}),
     criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista' && !porEquipa(a), observacao: obs || null,
     // v154: false = rega a meio (faltam plantas e o motivo não é só mudas secas/mortas): o campo continua por terminar na ronda
     campo_fechado: hojeISO() < POR_TERMINAR_INICIO ? null : ent.motivo_repetir || ent.sem_vivas ? true : !(base > 0 && plantas < base && !tipos.every((t) => FECHA_COM.includes(t))),
@@ -5260,12 +5316,14 @@ async function regasDoCampo(id) {
   if (el && acs.length && (r.error || !Array.isArray(r.data) || !r.data.length)) { el.innerHTML = `<div class="cartao" style="margin-top:10px">${blocoAcomp(acs, null)}</div>`; return; }
   if (r.error || !el || !Array.isArray(r.data) || !r.data.length) return;
   for (const x of LS.get('filaAlt', [])) if (x.tipo === 'plantas_rega') { const v = r.data.find((y) => y.id === x.registo_id); if (v) { v.pendente = { era: v.plantas_regadas }; v.plantas_regadas = x.plantas; } }
+  for (const x of LS.get('filaAlt', [])) if (x.tipo === 'tuk_rega') { const v = r.data.find((y) => y.id === x.registo_id); if (v) { v.tuk_codigo = x.codigo; v.tuk_outro = x.outro; v.tuk_chegada = x.chegada; v.tukPend = true; } }
   (S.regasCampo ||= {})[id] = r.data;
   const ar = S.areas.find((x) => x.id === id), podeCorr = PODE_CORRIGIR_PLANTAS.includes(S.perfil?.papel) && (!ar || meuCampo(ar));
   const bt = (v, t, rot) => fotoVisivel(v['foto_' + t]) ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(v['foto_' + t])}', '${esc(rot)} · ${esc(fmtData(v.data))} ${esc(fmtHora(v['foto_' + t + '_em'] || v.entrada_em))} · ${esc(v.quem || '')}')">📷 ${rot}</button>` : '';
   el.innerHTML = `<div class="cartao" style="margin-top:10px"><h2>Regas deste campo</h2>` + r.data.map((v) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
       <div class="lin" style="border:0;padding:0"><span>${fmtData(v.data)} · ${fmtHora(v.entrada_em)}–${v.saida_em ? fmtHora(v.saida_em) : '…'}${v.teste ? ' <span class="tag t-teste">teste</span>' : ''}</span><b>${num(v.plantas_regadas)} plantas</b></div>
       <div class="pequeno">${esc(v.quem || '')}</div>
+      ${linhaTukRega(v, id, podeCorr)}
       ${v.motivo_tecnico ? `<div class="pequeno">🤝 <span>Registada por</span> <b class="sem-trad">${esc(v.registada_por || '')}</b> <span>pela equipa:</span> <span class="sem-trad">${esc(v.motivo_tecnico)}</span></div>` : ''}
       ${v.motivo_repetir ? `<div class="pequeno">🔁 <span>Regado outra vez antes de acabar a ronda:</span> <span class="sem-trad">${esc(v.motivo_repetir)}</span></div>` : ''}
       ${v.pendente ? `<div class="pequeno">✏️ <span>Correcção no telefone: é enviada quando houver rede.</span> <span>Antes:</span> <span>${num(v.pendente.era)} plantas</span></div>`
@@ -5598,6 +5656,36 @@ async function corrigirRegaAgora(rid, areaId, contadas) {
   const ar = S.areas.find((x) => x.id === areaId);
   if (tem() && ar && PODE_CORRIGIR_PLANTAS.includes(S.perfil?.papel) && meuCampo(ar)) return ecraCorrigirPlantas(rid, areaId, contadas);
   abrirFicha(areaId);
+}
+// v241: linha do tuk-tuk em «Regas deste campo» e correcção (técnico, supervisor e gestor; o activista não)
+const TUK_CHEG = { nova: 'viagem nova', mesmo_tanque: 'a mesma água do campo anterior', ja_estava: 'a água já estava no campo' };
+function linhaTukRega(v, areaId, podeCorr) {
+  if (!v.agua_em && !v.tuk_chegada) return '';
+  const nome = v.tuk_codigo || v.tuk_outro, bt = podeCorr && v.saida_em && (S.tuks || []).length ? `<div style="margin-top:4px"><button class="chip" onclick="ecraCorrigirTuk('${esc(v.id)}','${esc(areaId)}')">🛺 Corrigir o tuk-tuk</button></div>` : '';
+  return `<div class="pequeno">💧 <span>Água às</span> ${v.agua_em ? fmtHora(v.agua_em) : '—'} · 🛺 ${nome ? `<b class="sem-trad">${esc(nome)}</b>${v.tuk_chegada && v.tuk_chegada !== 'nova' ? ` · <span>${TUK_CHEG[v.tuk_chegada] || ''}</span>` : ''}` : '<span>sem tuk-tuk registado</span>'}${v.tukPend ? ' · <span>Correcção no telefone: é enviada quando houver rede.</span>' : v.tuk_corrigido_em ? ' · <span>corrigido</span>' : ''}${bt}</div>`;
+}
+function ecraCorrigirTuk(rid, areaId) {
+  const v = (S.regasCampo?.[areaId] || []).find((x) => x.id === rid), a = S.areas.find((x) => x.id === areaId);
+  if (!v || !a) return;
+  folha(`<h2>🛺 Corrigir o tuk-tuk</h2><p class="pequeno">${esc(a.produtor)} · ${fmtData(v.data)} · ${fmtHora(v.entrada_em)}–${fmtHora(v.saida_em)} · ${esc(v.quem || '')}</p>
+    <div class="lin"><span>Tuk-tuk gravado</span><b class="sem-trad">${esc(v.tuk_codigo || v.tuk_outro || '—')}</b></div>
+    <label>Tuk-tuk certo<select id="ct-cod" onchange="$('#ct-out-l').style.display = this.value === '?' ? '' : 'none'">${opcoesTuk()}</select></label>
+    <label id="ct-out-l" style="display:none">Escreva o que sabe do tuk-tuk (ou «não sei»)<input id="ct-out" type="text" maxlength="60"></label>
+    <label>Como chegou a água<select id="ct-cheg"><option value="nova">O tuk-tuk chegou com água nova (viagem nova)</option><option value="mesmo_tanque">A mesma água do campo anterior</option><option value="ja_estava">A água já estava no campo</option></select></label>
+    <label>Motivo da correcção<textarea id="ct-mot" rows="2"></textarea></label>
+    <p class="pequeno">Fica registado quem corrigiu, quando, o que estava e o motivo. Funciona sem rede.</p>
+    <button class="btn" onclick="gravarCorrecaoTuk('${esc(rid)}','${esc(areaId)}')">Gravar a correcção</button>
+    <button class="btn sec" onclick="abrirFicha('${esc(areaId)}')">Voltar</button>`);
+  if (v.tuk_chegada) $('#ct-cheg').value = v.tuk_chegada;
+}
+function gravarCorrecaoTuk(rid, areaId) {
+  const c = $('#ct-cod').value, out = $('#ct-out').value.trim(), mot = $('#ct-mot').value.trim();
+  if (!c) return alert('Escolha o tuk-tuk. O código está escrito no tuk-tuk.');
+  if (c === '?' && out.length < 2) return alert('Escreva o que sabe do tuk-tuk (ou «não sei»).');
+  if (mot.length < 3) return alert('Escreva o motivo da correcção.');
+  const f = LS.get('filaAlt', []).filter((x) => !(x.tipo === 'tuk_rega' && x.registo_id === rid)); LS.set('filaAlt', f);
+  porNaFilaAlt({ tipo: 'tuk_rega', area_id: areaId, registo_id: rid, codigo: c === '?' ? null : c, outro: c === '?' ? out : null, chegada: $('#ct-cheg').value, motivo: mot, em: new Date().toISOString() });
+  abrirFicha(areaId, '<div class="msg ok">Correcção guardada.</div>');
 }
 function ecraCorrigirPlantas(rid, areaId, contadas) {
   const v = (S.regasCampo?.[areaId] || []).find((x) => x.id === rid), a = S.areas.find((x) => x.id === areaId);

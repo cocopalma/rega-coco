@@ -14,12 +14,13 @@ import * as XLSX from "npm:xlsx@0.18.5";
 //   v2.1 (13/11/2026): quadros do painel, percursos, limites e planos pela função api_painel (permissões de quem pede)
 //   v2.2 (13/11/2026): os dados e as fotografias seguem as permissões da app de quem pede (api_dados2, api_foto_ok);
 //        limite por hora também nos links e nos lotes; assinatura dos links verificada com crypto.subtle.verify.
+//   v2.3 (15/11/2026, v241 da app): quadro tuktuks (tuk-tuk em cada chegada da água) e folha «Tuk-tuks» no Excel.
 
 const TIPOS_API = ["resumo", "regas", "equipas", "dias_sem_rega", "campos", "recontagens", "manutencao", "acompanhamentos",
   "queimadas", "chuva", "monitorias", "idas_agua"];
 // v2.1 (13/11/2026, Valdo): quadros do painel, percursos GPS, limites dos campos e planos, lidos com as permissões de quem pede
 const TIPOS_PAINEL = ["rondas", "cumprimento", "meta", "tempos", "tempos_campos", "chegadas", "nunca_agua", "plantas_vivas",
-  "constrangimentos", "planos", "percursos", "limites"];
+  "constrangimentos", "tuktuks", "planos", "percursos", "limites"];
 const TIPOS = [...TIPOS_API, ...TIPOS_PAINEL];
 const SEM_PERIODO = ["campos", "limites", "planos"];
 const BUCKETS = ["rega-fotos", "recontagem-fotos", "manutencao-fotos", "chuva-fotos", "monitoria-fotos"];
@@ -137,6 +138,15 @@ function transformar(tipo: string, r: any): { linhas: any[]; extra?: any } {
         extra: { limiar_pct: r.limiar, espera_min: r.espera_min, mortas_pct: r.mortas_pct, hora_chegada: r.hora_chegada, motivo_pedido_desde: r.motivo_inicio,
           nota: "Uma linha por equipa e dia com regas. meta = 140 plantas × pessoas; pct = plantas ÷ meta. Causas (quando abaixo do limiar): tarde (1.ª entrada depois da hora combinada), espera (60 min ou mais à espera da água), agua (constrangimento de água ou avaria), mortas (muitas mudas mortas), dia_sem_rega. precisa_motivo = abaixo do limiar e sem causa; motivo = o que o técnico/supervisor escreveu. Igual ao painel › Porque não se atingiu a meta." },
       };
+    case "tuktuks": { // v2.3 (v241 da app): tuk-tuk em cada chegada da água
+      const linhas = (r.chegadas || []).map(({ activista_id: _i, tuk, outro, hora, ...x }: any) => ({ data: x.data, hora: hm(hora), tuk_tuk: tuk || outro || null, tem_codigo: !!tuk, ...x }));
+      const v = linhas.filter((x: any) => x.viagem), cont = (f: (x: any) => string) => { const m: Record<string, number> = {}; for (const x of v) { const k = f(x); m[k] = (m[k] || 0) + 1; } return m; };
+      return { linhas, extra: { registo_desde: r.inicio, tuk_tuks_na_lista: r.lista || [], viagens: v.length,
+        viagens_por_tuk_tuk: cont((x) => x.tuk_tuk || "sem código"),
+        viagens_por_dia_tuk_tuk_equipa: cont((x) => `${x.data} | ${x.tuk_tuk || "sem código"} | ${x.equipa || "?"}`),
+        chegadas_sem_tuk_tuk_registado: linhas.filter((x: any) => !x.chegada).length,
+        nota: "Uma linha por chegada da água numa rega real. viagem = true quando o tuk-tuk chegou com água nova (chegada = nova). Não contam: mesmo_tanque (a mesma água do campo anterior da equipa) e ja_estava (a água já estava no campo). chegada vazia = telefone com versão antiga da app (sem tuk-tuk registado)." } };
+    }
     case "tempos":
       return { linhas: r.equipas || [], extra: { nota: "Medianas por equipa no período: espera pela água, rega (min), ritmo (plantas por pessoa por hora), deslocação entre campos (só as deslocações; pausas à parte), distância entre campos (m). Igual ao painel › Tempo por campo e deslocação." } };
     case "tempos_campos": {
@@ -225,7 +235,7 @@ const FOLHAS: [string, string][] = [["regas", "Regas"], ["equipas", "Equipas por
   ["queimadas", "Queimadas"], ["chuva", "Chuva"], ["monitorias", "Monitorias"], ["idas_agua", "Idas à água"],
   ["rondas", "Rondas por equipa"], ["cumprimento", "Cumprimento"], ["meta", "Meta por equipa e dia"], ["tempos", "Tempos por equipa"],
   ["tempos_campos", "Tempos por campo"], ["chegadas", "Chegadas da água"], ["nunca_agua", "Nunca receberam água"],
-  ["plantas_vivas", "Plantas vivas regadas"], ["constrangimentos", "Constrangimentos"], ["planos", "Planos e itinerário"],
+  ["plantas_vivas", "Plantas vivas regadas"], ["constrangimentos", "Constrangimentos"], ["tuktuks", "Tuk-tuks"], ["planos", "Planos e itinerário"],
   ["limites", "Limites dos campos"]];
 const MAX_DIAS_PERC_EXCEL = 7;
 
@@ -386,6 +396,7 @@ Quadros do painel (os mesmos números do painel da app, com as permissões de qu
 - nunca_agua: campos na rega que nunca receberam água; extra: 1.ª água no período, retirados no período, evolução por dia.
 - plantas_vivas: por dia, plantas regadas das vivas que havia (mortas, por terminar, outras).
 - constrangimentos: constrangimentos da saída por campo.
+- tuktuks: uma linha por chegada da água: data, hora, tuk_tuk (código escrito no tuk-tuk), equipa, campo, chegada (nova = viagem do tuk-tuk; mesmo_tanque e ja_estava não contam como viagem; vazio = telefone com versão antiga); extra: viagens por tuk-tuk e por equipa e dia. As linhas de 'regas' trazem também tuk_tuk e tuk_chegada.
 Mapa e planeamento:
 - planos: planos das equipas e itinerário (uma linha por campo: plano › dia › ordem; estado e aprovações). Não usa o período.
 - percursos: percurso GPS de cada equipa num dia (um dia de cada vez): km, tempo sem registo, regas pela ordem e pontos [lon, lat, hora].
