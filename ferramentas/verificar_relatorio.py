@@ -74,7 +74,7 @@ def main(dados, base):
         ver(tk['viagens'] + tk['mesmo_tanque'] + tk['ja_estava'] == tk['com_registo'], 'tuk-tuks: viagens + mesma água + já estava = chegadas com registo')
         ver(sum(x['viagens'] for x in tk['por_tuk']) == tk['viagens'], f'tuk-tuks: viagens por tuk-tuk = {tk["viagens"]}')
         ver(sum(x['viagens'] for x in tk['por_equipa']) == tk['viagens'], 'tuk-tuks: viagens por equipa = total')
-        ver(tk['chegadas_agua'] <= r['regas'], 'tuk-tuks: chegadas da água ≤ regas')
+        ver(tk['chegadas_agua'] - tk.get('outras_voltas', 0) <= r['regas'], 'tuk-tuks: chegadas da água (sem as outras voltas) ≤ regas')
     pc = r['por_comunidade']
     ver(sum(x['plantas'] for x in pc) == r['plantas_regadas'], 'plantas por comunidade = plantas regadas')
     ver(sum(x['campos'] for x in pc) == r['campos_regados'], 'campos por comunidade = campos regados')

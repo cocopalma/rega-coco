@@ -128,24 +128,31 @@ select json_build_object(
         order by e.plantas desc, e.nome), '[]') from por_eq e),
     -- v241 (15/11/2026, Valdo): tuk-tuk em cada chegada da água. viagem = chegada 'nova' (água nova);
     -- 'mesmo_tanque' e 'ja_estava' não contam; sem_registo = água marcada sem tuk-tuk (telefone com versão antiga)
-    'tuktuks', json_build_object(
+    'tuktuks', (with tk as (
+        select rg.activista_id, rg.tuk_codigo as cod, nullif(trim(rg.tuk_outro), '') as outro, rg.tuk_chegada as cheg, false as extra
+        from rg where rg.agua_em is not null
+        union all   -- v242: «Chegou mais água» = outra volta do tuk-tuk ao mesmo campo, conta como viagem
+        select rg.activista_id, nullif(x->>'codigo', ''), nullif(trim(x->>'outro'), ''), 'nova', true
+        from rg, jsonb_array_elements(case when jsonb_typeof(rg.tuk_extra) = 'array' then rg.tuk_extra else '[]'::jsonb end) x)
+      select json_build_object(
       'inicio', (select valor #>> '{}' from public.config where chave = 'tuktuk_inicio'),
-      'chegadas_agua', (select count(*) from rg where agua_em is not null),
-      'com_registo', (select count(*) from rg where agua_em is not null and tuk_chegada is not null),
-      'sem_registo', (select count(*) from rg where agua_em is not null and tuk_chegada is null),
-      'viagens', (select count(*) from rg where tuk_chegada = 'nova'),
-      'mesmo_tanque', (select count(*) from rg where tuk_chegada = 'mesmo_tanque'),
-      'ja_estava', (select count(*) from rg where tuk_chegada = 'ja_estava'),
+      'chegadas_agua', (select count(*) from tk),
+      'com_registo', (select count(*) from tk where cheg is not null),
+      'sem_registo', (select count(*) from tk where cheg is null),
+      'viagens', (select count(*) from tk where cheg = 'nova'),
+      'outras_voltas', (select count(*) from tk where extra),
+      'mesmo_tanque', (select count(*) from tk where cheg = 'mesmo_tanque'),
+      'ja_estava', (select count(*) from tk where cheg = 'ja_estava'),
       'por_tuk', (select coalesce(json_agg(x order by x.viagens desc, x.tuk), '[]') from (
-          select coalesce(rg.tuk_codigo, nullif(trim(rg.tuk_outro), ''), 'sem código') as tuk, (rg.tuk_codigo is not null) as tem_codigo,
+          select coalesce(tk.cod, tk.outro, 'sem código') as tuk, (tk.cod is not null) as tem_codigo,
                  count(*)::int as viagens, array_agg(distinct a.nome order by a.nome) as equipas
-          from rg join public.activistas a on a.id = rg.activista_id where rg.tuk_chegada = 'nova' group by 1, 2) x),
+          from tk join public.activistas a on a.id = tk.activista_id where tk.cheg = 'nova' group by 1, 2) x),
       'por_equipa', (select coalesce(json_agg(x order by x.viagens desc, x.equipa), '[]') from (
-          select a.nome as equipa, count(*) filter (where rg.tuk_chegada = 'nova')::int as viagens,
-                 count(*) filter (where rg.tuk_chegada is null)::int as sem_registo,
-                 array_remove(array_agg(distinct coalesce(rg.tuk_codigo, nullif(trim(rg.tuk_outro), '')) order by coalesce(rg.tuk_codigo, nullif(trim(rg.tuk_outro), ''))) filter (where rg.tuk_chegada = 'nova'), null) as tuks
-          from rg join public.activistas a on a.id = rg.activista_id where rg.agua_em is not null group by 1) x)
-    ),
+          select a.nome as equipa, count(*) filter (where tk.cheg = 'nova')::int as viagens,
+                 count(*) filter (where tk.cheg is null)::int as sem_registo,
+                 array_remove(array_agg(distinct coalesce(tk.cod, tk.outro) order by coalesce(tk.cod, tk.outro)) filter (where tk.cheg = 'nova'), null) as tuks
+          from tk join public.activistas a on a.id = tk.activista_id group by 1) x)
+    )),
     'por_comunidade', (select coalesce(json_agg(x order by x.plantas desc), '[]') from (
         select a.comunidade, count(*)::int as regas, count(distinct rg.area_id)::int as campos, sum(rg.plantas_regadas)::int as plantas
         from rg join public.areas a on a.id = rg.area_id group by a.comunidade) x)

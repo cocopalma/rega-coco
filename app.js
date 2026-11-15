@@ -515,7 +515,7 @@ async function carregarTudo() {
   if (!lc.error && Array.isArray(lc.data)) { S.comunidades = lc.data; LS.set('comunidades', S.comunidades); }
   if (!po.error && Array.isArray(po.data)) { S.pocos = po.data; LS.set('pocos', S.pocos); }
   if (pv && !pv.error && Array.isArray(pv.data)) { S.pluvs = pv.data; LS.set('pluvs', S.pluvs); }
-  carregarTuks();
+  carregarTuks(); carregarTuksHoje();
   if (!qm.error && Array.isArray(qm.data)) { S.queimadas = qm.data; LS.set('queimadas', S.queimadas); }
   if (!rc.error && Array.isArray(rc.data)) { S.recont = rc.data; LS.set('recont', S.recont); }
   if (['me', 'gestor'].includes(p.data.papel)) oficiais().catch(() => {});
@@ -3445,7 +3445,7 @@ function abrirFicha(id, nota = '') {
   if (ac && ac.area_id === a.id) acc = fichaActCurso(ac);
   else if (ac) acc = `<div class="msg info">🌱 <span>Tem a cava-roda e o mulching de outro campo em curso. Termine primeiro.</span></div><button class="btn sec" onclick="abrirFicha('${esc(ac.area_id)}')">Abrir o campo em curso</button>`;
   else if (emCurso && emCurso.area_id === a.id) acc = (emCurso.motivo_tecnico ? `<div class="msg info">🤝 <span>Rega pela equipa: conta na ronda da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>.</div>` : '') + (emCurso.agua_em
-      ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>${emCurso.tuk ? `<div class="msg info"><span>🛺 Tuk-tuk:</span> <b class="sem-trad">${esc(tukNome(emCurso.tuk))}</b></div>` : ''}`
+      ? `<div class="msg ok">Água (tuk-tuk) no campo às ${fmtHora(emCurso.agua_em)}.</div>${emCurso.tuk ? `<div class="msg info"><span>🛺 Tuk-tuk:</span> <b class="sem-trad">${esc(tukNome(emCurso.tuk))}</b></div>` : ''}${linhaVoltas(emCurso)}${(S.tuks || []).length ? `<button class="btn sec" id="b-mais-agua" onclick="pedirMaisAgua()">💧 <span>Chegou mais água (outra volta do tuk-tuk)</span></button>` : ''}`
       : emCurso.sem_vivas
       ? `<div class="msg info">🥀 <span>Sem plantas vivas para regar: tire a fotografia das plantas mortas ou secas e marque a saída com 0 plantas regadas.</span></div>
          <button class="btn sec" onclick="semVivas(false)">Afinal há plantas vivas para regar</button>`
@@ -3463,6 +3463,7 @@ function abrirFicha(id, nota = '') {
     acc = (sem ? `<div class="msg info">📵 <span>${esc(nomeAct(a.activista_id))} não tem telemóvel: a rega que registar aqui conta a sério para a equipa dele.</span></div>` : '') +
       (bl ? `<div class="msg erro">💧 <span>Este campo já recebeu água. A equipa ainda tem</span> <b>${bl.length}</b> <span>campos que nunca receberam água: regue esses primeiro. Para regar este campo, o supervisor tem de autorizar (pode ser já para hoje).</span></div>
         <button class="btn" onclick="ecraBloqueioAgua('${esc(a.id)}')">💧 Ver os campos que nunca receberam água</button>`
+        : apoioMeu(a.id)?.so_actividade ? `<div class="msg info" id="ap-so-ficha">🤝 <span>Apoio só para a cava-roda e o mulching. A rega deste campo é da equipa de</span> <b class="sem-trad">${esc(nomeAct(a.activista_id))}</b>.</div>`
         : (souActivista() || sem) && !podeComecar(actDe(a)) ? `<div class="msg info" id="aviso-depois">⏰ <span>${MSG_DEPOIS}</span></div>`
         : `<button class="btn principal" onclick="marcarEntrada('${esc(a.id)}')">Cheguei — marcar entrada</button>`) +
       ((souActivista() || sem) && !dentroHora() && horasExtras(actDe(a)) ? `<p class="pequeno" style="margin:4px 0 0;text-align:center">${textoHorasExtras(horasExtras(actDe(a)))}</p>` : '') +
@@ -3623,6 +3624,7 @@ async function marcarEntrada(id, motivoIt = null, motivoSug = null) {
   if ((LS.get('semMotivo', []) || []).length) return ecraSemMotivo();   // v115: primeiro o motivo das regas fora da lista
   const a = S.areas.find((x) => x.id === id);
   const minha = souActivista() && a.activista_id === S.perfil.activista_id, apoio = apoioMeu(id);
+  if (apoio?.so_actividade) return abrirFicha(id, '<div class="msg erro">🤝 <span>Este apoio é só para a cava-roda e o mulching: a rega deste campo é da equipa dona do campo.</span></div>');
   if ((souActivista() || porEquipa(a)) && !podeComecar(actDe(a))) {        // 15:30 (14/11/2026, Valdo); o servidor também recusa
     await carregarHorasExtras();                                         // talvez o técnico já tenha activado: pergunta ao servidor
     if (!podeComecar(actDe(a))) return abrirFicha(id, `<div class="msg erro" id="msg-depois">${MSG_DEPOIS}</div>`);
@@ -3682,7 +3684,19 @@ async function carregarTuks() {
   try { const r = await sb.from('tuktuks').select('codigo').eq('activo', true).order('ordem'); if (!r.error && Array.isArray(r.data) && r.data.length) { S.tuks = r.data.map((x) => x.codigo); LS.set('tuks', S.tuks); } } catch {}
 }
 const tukNome = (t) => (t && (t.codigo || t.outro)) || '';
-const tukDeHoje = (act) => { const u = LS.get('tukUlt'); return u && u.data === hojeISO() && u.act === (act || '') ? u.codigo : null; };
+// v242 (15/11/2026, Valdo: cada equipa trabalha com um só telefone, mas o técnico ou o supervisor às vezes regista pela equipa no
+// telefone dele, que não sabe qual foi o último tuk-tuk dessa equipa): com rede, a última chegada de hoje de cada equipa vem do
+// servidor (tuks_hoje) e usa-se a mais recente entre a do telefone e a do servidor.
+async function carregarTuksHoje() {
+  if (!navigator.onLine || !['activista', 'tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel)) return;
+  try { const r = await sb.rpc('tuks_hoje'); if (!r.error && Array.isArray(r.data)) LS.set('tuksHoje', { data: hojeISO(), l: r.data }); } catch {}
+}
+const tukDeHoje = (act) => {
+  const u = LS.get('tukUlt'), loc = u && u.data === hojeISO() && u.act === (act || '') ? u : null;
+  const h = LS.get('tuksHoje'), srv = h && h.data === hojeISO() ? (h.l || []).find((x) => x.activista_id === (act || '') && x.codigo) : null;
+  if (loc && srv) return (loc.em || '') >= (srv.em ? new Date(srv.em).toISOString() : '') ? loc.codigo : srv.codigo;
+  return loc ? loc.codigo : srv ? srv.codigo : null;
+};
 function opcoesTuk() {
   const rec = (LS.get('tukRec', []) || []).filter((c) => (S.tuks || []).includes(c)), resto = (S.tuks || []).filter((c) => !rec.includes(c));
   const op = (c) => `<option value="${esc(c)}">${esc(c)}</option>`;
@@ -3713,17 +3727,49 @@ function lerTuk() {                                              // null = falta
 function guardarTukUsado(t, act) {
   if (!t || !t.codigo) return;
   LS.set('tukRec', [t.codigo, ...(LS.get('tukRec', []) || []).filter((c) => c !== t.codigo)].slice(0, 5));
-  if (t.chegada !== 'ja_estava') LS.set('tukUlt', { data: hojeISO(), act: act || '', codigo: t.codigo });
+  if (t.chegada !== 'ja_estava') LS.set('tukUlt', { data: hojeISO(), act: act || '', codigo: t.codigo, em: new Date().toISOString() });
 }
-function pedirTuk(jaEstava) {
+const TUK_ESPERA_MS = 3000;                                       // espera no máximo 3 s pela última chegada no servidor
+async function pedirTuk(jaEstava) {
   const ent = LS.get('emCurso'); if (!ent) return;
   if (!(S.tuks || []).length) return marcarAgua(jaEstava);
+  if (!jaEstava && navigator.onLine) await Promise.race([carregarTuksHoje(), new Promise((r) => setTimeout(r, TUK_ESPERA_MS))]);
   const a = S.areas.find((x) => x.id === ent.area_id) || {}, act = S.perfil.activista_id || a.activista_id || '';
   folha(`<h2>${jaEstava ? 'A água já estava no campo' : '💧 Chegou a água'}</h2><p class="pequeno sem-trad">${esc(a.produtor || '')}</p>${campoTuk(jaEstava, act)}
     <button class="btn" onclick="confirmarTuk(${jaEstava ? 'true' : 'false'})">Confirmar</button>
     <button class="btn sec" onclick="abrirFicha('${esc(ent.area_id)}')">Voltar</button>`);
 }
 function confirmarTuk(jaEstava) { const t = lerTuk(); if (t === null) return; marcarAgua(jaEstava, t); }
+// v242 (15/11/2026, Valdo: "Sim"; Shella: nas comunidades dele o tuk-tuk leva 350 L e 140 mudas pedem duas voltas): durante a rega,
+// «Chegou mais água» regista outra volta do tuk-tuk ao mesmo campo (hora e código). Cada volta é uma viagem. Não é obrigatório.
+const MAX_VOLTAS = 20;
+const linhaVoltas = (ent) => (ent.tuk_extra || []).length ? `<div class="msg info" id="tk-voltas">💧 <span>Mais água:</span> ${ent.tuk_extra.map((x) => `${fmtHora(x.em)} 🛺 <b class="sem-trad">${esc(x.codigo || x.outro || '')}</b>`).join(' · ')}
+  <div style="margin-top:4px"><button class="chip" onclick="apagarVolta()">↶ <span>Apagar a última (engano)</span></button></div></div>` : '';
+function pedirMaisAgua() {
+  const ent = LS.get('emCurso'); if (!ent || !ent.agua_em || ent.sem_vivas || !(S.tuks || []).length) return;
+  if ((ent.tuk_extra || []).length >= MAX_VOLTAS) return aviso('Já registou muitas voltas neste campo.', 'erro');
+  const a = S.areas.find((x) => x.id === ent.area_id) || {}, ult = (ent.tuk_extra || []).slice(-1)[0] || ent.tuk || {};
+  folha(`<h2>💧 Chegou mais água</h2><p class="pequeno sem-trad">${esc(a.produtor || '')}</p>
+    <p class="pequeno">Outra volta do tuk-tuk a este campo. Conta como mais uma viagem.</p>
+    <label>Que tuk-tuk trouxe a água? (o código está escrito no tuk-tuk)<select id="tk-cod" data-ja="1" onchange="$('#tk-out-l').style.display = this.value === '?' ? '' : 'none'">${opcoesTuk()}</select></label>
+    <label id="tk-out-l" style="display:none">Escreva o que sabe do tuk-tuk (ou «não sei»)<input id="tk-out" type="text" maxlength="60"></label>
+    <button class="btn" onclick="confirmarMaisAgua()">Confirmar</button>
+    <button class="btn sec" onclick="abrirFicha('${esc(ent.area_id)}')">Voltar</button>`);
+  if (ult.codigo && (S.tuks || []).includes(ult.codigo)) $('#tk-cod').value = ult.codigo;
+}
+function confirmarMaisAgua() {
+  const t = lerTuk(); if (!t) return;
+  const ent = LS.get('emCurso'); if (!ent) return;
+  ent.tuk_extra = [...(ent.tuk_extra || []), { em: new Date().toISOString(), codigo: t.codigo, outro: t.outro }];
+  LS.set('emCurso', ent);
+  const a = S.areas.find((x) => x.id === ent.area_id) || {}; guardarTukUsado({ codigo: t.codigo, chegada: 'nova' }, S.perfil.activista_id || a.activista_id || '');
+  abrirFicha(ent.area_id, '<div class="msg ok">💧 <span>Mais água registada.</span></div>');
+}
+function apagarVolta() {
+  const ent = LS.get('emCurso'); if (!ent || !(ent.tuk_extra || []).length) return;
+  if (!confirm('Apagar a última chegada de mais água registada neste campo?')) return;
+  ent.tuk_extra = ent.tuk_extra.slice(0, -1); LS.set('emCurso', ent); abrirFicha(ent.area_id);
+}
 function marcarAgua(jaEstava, tuk) {
   const ent = LS.get('emCurso'); if (!ent) return;
   if (tuk) { ent.tuk = tuk; const a = S.areas.find((x) => x.id === ent.area_id) || {}; guardarTukUsado(tuk, S.perfil.activista_id || a.activista_id || ''); }
@@ -3911,6 +3957,7 @@ async function marcarSaida() {
     area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null, motivo_sugestao: ent.motivo_sugestao || null,
     motivo_repetir: ent.motivo_repetir || null, motivo_tecnico: ent.motivo_tecnico || null,
     ...(ent.tuk && ent.agua_em ? { tuk_codigo: ent.tuk.codigo || null, tuk_outro: ent.tuk.outro || null, tuk_chegada: ent.tuk.chegada } : {}),
+    ...(ent.agua_em && (ent.tuk_extra || []).length ? { tuk_extra: ent.tuk_extra } : {}),
     criado_no_telefone_em: new Date().toISOString(), teste: S.perfil.papel !== 'activista' && !porEquipa(a), observacao: obs || null,
     // v154: false = rega a meio (faltam plantas e o motivo não é só mudas secas/mortas): o campo continua por terminar na ronda
     campo_fechado: hojeISO() < POR_TERMINAR_INICIO ? null : ent.motivo_repetir || ent.sem_vivas ? true : !(base > 0 && plantas < base && !tipos.every((t) => FECHA_COM.includes(t))),
@@ -3945,20 +3992,22 @@ async function carregarApoios() {
 }
 function cartaoApoioCampo(a) {
   const p = apoioDoCampo(a.id); if (!p) return '';
-  return `<div class="msg info">🤝 <b><span>Apoio:</span> <span class="sem-trad">${esc(p.ajuda_nome)}</span> → <span class="sem-trad">${esc(p.para_nome)}</span></b> · <span>desde</span> ${fmtData(p.inicio)}<div class="pequeno">A rega deste campo conta para a ronda da equipa dona do campo.</div></div>`;
+  return `<div class="msg info">🤝 <b><span>Apoio:</span> <span class="sem-trad">${esc(p.ajuda_nome)}</span> → <span class="sem-trad">${esc(p.para_nome)}</span></b> · <span>desde</span> ${fmtData(p.inicio)}<div class="pequeno">${p.so_actividade ? 'Apoio só para a cava-roda e o mulching: a rega deste campo continua com a equipa dona do campo.' : 'A rega deste campo conta para a ronda da equipa dona do campo.'}</div></div>`;
 }
 function cartaoApoioAct() {                                  // activista: a quem ajuda e quem o ajuda
   if (!souActivista()) return '';
   const eu = S.perfil.activista_id, l = apoiosAct().filter((p) => p.ajuda_activista_id === eu || p.para_activista_id === eu); if (!l.length) return '';
   return `<div class="cartao"><h2>🤝 Apoio entre equipas</h2>` + l.map((p) => p.ajuda_activista_id === eu
-    ? `<p><span>Está a ajudar a equipa de</span> <b class="sem-trad">${esc(p.para_nome)}</b>: ${num((p.area_ids || []).length)} <span>campos</span> (${num(p.feitas || 0)} <span>regados</span>). <span>Os campos aparecem na sua lista com 🤝.</span></p>`
-    : `<p><span>A equipa de</span> <b class="sem-trad">${esc(p.ajuda_nome)}</b> <span>está a ajudar a sua equipa:</span> ${num((p.area_ids || []).length)} <span>campos</span> (${num(p.feitas || 0)} <span>regados</span>). <span>Esses campos contam para a sua ronda.</span></p>`).join('') + '</div>';
+    ? (p.so_actividade ? `<p id="ap-so"><span>Está a ajudar a equipa de</span> <b class="sem-trad">${esc(p.para_nome)}</b> <span>na cava-roda e no mulching:</span> ${num((p.area_ids || []).length)} <span>campos</span> (${num(p.campos_actividade || 0)} <span>com trabalho registado</span>). <span>Os campos aparecem na sua lista com 🤝. Abra o campo e toque em «Cava-roda e mulching (sem rega)».</span></p>`
+      : `<p><span>Está a ajudar a equipa de</span> <b class="sem-trad">${esc(p.para_nome)}</b>: ${num((p.area_ids || []).length)} <span>campos</span> (${num(p.feitas || 0)} <span>regados</span>). <span>Os campos aparecem na sua lista com 🤝.</span></p>`)
+    : (p.so_actividade ? `<p><span>A equipa de</span> <b class="sem-trad">${esc(p.ajuda_nome)}</b> <span>está a ajudar a sua equipa na cava-roda e no mulching:</span> ${num((p.area_ids || []).length)} <span>campos</span> (${num(p.campos_actividade || 0)} <span>com trabalho registado</span>). <span>A rega desses campos continua consigo.</span></p>`
+      : `<p><span>A equipa de</span> <b class="sem-trad">${esc(p.ajuda_nome)}</b> <span>está a ajudar a sua equipa:</span> ${num((p.area_ids || []).length)} <span>campos</span> (${num(p.feitas || 0)} <span>regados</span>). <span>Esses campos contam para a sua ronda.</span></p>`)).join('') + '</div>';
 }
 function cartaoApoio() {                                     // técnico, supervisor, gestor
   const l = apoiosAct(), sg = LS.get('apoioSug', []) || [];
-  let h = `<div class="cartao"><h2>🤝 Apoio entre equipas</h2><p class="pequeno">Uma equipa que já fechou a ronda pode ajudar outra equipa a menos de 5 km. Quem activa é o técnico ou o supervisor; a app sugere.</p>`;
+  let h = `<div class="cartao"><h2>🤝 Apoio entre equipas</h2><p class="pequeno">Uma equipa que já fechou a ronda pode ajudar outra equipa a menos de 5 km. Quem activa é o técnico ou o supervisor; a app sugere.</p><p class="pequeno">Uma equipa sem campos pode ajudar outra equipa da mesma comunidade, só na cava-roda e no mulching: use «Activar outro apoio».</p>`;
   if (l.length) h += '<h3 style="font-size:14px;margin:8px 0 4px">Em curso</h3>' + l.map((p) => `<div class="item" style="display:block"><div class="nome"><span class="sem-trad">${esc(p.ajuda_nome)}</span> → <span class="sem-trad">${esc(p.para_nome)}</span></div>
-      <div class="sub">${num(p.feitas || 0)} / ${num((p.area_ids || []).length)} <span>campos regados</span> · <span>desde</span> ${fmtData(p.inicio)}${p.criado_por_nome ? ` · <span>activado por</span> <span class="sem-trad">${esc(p.criado_por_nome)}</span>` : ''}</div>
+      <div class="sub">${p.so_actividade ? `🌱 <span>Só cava-roda e mulching:</span> ${num(p.campos_actividade || 0)} / ${num((p.area_ids || []).length)} <span>campos com trabalho registado</span>` : `${num(p.feitas || 0)} / ${num((p.area_ids || []).length)} <span>campos regados</span>`} · <span>desde</span> ${fmtData(p.inicio)}${p.criado_por_nome ? ` · <span>activado por</span> <span class="sem-trad">${esc(p.criado_por_nome)}</span>` : ''}</div>
       <button class="chip" onclick="terminarApoio('${esc(p.id)}')">Terminar o apoio</button></div>`).join('');
   if (sg.length) h += '<h3 style="font-size:14px;margin:10px 0 4px">💡 Sugestões da app</h3>' + sg.slice(0, 6).map((x) => `<div class="item" style="display:block">
       <div class="nome"><span class="sem-trad">${esc(x.ajuda_nome)}</span> <span>pode ajudar</span> <span class="sem-trad">${esc(x.para_nome)}</span></div>
@@ -3983,15 +4032,22 @@ function ecraApoioEscolher() {
 async function ecraApoio(aj, pa) {
   if (!navigator.onLine) return aviso('Precisa de rede para activar um apoio.', 'erro');
   folha('<p class="pequeno">A procurar os campos…</p>');
-  const r = await sb.rpc('apoio_candidatos', { p_ajuda: aj, p_para: pa });
+  const r = await sb.rpc('apoio_candidatos2', { p_ajuda: aj, p_para: pa });
   if (r.error) return folha(`<div class="msg erro">${esc(r.error.message)}</div><button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
-  const L = r.data || [], nAj = nomeAct(aj), nPa = nomeAct(pa);
-  if (!L.length) return folha(`<h2>🤝 <span class="sem-trad">${esc(nAj)}</span> → <span class="sem-trad">${esc(nPa)}</span></h2><div class="msg info">Não há campos de ${esc(nPa)} por regar nesta ronda a menos de 5 km dos campos de ${esc(nAj)} (só contam campos com coordenada).</div><button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
-  folha(`<h2>🤝 <span class="sem-trad">${esc(nAj)}</span> → <span class="sem-trad">${esc(nPa)}</span></h2>
-    <p class="pequeno">Campos de ${esc(nPa)} por regar nesta ronda, a menos de 5 km dos campos de ${esc(nAj)}. Primeiro os nunca regados, depois os mais perto. Escolha os que a equipa de ${esc(nAj)} vai regar.</p>
-    <div class="chips" style="margin:6px 0"><button class="chip" id="ap-todos">Todos os campos</button><button class="chip" id="ap-nunca">Só os nunca regados</button><button class="chip" id="ap-nenhum">Nenhum campo</button></div>
-    <div id="ap-lista">${L.map((c) => `<label class="item" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" value="${esc(c.area_id)}" data-nunca="${c.nunca ? 1 : 0}" checked style="width:auto;margin-top:4px">
-      <span><span class="nome sem-trad">${esc(c.produtor || '')}</span><br><span class="sub"><span class="sem-trad">${esc(c.area_id)} · ${esc(c.comunidade || '')}</span> · ${num(c.plantas)} <span>plantas</span> · ${c.dist_m < 1000 ? num(c.dist_m) + ' m' : (c.dist_m / 1000).toFixed(1) + ' km'}${c.nunca ? ' · <b style="color:#c62828">nunca regado</b>' : ''}</span></span></label>`).join('')}</div>
+  // v242 (15/11/2026, Valdo: opção A para Olumbe): a equipa que ajuda não tem campos → apoio só de cava-roda e mulching,
+  // em qualquer campo de uma equipa da mesma comunidade (regado ou não, com ou sem coordenada)
+  const L = r.data?.campos || [], so = !!r.data?.so_actividade, nAj = nomeAct(aj), nPa = nomeAct(pa);
+  const cab = `<h2>🤝 <span class="sem-trad">${esc(nAj)}</span> → <span class="sem-trad">${esc(nPa)}</span></h2>`;
+  if (so && r.data.mesma_comunidade === false) return folha(`${cab}<div class="msg erro" id="ap-outra-com">A equipa de ${esc(nAj)} não tem campos: só pode ajudar uma equipa da mesma comunidade.</div><button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+  if (!L.length) return folha(`${cab}<div class="msg info">${so ? `Não há campos de ${esc(nPa)} livres para este apoio.` : `Não há campos de ${esc(nPa)} por regar nesta ronda a menos de 5 km dos campos de ${esc(nAj)} (só contam campos com coordenada).`}</div><button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+  const dist = (c) => c.dist_m == null ? '' : ' · ' + (c.dist_m < 1000 ? num(c.dist_m) + ' m' : (c.dist_m / 1000).toFixed(1) + ' km');
+  folha(`${cab}
+    ${so ? `<div class="msg info" id="ap-so-msg">🌱 <span>A equipa de ${esc(nAj)} não tem campos: este apoio é só para a cava-roda e o mulching. A rega continua com a equipa de ${esc(nPa)}.</span></div>
+      <p class="pequeno">Todos os campos de ${esc(nPa)}. Escolha os campos onde a equipa de ${esc(nAj)} vai fazer cava-roda e mulching.</p>`
+      : `<p class="pequeno">Campos de ${esc(nPa)} por regar nesta ronda, a menos de 5 km dos campos de ${esc(nAj)}. Primeiro os nunca regados, depois os mais perto. Escolha os que a equipa de ${esc(nAj)} vai regar.</p>`}
+    <div class="chips" style="margin:6px 0"><button class="chip" id="ap-todos">Todos os campos</button>${so ? '' : '<button class="chip" id="ap-nunca">Só os nunca regados</button>'}<button class="chip" id="ap-nenhum">Nenhum campo</button></div>
+    <div id="ap-lista">${L.map((c) => `<label class="item" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" value="${esc(c.area_id)}" data-nunca="${c.nunca ? 1 : 0}" ${so ? '' : 'checked'} style="width:auto;margin-top:4px">
+      <span><span class="nome sem-trad">${esc(c.produtor || '')}</span><br><span class="sub"><span class="sem-trad">${esc(c.area_id)} · ${esc(c.comunidade || '')}</span> · ${num(c.plantas)} <span>plantas</span>${dist(c)}${c.sem_coordenada ? ' · <span>sem coordenada</span>' : ''}${c.nunca ? ' · <b style="color:#c62828">nunca regado</b>' : ''}</span></span></label>`).join('')}</div>
     <p class="pequeno" id="ap-conta"></p>
     <label>Nota (opcional)<textarea id="ap-nota" rows="2" placeholder="Ex.: até a equipa ter material"></textarea></label>
     <div id="ap-msg"></div><button class="btn" id="ap-ok">Activar o apoio</button><button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
@@ -3999,7 +4055,7 @@ async function ecraApoio(aj, pa) {
   const conta = () => { const m = caixas().filter((x) => x.checked); $('#ap-conta').textContent = `${m.length} de ${L.length} campos escolhidos · ${num(m.reduce((t, x) => t + (L.find((c) => c.area_id === x.value)?.plantas || 0), 0))} plantas`; };
   caixas().forEach((x) => x.onchange = conta); conta();
   $('#ap-todos').onclick = () => { caixas().forEach((x) => x.checked = true); conta(); };
-  $('#ap-nunca').onclick = () => { caixas().forEach((x) => x.checked = x.dataset.nunca === '1'); conta(); };
+  if ($('#ap-nunca')) $('#ap-nunca').onclick = () => { caixas().forEach((x) => x.checked = x.dataset.nunca === '1'); conta(); };
   $('#ap-nenhum').onclick = () => { caixas().forEach((x) => x.checked = false); conta(); };
   $('#ap-ok').onclick = async () => {
     const ids = caixas().filter((x) => x.checked).map((x) => x.value);
@@ -4008,7 +4064,7 @@ async function ecraApoio(aj, pa) {
     $('#ap-ok').disabled = true;
     const q = await sb.rpc('criar_apoio', { p_ajuda: aj, p_para: pa, p_areas: ids, p_nota: $('#ap-nota').value.trim() || null });
     if (q.error) { $('#ap-ok').disabled = false; return ($('#ap-msg').innerHTML = `<div class="msg erro">${esc(q.error.message)}</div>`); }
-    fecharFolha(); aviso(`Apoio activado: ${nAj} vai regar ${ids.length} campos de ${nPa}. Avise as duas equipas.`, 'ok');
+    fecharFolha(); aviso(so ? `Apoio activado: ${nAj} vai fazer cava-roda e mulching em ${ids.length} campos de ${nPa}. Avise as duas equipas.` : `Apoio activado: ${nAj} vai regar ${ids.length} campos de ${nPa}. Avise as duas equipas.`, 'ok');
     await carregarApoios(); desenharLista(); desenharMapa(); if ($('#e-hoje').classList.contains('on')) desenharHoje();
   };
 }
@@ -5662,7 +5718,7 @@ const TUK_CHEG = { nova: 'viagem nova', mesmo_tanque: 'a mesma água do campo an
 function linhaTukRega(v, areaId, podeCorr) {
   if (!v.agua_em && !v.tuk_chegada) return '';
   const nome = v.tuk_codigo || v.tuk_outro, bt = podeCorr && v.saida_em && (S.tuks || []).length ? `<div style="margin-top:4px"><button class="chip" onclick="ecraCorrigirTuk('${esc(v.id)}','${esc(areaId)}')">🛺 Corrigir o tuk-tuk</button></div>` : '';
-  return `<div class="pequeno">💧 <span>Água às</span> ${v.agua_em ? fmtHora(v.agua_em) : '—'} · 🛺 ${nome ? `<b class="sem-trad">${esc(nome)}</b>${v.tuk_chegada && v.tuk_chegada !== 'nova' ? ` · <span>${TUK_CHEG[v.tuk_chegada] || ''}</span>` : ''}` : '<span>sem tuk-tuk registado</span>'}${v.tukPend ? ' · <span>Correcção no telefone: é enviada quando houver rede.</span>' : v.tuk_corrigido_em ? ' · <span>corrigido</span>' : ''}${bt}</div>`;
+  return `<div class="pequeno">💧 <span>Água às</span> ${v.agua_em ? fmtHora(v.agua_em) : '—'} · 🛺 ${nome ? `<b class="sem-trad">${esc(nome)}</b>${v.tuk_chegada && v.tuk_chegada !== 'nova' ? ` · <span>${TUK_CHEG[v.tuk_chegada] || ''}</span>` : ''}` : '<span>sem tuk-tuk registado</span>'}${v.tukPend ? ' · <span>Correcção no telefone: é enviada quando houver rede.</span>' : v.tuk_corrigido_em ? ' · <span>corrigido</span>' : ''}${Array.isArray(v.tuk_extra) && v.tuk_extra.length ? `<div>💧 <span>Mais água:</span> ${v.tuk_extra.map((x) => `${x.em ? fmtHora(x.em) : '—'} 🛺 <b class="sem-trad">${esc(x.codigo || x.outro || '')}</b>`).join(' · ')}</div>` : ''}${bt}</div>`;
 }
 function ecraCorrigirTuk(rid, areaId) {
   const v = (S.regasCampo?.[areaId] || []).find((x) => x.id === rid), a = S.areas.find((x) => x.id === areaId);

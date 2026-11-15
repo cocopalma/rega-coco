@@ -261,6 +261,7 @@ def gerar(d):
         tuk_html = ('<h3>Tuk-tuks: viagens registadas na app</h3>'
                     + f"<p><b>{n(tk['viagens'])}</b> viagens de <b>{len(pt)}</b> tuk-tuks, em {n(tk['com_registo'])} chegadas da água com tuk-tuk registado"
                     + (f" (não contam como viagem: {n(tk['mesmo_tanque'])} com a mesma água do campo anterior e {n(tk['ja_estava'])} em que a água já estava no campo)" if tk['mesmo_tanque'] or tk['ja_estava'] else '')
+                    + (f", {n(tk['outras_voltas'])} delas outra volta ao mesmo campo" if tk.get('outras_voltas') else '')
                     + '.' + (f" <span class=\"cinz\">{n(tk['sem_registo'])} chegadas da água sem tuk-tuk registado (telefone com versão antiga da app).</span>" if tk['sem_registo'] else '') + '</p>'
                     + ''.join(barra(e('Tuk-tuk ' + x['tuk']), x['viagens'], mt, f"{x['viagens']} viagem" if x['viagens'] == 1 else f"{x['viagens']} viagens", cor='#0b6e8a',
                                     sub=e(', '.join(pnome(z) for z in x['equipas']))) for x in pt)

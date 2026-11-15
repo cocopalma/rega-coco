@@ -275,10 +275,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=241"></script>
-<script src="i18n.js?v=241"></script>
+<script src="i18n-sw.js?v=242"></script>
+<script src="i18n.js?v=242"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=241"></script>
+<script src="demo.js?v=242"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -1028,7 +1028,7 @@ function desenharTuks() {
     linhas.map((o) => [fmtData(o.data), `<b class="sem-trad">${esc(o.tuk)}</b>`, esc(o.equipa), esc(o.tec || ''), num(o.v), esc(o.horas.join(' · ')), num(new Set(o.campos).size)]));
   tabela('#t-tuk', [['Data'], ['Hora'], ['Tuk-tuk'], ['Equipa (activista)'], ['Comunidade'], ['Produtor'], ['Como chegou a água']],
     [...C].reverse().map((c) => [fmtData(c.data), h(c.hora), c.tuk || c.outro ? `<b class="sem-trad">${esc(c.tuk || c.outro)}</b>` : '—', esc(c.equipa || ''), esc(c.comunidade || '') + (c.zona ? ' › ' + esc(c.zona) : ''),
-      `<span class="sem-trad">${esc(c.produtor || '')}</span> · ${esc(c.campo || '')}`, (c.chegada ? TUK_CHEG[c.chegada] : 'Sem tuk-tuk registado') + (c.corrigido ? ' · ✏️' : '')]));
+      `<span class="sem-trad">${esc(c.produtor || '')}</span> · ${esc(c.campo || '')}`, (c.outra_volta ? 'Outra volta ao mesmo campo (viagem nova)' : c.chegada ? TUK_CHEG[c.chegada] : 'Sem tuk-tuk registado') + (c.corrigido ? ' · ✏️' : '')]));
 }
 // cava-roda e mulching quando não há rega (ramo cc-manutencao)
 function desenharActividades() {
