@@ -359,7 +359,6 @@
       return { id: z.id, para_data: pd }; },
     abrir_limites: (a) => { const ar = DB.areas.find((x) => x.id === a.p_area); if (ar) ar.limites_abertos = !!a.p_abrir; return null; },   // v220
     gravar_recolha_agua: (a) => { (DB.agua ||= []).push({ id: a.p_id, activista_id: a.p_activista, em: a.p_em, data: dia(0) }); return null; },   // v235
-    atribuir_chefe_manut: () => null,   // v235 (a manutenção não entra na simulação)
     retirar_da_rega: (a) => { const ar = DB.areas.find((x) => x.id === a.p_area); if (!ar) return null; if (!ar.activa) return 'ja_retirado'; ar.activa = false; return 'retirado'; },   // v205
     cancelar_autorizacao_rega: (a) => { DB.autoriz = (DB.autoriz || []).filter((x) => x.id !== a.p_id); return null; },
     lista_comunidades: () => [...new Set(DB.areas.map((a) => a.comunidade))].sort(),

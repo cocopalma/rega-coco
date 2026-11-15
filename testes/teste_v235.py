@@ -1,6 +1,7 @@
 # v235 (12/11/2026, Valdo): «🚰 Fomos buscar água», ⚠️ de ritmo contra a mediana de todas as equipas, motivo «Fonte de água secou»
-# ao voltar a pôr um campo na rega e papel «chefe de manutenção». Servidor simulado (nada sai para o servidor verdadeiro).
-# Uso: python3 testes/teste_v235.py   (corre os 5 papéis; LING=en / sw para as outras línguas)
+# ao voltar a pôr um campo na rega. O papel «chefe de manutenção» saiu na v239 (14/11/2026): o teste confirma que não aparece.
+# Servidor simulado (nada sai para o servidor verdadeiro).
+# Uso: python3 testes/teste_v235.py   (corre os 4 papéis; LING=en / sw para as outras línguas)
 import json, subprocess, time, sys, os, datetime
 from playwright.sync_api import sync_playwright
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -106,13 +107,8 @@ def correr(PAPEL):
             pg.evaluate("setModo('manut'); mudar('lista')"); pg.wait_for_timeout(500)
             pg.evaluate("abrirFichaManut('PR7-1')"); pg.wait_for_timeout(400)
             f = pg.inner_text("#folha-c")
-            verif("Chefe Farol" in f, "S1 a ficha da manutenção mostra o chefe do campo")
-            pg.evaluate("ecraChefeManut('PR7-1')"); pg.wait_for_selector("#cm-chefe")
-            pg.select_option("#cm-chefe", CH2); n0 = len(dial); pg.click("#folha-c button.btn:not(.sec)"); pg.wait_for_timeout(300)
-            verif(len(dial) > n0, "S2 sem motivo não grava")
-            pg.fill("#cm-motivo", "Fica mais perto do grupo de Quiwia"); pg.click("#folha-c button.btn:not(.sec)"); pg.wait_for_timeout(3500)
-            c = rec.get("chefe", [])
-            verif(len(c) == 1 and c[0]["p_chefe"] == CH2 and c[0]["p_area"] == "PR7-1" and "Quiwia" in c[0]["p_motivo"], f"S3 enviado ao servidor ({c})")
+            verif("Chefe" not in f and "ecraChefeManut" not in pg.inner_html("#folha-c"), "S1 (v239) a ficha da manutenção já não mostra o chefe")
+            verif(pg.evaluate("typeof ecraChefeManut") == "undefined", "S2 (v239) sem o ecrã de mudar o chefe")
             if PAPEL == "supervisor":   # motivo «Fonte de água secou» ao voltar a pôr na rega
                 pg.evaluate("setModo('rega'); fecharFolha(); ecraVoltarRega()"); pg.wait_for_selector("#vr-txt"); pg.fill("#vr-txt", "Nove"); pg.wait_for_timeout(1500)
                 pg.wait_for_function("(S.foraPlano||[]).length > 0"); pg.evaluate("confirmarVoltaRega(0)"); pg.wait_for_selector("#vr-motivo")
@@ -121,42 +117,15 @@ def correr(PAPEL):
                 v = rec.get("vr", [])
                 verif(len(v) == 1 and v[0]["p_motivo"].startswith("Fonte de água secou"), f"S5 voltar_a_regar com o motivo em português ({v})")
 
-        if PAPEL == "chefe_manutencao":
-            verif(not vis("#nav button[data-e=hoje]") and not vis("#nav-painel") and not vis("#nav-gestao"), "C1 só Mapa e Campos no menu")
-            verif(not vis("#modo-lista") and not vis("#modo-mapa"), "C2 sem o interruptor Rega / Manutenção")
-            pg.evaluate("mudar('lista')"); pg.wait_for_timeout(500)
-            l = pg.inner_text("#man-lista")
-            verif("Produtor Sete" in l and "Produtor Oito" not in l, "C3 a lista mostra só os campos do grupo")
-            pg.locator("#man-lista .item[data-mid='PR7-1']").click(); pg.wait_for_timeout(400)
-            f = pg.inner_text("#folha-c")
-            verif(pg.locator("#folha-c button:has-text('Registar o trabalho')").count() == 1 if LING == "pt" else "ecraRegManut" in pg.inner_html("#folha-c"), "C4 pode registar o trabalho")
-            h = pg.inner_html("#folha-c")
-            verif("ecraMedir" not in h and "marcarFeitoManut" not in h and "ecraChefeManut" not in h, "C5 sem medir a área, sem «feito» e sem mudar o chefe")
-            pg.evaluate("ecraRegManut('PR7-1')"); pg.wait_for_selector("#mn-cav")
-            pg.fill("#mn-cav", "30"); pg.fill("#mn-mul", "20")
-            pg.set_input_files("#mn-foto", FOTO); pg.wait_for_timeout(1200)
-            pg.click("#folha-c .btn >> nth=0"); pg.wait_for_timeout(4000)
-            gm = rec.get("gm", [])
-            verif(len(gm) == 1 and gm[0]["p_area"] == "PR7-1" and gm[0]["p_cavaroda"] == 30, f"C6 trabalho enviado ({gm})")
-            verif(any(x.startswith(UID + "/") for x in rec.get("upman", [])), "C7 fotografia na pasta do chefe")
-
         if PAPEL == "gestor":
             pg.evaluate("mudar('gestao')"); pg.wait_for_timeout(800); pg.evaluate("typeof abaGestao === 'function' && abaGestao('acessos')"); pg.wait_for_selector("#c-papel", timeout=10000); pg.wait_for_timeout(800)
             o = pg.locator("#c-papel option[value=chefe_manutencao]")
-            verif(o.count() == 1 and not o.is_disabled(), "G1 «Chefe de manutenção» nos outros acessos")
-            pg.select_option("#c-papel", "chefe_manutencao"); pg.wait_for_timeout(300)
-            verif(vis("#c-com-l"), "G2 pede o grupo (comunidade)")
-            pg.select_option("#c-nome", "__outro"); pg.fill("#c-nome-outro", "Chefe Novo Farol"); pg.dispatch_event("#c-nome-outro", "input"); pg.fill("#c-senha", "segredo123")
-            verif(pg.locator("#c-criar").is_disabled(), "G3 sem a comunidade não deixa criar")
-            pg.select_option("#c-com", "Farol"); pg.wait_for_timeout(200)
-            pg.click("#c-criar"); pg.wait_for_timeout(1500)
-            c = rec.get("criar", [])
-            verif(len(c) == 1 and c[0]["papel"] == "chefe_manutencao" and c[0]["comunidade"] == "Farol", f"G4 pedido de criação com o grupo ({c})")
+            verif(o.count() == 0 and pg.locator("#c-com-l").count() == 0, "G1 (v239) sem «Chefe de manutenção» nos outros acessos")
 
         print("erros JS:", erros)
         if erros: falhas.append(f"{PAPEL}: erros JS")
         b.close()
 
-for papel in os.environ.get("PAPEIS", "activista,tecnico,supervisor,chefe_manutencao,gestor").split(","): correr(papel)
+for papel in os.environ.get("PAPEIS", "activista,tecnico,supervisor,gestor").split(","): correr(papel)
 srv.terminate()
 print("RESULTADO:", "PASSOU" if not falhas else f"FALHOU ({len(falhas)}): {falhas}")

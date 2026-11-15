@@ -1,5 +1,8 @@
--- Melhoria 1 — Cava-roda e mulching quando não há rega (ramo cc-manutencao). NÃO APLICADA.
--- Aplicar com o conector Supabase (apply_migration, nome actividades_campo), ANTES de publicar a app. Testar primeiro com rollback.
+-- Melhoria 1 — Cava-roda e mulching quando não há rega (ramo cc-manutencao, publicado na v239).
+-- Aplicar com o conector Supabase (apply_migration, nome actividades_campo), ANTES de publicar a app. Testado com rollback a 15/11/2026.
+-- A recusa das regas depois das 15:30 NO SERVIDOR (gatilho rega_hora_limite) não é criada aqui: liga-se depois, com
+-- rega_hora_limite_ligar.sql, quando os telefones já estiverem na v239 (decisão do Valdo, 15/11/2026). Até lá a app v239 já não
+-- deixa começar depois das 15:30 sem horas extras, e os telefones com a v238 não ficam com regas recusadas.
 -- Decisões do Valdo (13–14/11/2026):
 --  - Quando falta o tuk-tuk, ou por outra razão não há rega, a equipa faz cava-roda e mulching nos campos da sua lista (ou em apoio).
 --  - Segue o padrão da rega: entrada com GPS, pessoas e fotografia; fotografia durante; saída com GPS, plantas com cava-roda e com
@@ -98,21 +101,23 @@ begin
     from public.horas_extras h left join public.perfis pf on pf.id = h.activado_por
     where not h.removido and h.data >= v_hoje - 1
       and (case when v_papel = 'activista' then h.activista_id = v_meu
-                when v_papel in ('tecnico', 'supervisor') then h.activista_id in (select privado.ids_visiveis())
+                when v_papel in ('tecnico', 'supervisor') then h.activista_id = any (privado.ids_visiveis())   -- ids_visiveis() devolve uuid[]
                 else v_papel in ('gestor', 'director', 'me') end)), '[]'::json);
 end $$;
 revoke all on function public.horas_extras_lista() from public, anon;
 grant execute on function public.horas_extras_lista() to authenticated;
 
--- rega: a entrada de uma rega real depois das 15:30 só com horas extras (as de teste não têm limite)
+-- rega: a entrada de uma rega real depois das 15:30 só com horas extras (as de teste não têm limite).
+-- Uma rega que o servidor já tinha recebido (o telefone reenvia-a porque a resposta se perdeu) passa sempre.
+-- O gatilho que usa esta função é criado mais tarde, com rega_hora_limite_ligar.sql.
 create or replace function privado.rega_hora_limite() returns trigger language plpgsql security definer set search_path to '' as $$
 begin
+  if exists (select 1 from public.registos_rega r where r.id = new.id) then return new; end if;
   if not new.teste and new.entrada_em is not null and not privado.pode_comecar(new.activista_id, new.entrada_em) then
     raise exception 'Depois das 15:30 só se começa uma rega com horas extras activadas pelo técnico, pelo supervisor ou pelo gestor' using errcode = 'P0001';
   end if;
   return new;
 end $$;
-create trigger rega_hora_limite before insert on public.registos_rega for each row execute function privado.rega_hora_limite();
 
 -- ---------- gravar (uma só chamada, no fim, como a rega) ----------
 create or replace function public.gravar_actividade(p jsonb)
@@ -260,6 +265,6 @@ begin if position(a in d) = 0 then raise exception 'meu_dia: texto não encontra
 -- drop function public.painel_actividades(date, date); drop function public.actividades_campo_lista(text); drop function public.gravar_actividade(jsonb);
 -- A tabela actividades_campo e as linhas acrescentadas a manutencao_registos podem ficar (a app anterior não as usa; as linhas da
 -- manutenção são totais válidos). Para as tirar dos totais: update manutencao_registos set removido = true where id in (select manut_registo_id from actividades_campo);
--- drop trigger rega_hora_limite on public.registos_rega; drop function privado.rega_hora_limite();
+-- drop trigger if exists rega_hora_limite on public.registos_rega; drop function privado.rega_hora_limite();
 -- drop function public.horas_extras_lista(); drop function public.activar_horas_extras(uuid, uuid, date, timestamptz); drop function privado.pode_comecar(uuid, timestamptz);
 -- delete from public.config where chave = 'hora_limite_inicio';   (a tabela horas_extras pode ficar)
