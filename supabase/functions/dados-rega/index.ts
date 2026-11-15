@@ -299,7 +299,7 @@ function csv(rows: any[]) {
   const pl = rows.map(plano);
   const cols = [...new Set(pl.flatMap((r) => Object.keys(r)))];
   const esc = (v: unknown) => v == null ? "" : /[";\n]/.test(String(v)) ? `"${String(v).replaceAll('"', '""')}"` : String(v);
-  return "﻿" + [cols.join(";"), ...pl.map((r) => cols.map((c) => esc(r[c])).join(";"))].join("\n");
+  return "\uFEFF" + [cols.join(";"), ...pl.map((r) => cols.map((c) => esc(r[c])).join(";"))].join("\n");
 }
 
 // ---------- fotografias ----------
@@ -432,7 +432,7 @@ const FERRAMENTAS = [
   },
   {
     name: "link_excel",
-    description: "Devolve um link (válido 1 hora) para descarregar um Excel com todos os dados do período (Leia-me com o resumo, Regas, Equipas por dia, Dias sem rega, Campos, Recontagens, Manutenção, Acompanhamentos, Queimadas, Chuva, Monitorias, Idas à água, e os quadros do painel: Rondas, Cumprimento, Meta, Tempos, Chegadas da água, Nunca receberam água, Plantas vivas regadas, Constrangimentos, Planos e itinerário, Limites dos campos, Percursos GPS em resumo até 7 dias). Período até 92 dias; sem período = hoje.",
+    description: "Devolve um link (válido 1 hora) para descarregar um Excel com todos os dados do período (Leia-me com o resumo, Regas, Equipas por dia, Dias sem rega, Campos, Recontagens, Manutenção, Acompanhamentos, Queimadas, Chuva, Monitorias, Idas à água, e os quadros do painel: Rondas, Cumprimento, Meta, Tempos, Chegadas da água, Nunca receberam água, Plantas vivas regadas, Constrangimentos, Tuk-tuks, Planos e itinerário, Limites dos campos, Percursos GPS em resumo até 7 dias). Período até 92 dias; sem período = hoje.",
     inputSchema: {
       type: "object",
       properties: { de: { type: "string" }, ate: { type: "string" }, comunidade: { type: "string" }, equipa: { type: "string" } },
@@ -453,7 +453,7 @@ const FERRAMENTAS = [
 ];
 
 const INSTRUCOES = "Dados da app de rega Rega Coco (só leitura). Comece por ler_dados com tipo 'resumo' para o período pedido; " +
-  "use 'equipas' para o dia de cada equipa e 'regas' para o detalhe; para o painel use rondas, cumprimento, meta, tempos, chegadas, nunca_agua, plantas_vivas e constrangimentos; " +
+  "use 'equipas' para o dia de cada equipa e 'regas' para o detalhe; para o painel use rondas, cumprimento, meta, tempos, chegadas, nunca_agua, plantas_vivas, constrangimentos e tuktuks; " +
   "para o mapa use limites e percursos (ou link_geojson) e para o planeamento planos. Não invente números: se um dado não vem nas respostas, diga que falta.";
 
 async function chamarFerramenta(nome: string, a: any, base: string, perfilId: string) {
