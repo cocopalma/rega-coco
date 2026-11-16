@@ -229,6 +229,13 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <h3 style="font-size:14px;margin:12px 0 4px">Que tuk-tuk serviu que equipa, por dia</h3><div class="tabela" id="t-tuk-dia" style="max-height:none"></div>
     <details><summary>Ver todas as chegadas da água</summary><div class="tabela" id="t-tuk"></div></details></section>
 
+  <section class="card sec" id="s-apo" hidden><h2>🤝 Reforço entre equipas: responsável e executor</h2>
+    <p class="desc">Regas feitas por uma equipa em campos de outra, com o «Apoio entre equipas». O responsável é a equipa dona do campo; o executor é a equipa que regou. A rega conta na ronda do responsável.</p>
+    <div class="grelha kpis" id="k-apo"></div>
+    <h3 style="font-size:14px;margin:12px 0 4px">Plantas regadas em reforço, por executor</h3><div id="g-apo"></div>
+    <div class="tabela" id="t-apo" style="max-height:none"></div>
+    <h3 style="font-size:14px;margin:12px 0 4px">Apoios activos hoje</h3><div class="tabela" id="t-apo-act" style="max-height:none"></div></section>
+
   <section class="card sec" id="s-act" hidden><h2>🌱 Cava-roda e mulching (dias sem rega)</h2>
     <p class="desc">Quando não há rega (o tuk-tuk não chegou, avaria, sem água…), a equipa faz cava-roda e mulching nos campos. Cada registo tem o GPS no campo e três fotografias (início, durante, fim). Os números são as plantas feitas nesse dia. Em Quiwia e Farol somam-se também ao total da manutenção.</p>
     <div class="grelha kpis" id="k-act"></div>
@@ -275,10 +282,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=242"></script>
-<script src="i18n.js?v=242"></script>
+<script src="i18n-sw.js?v=243"></script>
+<script src="i18n.js?v=243"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=242"></script>
+<script src="demo.js?v=243"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -922,7 +929,7 @@ function desenharPlantasMarcadas() {
 }
 // ---------- testes por pessoa (v91, 21/10/2026, Valdo: ver quem já testou e quem ainda não) ----------
 // Ao cliente o servidor devolve null e a secção fica escondida.
-let DTP = null, DMN = null, DSR = null, DCT = null, DAC = null, DTK = null;
+let DTP = null, DMN = null, DSR = null, DCT = null, DAC = null, DTK = null, DAP = null;
 const MOSTRAR_MANUT = true;   // v177 escondeu a secção por engano (Valdo queria tirar a manutenção do perfil de gestão, não do painel); v178 repôs
 // medições com a vara (v106, 23/10/2026, Valdo): só gestor, director e M&E (o servidor devolve null aos outros)
 let DMD = null;
@@ -1003,6 +1010,25 @@ function desenharManut() {
 const MOT_DSR = { tuk_tuk: 'O tuk-tuk não chegou', avaria_tuk_tuk: 'Tuk-tuk avariado ou sem combustível', avaria_camiao: 'Camião avariado', sem_agua: 'Sem água na fonte ou no poço', chuva: 'Choveu: não foi preciso regar', material: 'Falta de material (bidões, regadores)', equipa: 'A equipa não compareceu', regou_sem_registo: 'A equipa regou, mas não registou na app', outro: 'Outro motivo' };
 // v241 (15/11/2026, Valdo): tuk-tuk em cada chegada da água — viagens por tuk-tuk e por equipa, por dia
 const TUK_CHEG = { nova: 'Viagem nova', mesmo_tanque: 'A mesma água do campo anterior', ja_estava: 'A água já estava no campo' };
+function desenharApoios() {
+  const el = $('#s-apo'); if (!el) return;
+  const X = DAP && typeof DAP === 'object' && Array.isArray(DAP.regas) ? DAP : null; el.hidden = !X; if (!X) return;
+  const kpi = (rot, v, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${v}</div><div class="sub">${sub}</div></div>`;
+  const R = X.regas, A = X.activos || [], pl = R.reduce((s, r) => s + (r.plantas || 0), 0);
+  $('#k-apo').innerHTML = kpi('Regas em reforço', num(R.length), `<span>no período</span> · ${num(new Set(R.map((r) => r.campo)).size)} <span>campos</span>`) +
+    kpi('Plantas regadas em reforço', num(pl), `${num(new Set(R.map((r) => r.executor)).size)} <span>equipas que ajudaram</span>`) +
+    kpi('Apoios activos hoje', num(A.length), '<span>equipas a ajudar agora</span>');
+  if (!R.length) { $('#g-apo').innerHTML = ''; $('#t-apo').innerHTML = '<div class="vazio">Nenhuma rega em reforço no período.</div>'; }
+  else {
+    const m = new Map(); for (const r of R) { const o = m.get(r.executor || '—') || { k: r.executor || '—', n: 0, pl: 0, d: new Set() }; o.n++; o.pl += r.plantas || 0; o.d.add(r.responsavel || '—'); m.set(o.k, o); }
+    barras('#g-apo', [...m.values()].sort((a, b) => b.pl - a.pl), { valor: (e) => e.pl, rotulo: (e) => e.k, texto: (e) => num(e.pl), sub: (e) => '→ ' + [...e.d].join(' · '), dicaDe: (e) => `${e.k}: ${num(e.pl)}` });
+    tabela('#t-apo', [['Data'], ['Responsável (dono do campo)'], ['Executor (quem regou)'], ['Comunidade'], ['Produtor'], ['Campo'], ['Plantas regadas', 1]],
+      [...R].reverse().map((r) => [fmtData(r.data), esc(r.responsavel || ''), esc(r.executor || ''), esc(r.comunidade || '') + (r.zona ? ' › ' + esc(r.zona) : ''), esc(r.produtor || ''), `<span class="sem-trad">${esc(r.campo || '')}</span>`, num(r.plantas || 0)]));
+  }
+  if (!A.length) $('#t-apo-act').innerHTML = '<div class="vazio">Nenhum apoio activo.</div>';
+  else tabela('#t-apo-act', [['Executor (quem ajuda)'], ['Responsável (dono dos campos)'], ['Campos', 1], ['Desde'], ['Tipo']],
+    A.map((a) => [esc(a.executor || ''), esc(a.responsavel || ''), num(a.campos || 0), a.inicio ? fmtData(String(a.inicio).slice(0, 10)) : '', a.so_actividade ? '<span>Só cava-roda e mulching</span>' : '<span>Rega</span>']));
+}
 function desenharTuks() {
   const el = $('#s-tuk'); if (!el) return;
   const X = DTK && typeof DTK === 'object' && Array.isArray(DTK.chegadas) ? DTK : null; el.hidden = !X; if (!X) return;
@@ -1183,7 +1209,8 @@ async function buscarPeriodo(p) {
   const pv = await sb.rpc('painel_plantas_vivas', { p_de: de, p_ate: ate });
   const ac = await sb.rpc('painel_actividades', { p_de: de, p_ate: ate });
   const tk = await sb.rpc('painel_tuktuks', { p_de: de, p_ate: ate });
-  return { DTK: tk.error ? null : tk.data, DAC: ac.error ? null : ac.data, DPV: pv.error ? null : pv.data, DMX: mx.error ? null : mx.data, DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
+  const apx = await sb.rpc('painel_apoios', { p_de: de, p_ate: ate });
+  return { DAP: apx.error ? null : apx.data, DTK: tk.error ? null : tk.data, DAC: ac.error ? null : ac.data, DPV: pv.error ? null : pv.data, DMX: mx.error ? null : mx.data, DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
 }
 // uma só cópia por período (v168, 01/11/2026: o espaço do aparelho encheu): apaga as cópias desse período de outros dias e, se
 // mesmo assim não couber, as outras cópias do painel; períodos escolhidos à mão (de… até…) só fica o que se está a ver
@@ -1221,7 +1248,7 @@ function semPeriodoGuardado() {
 async function carregar(mudou = false) {
   const c = (!D || mudou) && lerCache();
   if (mudou && !c && !navigator.onLine) { semPeriodoGuardado(); return; }
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; DMX = c.DMX || null; DPV = c.DPV || null; DAC = c.DAC || null; DTK = c.DTK || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; DMX = c.DMX || null; DPV = c.DPV || null; DAC = c.DAC || null; DTK = c.DTK || null; DAP = c.DAP || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharApoios(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
@@ -1239,6 +1266,7 @@ async function carregar(mudou = false) {
   const pPv = sb.rpc('painel_plantas_vivas', { p_de: de, p_ate: ate });
   const pAc = sb.rpc('painel_actividades', { p_de: de, p_ate: ate });
   const pTk = sb.rpc('painel_tuktuks', { p_de: de, p_ate: ate });
+  const pAp = sb.rpc('painel_apoios', { p_de: de, p_ate: ate });
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa2', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   const rec = await pRec; DR = rec.error ? null : rec.data;
   const pl = await pPl; DPL = pl.error ? null : pl.data;
@@ -1253,16 +1281,16 @@ async function carregar(mudou = false) {
   const mx = await pMx; DMX = mx.error ? null : mx.data;
   const pv = await pPv; DPV = pv.error ? null : pv.data;
   const acx = await pAc; DAC = acx.error ? null : acx.data;
-  const tkx = await pTk; DTK = tkx.error ? null : tkx.data;
+  const tkx = await pTk; DTK = tkx.error ? null : tkx.data; const apy = await pAp; DAP = apy.error ? null : apy.data;
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) { if (erroDeRede(error)) avisoRede(c || { antigo: null }); return; }   // sem rede: fica o último painel guardado
   if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas();
+  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharApoios(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas();
   arrumarCache();   // fica uma cópia por período (a mais recente), para ver sem rede
-  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, DMX, DPV, DAC, DTK, em: Date.now() });
+  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, DMX, DPV, DAC, DTK, DAP, em: Date.now() });
   setTimeout(() => guardarOutrosPeriodos().catch(() => {}), 1500);
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
@@ -1278,7 +1306,7 @@ $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar()
 $('#b-act').onclick = carregar;
 $('#b-sair').onclick = async () => { try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {} await sb.auth.signOut(); location.reload(); };
 document.querySelectorAll('#v-meta button').forEach((b) => b.onclick = () => { VM = b.dataset.v; try { localStorage.setItem('rega.painel.meta', VM); } catch {} desenharMeta(); });
-let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }, 150); });
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharApoios(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
 if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }

@@ -75,6 +75,10 @@ def main(dados, base):
         ver(sum(x['viagens'] for x in tk['por_tuk']) == tk['viagens'], f'tuk-tuks: viagens por tuk-tuk = {tk["viagens"]}')
         ver(sum(x['viagens'] for x in tk['por_equipa']) == tk['viagens'], 'tuk-tuks: viagens por equipa = total')
         ver(tk['chegadas_agua'] - tk.get('outras_voltas', 0) <= r['regas'], 'tuk-tuks: chegadas da água (sem as outras voltas) ≤ regas')
+    ap = r.get('apoios')
+    if ap is not None:  # v243: responsável e executor nas regas em apoio
+        ver(len(ap) <= r['regas'], f'reforço: regas em apoio ({len(ap)}) ≤ regas')
+        ver(all(x.get('responsavel') and x.get('executor') and x['responsavel'] != x['executor'] for x in ap), 'reforço: cada rega em apoio tem responsável e executor diferentes')
     pc = r['por_comunidade']
     ver(sum(x['plantas'] for x in pc) == r['plantas_regadas'], 'plantas por comunidade = plantas regadas')
     ver(sum(x['campos'] for x in pc) == r['campos_regados'], 'campos por comunidade = campos regados')
@@ -150,6 +154,8 @@ def main(dados, base):
     hpath, ppath = base + '.html', base + '.pdf'
     h = open(hpath, encoding='utf-8').read()
     t = texto(h)
+    if r.get('apoios') is not None:   # v243
+        ver(('Reforço entre equipas' in t) == bool(r['apoios']), 'reforço: a secção aparece só quando há regas em apoio')
     emb = json.loads(re.search(r'id="rega-coco-dados">(.*?)</script>', h, re.S).group(1).replace('<\\/', '</'))
     ver(emb == d, 'JSON dentro do HTML = dados')
     if c.get('monitoria_pausa'):   # 08/11/2026: monitoria parada, a regra não aparece

@@ -153,6 +153,11 @@ select json_build_object(
                  array_remove(array_agg(distinct coalesce(tk.cod, tk.outro) order by coalesce(tk.cod, tk.outro)) filter (where tk.cheg = 'nova'), null) as tuks
           from tk join public.activistas a on a.id = tk.activista_id group by 1) x)
     )),
+    -- v243 (16/11/2026, Dalmar/Valdo): responsável (equipa dona do campo) e executor (equipa que regou) nas regas em apoio (reforço)
+    'apoios', (select coalesce(json_agg(json_build_object('campo', rg.area_id, 'comunidade', a.comunidade, 'responsavel', dn.nome,
+        'executor', ex.nome, 'plantas', rg.plantas_regadas) order by ex.nome, rg.area_id), '[]')
+      from rg join public.areas a on a.id = rg.area_id left join public.activistas ex on ex.id = rg.activista_id
+      left join public.activistas dn on dn.id = rg.apoio_para where rg.apoio_id is not null and rg.apoio_para is not null),
     'por_comunidade', (select coalesce(json_agg(x order by x.plantas desc), '[]') from (
         select a.comunidade, count(*)::int as regas, count(distinct rg.area_id)::int as campos, sum(rg.plantas_regadas)::int as plantas
         from rg join public.areas a on a.id = rg.area_id group by a.comunidade) x)

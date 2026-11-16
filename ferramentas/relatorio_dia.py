@@ -268,6 +268,18 @@ def gerar(d):
                     + ('<p class="cinz">Por equipa: ' + e(' · '.join(f"{pnome(x['equipa'])} {x['viagens']}" + (f" ({', '.join(x['tuks'])})" if x['tuks'] else '') for x in pe if x['viagens'])) + '</p>' if any(x['viagens'] for x in pe) else '')
                     + '<p class="cinz">Viagem = o tuk-tuk chegou com água nova. Registo feito pelo activista em cada chegada da água.</p>')
 
+    # Reforço (v243): regas feitas por uma equipa em campos de outra; responsável = dona do campo, executor = quem regou
+    ap = r.get('apoios') or []
+    apo_html = ''
+    if ap:
+        pares = {}
+        for x in ap:
+            k = (x['executor'] or '?', x['responsavel'] or '?'); o = pares.setdefault(k, [0, 0]); o[0] += 1; o[1] += x['plantas'] or 0
+        apo_html = ('<h3>Reforço entre equipas: responsável e executor</h3>'
+                    + f"<p><b>{n(len(ap))}</b> regas feitas em campos de outra equipa (<b>{n(sum(x['plantas'] or 0 for x in ap))}</b> plantas). "
+                    + 'O responsável é a equipa dona do campo; o executor é a equipa que regou. Estas regas estão nos números da equipa que regou.</p>'
+                    + '<p>' + '<br>'.join(e(f"{pnome(k[0])} regou {v[0]} campo{'s' if v[0] != 1 else ''} de {pnome(k[1])}: {n(v[1])} plantas") for k, v in sorted(pares.items())) + '</p>')
+
     # Equipas que regaram: plantas
     mx = max([x['plantas'] for x in com] or [0])
     bar_com = ''.join(barra(e(x['activista']), x['plantas'], mx,
@@ -420,6 +432,7 @@ footer{{color:var(--c);font-size:12px;margin-top:24px;border-top:1px solid var(-
 {'<h3>O que dificultou a rega (registado na saída)</h3><ul>' + cons_html + '</ul>' if cons_html else ''}
 
 {tuk_html}
+{apo_html}
 
 <h3>Plantas regadas por comunidade</h3>
 {bar_com_c or '<p>—</p>'}
