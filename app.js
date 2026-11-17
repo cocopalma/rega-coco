@@ -3473,7 +3473,7 @@ function abrirFicha(id, nota = '') {
   // horas extras (15/11/2026, Valdo: também o gestor): na ficha, para a equipa deste campo, depois das 15:30
   if (podeActivarHE() && a.activista_id && meuCampo(a) && !dentroHora()) {
     const h = horasExtras(a.activista_id);
-    acc += h ? `<p class="pequeno" id="he-ficha">${textoHorasExtras(h)}</p>`
+    acc += h ? `<p class="pequeno" id="he-ficha">${textoHorasExtras(h)}${botaoCancelarHE(a.activista_id)}</p>`
       : `<button class="btn sec" id="he-ficha" onclick="activarHorasExtras('${esc(a.activista_id)}');abrirFicha('${esc(a.id)}')">⏰ <span>Activar horas extras hoje para a equipa de</span> <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span></button>`;
   }
   const alheio = !meuCampo(a); S.soVer = alheio;
@@ -5494,8 +5494,29 @@ function activarHorasExtras(act) {
   const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), tipo: 'horas_extras', he_id: crypto.randomUUID(), activista_id: act, data: hojeISO(), em: new Date().toISOString() }); LS.set('filaAlt', f);
   actSync(); sincronizar(true); aviso('Horas extras activadas.', 'ok'); if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
 }
+// cancelar as horas extras de hoje (v244, 17/11/2026, sugestão do Essumaila: activadas por engano). Por enviar: sai da fila; já no servidor: precisa de rede
+const botaoCancelarHE = (act) => podeActivarHE() && horasExtras(act) ? ` <button class="chip he-cancel" onclick="cancelarHorasExtras('${esc(act)}')">✕ <span>Cancelar (engano)</span></button>` : '';
+async function cancelarHorasExtras(act) {
+  const h = horasExtras(act); if (!h || !podeActivarHE()) return;
+  if (!confirm(`Cancelar as horas extras de hoje da equipa de ${nomeAct(act)}? Só se a equipa ainda não começou nenhuma rega nem cava-roda e mulching depois das 15:30.`)) return;
+  const redesenhar = () => { if ($('#e-hoje')?.classList.contains('on')) desenharHoje(); if (S.fichaAberta && $('#folha')?.classList.contains('on') && $('#he-ficha')) abrirFicha(S.fichaAberta); };
+  if (h.local) {
+    LS.set('filaAlt', (LS.get('filaAlt', []) || []).filter((x) => !(x.tipo === 'horas_extras' && x.activista_id === act && x.data === h.data)));
+    actSync(); aviso('Horas extras canceladas.', 'ok'); redesenhar(); return;
+  }
+  if (!navigator.onLine) { aviso('Sem rede: para cancelar as horas extras é preciso ter rede.', 'erro'); return; }
+  try {
+    const r = await sb.rpc('cancelar_horas_extras', { p_id: h.id });
+    if (r.error) throw r.error;
+    LS.set('horasExtras', (LS.get('horasExtras', []) || []).filter((x) => x.id !== h.id));
+    aviso('Horas extras canceladas.', 'ok'); redesenhar();
+  } catch (e) {
+    const m = String(e?.message || e);
+    aviso(semRede(e) ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : /já começou trabalho/.test(m) ? 'A equipa já começou trabalho depois das 15:30: as horas extras não se podem cancelar.' : m, 'erro');
+  }
+}
 const linhaHorasExtras = (e) => { const h = horasExtras(e.id);
-  return h ? `<div class="pequeno he-ok" style="margin:0 0 6px 8px">${textoHorasExtras(h)}</div>`
+  return h ? `<div class="pequeno he-ok" style="margin:0 0 6px 8px">${textoHorasExtras(h)}${botaoCancelarHE(e.id)}</div>`
     : podeActivarHE() ? `<div style="margin:0 0 6px 8px"><button class="chip he-btn" onclick="activarHorasExtras('${esc(e.id)}')">⏰ <span>Activar horas extras hoje</span></button></div>` : ''; };
 // quem pode: o activista nos campos da sua lista ou em apoio; técnico/supervisor/gestor pela equipa (campo da sua lista, com activista)
 function podeAct(a) {
