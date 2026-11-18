@@ -288,10 +288,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=245"></script>
-<script src="i18n.js?v=245"></script>
+<script src="i18n-sw.js?v=246"></script>
+<script src="i18n.js?v=246"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=245"></script>
+<script src="demo.js?v=246"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -819,28 +819,31 @@ $('#b-rec-csv').onclick = descarregarRec;
 // A app explica cada dia de equipa abaixo do limite com o que já tem (chegada, espera pela água, falta de água ou avaria, mudas secas
 // ou mortas, campo sem rega com motivo); sem nenhuma destas, o técnico ou o supervisor registam o motivo no «O meu dia».
 const CAUSA_META = { tarde: 'Chegou tarde', espera: 'Esperou pela água', agua: 'Falta de água ou avaria',
-  mortas: 'Mudas secas ou mortas', dia_sem_rega: 'Campo sem rega' };
+  mortas: 'Mudas secas ou mortas', dia_sem_rega: 'Campo sem rega', viagens: 'Poucas viagens de tuk-tuk' };
 function desenharMetaCausas() {
   const el = $('#meta-causas'); if (!el) return;
   const X = DMX && typeof DMX === 'object' && Array.isArray(DMX.dias) ? DMX : null; el.hidden = !X; if (!X) return;
-  const lim = +X.limiar || 70, L = X.dias, ab = L.filter((d) => d.pct != null && +d.pct < lim);
+  // v246: desde motivo2_inicio, abaixo de 100 % da meta; só a chegada tarde, as poucas viagens de tuk-tuk e o campo sem rega dispensam o motivo
+  const lim = +X.limiar || 70, L = X.dias, m2 = X.motivo2_inicio || '9999-12-31', novo = (d) => d.data >= m2, limD = (d) => (novo(d) ? 100 : lim);
+  const causasD = (d) => [...(d.causas || []), ...(d.poucas_viagens ? ['viagens'] : [])];
+  const ab = L.filter((d) => d.pct != null && +d.pct < limD(d));
   const kpi = (rot, v, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${v}</div><div class="sub">${sub}</div></div>`;
-  $('#d-meta-causas').innerHTML = `<span>Cada dia de equipa abaixo de</span> <b>${num(lim)} %</b> <span>da meta e o que o explica:</span> <span>chegada ao 1.º campo depois das</span> <b>${esc(X.hora_chegada || '')}</b>; <span>espera pela água de</span> <b>${num(X.espera_min)} min</b> <span>ou mais no dia;</span> <span>falta de água ou avaria registada na saída;</span> <span>mudas secas ou mortas</span> (<b>${num(X.mortas_pct)} %</b> <span>ou mais das plantas da base, e as que ficavam vivas não chegavam para a meta);</span> <span>campo sem rega com motivo registado.</span> <span>Sem nenhuma destas, o técnico ou o supervisor registam o motivo no «O meu dia»</span>${X.motivo_inicio ? ` (<span>desde</span> ${fmtData(X.motivo_inicio)})` : ''}. <span>A hora de fim aparece na tabela, mas acabar cedo não explica a meta.</span>`;
+  $('#d-meta-causas').innerHTML = `<span>Cada dia de equipa abaixo de</span> <b>${num(lim)} %</b> <span>da meta e o que o explica:</span> <span>chegada ao 1.º campo depois das</span> <b>${esc(X.hora_chegada || '')}</b>; <span>espera pela água de</span> <b>${num(X.espera_min)} min</b> <span>ou mais no dia;</span> <span>falta de água ou avaria registada na saída;</span> <span>mudas secas ou mortas</span> (<b>${num(X.mortas_pct)} %</b> <span>ou mais das plantas da base, e as que ficavam vivas não chegavam para a meta);</span> <span>campo sem rega com motivo registado.</span> <span>Sem nenhuma destas, o técnico ou o supervisor registam o motivo no «O meu dia»</span>${X.motivo_inicio ? ` (<span>desde</span> ${fmtData(X.motivo_inicio)})` : ''}. <span>A hora de fim aparece na tabela, mas acabar cedo não explica a meta.</span>${X.motivo2_inicio ? ` <span>Desde</span> ${fmtData(X.motivo2_inicio)}: <span>abaixo de 100 % da meta; só a chegada tarde, as poucas viagens de tuk-tuk e o campo sem rega dispensam o motivo, que a equipa escolhe numa lista.</span>` : ''}`;
   const pl = L.reduce((t, d) => t + (d.plantas || 0), 0), hv = L.reduce((t, d) => t + (d.vivas_havia || 0), 0);
-  const sem = ab.filter((d) => !(d.causas || []).length), semMot = sem.filter((d) => !d.motivo);
-  $('#k-meta-causas').innerHTML = kpi(`<span>Dias de equipa abaixo de</span> ${num(lim)} %`, num(ab.length), `<span>de</span> ${num(L.length)} <span>dias de equipa com rega</span>`) +
+  const sem = ab.filter((d) => (novo(d) ? d.precisa_motivo2 : !(d.causas || []).length)), semMot = sem.filter((d) => !d.motivo);
+  $('#k-meta-causas').innerHTML = kpi(L.some(novo) ? `<span>Dias de equipa abaixo da meta</span>${L.every(novo) ? '' : ` (<span>antes de</span> ${fmtData(m2)}: <span>abaixo de</span> ${num(lim)} %)`}` : `<span>Dias de equipa abaixo de</span> ${num(lim)} %`, num(ab.length), `<span>de</span> ${num(L.length)} <span>dias de equipa com rega</span>`) +
     kpi('Plantas vivas que havia nos campos regados', hv ? Math.round(100 * pl / hv) + ' %' : '—', `${num(pl)} <span>regadas de</span> ${num(hv)} <span>vivas (base menos as secas ou mortas declaradas)</span>`) +
     kpi('Sem explicação', num(sem.length), `${num(sem.length - semMot.length)} <span>com motivo registado</span> · ${num(semMot.length)} <span>sem motivo</span>`);
-  const C = Object.keys(CAUSA_META).map((k) => ({ k, t: CAUSA_META[k], n: ab.filter((d) => (d.causas || []).includes(k)).length }))
+  const C = Object.keys(CAUSA_META).map((k) => ({ k, t: CAUSA_META[k], n: ab.filter((d) => causasD(d).includes(k)).length }))
     .concat([{ k: 'sem', t: 'Sem explicação', n: sem.length }]).filter((c) => c.n).sort((a, b) => b.n - a.n);
   barras('#g-meta-causas', C, { valor: (c) => c.n, rotulo: (c) => c.t, texto: (c) => num(c.n), max: Math.max(1, ab.length), dicaDe: (c) => `${c.t}: ${num(c.n)}` });
   const expl = (d) => {
-    const cs = (d.causas || []).map((k) => `<span>${CAUSA_META[k] || esc(k)}</span>`);
+    const cs = causasD(d).map((k) => `<span>${CAUSA_META[k] || esc(k)}</span>`);
     if (d.motivo) cs.push(`<span>Motivo</span>: <span class="sem-trad">${esc(d.motivo)}</span>${d.motivo_por ? ` (<span class="sem-trad">${esc(d.motivo_por)}</span>)` : ''}`);
-    if (!cs.length) return +d.pct < lim ? `<span style="color:var(--crit,#c62828);font-weight:600">Sem explicação</span>` : '—';
+    if (!cs.length || (novo(d) && d.precisa_motivo2 && !d.motivo)) return +d.pct < limD(d) ? `<span style="color:var(--crit,#c62828);font-weight:600">Sem explicação</span>` : '—';
     return cs.join('<br>');
   };
-  const pcT = (d) => d.pct == null ? '—' : +d.pct < lim ? `<span style="color:var(--crit,#c62828);font-weight:600">${num(Math.round(d.pct))} %</span>` : `${num(Math.round(d.pct))} %`;
+  const pcT = (d) => d.pct == null ? '—' : +d.pct < limD(d) ? `<span style="color:var(--crit,#c62828);font-weight:600">${num(Math.round(d.pct))} %</span>` : `${num(Math.round(d.pct))} %`;
   tabela('#t-meta-causas', [['Data'], ['Equipa'], ['Plantas regadas', 1], ['Meta', 1], ['% da meta', 1], ['Plantas vivas que havia', 1], ['% das vivas regadas', 1], ['1.ª entrada'], ['Última saída'], ['Espera pela água (min)', 1], ['Explicação']],
     L.map((d) => [fmtData(d.data), `<span class="sem-trad">${esc(d.equipa || '')}</span>`, num(d.plantas), num(d.meta), pcT(d), num(d.vivas_havia), d.cobertura == null ? '—' : num(Math.round(d.cobertura)) + ' %',
       esc(d.ini || ''), esc(d.fim || ''), num(d.espera_min), expl(d)]));

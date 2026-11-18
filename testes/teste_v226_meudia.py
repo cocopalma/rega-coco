@@ -1,4 +1,4 @@
-# v226 (09/11/2026, Valdo: "Sim"): «O meu dia» › meta muito abaixo sem explicação: o técnico escreve o motivo. LING=en / sw.
+# v226 (09/11/2026; desde a v246 o motivo escolhe-se numa lista, ecrã #mt-*, RPC gravar_meta_motivo2, Valdo: "Sim"): «O meu dia» › meta muito abaixo sem explicação: o técnico escreve o motivo. LING=en / sw.
 import json, subprocess, time, sys, os, datetime
 SEC = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}]") if pg.locator(f"#meu-dia details[data-k={k}]").count() else "(sem linha "+k+")")
 NB = lambda pg, k: (pg.inner_text(f"#meu-dia details[data-k={k}] .nb") if pg.locator(f"#meu-dia details[data-k={k}] .nb").count() else "(sem linha)")
@@ -67,16 +67,16 @@ with sync_playwright() as p:
     verif("Activista Um" in sec and NB(pg, "mt").strip() == "1", "1 linha da meta sem explicação com 1")
     verif("06:10" in sec and "10:40" in sec, "2 mostra as horas do dia")
     if LING != "pt":
-        for x in ["Meta muito abaixo", "Pergunte à equipa", "plantas da meta", "Escrever o motivo"]: verif(x not in sec, f"2b traduzido: «{x}»")
+        for x in ["Meta não atingida", "Pergunte à equipa", "plantas da meta", "Escolher o motivo"]: verif(x not in sec, f"2b traduzido: «{x}»")
     pg.screenshot(path=f"/home/claude/rega-test/v226_meudia_{LING}.png", full_page=True)
-    pg.click("#meu-dia details[data-k=mt] button.chip"); pg.wait_for_selector("#mm-ok")
+    pg.click("#meu-dia details[data-k=mt] button.chip"); pg.wait_for_selector("#mt-ok")
     if LING != "pt":
         f = pg.inner_text("#folha-c")
-        for x in ["Porque não se atingiu", "Motivo (obrigatório)", "Guardar o motivo", "última saída"]: verif(x not in f, f"2c traduzido: «{x}»")
-    pg.click("#mm-ok"); pg.wait_for_timeout(300)
-    verif(pg.locator("#mm-msg .erro").count() == 1, "3 sem motivo não grava")
-    pg.fill("#mm-mot", "Equipa saiu cedo para o funeral na comunidade"); pg.click("#mm-ok"); pg.wait_for_timeout(4500)
-    verif(any(x[0] == "mm" and x[1].get("p_activista") == A1 and x[1].get("p_data") == ontem for x in rec if isinstance(x, tuple)), f"4 enviado ao servidor ({[x for x in rec if isinstance(x, tuple) and x[0]=='mm']})")
+        for x in ["Porque não chegámos", "O que aconteceu?", "Guardar o motivo", "Choveu"]: verif(x not in f, f"2c traduzido: «{x}»")
+    pg.click("#mt-ok"); pg.wait_for_timeout(300)
+    verif(pg.locator("#mt-msg .erro").count() == 1, "3 sem motivo não grava")
+    pg.click("#mt-op .chip[data-k=outro]"); pg.fill("#mt-txt", "Equipa saiu cedo para o funeral na comunidade"); pg.click("#mt-ok"); pg.wait_for_timeout(4500)
+    verif(any(x[0] == "mm" and x[1].get("p_activista") == A1 and x[1].get("p_data") == ontem and x[1].get("p_tipo") == "outro" for x in rec if isinstance(x, tuple)), f"4 enviado ao servidor ({[x for x in rec if isinstance(x, tuple) and x[0]=='mm']})")
     pg.evaluate("carregarMeuDia().then(actHoje)"); pg.wait_for_timeout(1500)
     verif(pg.locator("#meu-dia details[data-k=mt]").count() == 0, "5 depois de gravar, a linha sai")
     print("erros JS:", erros)

@@ -13,7 +13,8 @@ const CFG = {
   precisaoCoord: 10,   // metros: pior precisão aceite para gravar a coordenada de um campo (a afinar no terreno)
   precisaoIdeal: 5,    // metros: precisão recomendada
   metaPlantas: 140,    // plantas por pessoa por dia (meta do Valdo, 11/10/2026)
-  meta20Inicio: '2026-11-19', meta20Peso: 4, litros20: 20,   // v245 (18/11/2026, Valdo): planta mórbida a 20 L conta como 4 na meta, desde 19/11
+  meta20Inicio: '2026-11-19', meta20Peso: 4, litros20: 20,
+  metaMotivo2Inicio: '2026-11-20', horaChegada: '06:30', litrosViagemMax: 350, viagensMinimas: null,   // v246: = config meta_motivo2_inicio, hora_chegada_equipa, litros_viagem_max, meta_viagens_minimas   // v245 (18/11/2026, Valdo): planta mórbida a 20 L conta como 4 na meta, desde 19/11
   // monitoria por planta (11/10/2026): amostra de Cochran com correcção para população finita
   monZ: 1.96, monMargem: 0.15, monP: 0.80,   // 95% de confiança, ±15% (v145, 30/10/2026: antes ±10%), proporção esperada 80%
   monLimiar: 80,       // % mínima de plantas com solo húmido para o campo contar como regado
@@ -396,7 +397,7 @@ async function sincronizarAgora(silencioso) {
       }
     }
     // já está no servidor: passa da fila para "meus registos" no mesmo passo (não se perde nem se conta duas vezes)
-    const m = LS.get('meusRegs', []); if (!m.some((x) => x.id === reg.id)) m.push({ id: reg.id, area_id: reg.area_id, activista_id: reg.activista_id, data: reg.data, ronda: reg.ronda, plantas_regadas: reg.plantas_regadas, plantas_20l: reg.plantas_20l ?? null, pessoas: reg.pessoas ?? null, teste: reg.teste, campo_fechado: reg.campo_fechado ?? null });
+    const m = LS.get('meusRegs', []); if (!m.some((x) => x.id === reg.id)) m.push({ id: reg.id, area_id: reg.area_id, activista_id: reg.activista_id, data: reg.data, ronda: reg.ronda, plantas_regadas: reg.plantas_regadas, plantas_20l: reg.plantas_20l ?? null, pessoas: reg.pessoas ?? null, entrada_em: reg.entrada_em ?? null, tuk_chegada: reg.tuk_chegada ?? null, tuk_extra: reg.tuk_extra ?? null, teste: reg.teste, campo_fechado: reg.campo_fechado ?? null });
     LS.set('meusRegs', m);
     LS.set('fila', filaRegistos().filter((x) => x.id !== reg.id));
     for (const tipo of Object.keys(fotos || {})) { try { await FOTOS.apagar(`${reg.id}-${tipo}`); } catch {} }
@@ -440,6 +441,7 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'dia_sem_rega_rem' ? await sb.rpc('remover_dia_sem_rega', { p_id: x.dsr_id })
         : x.tipo === 'conf_dsr' ? await sb.rpc('confirmar_dia_sem_rega', { p_id: x.dsr_id, p_nota: x.nota || null })
         : x.tipo === 'meta_mot' ? await sb.rpc('gravar_meta_motivo', { p_id: x.mm_id, p_activista: x.activista_id, p_data: x.data, p_motivo: x.motivo })   // v226
+        : x.tipo === 'meta_mot2' ? await sb.rpc('gravar_meta_motivo2', { p_id: x.mm_id, p_activista: x.activista_id, p_data: x.data, p_tipo: x.mtipo, p_texto: x.texto })   // v246
         : x.tipo === 'retirar' ? await sb.rpc('retirar_da_rega', { p_area: x.area_id, p_motivo: x.motivo, p_obs: x.obs || null, p_em: x.em })   // v205
         : x.tipo === 'agua' ? await sb.rpc('gravar_recolha_agua', { p_id: x.agua_id, p_activista: x.activista_id, p_em: x.em, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao })   // v235
         : x.tipo === 'horas_extras' ? await sb.rpc('activar_horas_extras', { p_id: x.he_id, p_activista: x.activista_id, p_data: x.data, p_em: x.em })
@@ -447,7 +449,7 @@ async function sincronizarAgora(silencioso) {
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
       if (r4.error && erroPassageiro(r4.error)) { erro = r4.error.message; sessao = erroSessao(r4.error); break; }   // sem rede: fica na fila
       if (r4.error) { marcarRecusa('filaAlt', x, r4.error, x.tipo || 'atrib'); recusadas++; continue; }   // recusado: fica na fila, marcado (antes saía e perdia-se)
-      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot', 'agua', 'chefe_man', 'horas_extras'].includes(x.tipo)) alteradas++;
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot', 'meta_mot2', 'agua', 'chefe_man', 'horas_extras'].includes(x.tipo)) alteradas++;
       if (x.tipo === 'horas_extras') carregarHorasExtras();
     }
   }
@@ -559,7 +561,7 @@ async function carregarEstado(pronto) {
     tarefas.push(sb.rpc('ausentes_hoje').then((q) => { if (!q.error && Array.isArray(q.data)) LS.set('ausentes', { data: hojeISO(), ids: q.data }); }));   // v171
     tarefas.push(sb.rpc('membros_lista').then((q) => { if (!q.error && Array.isArray(q.data)) { S.membros = q.data; aplicarMembrosPendentes(); LS.set('membros', S.membros); } }));
   if (souActivista() && S.perfil.activista_id) {        // registos da minha equipa (para a ronda funcionar sem rede)
-    tarefas.push(sb.from('registos_rega').select('id,area_id,activista_id,apoio_para,data,ronda,plantas_regadas,plantas_20l,pessoas,teste,campo_fechado')
+    tarefas.push(sb.from('registos_rega').select('id,area_id,activista_id,apoio_para,data,ronda,plantas_regadas,plantas_20l,pessoas,entrada_em,tuk_chegada,tuk_extra,teste,campo_fechado')
       .or(`activista_id.eq.${S.perfil.activista_id},apoio_para.eq.${S.perfil.activista_id}`).eq('teste', false).gt('plantas_regadas', 0).range(0, 9999)
       .then((r) => { if (!r.error) LS.set('meusRegs', r.data); }));
   } else if (PODE_REGAR.includes(papel) && S.perfil?.id) {   // as minhas regas de teste dos últimos 14 dias
@@ -570,6 +572,7 @@ async function carregarEstado(pronto) {
       tarefas.push(sb.from('registos_rega').select('id', { count: 'exact', head: true }).eq('teste', true).eq('user_id', S.perfil.id)
         .then((c) => { if (!c.error && c.count != null) LS.set('nTestes', c.count); }));
   }
+  if (papel === 'activista') carregarMetaPend().catch(() => {});
   if (PODE_REGAR.includes(papel)) { carregarSemMotivo().catch(() => {}); carregarDiasSemRega().catch(() => {}); tarefas.push(carregarApoios()); }
   if (!['oficial_me'].includes(papel))                // v163: regas de outra equipa feitas antes de o campo passar para esta equipa
     tarefas.push(sb.rpc('regas_outra_equipa').then((q) => { if (!q.error && Array.isArray(q.data)) { S.outras = q.data; LS.set('outras', q.data); } }));
@@ -3863,7 +3866,28 @@ function metaHoje(actId, extra = []) {      // plantas da equipa hoje contra a m
   const pl = regs.reduce((t, r) => t + (r.plantas_regadas || 0), 0), p20 = regs.reduce((t, r) => t + Math.min(r.plantas_20l || 0, r.plantas_regadas || 0), 0);
   const eq = regs.reduce((t, r) => t + plEq(r.plantas_regadas, r.plantas_20l, r.data), 0);
   const pes = Math.max(actId === S.perfil?.activista_id ? jornadaHoje()?.pessoas || 0 : 0, ...regs.map((r) => r.pessoas || 0));
-  return { pl, p20, eq, pes, meta: pes ? CFG.metaPlantas * pes : null };
+  const meta = pes ? CFG.metaPlantas * pes : null;
+  // v246: causas que a app já conhece (não se pede o motivo): chegada ao 1.º campo depois da hora combinada; poucas viagens de tuk-tuk
+  const ent = regs.map((r) => r.entrada_em).filter(Boolean).sort()[0] || null;
+  const hEnt = ent ? new Date(ent).toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour: '2-digit', minute: '2-digit', hour12: false }) : null;
+  const viagens = regs.reduce((t, r) => t + (r.tuk_chegada === 'nova' ? 1 : 0) + (Array.isArray(r.tuk_extra) ? r.tuk_extra.length : 0), 0);
+  const jaEstava = regs.some((r) => r.tuk_chegada === 'ja_estava');
+  const poucas = !!meta && !jaEstava && (CFG.viagensMinimas != null ? viagens < CFG.viagensMinimas : viagens * CFG.litrosViagemMax < meta * CFG.litrosPlanta);
+  return { pl, p20, eq, pes, meta, hEnt, tarde: !!hEnt && hEnt > CFG.horaChegada, viagens, poucas, act: actId };
+}
+// v246 (18/11/2026, Valdo, decisões de 17/11 e 18/11): abaixo da meta, a equipa escolhe o motivo numa lista, menos quando a app
+// já sabe a causa (chegada tarde ao 1.º campo ou poucas viagens de tuk-tuk). Conta a partir de CFG.metaMotivo2Inicio.
+const MOTIVOS_META = [['tuk_tarde', 'O tuk-tuk chegou tarde'], ['avaria', 'Avaria do tuk-tuk, do camião ou da bomba'], ['sem_agua_fonte', 'Não havia água na fonte'],
+  ['agua_acabou', 'A água acabou'], ['chuva', 'Choveu'], ['material', 'Faltou material'], ['doenca', 'Uma pessoa saiu a meio por doença'], ['outro', 'Outro motivo']];
+const TEXTO_META = ['material', 'outro'];   // texto obrigatório
+const motMetaFeito = (act, data) => (LS.get('metaMotFeitos', {}) || {})[act + '|' + data] || (LS.get('filaAlt', []) || []).find((x) => x.tipo === 'meta_mot2' && x.activista_id === act && x.data === data)?.rotulo || null;
+function linhaMotivoMeta(m) {                  // por baixo da meta de hoje
+  if (!m || !m.meta || m.eq >= m.meta || hojeISO() < CFG.metaMotivo2Inicio || !m.act) return '';
+  if (m.tarde) return `<div class="pequeno">ℹ️ <span>Não é preciso motivo: a equipa chegou ao 1.º campo às</span> ${esc(m.hEnt)} (<span>depois das</span> ${esc(CFG.horaChegada)}).</div>`;
+  if (m.poucas) return `<div class="pequeno">ℹ️ <span>Não é preciso motivo: as viagens de tuk-tuk registadas hoje</span> (${num(m.viagens)}) <span>não chegavam para a água da meta.</span></div>`;
+  const f = motMetaFeito(m.act, hojeISO());
+  if (f) return `<div class="pequeno">✓ <span>Motivo registado:</span> <span>${esc(f)}</span></div>`;
+  return `<button class="btn sec" id="b-motivo-meta" onclick="ecraMotivoMetaEq('${esc(m.act)}','${hojeISO()}')">🏁 <span>Terminámos o dia: dizer porque não chegámos à meta</span></button>`;
 }
 function linhaMeta(m) {
   if (!m || !m.meta) return '';
@@ -3871,7 +3895,50 @@ function linhaMeta(m) {
   const det = m.p20 ? `<div class="pequeno">${conta ? `<span>Plantas a 20 L contam como 4 na meta:</span> ${num(m.p20)} <span>a 20 L</span> = ${num(m.p20 * CFG.meta20Peso)}.` : `<span>Plantas a 20 L hoje:</span> ${num(m.p20)}. <span>A partir de 19/11 cada planta a 20 L conta como 4 na meta.</span>`}</div>` : '';
   return m.eq >= m.meta
     ? `<div class="msg ok" id="meta-dia">✓ <b>Meta do dia atingida</b>: <span class="sem-trad">${num(m.eq)} / ${num(m.meta)}</span> <span>plantas</span> (${pct}%). <span>Se ainda tiver água e tempo, pode continuar.</span>${det}</div>`
-    : `<div class="msg info" id="meta-dia">🎯 <b>Meta de hoje</b>: <span class="sem-trad">${num(m.eq)} / ${num(m.meta)}</span> <span>plantas</span> (${pct}%). <span>Faltam</span> ${num(m.meta - m.eq)} <span>plantas para a meta.</span>${det}</div>`;
+    : `<div class="msg info" id="meta-dia">🎯 <b>Meta de hoje</b>: <span class="sem-trad">${num(m.eq)} / ${num(m.meta)}</span> <span>plantas</span> (${pct}%). <span>Faltam</span> ${num(m.meta - m.eq)} <span>plantas para a meta.</span>${det}${linhaMotivoMeta(m)}</div>`;
+}
+// v246: o motivo de um dia abaixo da meta, escolhido numa lista (activista da equipa, técnico ou supervisor); funciona sem rede
+function ecraMotivoMetaEq(act, data, obrig = false) {
+  const x = (LS.get('metaPend', []) || []).find((y) => y.activista_id === act && y.data === data) || (LS.get('metaExpl', []) || []).find((y) => y.activista_id === act && y.data === data);
+  const m = data === hojeISO() ? metaHoje(act) : null;
+  const eq = x ? (x.plantas_eq ?? x.plantas) : m?.eq, meta = x ? x.meta : m?.meta;
+  folha(`<h2>🏁 <span>Porque não chegámos à meta</span></h2>
+    <p>${x?.equipa ? `<b class="sem-trad">${esc(x.equipa)}</b> · ` : ''}${fmtData(data)}</p>
+    ${meta ? `<div class="msg info"><span class="sem-trad">${num(eq)} / ${num(meta)}</span> <span>plantas da meta</span> (${num(Math.round(100 * eq / meta))}%)</div>` : ''}
+    <label>O que aconteceu?</label>
+    <div class="chips" id="mt-op">${MOTIVOS_META.map(([k, t]) => `<button class="chip" data-k="${k}">${t}</button>`).join('')}</div>
+    <textarea id="mt-txt" rows="2" placeholder="Escreva o que aconteceu (obrigatório em «Faltou material» e «Outro motivo»)"></textarea>
+    <div id="mt-msg"></div>
+    <button class="btn" id="mt-ok">Guardar o motivo</button>
+    ${obrig ? '' : '<button class="btn sec" onclick="fecharFolha()">Cancelar</button>'}`);
+  if (obrig) $('#folha-x').style.display = 'none';
+  let tipo = null;
+  document.querySelectorAll('#mt-op .chip').forEach((b) => b.onclick = () => { tipo = b.dataset.k; document.querySelectorAll('#mt-op .chip').forEach((c) => c.classList.toggle('on', c === b)); });
+  $('#mt-ok').onclick = () => {
+    const txt = $('#mt-txt').value.trim();
+    if (!tipo) { $('#mt-msg').innerHTML = '<div class="msg erro">Escolha o motivo.</div>'; return; }
+    if (TEXTO_META.includes(tipo) && txt.length < 3) { $('#mt-msg').innerHTML = '<div class="msg erro">Escreva o que aconteceu.</div>'; $('#mt-txt').focus(); return; }
+    const rot = (MOTIVOS_META.find((y) => y[0] === tipo) || [])[1] + (txt ? ': ' + txt : '');
+    const f = LS.get('filaAlt', []).filter((y) => !(['meta_mot', 'meta_mot2'].includes(y.tipo) && y.activista_id === act && y.data === data));
+    f.push({ id: crypto.randomUUID(), tipo: 'meta_mot2', mm_id: crypto.randomUUID(), activista_id: act, data, mtipo: tipo, texto: txt || null, rotulo: rot }); LS.set('filaAlt', f);
+    const fe = LS.get('metaMotFeitos', {}) || {}; fe[act + '|' + data] = rot; LS.set('metaMotFeitos', fe);
+    LS.set('metaPend', (LS.get('metaPend', []) || []).filter((y) => !(y.activista_id === act && y.data === data)));
+    $('#folha-x').style.display = ''; fecharFolha(); actSync(); sincronizar(true); aviso(navigator.onLine ? 'Motivo guardado.' : 'Motivo guardado. É enviado quando houver rede.', 'ok');
+    if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
+    if (obrig) setTimeout(() => avisoMetaPend(true), 300);
+  };
+}
+// v246: dias anteriores da equipa abaixo da meta sem motivo (activista): ecrã obrigatório ao abrir a app
+async function carregarMetaPend() {
+  if (!souActivista() || !navigator.onLine) return;
+  const r = await sb.rpc('meta_pendentes_equipa'); if (r.error || !Array.isArray(r.data)) return;
+  const fe = LS.get('metaMotFeitos', {}) || {};
+  LS.set('metaPend', r.data.filter((x) => !fe[x.activista_id + '|' + x.data] && !motMetaFeito(x.activista_id, x.data))); avisoMetaPend(true);
+}
+function avisoMetaPend(abrir) {
+  const L = (LS.get('metaPend', []) || []).filter((x) => x.data < hojeISO());
+  if (!L.length || !abrir || $('#folha').classList.contains('on')) return;
+  ecraMotivoMetaEq(L[0].activista_id, L[0].data, true);
 }
 function verAguaSaida() {                  // na saída: plantas a 5 L, a 20 L e a água que isso dá
   const el = $('#s-agua-decl'); if (!el) return;
@@ -5331,7 +5398,7 @@ async function desenharHoje() {
   if (veRecontagens() && !MEU_DIA() && vistaActual() !== 'rega') return;     // mudou de vista enquanto esperava
   if (S.perfil.papel === 'activista') {
     let serv = [];
-    if (navigator.onLine) { const r = await sb.from('registos_rega').select('id,area_id,activista_id,data,teste,pessoas,entrada_em,saida_em,plantas_regadas,plantas_20l,alerta,agua_em').eq('data', h).order('entrada_em'); serv = r.data || []; }
+    if (navigator.onLine) { const r = await sb.from('registos_rega').select('id,area_id,activista_id,data,teste,pessoas,entrada_em,saida_em,plantas_regadas,plantas_20l,alerta,agua_em,tuk_chegada,tuk_extra').eq('data', h).order('entrada_em'); serv = r.data || []; }
     const ids = new Set(serv.map((x) => x.id)), todos = [...serv, ...local.filter((x) => !ids.has(x.id))];
     const tot = todos.reduce((s, x) => s + (x.plantas_regadas || 0), 0);
     const j = jornadaHoje();
@@ -6370,12 +6437,12 @@ function cartaoMeuDia() {
   // v226 (09/11/2026, Valdo: "Sim" + "Eu preciso de ter visibilidade disso"): dias da equipa abaixo do limite da meta que a app não consegue
   // explicar (chegada, espera pela água, falta de água ou avaria, mudas secas ou mortas, campo sem rega com motivo): o técnico ou o
   // supervisor escrevem o motivo. Não tranca o «Fechar o dia».
-  { const pend = new Set(LS.get('filaAlt', []).filter((x) => x.tipo === 'meta_mot').map((x) => x.activista_id + '|' + x.data));
+  { const pend = new Set(LS.get('filaAlt', []).filter((x) => ['meta_mot', 'meta_mot2'].includes(x.tipo)).map((x) => x.activista_id + '|' + x.data));
     const mx = (LS.get('metaExpl', []) || []).filter((x) => !pend.has(x.activista_id + '|' + x.data));
-    if (mx.length) L.push(['mt', 'Meta muito abaixo, sem explicação', mx.length, 'a',
-      '<p class="pequeno">A equipa ficou muito abaixo da meta e a app não encontrou explicação: chegou a horas, não esperou muito pela água, não registou falta de água, avaria nem mudas mortas. Pergunte à equipa e escreva o motivo.</p>' + mx.map((x) => `<div class="item" style="display:block"><div class="nome"><span class="sem-trad">${esc(x.equipa || '')}</span> · ${fmtData(x.data)}</div>
+    if (mx.length) L.push(['mt', 'Meta não atingida, sem motivo', mx.length, 'a',
+      '<p class="pequeno">A equipa ficou abaixo da meta e a app não encontrou a causa: chegou a horas e as viagens de tuk-tuk registadas chegavam. Se a equipa ainda não disse o motivo, pergunte e escolha-o.</p>' + mx.map((x) => `<div class="item" style="display:block"><div class="nome"><span class="sem-trad">${esc(x.equipa || '')}</span> · ${fmtData(x.data)}</div>
       <div class="sub">${num(x.plantas)} <span>de</span> ${num(x.meta)} <span>plantas da meta</span> (${num(Math.round(x.pct))} %) · ${num(x.pessoas)} <span>pessoas</span> · ${esc(x.ini || '')}–${esc(x.fim || '')}</div>
-      <div class="chips"><button class="chip" onclick="ecraMotivoMeta('${esc(x.activista_id)}','${esc(x.data)}')">✍️ Escrever o motivo</button></div></div>`).join('')]); }
+      <div class="chips"><button class="chip" onclick="ecraMotivoMetaEq('${esc(x.activista_id)}','${esc(x.data)}')">✍️ Escolher o motivo</button></div></div>`).join('')]); }
   // 8. chegadas tardias (v153)
   const hc = d.hora_chegada || '06:00', hMz = (t) => new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour: '2-digit', minute: '2-digit', hour12: false });
   const tarde = eqs.filter((e) => e.chegada && hMz(e.chegada) > hc).sort((a, b) => a.chegada < b.chegada ? -1 : 1);
