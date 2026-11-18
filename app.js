@@ -14,7 +14,7 @@ const CFG = {
   precisaoIdeal: 5,    // metros: precisão recomendada
   metaPlantas: 140,    // plantas por pessoa por dia (meta do Valdo, 11/10/2026)
   meta20Inicio: '2026-11-19', meta20Peso: 4, litros20: 20,
-  metaMotivo2Inicio: '2026-11-20', horaChegada: '06:30', litrosViagemMax: 350, viagensMinimas: null,   // v246: = config meta_motivo2_inicio, hora_chegada_equipa, litros_viagem_max, meta_viagens_minimas   // v245 (18/11/2026, Valdo): planta mórbida a 20 L conta como 4 na meta, desde 19/11
+  metaMotivo2Inicio: '2026-11-20', horaChegada: '06:30', litrosViagemMax: 350, viagensMinimas: 3,   // v246: = config meta_motivo2_inicio, hora_chegada_equipa, litros_viagem_max, meta_viagens_minimas   // v245 (18/11/2026, Valdo): planta mórbida a 20 L conta como 4 na meta, desde 19/11
   // monitoria por planta (11/10/2026): amostra de Cochran com correcção para população finita
   monZ: 1.96, monMargem: 0.15, monP: 0.80,   // 95% de confiança, ±15% (v145, 30/10/2026: antes ±10%), proporção esperada 80%
   monLimiar: 80,       // % mínima de plantas com solo húmido para o campo contar como regado
@@ -3872,7 +3872,7 @@ function metaHoje(actId, extra = []) {      // plantas da equipa hoje contra a m
   const hEnt = ent ? new Date(ent).toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour: '2-digit', minute: '2-digit', hour12: false }) : null;
   const viagens = regs.reduce((t, r) => t + (r.tuk_chegada === 'nova' ? 1 : 0) + (Array.isArray(r.tuk_extra) ? r.tuk_extra.length : 0), 0);
   const jaEstava = regs.some((r) => r.tuk_chegada === 'ja_estava');
-  const poucas = !!meta && !jaEstava && (CFG.viagensMinimas != null ? viagens < CFG.viagensMinimas : viagens * CFG.litrosViagemMax < meta * CFG.litrosPlanta);
+  const poucas = !!meta && !jaEstava && (viagens < (CFG.viagensMinimas || 0) || viagens * CFG.litrosViagemMax < meta * CFG.litrosPlanta)   // v246: as duas regras (Valdo, 18/11: «A e B»);
   return { pl, p20, eq, pes, meta, hEnt, tarde: !!hEnt && hEnt > CFG.horaChegada, viagens, poucas, act: actId };
 }
 // v246 (18/11/2026, Valdo, decisões de 17/11 e 18/11): abaixo da meta, a equipa escolhe o motivo numa lista, menos quando a app

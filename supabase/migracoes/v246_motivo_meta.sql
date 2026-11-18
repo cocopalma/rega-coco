@@ -1,14 +1,15 @@
 -- v246 (18/11/2026, Valdo, decisões de 17/11 20:47 e 18/11 12:08): quando a equipa fica abaixo da meta do dia
 -- (140 plantas por pessoa; 1 planta a 20 L = 4), a equipa escolhe o motivo numa lista (com «outro» para escrever).
 -- Não se pede o motivo quando a app já sabe a causa: chegada ao 1.º campo depois da hora combinada, ou viagens de
--- tuk-tuk a menos (config.meta_viagens_minimas por equipa e dia; sem esse número: viagens × litros_viagem_max < meta × litros_planta).
+-- tuk-tuk a menos: menos de config.meta_viagens_minimas (3) viagens nesse dia, OU viagens × litros_viagem_max < meta × litros_planta
+-- (Valdo, 18/11/2026 17:35: «A e B»).
 -- Também não se pede quando já há um motivo de dia sem rega para esse dia. Conta a partir de config.meta_motivo2_inicio.
 -- Precisa da migração v245 (privado.meta_dias2, privado.agua_dias). Só acrescenta.
 
 alter table public.meta_motivos add column if not exists tipo text;
 alter table public.meta_motivos add column if not exists papel text;
 
-insert into public.config (chave, valor) values ('meta_motivo2_inicio', '"2026-11-20"') on conflict (chave) do nothing;
+insert into public.config (chave, valor) values ('meta_motivo2_inicio', '"2026-11-20"'), ('meta_viagens_minimas', '3') on conflict (chave) do nothing;
 
 create or replace function privado.meta_dias3(p_de date, p_ate date)
  returns table(activista_id uuid, equipa text, tecnico text, supervisor text, data date, campos integer, plantas integer, pessoas integer, meta integer, pct numeric, base integer, mortas integer, vivas_havia integer, cobertura numeric, ini text, fim text, espera_min integer, causas text[], precisa_motivo boolean, motivo text, motivo_por text, motivo_em timestamp with time zone, plantas_20l integer, plantas_eq integer,
@@ -27,8 +28,8 @@ as $function$
   from privado.meta_dias2(p_de, p_ate) m cross join cfg
   left join privado.agua_dias(p_de, p_ate) a on a.activista_id = m.activista_id and a.data = m.data
   left join public.meta_motivos mm on mm.activista_id = m.activista_id and mm.data = m.data and not mm.removido
-  -- poucas viagens: com config.meta_viagens_minimas, menos viagens do que esse número; sem ele, viagens que não traziam a água da meta
-  cross join lateral (select case when cfg.vmin is not null then coalesce(a.viagens, 0) < cfg.vmin else coalesce(a.litros_viagens_max, 0) < m.meta * cfg.l5 end
+  -- poucas viagens: menos de config.meta_viagens_minimas viagens, ou viagens que não traziam a água da meta (as duas regras valem)
+  cross join lateral (select (coalesce(a.viagens, 0) < coalesce(cfg.vmin, 0) or coalesce(a.litros_viagens_max, 0) < m.meta * cfg.l5)
       and not exists (select 1 from public.registos_rega r where r.activista_id = m.activista_id and r.data = m.data and not r.teste and r.tuk_chegada = 'ja_estava') as pv) x
 $function$;
 revoke all on function privado.meta_dias3(date, date) from public;
