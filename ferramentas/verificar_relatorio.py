@@ -75,6 +75,15 @@ def main(dados, base):
         ver(sum(x['viagens'] for x in tk['por_tuk']) == tk['viagens'], f'tuk-tuks: viagens por tuk-tuk = {tk["viagens"]}')
         ver(sum(x['viagens'] for x in tk['por_equipa']) == tk['viagens'], 'tuk-tuks: viagens por equipa = total')
         ver(tk['chegadas_agua'] - tk.get('outras_voltas', 0) <= r['regas'], 'tuk-tuks: chegadas da água (sem as outras voltas) ≤ regas')
+    ag = r.get('agua')
+    if ag is not None:  # v245: água declarada e água das viagens; plantas a 20 L e plantas equivalentes
+        ver(all(x['litros_declarados'] == 5 * (x['plantas'] - x['plantas_20l']) + 20 * x['plantas_20l'] for x in ag['equipas']), 'água declarada = 5 L × plantas a 5 L + 20 L × plantas a 20 L, em cada equipa')
+        ver(all(x['plantas_20l'] <= x['plantas'] for x in ag['equipas']), 'água: plantas a 20 L ≤ plantas regadas, em cada equipa')
+        ver(sum(x['plantas_20l'] or 0 for x in eq) == r.get('plantas_20l', 0), 'plantas a 20 L: soma das equipas = total')
+        ini = r.get('meta_20l_inicio') or '9999-12-31'
+        ver(all((x.get('plantas_eq') or 0) == x['plantas'] + (3 * (x['plantas_20l'] or 0) if d['data'] >= ini else 0) for x in eq), 'plantas da meta = plantas + 3 × plantas a 20 L (desde ' + ini + ')')
+        if tk:
+            aviso(sum(x['viagens'] for x in ag['equipas']) == tk['viagens'], f'água: viagens das equipas = {tk["viagens"]} viagens dos tuk-tuks (regas sem equipa contam só nos tuk-tuks)')
     ap = r.get('apoios')
     if ap is not None:  # v243: responsável e executor nas regas em apoio
         ver(len(ap) <= r['regas'], f'reforço: regas em apoio ({len(ap)}) ≤ regas')

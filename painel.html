@@ -174,7 +174,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <details><summary>Ver tabela por dia</summary><div class="tabela" id="t-pde" style="max-height:none"></div></details></section>
 
   <section class="card sec" id="s-meta"><h2>Meta: 140 plantas por pessoa por dia</h2>
-    <p class="desc">% da meta = plantas regadas ÷ (140 × pessoas presentes). Cada equipa é comparada com a sua própria meta, que depende das pessoas que estiveram presentes em cada dia: uma equipa de 3 pessoas tem meta de 420 plantas por dia, uma de 6 tem 840.</p>
+    <p class="desc">% da meta = plantas regadas ÷ (140 × pessoas presentes). Desde 19/11 cada planta mórbida que recebeu 20 L conta como 4 plantas (recebe 4 vezes a água). Cada equipa é comparada com a sua própria meta, que depende das pessoas que estiveram presentes em cada dia: uma equipa de 3 pessoas tem meta de 420 plantas por dia, uma de 6 tem 840.</p>
     <div class="grelha dois" style="margin-bottom:12px">
       <div><h3 style="font-size:14px;margin:4px 0">% da meta por dia (todas as equipas)</h3><div id="g-meta-dia"></div></div>
       <div><h3 style="font-size:14px;margin:4px 0">% da meta por equipa no período</h3><div id="g-meta-eq"></div></div>
@@ -229,6 +229,12 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <h3 style="font-size:14px;margin:12px 0 4px">Que tuk-tuk serviu que equipa, por dia</h3><div class="tabela" id="t-tuk-dia" style="max-height:none"></div>
     <details><summary>Ver todas as chegadas da água</summary><div class="tabela" id="t-tuk"></div></details></section>
 
+  <section class="card sec" id="s-agu" hidden><h2>💧 Água declarada e água das viagens</h2>
+    <p class="desc">Água declarada = 5 L × plantas a 5 L + 20 L × plantas mórbidas a 20 L, pelo que a equipa escreve na saída. Água das viagens = viagens de tuk-tuk registadas × 300 a 350 L (o que cada tuk-tuk carrega por viagem). Quando a água declarada passa a das viagens, ou as plantas receberam menos água do que se diz, ou há viagens por registar. <span id="d-agu-ini"></span></p>
+    <div class="grelha kpis" id="k-agu"></div>
+    <h3 style="font-size:14px;margin:12px 0 4px">Água das viagens em % da água declarada, por equipa (350 L por viagem)</h3><div id="g-agu"></div>
+    <div class="tabela" id="t-agu" style="max-height:none"></div></section>
+
   <section class="card sec" id="s-apo" hidden><h2>🤝 Reforço entre equipas: responsável e executor</h2>
     <p class="desc">Regas feitas por uma equipa em campos de outra, com o «Apoio entre equipas». O responsável é a equipa dona do campo; o executor é a equipa que regou. A rega conta na ronda do responsável.</p>
     <div class="grelha kpis" id="k-apo"></div>
@@ -282,10 +288,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=244"></script>
-<script src="i18n.js?v=244"></script>
+<script src="i18n-sw.js?v=245"></script>
+<script src="i18n.js?v=245"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=244"></script>
+<script src="demo.js?v=245"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -656,12 +662,14 @@ function desenharPlantasDiaEquipa() {
 
 // ---------- meta de plantas por pessoa e tempos ----------
 const segunda = (d) => { const t = new Date(d + 'T12:00:00'); t.setDate(t.getDate() - ((t.getDay() + 6) % 7)); return t.toLocaleDateString('sv-SE'); };
+// v245: na meta conta plantas_eq (desde 19/11 cada planta mórbida a 20 L conta como 4); sem o campo (servidor antigo) conta as plantas
+const PEQ = (x) => (x.plantas_eq ?? x.plantas) || 0;
 function graficosMeta(L) {
-  const pcV = (o) => (o.pessoas ? (100 * o.plantas) / (META * o.pessoas) : 0), fmtP = (v) => Math.round(v) + '%';
-  const dia = {}; for (const x of L) { if (!x.pessoas) continue; const o = (dia[x.data] ??= { data: x.data, plantas: 0, pessoas: 0, equipas: 0 }); o.plantas += x.plantas; o.pessoas += x.pessoas; o.equipas++; }
+  const pcV = (o) => (o.pessoas ? (100 * o.eq) / (META * o.pessoas) : 0), fmtP = (v) => Math.round(v) + '%';
+  const dia = {}; for (const x of L) { if (!x.pessoas) continue; const o = (dia[x.data] ??= { data: x.data, plantas: 0, eq: 0, pessoas: 0, equipas: 0 }); o.plantas += x.plantas; o.eq += PEQ(x); o.pessoas += x.pessoas; o.equipas++; }
   colunas('#g-meta-dia', Object.values(dia).sort((a, b) => a.data.localeCompare(b.data)).slice(-30), { valor: pcV, rotulo: (d) => ddmm(d.data), fmt: fmtP, ref: 100, refTxt: 'meta 100%',
     dicaDe: (d) => [[fmtP(pcV(d)), 'da meta'], [fmtData(d.data)], [`${num(d.plantas)} plantas · ${num(d.pessoas)} pessoas · ${num(d.equipas)} equipas`]] });
-  const eq = {}; for (const x of L) { if (!x.pessoas) continue; const o = (eq[x.equipa] ??= { equipa: x.equipa, comunidade: x.comunidade, plantas: 0, pessoas: 0 }); o.plantas += x.plantas; o.pessoas += x.pessoas; }
+  const eq = {}; for (const x of L) { if (!x.pessoas) continue; const o = (eq[x.equipa] ??= { equipa: x.equipa, comunidade: x.comunidade, plantas: 0, eq: 0, pessoas: 0 }); o.plantas += x.plantas; o.eq += PEQ(x); o.pessoas += x.pessoas; }
   const le = Object.values(eq).sort((a, b) => pcV(b) - pcV(a));
   barras('#g-meta-eq', le, { valor: pcV, rotulo: (d) => d.equipa, texto: (d) => fmtP(pcV(d)), max: Math.max(100, ...le.map(pcV)), ref: 100, refTxt: 'meta',
     dicaDe: (d) => [[fmtP(pcV(d)), 'da meta'], [`${d.equipa} · ${d.comunidade}`], [`${num(d.plantas)} plantas · ${num(d.pessoas)} pessoas-dia`]] });
@@ -674,28 +682,28 @@ function desenharMeta() {
   const chave = (d) => (VM === 'semana' ? segunda(d) : VM === 'periodo' ? 'p' : d);
   const cols = [...new Set(L.map((x) => chave(x.data)))].sort().slice(VM === 'semana' ? -8 : -14);
   const ac = {};   // equipa|coluna -> {plantas, pessoas, faltas, dias}
-  for (const x of L) { const k = x.comunidade + '|' + x.equipa, c = chave(x.data); const o = (ac[k + '|' + c] ??= { plantas: 0, pessoas: 0, faltas: 0, dias: 0 });
-    o.plantas += x.plantas; o.pessoas += x.pessoas || 0; o.dias++; if (x.pessoas && x.tamanho) o.faltas += Math.max(0, x.tamanho - x.pessoas); }
+  for (const x of L) { const k = x.comunidade + '|' + x.equipa, c = chave(x.data); const o = (ac[k + '|' + c] ??= { plantas: 0, eq: 0, p20: 0, pessoas: 0, faltas: 0, dias: 0 });
+    o.plantas += x.plantas; o.eq += PEQ(x); o.p20 += x.plantas_20l || 0; o.pessoas += x.pessoas || 0; o.dias++; if (x.pessoas && x.tamanho) o.faltas += Math.max(0, x.tamanho - x.pessoas); }
   const grupos = {}; for (const x of L) (grupos[x.comunidade] ??= new Set()).add(x.equipa);
-  const pc = (o) => (o && o.pessoas ? Math.round(100 * o.plantas / (META * o.pessoas)) + '%' : '—');
-  const soma = (os) => os.reduce((t, o) => { if (o) { t.plantas += o.plantas; t.pessoas += o.pessoas; t.faltas += o.faltas; t.dias += o.dias; } return t; }, { plantas: 0, pessoas: 0, faltas: 0, dias: 0 });
+  const pc = (o) => (o && o.pessoas ? Math.round(100 * o.eq / (META * o.pessoas)) + '%' : '—');
+  const soma = (os) => os.reduce((t, o) => { if (o) { t.plantas += o.plantas; t.eq += o.eq; t.p20 += o.p20; t.pessoas += o.pessoas; t.faltas += o.faltas; t.dias += o.dias; } return t; }, { plantas: 0, eq: 0, p20: 0, pessoas: 0, faltas: 0, dias: 0 });
   let h;
   if (VM === 'periodo') {
-    h = '<table><thead><tr><th>Equipa</th><th class="n">Dias com rega</th><th class="n">Pessoas-dia</th><th class="n">Faltas</th><th class="n">Plantas</th><th class="n">Meta</th><th class="n">% da meta</th></tr></thead><tbody>';
-    const lin = (nome, o, grupo) => `<tr${grupo ? ' class="grupo"' : ''}><td${grupo ? '' : ' style="padding-left:18px"'}>${grupo ? `<b>${esc(nome)}</b>` : esc(nome)}</td><td class="n">${num(o.dias)}</td><td class="n">${num(o.pessoas)}</td><td class="n">${o.faltas ? `<span class="falta">${num(o.faltas)}</span>` : '0'}</td><td class="n">${num(o.plantas)}</td><td class="n">${num(META * o.pessoas)}</td><td class="n"><b>${pc(o)}</b></td></tr>`;
+    h = '<table><thead><tr><th>Equipa</th><th class="n">Dias com rega</th><th class="n">Pessoas-dia</th><th class="n">Faltas</th><th class="n">Plantas</th><th class="n">Destas, a 20 L</th><th class="n">Meta</th><th class="n">% da meta</th></tr></thead><tbody>';
+    const lin = (nome, o, grupo) => `<tr${grupo ? ' class="grupo"' : ''}><td${grupo ? '' : ' style="padding-left:18px"'}>${grupo ? `<b>${esc(nome)}</b>` : esc(nome)}</td><td class="n">${num(o.dias)}</td><td class="n">${num(o.pessoas)}</td><td class="n">${o.faltas ? `<span class="falta">${num(o.faltas)}</span>` : '0'}</td><td class="n">${num(o.plantas)}</td><td class="n">${num(o.p20)}</td><td class="n">${num(META * o.pessoas)}</td><td class="n"><b>${pc(o)}</b></td></tr>`;
     for (const com of Object.keys(grupos).sort()) { const eqs = [...grupos[com]].sort();
       h += lin(com, soma(eqs.map((e) => ac[com + '|' + e + '|p'])), true); for (const e of eqs) h += lin(e, ac[com + '|' + e + '|p'] || soma([]), false); }
   } else {
     const rot = (c) => (VM === 'semana' ? 'Sem. ' + ddmm(c) : ddmm(c));
     // v132 (28/10/2026, Valdo: "só aparecem os outros indicadores … na opção período; na opção semana e hoje, não aparecem"): plantas, pessoas-dia e faltas em cada célula
-    const det = (o) => `<div class="meta-det">🌱 ${num(o.plantas)} · 👥 ${num(o.pessoas)}${o.faltas ? ` · <span class="falta">${num(o.faltas)}F</span>` : ''}</div>`;
+    const det = (o) => `<div class="meta-det">🌱 ${num(o.plantas)}${o.p20 ? ` (💧 ${num(o.p20)})` : ''} · 👥 ${num(o.pessoas)}${o.faltas ? ` · <span class="falta">${num(o.faltas)}F</span>` : ''}</div>`;
     h = `<table><thead><tr><th>Equipa</th>${cols.map((c) => `<th class="n">${rot(c)}</th>`).join('')}<th class="n">Total</th></tr></thead><tbody>`;
     for (const com of Object.keys(grupos).sort()) { const eqs = [...grupos[com]].sort();
       h += `<tr class="grupo"><td><b>${esc(com)}</b></td>${cols.map((c) => { const o = soma(eqs.map((e) => ac[com + '|' + e + '|' + c])); return `<td class="n"><b>${pc(o)}</b>${o.dias ? det(o) : ''}</td>`; }).join('')}<td class="n"><b>${pc(soma(cols.flatMap((c) => eqs.map((e) => ac[com + '|' + e + '|' + c]))))}</b>${det(soma(cols.flatMap((c) => eqs.map((e) => ac[com + '|' + e + '|' + c]))))}</td></tr>`;
       for (const e of eqs) { const k = com + '|' + e + '|';
         h += `<tr><td style="padding-left:18px">${esc(e)}</td>${cols.map((c) => { const o = ac[k + c]; return `<td class="n">${o ? pc(o) + det(o) : '<span style="color:var(--muted)">—</span>'}</td>`; }).join('')}<td class="n">${pc(soma(cols.map((c) => ac[k + c])))}${det(soma(cols.map((c) => ac[k + c])))}</td></tr>`; }
     }
-    h += '</tbody></table><p class="desc" style="margin-top:8px">Em cada célula: % da meta; 🌱 plantas regadas; 👥 pessoas-dia (soma das pessoas presentes em cada dia); F = faltas nesse dia ou semana.</p>';
+    h += '</tbody></table><p class="desc" style="margin-top:8px">Em cada célula: % da meta; 🌱 plantas regadas (💧 = destas, plantas mórbidas a 20 L, que desde 19/11 contam como 4 na meta); 👥 pessoas-dia (soma das pessoas presentes em cada dia); F = faltas nesse dia ou semana.</p>';
   }
   $('#t-meta').innerHTML = h + (VM === 'periodo' ? '</tbody></table>' : '');
 }
@@ -929,7 +937,7 @@ function desenharPlantasMarcadas() {
 }
 // ---------- testes por pessoa (v91, 21/10/2026, Valdo: ver quem já testou e quem ainda não) ----------
 // Ao cliente o servidor devolve null e a secção fica escondida.
-let DTP = null, DMN = null, DSR = null, DCT = null, DAC = null, DTK = null, DAP = null;
+let DTP = null, DMN = null, DSR = null, DCT = null, DAC = null, DTK = null, DAP = null, DAG = null;
 const MOSTRAR_MANUT = true;   // v177 escondeu a secção por engano (Valdo queria tirar a manutenção do perfil de gestão, não do painel); v178 repôs
 // medições com a vara (v106, 23/10/2026, Valdo): só gestor, director e M&E (o servidor devolve null aos outros)
 let DMD = null;
@@ -1055,6 +1063,29 @@ function desenharTuks() {
   tabela('#t-tuk', [['Data'], ['Hora'], ['Tuk-tuk'], ['Equipa (activista)'], ['Comunidade'], ['Produtor'], ['Como chegou a água']],
     [...C].reverse().map((c) => [fmtData(c.data), h(c.hora), c.tuk || c.outro ? `<b class="sem-trad">${esc(c.tuk || c.outro)}</b>` : '—', esc(c.equipa || ''), esc(c.comunidade || '') + (c.zona ? ' › ' + esc(c.zona) : ''),
       `<span class="sem-trad">${esc(c.produtor || '')}</span> · ${esc(c.campo || '')}`, (c.outra_volta ? 'Outra volta ao mesmo campo (viagem nova)' : c.chegada ? TUK_CHEG[c.chegada] : 'Sem tuk-tuk registado') + (c.corrigido ? ' · ✏️' : '')]));
+}
+// v245 (18/11/2026, Valdo): água declarada (5 L e 20 L por planta) ao lado da água das viagens de tuk-tuk (300–350 L), por equipa e dia
+function desenharAgua() {
+  const el = $('#s-agu'); if (!el) return;
+  const X = DAG && typeof DAG === 'object' && Array.isArray(DAG.dias) ? DAG : null; el.hidden = !X; if (!X) return;
+  const kpi = (rot, v, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${v}</div><div class="sub">${sub}</div></div>`;
+  const L = X.dias, s = (k) => L.reduce((t, x) => t + (x[k] || 0), 0), vmin = X.viagem_min || 300, vmax = X.viagem_max || 350;
+  const acima = L.filter((x) => x.litros_declarados > x.litros_viagens_max);
+  const lpp = (k) => (s(k) / s('plantas')).toFixed(1).replace('.', ',');
+  $('#d-agu-ini').innerHTML = X.inicio ? `<span>O registo das viagens começou a</span> <b>${fmtData(X.inicio)}</b>; <span>as plantas a 20 L contam desde a versão 245 da app.</span>` : '';
+  $('#k-agu').innerHTML = kpi('Água declarada', num(s('litros_declarados')) + ' L', `${num(s('plantas'))} <span>plantas</span> · ${num(s('plantas_20l'))} <span>a 20 L</span>`) +
+    kpi('Água das viagens', `${num(s('litros_viagens_min'))}–${num(s('litros_viagens_max'))} L`, `${num(s('viagens'))} <span>viagens</span> × ${num(vmin)}–${num(vmax)} L`) +
+    kpi('Litros por planta pelas viagens', s('plantas') ? `${lpp('litros_viagens_min')}–${lpp('litros_viagens_max')} L` : '—', '<span>água das viagens ÷ plantas regadas</span>') +
+    kpi('Dias de equipa com mais água declarada do que as viagens dão', num(acima.length), `<span>de</span> ${num(L.length)} <span>dias de equipa</span>`);
+  if (!L.length) { $('#g-agu').innerHTML = ''; $('#t-agu').innerHTML = '<div class="vazio">Nenhuma rega no período.</div>'; return; }
+  const eq = {}; for (const x of L) { const o = (eq[x.equipa] ??= { equipa: x.equipa, d: 0, v: 0, vi: 0 }); o.d += x.litros_declarados || 0; o.v += x.litros_viagens_max || 0; o.vi += x.viagens || 0; }
+  const pc = (o) => (o.d ? (100 * o.v) / o.d : 0), le = Object.values(eq).sort((a, b) => pc(a) - pc(b));
+  barras('#g-agu', le, { valor: pc, rotulo: (o) => o.equipa, texto: (o) => Math.round(pc(o)) + '%', max: Math.max(100, ...le.map(pc)), ref: 100, refTxt: '100%',
+    dicaDe: (o) => [[Math.round(pc(o)) + '%', 'da água declarada'], [o.equipa], [`${num(o.d)} L declarados · ${num(o.vi)} viagens = ${num(o.v)} L`]] });
+  tabela('#t-agu', [['Data'], ['Equipa (activista)'], ['Técnico'], ['Plantas', 1], ['A 20 L', 1], ['Água declarada (L)', 1], ['Viagens', 1], ['Água das viagens (L)', 1], ['Situação']],
+    L.map((x) => [fmtData(x.data), esc(x.equipa || ''), esc(x.tecnico || ''), num(x.plantas), num(x.plantas_20l) + (x.regas_sem_20l ? ` <span class="pequeno">(${num(x.regas_sem_20l)} <span>regas sem contagem a 20 L</span>)</span>` : ''),
+      num(x.litros_declarados), num(x.viagens) + (x.regas_sem_tuk ? ` <span class="pequeno">(${num(x.regas_sem_tuk)} <span>sem tuk-tuk registado</span>)</span>` : ''), `${num(x.litros_viagens_min)}–${num(x.litros_viagens_max)}`,
+      !x.viagens ? '<span>Sem viagens registadas</span>' : x.litros_declarados > x.litros_viagens_max ? '<span class="falta">Declarada acima das viagens</span>' : x.litros_declarados < x.litros_viagens_min ? '<span>Declarada abaixo das viagens</span>' : '<span>Dentro do que as viagens dão</span>']));
 }
 // cava-roda e mulching quando não há rega (ramo cc-manutencao)
 function desenharActividades() {
@@ -1210,7 +1241,8 @@ async function buscarPeriodo(p) {
   const ac = await sb.rpc('painel_actividades', { p_de: de, p_ate: ate });
   const tk = await sb.rpc('painel_tuktuks', { p_de: de, p_ate: ate });
   const apx = await sb.rpc('painel_apoios', { p_de: de, p_ate: ate });
-  return { DAP: apx.error ? null : apx.data, DTK: tk.error ? null : tk.data, DAC: ac.error ? null : ac.data, DPV: pv.error ? null : pv.data, DMX: mx.error ? null : mx.data, DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
+  const agx = await sb.rpc('painel_agua', { p_de: de, p_ate: ate });
+  return { DAG: agx.error ? null : agx.data, DAP: apx.error ? null : apx.data, DTK: tk.error ? null : tk.data, DAC: ac.error ? null : ac.data, DPV: pv.error ? null : pv.data, DMX: mx.error ? null : mx.data, DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
 }
 // uma só cópia por período (v168, 01/11/2026: o espaço do aparelho encheu): apaga as cópias desse período de outros dias e, se
 // mesmo assim não couber, as outras cópias do painel; períodos escolhidos à mão (de… até…) só fica o que se está a ver
@@ -1248,7 +1280,7 @@ function semPeriodoGuardado() {
 async function carregar(mudou = false) {
   const c = (!D || mudou) && lerCache();
   if (mudou && !c && !navigator.onLine) { semPeriodoGuardado(); return; }
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; DMX = c.DMX || null; DPV = c.DPV || null; DAC = c.DAC || null; DTK = c.DTK || null; DAP = c.DAP || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharApoios(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; DMX = c.DMX || null; DPV = c.DPV || null; DAC = c.DAC || null; DTK = c.DTK || null; DAP = c.DAP || null; DAG = c.DAG || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharAgua(); desenharApoios(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
@@ -1267,6 +1299,7 @@ async function carregar(mudou = false) {
   const pAc = sb.rpc('painel_actividades', { p_de: de, p_ate: ate });
   const pTk = sb.rpc('painel_tuktuks', { p_de: de, p_ate: ate });
   const pAp = sb.rpc('painel_apoios', { p_de: de, p_ate: ate });
+  const pAg = sb.rpc('painel_agua', { p_de: de, p_ate: ate });
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa2', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   const rec = await pRec; DR = rec.error ? null : rec.data;
   const pl = await pPl; DPL = pl.error ? null : pl.data;
@@ -1281,16 +1314,16 @@ async function carregar(mudou = false) {
   const mx = await pMx; DMX = mx.error ? null : mx.data;
   const pv = await pPv; DPV = pv.error ? null : pv.data;
   const acx = await pAc; DAC = acx.error ? null : acx.data;
-  const tkx = await pTk; DTK = tkx.error ? null : tkx.data; const apy = await pAp; DAP = apy.error ? null : apy.data;
+  const tkx = await pTk; DTK = tkx.error ? null : tkx.data; const apy = await pAp; DAP = apy.error ? null : apy.data; const agy = await pAg; DAG = agy.error ? null : agy.data;
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) { if (erroDeRede(error)) avisoRede(c || { antigo: null }); return; }   // sem rede: fica o último painel guardado
   if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharApoios(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas();
+  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharAgua(); desenharApoios(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas();
   arrumarCache();   // fica uma cópia por período (a mais recente), para ver sem rede
-  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, DMX, DPV, DAC, DTK, DAP, em: Date.now() });
+  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, DMX, DPV, DAC, DTK, DAP, DAG, em: Date.now() });
   setTimeout(() => guardarOutrosPeriodos().catch(() => {}), 1500);
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
@@ -1306,7 +1339,7 @@ $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar()
 $('#b-act').onclick = carregar;
 $('#b-sair').onclick = async () => { try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {} await sb.auth.signOut(); location.reload(); };
 document.querySelectorAll('#v-meta button').forEach((b) => b.onclick = () => { VM = b.dataset.v; try { localStorage.setItem('rega.painel.meta', VM); } catch {} desenharMeta(); });
-let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharApoios(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }, 150); });
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharAgua(); desenharApoios(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
 if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }

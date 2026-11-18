@@ -268,6 +268,19 @@ def gerar(d):
                     + ('<p class="cinz">Por equipa: ' + e(' · '.join(f"{pnome(x['equipa'])} {x['viagens']}" + (f" ({', '.join(x['tuks'])})" if x['tuks'] else '') for x in pe if x['viagens'])) + '</p>' if any(x['viagens'] for x in pe) else '')
                     + '<p class="cinz">Viagem = o tuk-tuk chegou com água nova. Registo feito pelo activista em cada chegada da água.</p>')
 
+    # Água declarada e viagens (v245): 5 L × plantas a 5 L + 20 L × plantas mórbidas a 20 L, ao lado de viagens × 300–350 L
+    ag = (r.get('agua') or {})
+    agua_html = ''
+    if ag.get('equipas') and any(x['viagens'] or x['plantas_20l'] for x in ag['equipas']):
+        L = ag['equipas']; vmin, vmax = ag.get('viagem_min') or 300, ag.get('viagem_max') or 350
+        dec, lmin, lmax = sum(x['litros_declarados'] for x in L), sum(x['litros_viagens_min'] for x in L), sum(x['litros_viagens_max'] for x in L)
+        acima = [x for x in L if x['viagens'] and x['litros_declarados'] > x['litros_viagens_max']]
+        agua_html = ('<h3>Água declarada e água das viagens</h3>'
+                     + f"<p>Água declarada: <b>{n(dec)} L</b> ({n(sum(x['plantas'] for x in L))} plantas, {n(sum(x['plantas_20l'] for x in L))} delas mórbidas a 20 L). "
+                     + f"Água das viagens: <b>{n(lmin)}–{n(lmax)} L</b> ({n(sum(x['viagens'] for x in L))} viagens × {n(vmin)}–{n(vmax)} L).</p>"
+                     + (('<p>Equipas com mais água declarada do que as viagens dão: ' + e(' · '.join(f"{pnome(x['equipa'])} {n(x['litros_declarados'])} L para {n(x['litros_viagens_min'])}–{n(x['litros_viagens_max'])} L" for x in acima)) + '.</p>') if acima else '')
+                     + '<p class="cinz">Quando a água declarada passa a das viagens, ou as plantas receberam menos água do que se diz, ou há viagens por registar.</p>')
+
     # Reforço (v243): regas feitas por uma equipa em campos de outra; responsável = dona do campo, executor = quem regou
     ap = r.get('apoios') or []
     apo_html = ''
@@ -285,6 +298,8 @@ def gerar(d):
     bar_com = ''.join(barra(e(x['activista']), x['plantas'], mx,
                             f"{n(x['plantas'])} pl. · {x['campos']} campos",
                             sub=e(f"1.º campo às {x['chegada_1o_campo']}" + (f" · {x['pessoas']} pessoas" if x['pessoas'] else '')
+                                  + (f" · {round(100 * (x.get('plantas_eq') or x['plantas']) / x['meta'])}% da meta" if x.get('meta') else '')
+                                  + (f" · {n(x['plantas_20l'])} a 20 L" if x.get('plantas_20l') else '')
                                   + (' · sem telefone' if x['sem_telefone'] else '')))
                       for x in com)
 
@@ -432,6 +447,7 @@ footer{{color:var(--c);font-size:12px;margin-top:24px;border-top:1px solid var(-
 {'<h3>O que dificultou a rega (registado na saída)</h3><ul>' + cons_html + '</ul>' if cons_html else ''}
 
 {tuk_html}
+{agua_html}
 {apo_html}
 
 <h3>Plantas regadas por comunidade</h3>

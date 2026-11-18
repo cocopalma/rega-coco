@@ -13,6 +13,7 @@ const CFG = {
   precisaoCoord: 10,   // metros: pior precisão aceite para gravar a coordenada de um campo (a afinar no terreno)
   precisaoIdeal: 5,    // metros: precisão recomendada
   metaPlantas: 140,    // plantas por pessoa por dia (meta do Valdo, 11/10/2026)
+  meta20Inicio: '2026-11-19', meta20Peso: 4, litros20: 20,   // v245 (18/11/2026, Valdo): planta mórbida a 20 L conta como 4 na meta, desde 19/11
   // monitoria por planta (11/10/2026): amostra de Cochran com correcção para população finita
   monZ: 1.96, monMargem: 0.15, monP: 0.80,   // 95% de confiança, ±15% (v145, 30/10/2026: antes ±10%), proporção esperada 80%
   monLimiar: 80,       // % mínima de plantas com solo húmido para o campo contar como regado
@@ -395,7 +396,7 @@ async function sincronizarAgora(silencioso) {
       }
     }
     // já está no servidor: passa da fila para "meus registos" no mesmo passo (não se perde nem se conta duas vezes)
-    const m = LS.get('meusRegs', []); if (!m.some((x) => x.id === reg.id)) m.push({ id: reg.id, area_id: reg.area_id, activista_id: reg.activista_id, data: reg.data, ronda: reg.ronda, plantas_regadas: reg.plantas_regadas, teste: reg.teste, campo_fechado: reg.campo_fechado ?? null });
+    const m = LS.get('meusRegs', []); if (!m.some((x) => x.id === reg.id)) m.push({ id: reg.id, area_id: reg.area_id, activista_id: reg.activista_id, data: reg.data, ronda: reg.ronda, plantas_regadas: reg.plantas_regadas, plantas_20l: reg.plantas_20l ?? null, pessoas: reg.pessoas ?? null, teste: reg.teste, campo_fechado: reg.campo_fechado ?? null });
     LS.set('meusRegs', m);
     LS.set('fila', filaRegistos().filter((x) => x.id !== reg.id));
     for (const tipo of Object.keys(fotos || {})) { try { await FOTOS.apagar(`${reg.id}-${tipo}`); } catch {} }
@@ -558,7 +559,7 @@ async function carregarEstado(pronto) {
     tarefas.push(sb.rpc('ausentes_hoje').then((q) => { if (!q.error && Array.isArray(q.data)) LS.set('ausentes', { data: hojeISO(), ids: q.data }); }));   // v171
     tarefas.push(sb.rpc('membros_lista').then((q) => { if (!q.error && Array.isArray(q.data)) { S.membros = q.data; aplicarMembrosPendentes(); LS.set('membros', S.membros); } }));
   if (souActivista() && S.perfil.activista_id) {        // registos da minha equipa (para a ronda funcionar sem rede)
-    tarefas.push(sb.from('registos_rega').select('id,area_id,activista_id,apoio_para,data,ronda,plantas_regadas,teste,campo_fechado')
+    tarefas.push(sb.from('registos_rega').select('id,area_id,activista_id,apoio_para,data,ronda,plantas_regadas,plantas_20l,pessoas,teste,campo_fechado')
       .or(`activista_id.eq.${S.perfil.activista_id},apoio_para.eq.${S.perfil.activista_id}`).eq('teste', false).gt('plantas_regadas', 0).range(0, 9999)
       .then((r) => { if (!r.error) LS.set('meusRegs', r.data); }));
   } else if (PODE_REGAR.includes(papel) && S.perfil?.id) {   // as minhas regas de teste dos últimos 14 dias
@@ -3852,6 +3853,34 @@ function baseSaida(a) {
   const base = plantasN(a), pt = infoTerminar(a);
   return { base, ja: pt ? pt.regadas : 0, resta: Math.max(0, base - (pt ? pt.regadas : 0)) };
 }
+// v245 (18/11/2026, Valdo, orientação do Luciano Lima): as plantas mórbidas recebem 20 L, as outras 5 L.
+// Na meta (140 plantas por pessoa por dia) 1 planta a 20 L conta como 4, a partir de 19/11 (CFG.meta20Inicio).
+const plEq = (pl, p20, data) => (pl || 0) + (String(data || '') >= CFG.meta20Inicio ? (CFG.meta20Peso - 1) * Math.min(Math.max(p20 || 0, 0), pl || 0) : 0);
+const litrosRega = (pl, p20) => CFG.litrosPlanta * Math.max(0, (pl || 0) - (p20 || 0)) + CFG.litros20 * Math.min(p20 || 0, pl || 0);
+function metaHoje(actId, extra = []) {      // plantas da equipa hoje contra a meta (regas no telefone e as que já foram enviadas)
+  const h = hojeISO(), vistos = new Set(), regs = [];
+  for (const r of [...extra, ...filaRegistos(), ...LS.get('meusRegs', [])]) if (r && !vistos.has(r.id) && r.data === h && !r.teste && r.activista_id === actId) { vistos.add(r.id); regs.push(r); }
+  const pl = regs.reduce((t, r) => t + (r.plantas_regadas || 0), 0), p20 = regs.reduce((t, r) => t + Math.min(r.plantas_20l || 0, r.plantas_regadas || 0), 0);
+  const eq = regs.reduce((t, r) => t + plEq(r.plantas_regadas, r.plantas_20l, r.data), 0);
+  const pes = Math.max(actId === S.perfil?.activista_id ? jornadaHoje()?.pessoas || 0 : 0, ...regs.map((r) => r.pessoas || 0));
+  return { pl, p20, eq, pes, meta: pes ? CFG.metaPlantas * pes : null };
+}
+function linhaMeta(m) {
+  if (!m || !m.meta) return '';
+  const pct = Math.round(100 * m.eq / m.meta), conta = hojeISO() >= CFG.meta20Inicio;
+  const det = m.p20 ? `<div class="pequeno">${conta ? `<span>Plantas a 20 L contam como 4 na meta:</span> ${num(m.p20)} <span>a 20 L</span> = ${num(m.p20 * CFG.meta20Peso)}.` : `<span>Plantas a 20 L hoje:</span> ${num(m.p20)}. <span>A partir de 19/11 cada planta a 20 L conta como 4 na meta.</span>`}</div>` : '';
+  return m.eq >= m.meta
+    ? `<div class="msg ok" id="meta-dia">✓ <b>Meta do dia atingida</b>: <span class="sem-trad">${num(m.eq)} / ${num(m.meta)}</span> <span>plantas</span> (${pct}%). <span>Se ainda tiver água e tempo, pode continuar.</span>${det}</div>`
+    : `<div class="msg info" id="meta-dia">🎯 <b>Meta de hoje</b>: <span class="sem-trad">${num(m.eq)} / ${num(m.meta)}</span> <span>plantas</span> (${pct}%). <span>Faltam</span> ${num(m.meta - m.eq)} <span>plantas para a meta.</span>${det}</div>`;
+}
+function verAguaSaida() {                  // na saída: plantas a 5 L, a 20 L e a água que isso dá
+  const el = $('#s-agua-decl'); if (!el) return;
+  const p = parseInt($('#s-plantas').value, 10), q = parseInt($('#s-p20')?.value, 10);
+  if (!(p >= 0)) { el.innerHTML = ''; return; }
+  if (q > p) { el.innerHTML = `<div class="msg erro"><span>As plantas a 20 L não podem ser mais do que as plantas regadas</span> (${num(p)}).</div>`; return; }
+  const v = q >= 0 ? q : 0;
+  el.innerHTML = `<span>A 5 L:</span> <b>${num(p - v)}</b> · <span>a 20 L:</span> <b>${num(v)}</b> · <span>água:</span> <b>${num(litrosRega(p, v))} L</b>`;
+}
 const contaRonda = (a) => (souActivista() || porEquipa(a)) && hojeISO() >= POR_TERMINAR_INICIO;
 function ecraSaida(msg = '') {
   const ent = LS.get('emCurso'); if (!ent) return fecharFolha();
@@ -3860,7 +3889,10 @@ function ecraSaida(msg = '') {
   folha(`${msg}<h2>${esc(a.produtor)}</h2><p class="pequeno">Entrada às ${fmtHora(ent.entrada_em)}</p>
    ${ent.sem_vivas ? `<div class="msg info">🥀 <span>Sem plantas vivas para regar: 0 plantas regadas. Escreva quantas plantas encontrou mortas ou secas.</span></div>` : ''}
    <label>Plantas regadas neste campo<input id="s-plantas" type="number" inputmode="numeric" min="0" value="${ent.sem_vivas ? 0 : ent.plantas_escritas ?? ''}"${ent.sem_vivas ? ' readonly' : ''}></label>
-   ${ent.sem_vivas ? '' : `<p class="pequeno">Na base: ${plantasTxt(a)}. Escreva o número de plantas que regou.</p>`}
+   ${ent.sem_vivas ? '' : `<p class="pequeno">Na base: ${plantasTxt(a)}. Escreva o número de plantas que regou.</p>
+   <label>Destas, quantas plantas mórbidas receberam 20 L?<input id="s-p20" type="number" inputmode="numeric" min="0" value="${ent.p20_escritas ?? (window.__P20_TESTE ?? '')}"></label>
+   <p class="pequeno">Obrigatório: escreva 0 se nenhuma planta recebeu 20 L. As outras plantas recebem 5 L.</p>
+   <div class="pequeno" id="s-agua-decl"></div>`}
    ${(() => { const b = baseSaida(a); return b.ja ? `<div class="msg info">⏳ <span>Campo por terminar: já se regaram</span> ${num(b.ja)} <span>plantas nesta ronda. Faltam</span> ${num(b.resta)}. <span>Escreva só as plantas que regou agora.</span></div>` : ''; })()}
    <label>Pessoas que regaram este campo<input id="s-pessoas" type="number" inputmode="numeric" min="1" max="30" value="${(ent.motivo_tecnico && presTec(a.activista_id) ? presTec(a.activista_id).pessoas || '' : jornadaHoje()?.pessoas) ?? ''}"></label>
    ${ent.sem_vivas ? '' : ent.agua_em ? `<p class="pequeno">Água no campo às ${fmtHora(ent.agua_em)}.</p>`
@@ -3886,8 +3918,9 @@ function ecraSaida(msg = '') {
   verMortas();
   rascGuardar('rascFotoRega', { perfil: S.perfil?.id, tipo: 'saida', camara: false });
   // o número vem vazio (v85, 20/10/2026, Valdo): o activista escreve-o; fica guardado se o Android fechar o Chrome na fotografia
-  $('#s-plantas').oninput = (e) => { const x = LS.get('emCurso'); if (x) { x.plantas_escritas = e.target.value; LS.set('emCurso', x); } avisoFalta(a); };
-  avisoFalta(a);
+  $('#s-plantas').oninput = (e) => { const x = LS.get('emCurso'); if (x) { x.plantas_escritas = e.target.value; LS.set('emCurso', x); } avisoFalta(a); verAguaSaida(); };
+  if ($('#s-p20')) $('#s-p20').oninput = (e) => { const x = LS.get('emCurso'); if (x) { x.p20_escritas = e.target.value; LS.set('emCurso', x); } verAguaSaida(); };
+  avisoFalta(a); verAguaSaida();
   ligarFoto('s-foto', 'rascFotoRega', async (foto, meta) => {
     if (!foto || !(await guardarFotoRega('saida', foto, meta))) return;
     $('#s-foto-ok').innerHTML = `<span style="color:var(--ok,#2e7d32)">✓ Fotografia da saída às ${fmtHora(LS.get('emCurso').fotos.saida)}</span>`;
@@ -3916,6 +3949,9 @@ async function marcarSaida() {
   if (semFoto) { alert(FALTA_FOTO[semFoto]); if (semFoto !== 'saida') ecraFotoRega(semFoto); return; }
   const plantas = ent.sem_vivas ? 0 : parseInt($('#s-plantas').value, 10);
   if (!(plantas >= 0)) { alert('Escreva o número de plantas regadas.'); return; }
+  const p20 = ent.sem_vivas || !$('#s-p20') ? 0 : parseInt($('#s-p20').value, 10);   // v245: plantas mórbidas a 20 L
+  if (!(p20 >= 0)) { alert('Escreva quantas plantas mórbidas receberam 20 L (0 se nenhuma).'); $('#s-p20').focus(); return; }
+  if (p20 > plantas) { alert('As plantas a 20 L não podem ser mais do que as plantas regadas.'); $('#s-p20').focus(); return; }
   const lim = baseSaida(a).resta;                                // v167: qualquer número acima da base pede confirmação
   if (lim > 0 && plantas > lim && !confirm(`Escreveu ${plantas} plantas, mas este campo só tem ${lim} plantas por regar na base. Confirma que contou bem? A rega fica com um aviso para o técnico e o supervisor.`)) return;
   const pessoas = parseInt($('#s-pessoas').value, 10);
@@ -3939,7 +3975,7 @@ async function marcarSaida() {
   if (tipos.includes('mudas_secas') && !(mortas >= 0 && mortas <= 20000)) { alert('Escreva quantas plantas encontrou secas ou mortas.'); $('#s-mortas').focus(); return; }
   if (ent.sem_vivas && !(tipos.includes('mudas_secas') && mortas > 0)) { alert('Sem plantas vivas: escolha «Mudas secas ou mortas» e escreva quantas plantas encontrou mortas ou secas.'); return; }
   if ($('#s-agua') && $('#tk-cod')) { const tk = lerTuk(); if (tk === null) return; ent.tuk = tk; guardarTukUsado(tk, S.perfil.activista_id || a.activista_id || ''); }
-  ent.plantas_escritas = String(plantas); ent.rascSaida = { pessoas, tipos, obs, agua: hAgua || '', mortas }; LS.set('emCurso', ent);   // se o GPS falhar, o ecrã volta preenchido
+  ent.plantas_escritas = String(plantas); ent.p20_escritas = String(p20); ent.rascSaida = { pessoas, tipos, obs, agua: hAgua || '', mortas }; LS.set('emCurso', ent);   // se o GPS falhar, o ecrã volta preenchido
   folha(FOLHA_GPS('A confirmar que ainda está no campo.'));
   // v118 (Razaque: "quando tento gravar volta para a página anterior"): a razão fica escrita no ecrã, não num aviso que desaparece
   let g; try { g = await validarPosicao(a); } catch (e) { return ecraSaida(`<div class="msg erro"><div><b>A saída não foi gravada.</b></div><div>${esc(e.message)}</div></div>`); }
@@ -3951,7 +3987,7 @@ async function marcarSaida() {
     id: ent.reg_id || crypto.randomUUID(), fotos: ent.fotos, fotos_origem: ent.fotos_meta || null, area_id: a.id, activista_id: S.perfil.activista_id || a.activista_id, data: hojeISO(),
     entrada_em: ent.entrada_em, saida_em: new Date().toISOString(), entrada_lat: ent.entrada_lat, entrada_lon: ent.entrada_lon,
     saida_lat: g.lat, saida_lon: g.lon, gps_precisao_m: Math.max(ent.gps_precisao_m || 0, g.precisao),
-    distancia_area_m: ent.distancia_area_m, gps_valido: ent.gps_valido, plantas_regadas: plantas,
+    distancia_area_m: ent.distancia_area_m, gps_valido: ent.gps_valido, plantas_regadas: plantas, plantas_20l: p20,
     alerta: ent.alerta || null, motivo_alerta: ent.motivo_alerta || null, apoio_id: ent.apoio_id || null,
     plano_id: ent.plano_id || null, plano_dia: ent.plano_dia ?? null, fora_itinerario: ent.fora_itinerario ?? null, motivo_itinerario: ent.motivo_itinerario || null,
     area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null, motivo_sugestao: ent.motivo_sugestao || null,
@@ -3971,6 +4007,8 @@ async function marcarSaida() {
     if (reg.campo_fechado === false) nota = `<div class="msg info">⏳ <b>Campo por terminar:</b> <span>Faltam</span> ${num(base - plantas)} <span>plantas</span>. <span>No próximo dia de trabalho é o primeiro campo a regar.</span></div>`;
     if (depois.n > antes.n) nota = `<div class="msg ok"><b>Ronda ${antes.n} concluída!</b> Os ${antes.total} campos da lista foram regados de ${fmtData(depois.anterior.ini)} a ${fmtData(depois.anterior.fim)}. A ronda ${depois.n} começa agora.</div>`;
   }
+  // v245: quanto falta para a meta do dia; a sugestão do próximo campo continua até a equipa fechar a meta
+  if ((souActivista() || porEquipa(a)) && actId) nota += linhaMeta(metaHoje(actId, [reg]));
   sugerirProximo(a, nota, reg.id);
 }
 
@@ -5293,7 +5331,7 @@ async function desenharHoje() {
   if (veRecontagens() && !MEU_DIA() && vistaActual() !== 'rega') return;     // mudou de vista enquanto esperava
   if (S.perfil.papel === 'activista') {
     let serv = [];
-    if (navigator.onLine) { const r = await sb.from('registos_rega').select('id,area_id,entrada_em,saida_em,plantas_regadas,alerta,agua_em').eq('data', h).order('entrada_em'); serv = r.data || []; }
+    if (navigator.onLine) { const r = await sb.from('registos_rega').select('id,area_id,activista_id,data,teste,pessoas,entrada_em,saida_em,plantas_regadas,plantas_20l,alerta,agua_em').eq('data', h).order('entrada_em'); serv = r.data || []; }
     const ids = new Set(serv.map((x) => x.id)), todos = [...serv, ...local.filter((x) => !ids.has(x.id))];
     const tot = todos.reduce((s, x) => s + (x.plantas_regadas || 0), 0);
     const j = jornadaHoje();
@@ -5301,7 +5339,7 @@ async function desenharHoje() {
       <div class="lin"><span>Pessoas hoje</span><b>${j ? textoEquipa(j.pessoas, tamanhoEquipa(S.perfil.activista_id)) : '—'} <button class="chip" onclick="ecraJornada()">${j ? 'Alterar' : 'Registar'}</button></b></div>${j ? linhaFaltaram(S.perfil.activista_id) : ''}
       ${linhaAgua()}
       ${linhaChuva('Chuva (pluviómetro)')}
-      <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div></div>`;
+      <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div>${linhaMeta(metaHoje(S.perfil.activista_id, todos))}</div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
     if (VER_APOIO.includes(S.perfil.papel) && navigator.onLine) await carregarApoios();
@@ -5311,7 +5349,7 @@ async function desenharHoje() {
     const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
     if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste') + (percursoActivo() || pontosPercursoHoje() ? linhaPercurso() : '');
     // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
-    const r = navigator.onLine ? await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h) : { error: { semRede: true } };
+    const r = navigator.onLine ? await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,plantas_20l,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h) : { error: { semRede: true } };
     if (r.error && (r.error.semRede || /fetch|network|rede|abort|timeout/i.test(r.error.message || ''))) {
       // sem rede: mostra o último resumo das equipas guardado no telefone (16/10/2026, Nuro)
       const ult = LS.get('hojeEquipas');
@@ -5321,8 +5359,8 @@ async function desenharHoje() {
     else if (r.error) html += `<div class="msg erro">${esc(r.error.message)}</div></div>`;
     else {
       // uma linha por equipa: produtores com rega, pessoas (faltas), campos, plantas, tuk-tuk, início, fim e deslocação entre campos
-      const g = {}; for (const x of r.data) { const k = x.activista_id; g[k] ??= { campos: 0, plantas: 0, alertas: 0, teste: 0, ini: null, fim: null, prod: new Set(), agua: null, pessoas: 0, regs: [] };
-        const o = g[k]; o.campos++; o.plantas += x.plantas_regadas || 0; if (x.alerta) o.alertas++; if (x.teste) o.teste++; o.regs.push(x);
+      const g = {}; for (const x of r.data) { const k = x.activista_id; g[k] ??= { campos: 0, plantas: 0, eq: 0, alertas: 0, teste: 0, ini: null, fim: null, prod: new Set(), agua: null, pessoas: 0, regs: [] };
+        const o = g[k]; o.campos++; o.plantas += x.plantas_regadas || 0; o.eq += plEq(x.plantas_regadas, x.plantas_20l, h); if (x.alerta) o.alertas++; if (x.teste) o.teste++; o.regs.push(x);
         o.prod.add((S.areas.find((a) => a.id === x.area_id) || {}).produtor || x.area_id); if (x.agua_em && (!o.agua || x.agua_em < o.agua)) o.agua = x.agua_em;
         if (x.pessoas > o.pessoas) o.pessoas = x.pessoas;
         if (!o.ini || x.entrada_em < o.ini) o.ini = x.entrada_em; if (!o.fim || x.saida_em > o.fim) o.fim = x.saida_em; }
@@ -5332,9 +5370,9 @@ async function desenharHoje() {
           const eq = o.pessoas ? textoEquipa(o.pessoas, tam) : '—';
           return `<tr><td>${esc(nomeAct(k))}${o.teste ? ' <span class="pequeno">(teste)</span>' : ''}</td>
           <td>${podeMudar && S.activistas.some((t) => t.id === k) ? `<button class="chip" onclick="ecraTamanho('${esc(k)}')">${eq}</button>` : eq}${linhaFaltaram(k)}</td>
-          <td class="n">${o.prod.size}</td><td class="n">${o.campos}</td><td class="n">${num(o.plantas)}</td><td class="n">${o.pessoas ? Math.round(100 * o.plantas / (CFG.metaPlantas * o.pessoas)) + '%' : '—'}</td>
+          <td class="n">${o.prod.size}</td><td class="n">${o.campos}</td><td class="n">${num(o.plantas)}</td><td class="n">${o.pessoas ? Math.round(100 * o.eq / (CFG.metaPlantas * o.pessoas)) + '%' : '—'}</td>
           <td>${fmtHora(o.agua)}</td><td>${fmtHora(o.ini)}</td><td>${fmtHora(o.fim)}</td><td class="n">${d != null ? d + ' min' : '—'}</td><td class="n">${o.alertas}</td></tr>`; }).join('') + '</table></div>' +
-        `<p class="pequeno">Equipa = pessoas presentes / pessoas da equipa (faltas a vermelho)${podeMudar ? '; toque para mudar o número de pessoas da equipa' : ''}. Produtores = produtores com campos regados hoje. % meta = plantas regadas ÷ (${CFG.metaPlantas} × pessoas presentes). Tuk-tuk = hora da 1.ª chegada da água. Início = entrada no 1.º campo; Fim = saída do último. Desloc. = tempo médio entre a saída de um campo e a entrada no seguinte. Alertas = regas fora da lista da equipa.</p>`;
+        `<p class="pequeno">Equipa = pessoas presentes / pessoas da equipa (faltas a vermelho)${podeMudar ? '; toque para mudar o número de pessoas da equipa' : ''}. Produtores = produtores com campos regados hoje. % meta = plantas regadas ÷ (${CFG.metaPlantas} × pessoas presentes); desde 19/11 cada planta mórbida a 20 L conta como 4. Tuk-tuk = hora da 1.ª chegada da água. Início = entrada no 1.º campo; Fim = saída do último. Desloc. = tempo médio entre a saída de um campo e a entrada no seguinte. Alertas = regas fora da lista da equipa.</p>`;
       LS.set('hojeEquipas', { d: h, em: new Date().toISOString(), html: eqHtml }); html += eqHtml;
     }
   }
@@ -6293,7 +6331,7 @@ function cartaoMeuDia() {
     (porConf ? `<div class="msg erro">${num(porConf)} <span>motivos registados pelos activistas por confirmar. Basta um de vós (técnico ou supervisor) confirmar.</span></div>` : '') +
     eqs.map((e) => { const ms = motivosDe(e);
       const tec = S.perfil.papel !== 'tecnico' ? tecDe({ activista_id: e.id }) : '';   // v178: o supervisor vê o técnico de cada equipa
-      return `<div class="lin"><span><span class="sem-trad">${esc(e.nome)}</span>${tec ? `<br><span class="pequeno">👷 <span class="sem-trad">${esc(tec)}</span></span>` : ''}</span><b>${e.regas ? `✓ ${num(e.regas)} <span>campos</span> · ${num(e.plantas)} <span>plantas</span>`
+      return `<div class="lin"><span><span class="sem-trad">${esc(e.nome)}</span>${tec ? `<br><span class="pequeno">👷 <span class="sem-trad">${esc(tec)}</span></span>` : ''}</span><b>${e.regas ? `✓ ${num(e.regas)} <span>campos</span> · ${num(e.plantas)} <span>plantas</span>${e.pessoas && e.meta_pessoa ? ` · ${Math.round(100 * (e.plantas_eq ?? e.plantas) / (e.meta_pessoa * e.pessoas))}% <span>da meta</span>` : ''}${e.plantas_20l ? ` · ${num(e.plantas_20l)} <span>a 20 L</span>` : ''}`
         : e.actividade ? `🌱 <span>Cava-roda e mulching</span>`
         : e.comecou ? `🟢 <span>Começou às</span> ${fmtHora(e.comecou)}`
         : ms.length ? `<span>Sem rega</span>: ${esc(nomeMot(ms.map((m) => m.motivo).join(', ')))}`

@@ -28,6 +28,9 @@ por_eq as (
     (select count(*) from rg where rg.activista_id = e.id)::int as regas,
     (select count(distinct rg.area_id) from rg where rg.activista_id = e.id)::int as campos,
     (select coalesce(sum(rg.plantas_regadas), 0) from rg where rg.activista_id = e.id)::int as plantas,
+    -- v245: plantas mórbidas a 20 L e plantas que contam para a meta (1 a 20 L = 4, desde config meta_20l_inicio)
+    (select coalesce(sum(least(coalesce(rg.plantas_20l, 0), coalesce(rg.plantas_regadas, 0))), 0) from rg where rg.activista_id = e.id)::int as plantas_20l,
+    (select coalesce(sum(privado.plantas_eq(rg.plantas_regadas, rg.plantas_20l, rg.data)), 0) from rg where rg.activista_id = e.id)::int as plantas_eq,
     coalesce((select max(rg.pessoas) from rg where rg.activista_id = e.id), (select jor.pessoas from jor where jor.activista_id = e.id)) as pessoas,
     (select to_char(min(rg.entrada_em) at time zone 'Africa/Maputo', 'HH24:MI') from rg where rg.activista_id = e.id) as chegada_1o_campo,
     (select to_char(jor.inicio_em at time zone 'Africa/Maputo', 'HH24:MI') from jor where jor.activista_id = e.id) as inicio_dia,
@@ -118,9 +121,19 @@ select json_build_object(
     'campos_ronda_lista', (select coalesce(sum(lista), 0) from ron),
     'campos_nunca_receberam_agua', (select coalesce(sum(n), 0) from nunca),
     'hora_combinada_chegada', (select valor #>> '{}' from public.config where chave = 'hora_chegada_equipa'),
+    'meta_pessoa', coalesce((select (valor #>> '{}')::int from public.config where chave = 'meta_plantas_pessoa_dia'), 140),
+    'meta_20l_inicio', (select valor #>> '{}' from public.config where chave = 'meta_20l_inicio'),
+    'plantas_20l', (select coalesce(sum(least(coalesce(plantas_20l, 0), coalesce(plantas_regadas, 0))), 0) from rg),
+    -- v245 (18/11/2026, Valdo): água declarada (5 L × plantas a 5 L + 20 L × plantas a 20 L) e água das viagens de tuk-tuk (300–350 L)
+    'agua', json_build_object(
+      'viagem_min', (select (valor #>> '{}')::numeric from public.config where chave = 'litros_viagem_min'),
+      'viagem_max', (select (valor #>> '{}')::numeric from public.config where chave = 'litros_viagem_max'),
+      'equipas', (select coalesce(json_agg(row_to_json(x) order by x.equipa), '[]') from privado.agua_dias((select dia from p), (select dia from p)) x)),
     'por_equipa', (select coalesce(json_agg(json_build_object(
         'activista', e.nome, 'tecnico', e.tecnico, 'supervisor', e.supervisor, 'comunidade', e.comunidade,
         'sem_telefone', e.sem_telefone, 'regas', e.regas, 'campos', e.campos, 'plantas', e.plantas, 'pessoas', e.pessoas,
+        'plantas_20l', e.plantas_20l, 'plantas_eq', e.plantas_eq,
+        'meta', coalesce((select (valor #>> '{}')::int from public.config where chave = 'meta_plantas_pessoa_dia'), 140) * e.pessoas,
         'chegada_1o_campo', e.chegada_1o_campo, 'inicio_dia', e.inicio_dia, 'campos_por_terminar_hoje', e.campos_por_terminar_hoje,
         'ronda_actual', e.ronda_actual, 'campos_na_lista', e.campos_na_lista, 'regados_na_ronda', e.regadas_ronda,
         'nunca_receberam_agua', coalesce((select n from nunca where nunca.activista_id = e.id), 0),

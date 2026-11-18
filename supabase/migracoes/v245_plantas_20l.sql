@@ -25,9 +25,9 @@ returns integer language sql stable security definer set search_path to '' as $$
 $$;
 revoke all on function privado.plantas_eq(integer, integer, date) from public;
 
--- meta_dias: mais plantas_20l e plantas_eq; a % da meta e o pedido de motivo usam as plantas equivalentes
-drop function if exists privado.meta_dias(date, date);
-create function privado.meta_dias(p_de date, p_ate date)
+-- meta_dias2 = meta_dias + plantas_20l e plantas_eq; a % da meta e o pedido de motivo usam as plantas equivalentes.
+-- (função nova para não apagar a antiga; painel_meta_causas e meta_por_explicar passam a usar a nova)
+create or replace function privado.meta_dias2(p_de date, p_ate date)
  returns table(activista_id uuid, equipa text, tecnico text, supervisor text, data date, campos integer, plantas integer, pessoas integer, meta integer, pct numeric, base integer, mortas integer, vivas_havia integer, cobertura numeric, ini text, fim text, espera_min integer, causas text[], precisa_motivo boolean, motivo text, motivo_por text, motivo_em timestamp with time zone, plantas_20l integer, plantas_eq integer)
  language sql stable security definer set search_path to ''
 as $function$
@@ -71,7 +71,17 @@ as $function$
     m.motivo, m.registado_nome, m.em, e.p20, e.peq
   from e left join public.meta_motivos m on m.activista_id = e.activista_id and m.data = e.data and not m.removido
 $function$;
-revoke all on function privado.meta_dias(date, date) from public;
+revoke all on function privado.meta_dias2(date, date) from public;
+
+do $do$
+declare f text; d text;
+begin
+  foreach f in array array['public.painel_meta_causas(date,date)', 'public.meta_por_explicar()'] loop
+    d := pg_get_functiondef(f::regprocedure);
+    if position('privado.meta_dias(' in d) = 0 then continue; end if;
+    execute replace(d, 'privado.meta_dias(', 'privado.meta_dias2(');
+  end loop;
+end $do$;
 
 -- painel › Meta: plantas a 20 L e plantas equivalentes por equipa e dia
 create or replace function public.painel_plantas_dia_equipa(p_de date default null, p_ate date default null)
