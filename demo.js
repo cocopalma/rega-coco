@@ -433,7 +433,7 @@
           chegada: l.map((r) => r.entrada_em).sort()[0] || null, sem_rega: sr.length ? sr.join(', ') : null, comecou: null,
           agua: ((DB.agua || []).filter((w) => w.activista_id === t.id && w.data === hoje).map((w) => w.em).sort()[0]) || null,   // v235
           actividade: (() => { const l = (DB.act || []).filter((x) => x.activista_id === t.id && x.data === hoje && !x.removido); return l.length ? { campos: new Set(l.map((x) => x.area_id)).size, cavaroda: l.reduce((n, x) => n + (x.cavaroda || 0), 0), mulching: l.reduce((n, x) => n + (x.mulching || 0), 0) } : null; })(),
-          motivos: ms.map((d) => ({ id: d.id, motivo: d.motivo, descricao: d.descricao, todo_dia: d.todo_dia, data: d.data, ate: d.ate || null, quem: d.quem, papel_quem: d.papel_quem || 'tecnico',
+          motivos: ms.map((d) => ({ id: d.id, motivo: d.motivo, descricao: d.descricao, sem_act: d.sem_act || null, todo_dia: d.todo_dia, data: d.data, ate: d.ate || null, quem: d.quem, papel_quem: d.papel_quem || 'tecnico',
             criado_em: d.criado_em, por_confirmar: d.papel_quem === 'activista' && !d.confirmado_em, confirmado_nome: d.confirmado_nome || null, confirmado_em: d.confirmado_em || null })) }; });
       const base = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
       const alertas = reais().filter((r) => ids.includes(r.activista_id) && !r.alerta_confirmado_em && !r.plantas_corrigidas_em && r.plantas_regadas > base(area(r.area_id)))
@@ -441,7 +441,7 @@
         .concat(reais().filter((r) => ids.includes(r.activista_id) && !r.foto_confirmada_em && r.fotos_origem && Object.values(r.fotos_origem).some((f) => f && f.tirada && String(f.tirada).slice(0, 10) !== r.data))
           .map((r) => ({ registo_id: r.id, data: r.data, area_id: r.area_id, produtor: area(r.area_id).produtor, equipa: nomeAct(r.activista_id), plantas: r.plantas_regadas, base: base(area(r.area_id)), ritmo: null, mediana: null, tipo: 'foto_data', fotos: r.fotos_origem })));
       const comunidades = papel === 'tecnico' ? ['Exemplo Norte'] : ['Exemplo Norte', 'Exemplo Sul'];
-      return { data: hoje, hora_chegada: '06:00', fechado_em: (DB.fechos || {})[EU + hoje] || null, equipas: eqs, alertas,
+      return { data: hoje, hora_chegada: '06:00', trabalho_inicio: dia(0), fechado_em: (DB.fechos || {})[EU + hoje] || null, equipas: eqs, alertas,
         monitoria_hoje: DB.amostras.filter((m) => m.verificador_id === EU && m.data_rega >= dia(1) && !DB.monitorias.some((o) => o.amostra_id === m.id)).length, monitoria_falhas_ontem: 0,
         sem_equipa: DB.areas.filter((a) => !a.activista_id && comunidades.includes(a.comunidade)).length,
         por_aprovar: DB.areas.filter((a) => a.poligono_proposto && ids.includes(a.activista_id)).map((a) => ({ area_id: a.id, produtor: a.produtor, comunidade: a.comunidade, equipa: nomeAct(a.activista_id), area_m2: a.area_m2_proposta, proposta_em: a.proposta_em, quem: nomeAct(a.activista_id) })),
@@ -510,6 +510,8 @@
     areas_expansao_lista: () => [],
     aprovar_poligono: (a) => { const ar = area(a.p_area); if (ar.id && ar.poligono_proposto) { if (a.p_aprovar) { ar.poligono = ar.poligono_proposto; ar.area_m2 = ar.area_m2_proposta; ar.limites_abertos = false; ar.recusa_medicao_motivo = null; ar.recusa_medicao_em = null; ar.recusa_medicao_por = null; } else { ar.recusa_medicao_motivo = a.p_motivo || null; ar.recusa_medicao_em = new Date().toISOString(); ar.recusa_medicao_por = null; } ar.poligono_proposto = null; ar.area_m2_proposta = null; ar.proposta_em = null; } return null; },
     atribuir_area2: (a) => { const ar = area(a.p_area); if (ar.id) ar.activista_id = a.p_activista; return null; },
+    // v247: a razão de não fazer cava-roda e mulching depois de «não houve rega»
+    gravar_dia_sem_rega5: (a) => { const r = RPC.gravar_dia_sem_rega4(a); const d = DB.dsr.find((x) => x.id === a.p_id); if (d) d.sem_act = a.p_sem_act || null; return r; },
     gravar_dia_sem_rega4: (a) => { RPC.gravar_dia_sem_rega3(a); const d = DB.dsr.find((x) => x.id === a.p_id); if (d) { d.ate = a.p_ate && a.p_ate > a.p_data ? a.p_ate : null; if (papel !== 'activista') { d.confirmado_em = new Date().toISOString(); d.confirmado_nome = NOMES[papel]; } else d.papel_quem = 'activista'; } return { substituido: false }; },
     confirmar_dia_sem_rega: (a) => { const d = DB.dsr.find((x) => x.id === a.p_id); if (d) { d.confirmado_em = new Date().toISOString(); d.confirmado_nome = NOMES[papel]; d.confirmacao_nota = a.p_nota || null; } return { estado: 'confirmado' }; },
     gravar_dia_sem_rega3: (a) => { DB.dsr.push({ id: a.p_id, activista_id: a.p_activista, data: a.p_data, motivo: a.p_motivo, todo_dia: a.p_todo_dia, descricao: a.p_descricao || null, quem: NOMES[papel], user_id: EU, criado_em: new Date().toISOString(), foto_path: a.p_foto || null, area_id: a.p_area || null, entrada_em: a.p_entrada || null }); return null; },

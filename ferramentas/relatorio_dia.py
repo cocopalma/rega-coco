@@ -88,7 +88,7 @@ def falhas_dia(x):
 
 DIAS_C = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom']
 CORES_R = {'r1': '#b3261e', 'r2': '#e8710a', 'r3': '#8e44ad', 'r5': '#f2c94c', 'r6': '#5f5e5a'}
-NOMES_R = {'r1': 'Equipa sem rega, sem início do dia e sem motivo', 'r2': 'Dia não fechado na app até às 18:00',
+NOMES_R = {'r1': 'Equipa sem rega, sem cava-roda e mulching e sem motivo', 'r2': 'Dia não fechado na app até às 18:00',
            'r3': 'Campo da monitoria não verificado no dia', 'r5': 'Equipa chegou ao 1.º campo depois da hora combinada',
            'r6': 'Rega fora da lista sem motivo'}
 
@@ -161,7 +161,7 @@ def bloco_cumprimento(c):
         else:
             itens.append('<li class="verm">Não fechou o dia na app</li>')
         if hoje['r1']:
-            itens.append(f'<li class="verm">{len(hoje["r1"])} equipa(s) sem rega, sem início do dia e sem motivo: {e(", ".join(pnome(n) for n in hoje["r1"]))}</li>')
+            itens.append(f'<li class="verm">{len(hoje["r1"])} equipa(s) sem rega, sem cava-roda e mulching e sem motivo: {e(", ".join(pnome(n) for n in hoje["r1"]))}</li>')
         if hoje['r3'] and not MON_PAUSA:
             itens.append(f'<li class="verm">{hoje["r3"]} campo(s) da monitoria não verificados no dia</li>')
         if hoje['r5']:

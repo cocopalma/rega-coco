@@ -87,7 +87,9 @@ pd as (
     (select coalesce(json_agg(a.nome order by a.nome), '[]') from pe join public.activistas a on a.id = pe.activista_id
        where pe.perfil_id = ps.id
          and not exists (select 1 from regd where regd.activista_id = pe.activista_id and regd.data = dd.d)
-         and not exists (select 1 from jord where jord.activista_id = pe.activista_id and jord.data = dd.d)
+         -- v247: o início do dia sozinho só conta antes de config.fecho_trabalho_inicio; a cava-roda e o mulching contam
+         and not exists (select 1 from jord where jord.activista_id = pe.activista_id and jord.data = dd.d and dd.d < privado.trabalho_inicio())
+         and not exists (select 1 from public.actividades_campo x where x.activista_id = pe.activista_id and x.data = dd.d and not x.removido)
          and not exists (select 1 from privado.motivos_dia(pe.activista_id, dd.d))) as r1,
     (select to_char(f.fechado_em at time zone 'Africa/Maputo', 'HH24:MI') from public.fechos_dia f where f.perfil_id = ps.id and f.data = dd.d) as fecho,
     (select count(*) from public.monitoria_amostra m where m.verificador_id = ps.id and privado.dia_verif(m.data_rega) = dd.d

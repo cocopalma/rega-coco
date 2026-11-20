@@ -5990,8 +5990,9 @@ async function enviarDiaSemRega(d) {
   let foto = null, caminho = null;
   if (d.foto) { try { foto = await FOTOS.ler('dsr-' + d.id); } catch {} foto = foto || S.fotosMem?.['dsr-' + d.id] || null; }
   if (foto) { caminho = `${S.perfil.id}/dsr-${d.id}.jpg`; const up = await sb.storage.from('rega-fotos').upload(caminho, foto, { contentType: 'image/jpeg', upsert: true }); if (up.error) return { error: { message: up.error.message } }; }
-  const r = await sb.rpc('gravar_dia_sem_rega4', { p_id: d.id, p_activista: d.activista_id, p_data: d.data, p_motivo: d.motivo, p_todo_dia: d.todo_dia, p_descricao: d.descricao, p_lat: d.lat, p_lon: d.lon, p_foto: caminho,
-    p_area: d.area_id || null, p_entrada: d.entrada_em || null, p_ate: d.ate || null });
+  const arg = { p_id: d.id, p_activista: d.activista_id, p_data: d.data, p_motivo: d.motivo, p_todo_dia: d.todo_dia, p_descricao: d.descricao, p_lat: d.lat, p_lon: d.lon, p_foto: caminho,
+    p_area: d.area_id || null, p_entrada: d.entrada_em || null, p_ate: d.ate || null };
+  const r = d.sem_act ? await sb.rpc('gravar_dia_sem_rega5', { ...arg, p_sem_act: d.sem_act }) : await sb.rpc('gravar_dia_sem_rega4', arg);   // v247
   if (!r.error && foto) { try { await FOTOS.apagar('dsr-' + d.id); } catch {} }
   return r;
 }
@@ -6005,8 +6006,9 @@ async function gravarDiaSemRega() {
   const d = { id: crypto.randomUUID(), activista_id: act, activista: nomeAct(act), data: dia, ate: ate && ate > dia ? ate : null, motivo: mot, todo_dia: $('#dsr-todo').checked, descricao: obs || null,
     lat: S.pos ? +S.pos[0].toFixed(6) : null, lon: S.pos ? +S.pos[1].toFixed(6) : null, foto: !!S.dsrFoto };
   if (S.dsrFoto) { try { await FOTOS.guardar('dsr-' + d.id, S.dsrFoto); } catch { (S.fotosMem ||= {})['dsr-' + d.id] = S.dsrFoto; } S.dsrFoto = null; }
-  const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), tipo: 'dia_sem_rega', d }); LS.set('filaAlt', f);
-  LS.set('diasSemRega', [{ ...d, pendente: true, meu: true }, ...(LS.get('diasSemRega', []) || [])]);
+  // v247: o activista que regista hoje um dia sem rega passa logo à cava-roda e ao mulching (ou diz porque não)
+  if (souActivista() && act === S.perfil?.activista_id && dia === hojeISO() && vaiFazerAct(null, mot)) return ecraDepoisSemRega(d);
+  await guardarDsrLocal(d);
   fecharFolha(); actSync(); sincronizar(true); aviso('Guardado. É enviado quando houver rede.', 'ok');
   if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
 }
@@ -6063,10 +6065,70 @@ async function gravarNaoRegou() {
     try { b = await FOTOS.ler(k); } catch {} b = b || S.fotosMem?.[k] || null;
     if (b) { try { await FOTOS.guardar('dsr-' + d.id, b); } catch { (S.fotosMem ||= {})['dsr-' + d.id] = b; } d.foto = true; }
   }
-  const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), tipo: 'dia_sem_rega', d }); LS.set('filaAlt', f);
-  LS.set('diasSemRega', [{ ...d, pendente: true, meu: true }, ...(LS.get('diasSemRega', []) || [])]);
+  // v247 (20/11/2026, Valdo): sem rega, a equipa faz cava-roda e mulching; a app abre logo esse registo neste campo.
+  // Para não o fazer, a pessoa diz porquê (fica no registo do dia sem rega, d.sem_act).
+  if (vaiFazerAct(a, mot)) return ecraDepoisSemRega(d, { area: a.id, ent });
+  await guardarDsrLocal(d);
   await anularEntrada(ent, `<div class="msg ok">Registado: não houve rega neste campo. É enviado quando houver rede.</div>`);
   sincronizar(true);
+}
+// v247: depois de «não houve rega» (neste campo ou o dia todo), cava-roda e mulching ou o motivo para não o fazer
+const SEM_ACT_FORA = ['equipa', 'regou_sem_registo'];      // a equipa não está, ou regou: não faz sentido perguntar
+function vaiFazerAct(a, mot) {
+  if (SEM_ACT_FORA.includes(mot) || S.perfil?.so_teste) return false;
+  const act = a ? (souActivista() ? S.perfil?.activista_id : a.activista_id) : S.perfil?.activista_id;
+  if (!act || !podeComecar(act)) return false;          // depois das 15:30 sem horas extras não se começa
+  return a ? podeAct(a) : souActivista() && camposAct().length > 0;
+}
+const camposAct = () => (S.areas || []).filter((a) => podeAct(a));
+async function guardarDsrLocal(d) {
+  const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), tipo: 'dia_sem_rega', d }); LS.set('filaAlt', f);
+  LS.set('diasSemRega', [{ ...d, pendente: true, meu: true }, ...(LS.get('diasSemRega', []) || [])]);
+}
+// motivo do dia sem rega → motivo da cava-roda (as mesmas chaves; o resto vai como «Outro motivo» com o texto)
+function motivoActDe(d) {
+  const k = MOTIVOS_ACT.some(([x]) => x === d.motivo) ? d.motivo : 'outro';
+  const txt = k === 'outro' && d.motivo !== 'outro' ? [nomeMotivoDsr(d.motivo), d.descricao].filter(Boolean).join(': ') : d.descricao;
+  return { motivo: k, motivo_texto: txt || null };
+}
+function ecraDepoisSemRega(d, o = {}) {
+  S.semActPend = { d, ...o };
+  const aqui = !!o.area, a = aqui ? S.areas.find((x) => x.id === o.area) : null;
+  folha(`<h2>🌱 <span>Cava-roda e mulching</span></h2>
+    <div class="msg info"><span>Não houve rega. Quando não há rega, a equipa faz cava-roda e mulching nos campos. Conta como dia de trabalho.</span></div>
+    ${aqui ? `<p class="pequeno sem-trad">${esc(a?.produtor || '')} · ${esc(a?.pr || o.area)}${a?.area_n != null ? '-' + a.area_n : ''}</p>` : ''}
+    <button class="btn principal" id="sa-sim">🌱 <span>${aqui ? 'Fazer agora cava-roda e mulching neste campo' : 'Fazer cava-roda e mulching: escolher o campo'}</span></button>
+    <div id="sa-campos"></div>
+    <button class="btn sec" id="sa-nao">Não vamos fazer cava-roda e mulching</button>
+    <div id="sa-porque" style="display:none"><label><span>Porque não vão fazer cava-roda e mulching? (obrigatório)</span><textarea id="sa-txt" rows="2" placeholder="Ex.: não há enxadas; o campo já está todo feito"></textarea></label>
+      <button class="btn aviso" id="sa-ok">Guardar</button></div>`);
+  $('#sa-sim').onclick = () => aqui ? semActFazer(o.area) : semActEscolher();
+  $('#sa-nao').onclick = () => { $('#sa-porque').style.display = ''; $('#sa-campos').innerHTML = ''; $('#sa-txt').focus(); };
+  $('#sa-ok').onclick = async () => {
+    const t = $('#sa-txt').value.trim();
+    if (t.length < 5) { $('#sa-txt').focus(); return alert('Escreva porque não vão fazer cava-roda e mulching.'); }
+    const p = S.semActPend; if (!p) return fecharFolha(); S.semActPend = null;
+    p.d.sem_act = t; await guardarDsrLocal(p.d);
+    if (p.ent) { await anularEntrada(p.ent, '<div class="msg ok">Registado: não houve rega neste campo nem cava-roda e mulching. É enviado quando houver rede.</div>'); }
+    else { fecharFolha(); aviso('Guardado. É enviado quando houver rede.', 'ok'); if ($('#e-hoje')?.classList.contains('on')) desenharHoje(); }
+    actSync(); sincronizar(true);
+  };
+}
+// lista dos campos da equipa, os mais perto primeiro (o dia todo sem rega, registado no Hoje)
+function semActEscolher() {
+  const pos = S.pos, L = camposAct().map((a) => ({ a, m: pos ? distCampo(a, pos) : null })).sort((x, y) => (x.m ?? 1e12) - (y.m ?? 1e12)).slice(0, 12);
+  $('#sa-porque').style.display = 'none';
+  $('#sa-campos').innerHTML = L.length ? '<p class="pequeno">Escolha o campo onde a equipa está:</p>' + L.map(({ a, m }) => `<div class="lin"><span><span class="sem-trad">${esc(a.produtor || '')} · ${esc(a.pr || a.id)}${a.area_n != null ? '-' + a.area_n : ''}</span>${m != null ? ` · ${m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(1).replace('.', ',') + ' km'}` : ''}</span><button class="chip" onclick="semActFazer('${esc(a.id)}')">🌱 <span>Começar aqui</span></button></div>`).join('') : '<p class="pequeno">Sem campos na sua lista.</p>';
+}
+async function semActFazer(id) {
+  const p = S.semActPend, a = S.areas.find((x) => x.id === id); if (!p || !a) return abrirFicha(id);
+  S.semActPend = null;
+  await guardarDsrLocal(p.d);
+  if (p.ent) { for (const t of ['entrada', 'rega', 'saida']) { try { await FOTOS.apagar(`${p.ent.reg_id}-${t}`); } catch {} } LS.del('emCurso'); LS.del('rascFotoRega'); desenharMapa(); desenharLista(); }
+  actSync(); sincronizar(true);
+  const m = motivoActDe(p.d), tec = !souActivista();
+  S.actPend = { id, ...m, motivo_tecnico: tec ? (p.ent?.motivo_tecnico || (semTelefone(a.activista_id) ? 'O activista não tem telemóvel' : 'Regista pela equipa')) : null };
+  actEntrada(id);
 }
 // Entrada no campo errado (v119, 28/10/2026, Essumaila: "devia ter opção de voltar ou cancelar… o activista por falha clica no
 // produtor que não estava previsto"): só na 1.ª hora e antes da fotografia da rega. Não fica rega; o servidor recebe o aviso
@@ -6268,6 +6330,9 @@ async function carregarMeuDia() {
   if (!MEU_DIA() || !navigator.onLine) return;
   const [r, cn, ma, mx] = await Promise.all([sb.rpc('meu_dia'), sb.rpc('correccoes_nome_lista'), sb.rpc('motivos_anteriores'), sb.rpc('meta_por_explicar')]);
   if (!r.error) LS.set('meuDia', { em: new Date().toISOString(), d: r.data || null, dia: hojeISO() });
+  try { const al = !r.error && alertaHoras(r.data), k = al && `${hojeISO()}|${al.k}`;      // v247: aviso uma vez por limiar e dia
+    if (al && LS.get('alarmeMD') !== k) { LS.set('alarmeMD', k); navigator.vibrate?.(300);
+      aviso(al.titulo, 'erro'); } } catch {}
   if (!cn.error) LS.set('corrNome', Array.isArray(cn.data) ? cn.data : []);
   if (!ma.error) LS.set('motivosAnt', Array.isArray(ma.data) ? ma.data : []);   // v224
   if (!mx.error) LS.set('metaExpl', Array.isArray(mx.data) ? mx.data : []);   // v226
@@ -6366,6 +6431,14 @@ function contaNunca() {
   if (!['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel)) return 0;
   return (listaPropria() ? meusCampos() : S.areas).filter((a) => a.activista_id && nuncaAgua(a)).length;
 }
+// v247: equipas paradas às 08:00 (ainda não começaram) e às 10:00 (sem rega nem cava-roda); só no próprio dia, antes de fechar
+function alertaHoras(d) {
+  if (!d || d.data !== hojeISO() || d.fechado_em) return null;
+  const hm = horaTrabalho(); if (hm < '08:00' || hm > HORA_LIMITE_INICIO) return null;
+  const a10 = hm >= '10:00';
+  const L = (d.equipas || []).filter((e) => !e.regas && !e.actividade && !(e.motivos || []).length && !e.sem_rega && (a10 || !e.comecou));
+  return L.length ? { k: a10 ? 'h10' : 'h8', titulo: a10 ? 'Às 10:00 sem rega nem cava-roda' : 'Às 08:00 ainda não começaram', L } : null;
+}
 function cartaoMeuDia() {
   if (!MEU_DIA()) return '';
   const c = LS.get('meuDia');
@@ -6384,28 +6457,38 @@ function cartaoMeuDia() {
   const corrPend = new Set(LS.get('filaAlt', []).filter((x) => x.tipo === 'plantas_rega').map((x) => x.registo_id));
   const d = c.d, eqs = d.equipas || [], al = (d.alertas || []).filter((x) => !(x.tipo !== 'foto_data' && corrPend.has(x.registo_id))), cp = confPendentes();
   const motivosDe = (e) => (e.motivos || (e.sem_rega ? [{ motivo: e.sem_rega }] : [])).map((m) => cp.has(m.id) ? { ...m, por_confirmar: false, confirmado_nome: S.perfil?.nome, pendente: true } : m);
-  const falta = eqs.filter((e) => !e.regas && !e.comecou && !e.actividade && !motivosDe(e).length);
-  const porConf = eqs.reduce((n, e) => n + motivosDe(e).filter((m) => m.por_confirmar).length, 0);
+  // v247 (20/11/2026, Valdo): sem rega e sem cava-roda e mulching o dia fica por tratar até haver registo ou motivo; o início do dia
+  // sozinho só chega até às 15:30 (depois já não se pode começar) ou nos dias antes de trabalho_inicio (servidor)
   const cedo = d.data === hojeISO() && horaTrabalho() < HORA_LIMITE_INICIO;   // 15/11/2026, Valdo: fim do trabalho no campo às 15:30 (antes 18:00)
-  const linhaMot = (e, m) => `<div class="pequeno" style="margin:2px 0 6px 8px">⚠️ <span>${esc(nomeMotivoDsr(m.motivo))}</span>${m.ate ? ` · <span>até</span> ${fmtData(m.ate)}` : ''}${m.produtor ? ` · <span class="sem-trad">${esc(m.produtor)}</span>` : ''}${m.descricao ? ` · <span class="sem-trad">${esc(m.descricao)}</span>` : ''}
+  const iniConta = d.data < (d.trabalho_inicio || '9999-12-31');
+  const falta = eqs.filter((e) => !e.regas && !e.actividade && !motivosDe(e).length && !(e.comecou && (cedo || iniConta)));
+  const porConf = eqs.reduce((n, e) => n + motivosDe(e).filter((m) => m.por_confirmar).length, 0);
+  const linhaMot = (e, m) => `<div class="pequeno" style="margin:2px 0 6px 8px">⚠️ <span>${esc(nomeMotivoDsr(m.motivo))}</span>${m.ate ? ` · <span>até</span> ${fmtData(m.ate)}` : ''}${m.produtor ? ` · <span class="sem-trad">${esc(m.produtor)}</span>` : ''}${m.descricao ? ` · <span class="sem-trad">${esc(m.descricao)}</span>` : ''}${m.sem_act ? `<br>🌱 <span>Sem cava-roda e mulching:</span> <span class="sem-trad">${esc(m.sem_act)}</span>` : ''}
       ${m.quem ? `<br><span>Registado por</span> <span class="sem-trad">${esc(m.quem)}</span>` : ''}${m.por_confirmar ? ` · <b style="color:var(--erro,#c62828)">por confirmar</b> <button class="chip" onclick="ecraConfirmarDsr('${e.id}','${m.id}')">Confirmar</button>`
         : m.confirmado_nome && m.papel_quem === 'activista' ? ` · ✓ <span>confirmado por</span> <span class="sem-trad">${esc(m.confirmado_nome)}</span>${m.pendente ? ' (<span>por enviar</span>)' : ''}` : ''}</div>`;
   const pa = (d.por_aprovar || []).filter((x) => { const a = S.areas.find((y) => y.id === x.area_id); return !a || a.poligono_proposto; });
   const nomeMot = (m) => String(m || '').split(', ').map(nomeMotivoDsr).join(', ');
   const L = [];                                         // [chave, título, número, cor, conteúdo, subtítulo]
   // 1. equipas
-  L.push(['eq', 'Equipas sem rega nem motivo', falta.length + porConf, 'v',
+  L.push(['eq', 'Equipas sem rega, cava-roda nem motivo', falta.length + porConf, 'v',
     (porConf ? `<div class="msg erro">${num(porConf)} <span>motivos registados pelos activistas por confirmar. Basta um de vós (técnico ou supervisor) confirmar.</span></div>` : '') +
     eqs.map((e) => { const ms = motivosDe(e);
       const tec = S.perfil.papel !== 'tecnico' ? tecDe({ activista_id: e.id }) : '';   // v178: o supervisor vê o técnico de cada equipa
       return `<div class="lin"><span><span class="sem-trad">${esc(e.nome)}</span>${tec ? `<br><span class="pequeno">👷 <span class="sem-trad">${esc(tec)}</span></span>` : ''}</span><b>${e.regas ? `✓ ${num(e.regas)} <span>campos</span> · ${num(e.plantas)} <span>plantas</span>${e.pessoas && e.meta_pessoa ? ` · ${Math.round(100 * (e.plantas_eq ?? e.plantas) / (e.meta_pessoa * e.pessoas))}% <span>da meta</span>` : ''}${e.plantas_20l ? ` · ${num(e.plantas_20l)} <span>a 20 L</span>` : ''}`
         : e.actividade ? `🌱 <span>Cava-roda e mulching</span>`
+        : e.comecou && !ms.length && !cedo && !iniConta ? `<span style="color:var(--erro,#c62828)"><span>Começou às</span> ${fmtHora(e.comecou)}, <span>mas sem rega nem cava-roda · falta o motivo</span></span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`
         : e.comecou ? `🟢 <span>Começou às</span> ${fmtHora(e.comecou)}`
         : ms.length ? `<span>Sem rega</span>: ${esc(nomeMot(ms.map((m) => m.motivo).join(', ')))}`
         : cedo ? `<span style="color:var(--suave,#777)">Ainda sem rega · pode começar até às 15:30</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`
         : `<span style="color:var(--erro,#c62828)">Não regou hoje · falta o motivo</span> <button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button>`}</b></div>` + linhaActEquipa(e) + linhaHorasExtras(e) + ms.filter((m) => m.id).map((m) => linhaMot(e, m)).join(''); }).join('') +
     `<div class="pequeno" style="margin:6px 0">🟢 = <span>a equipa começou o dia na app</span> ${info('<span>A equipa começou o dia na app (rega em curso ou ainda por enviar). Se a equipa estiver sem rede, o início só chega quando o telefone tiver rede; se até ao fim do dia nada chegar, registe «A equipa regou, mas não registou na app».</span>')}</div>`,
     `${eqs.length - falta.length} / ${eqs.length} <span>com rega, a trabalhar ou com motivo</span>${porConf ? ` · ${num(porConf)} <span>motivos por confirmar</span>` : ''}`]);
+  // v247 (20/11/2026, Valdo: «alarme» às 08:00 e às 10:00): às 08:00 as equipas que ainda não começaram o dia; às 10:00 as que não têm
+  // rega nem cava-roda e mulching registadas. Não trancam o «Fechar o dia»: servem para o técnico ou o supervisor ligar à equipa.
+  { const al8 = alertaHoras(d);
+    if (al8) L.push([al8.k, al8.titulo, al8.L.length, 'a',
+      `<p class="pequeno">${al8.k === 'h10' ? 'Estas equipas ainda não registaram nenhuma rega nem cava-roda e mulching. Pode haver uma rega em curso ainda por terminar. Ligue à equipa: sem rega, a equipa faz cava-roda e mulching; se não puder, registe o motivo.' : 'Estas equipas ainda não começaram o dia na app. Ligue à equipa para saber o que se passa.'}</p>` +
+      al8.L.map((e) => `<div class="lin"><span><span class="sem-trad">${esc(e.nome)}</span>${e.comecou ? `<br><span class="pequeno"><span>Começou às</span> ${fmtHora(e.comecou)}</span>` : ''}</span><button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button></div>`).join('')]); }
   // 2. regas com aviso
   L.push(['al', 'Regas com ⚠️ por confirmar', al.length, 'a',
     al.length ? al.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
@@ -6469,7 +6552,7 @@ function cartaoMeuDia() {
     <p class="pequeno" style="margin:0 0 6px">${d.fechado_em ? `✓ <span>Dia fechado às</span> ${fmtHora(d.fechado_em)}` : porTratar ? `${porTratar} <span>${porTratar === 1 ? 'lista por tratar' : 'listas por tratar'}</span> · <span>fechar o dia até às 18:00</span>` : '<span>Nada por tratar</span> · <span>fechar o dia até às 18:00</span>'}</p>` +
     ord.map((x) => linhaTar(...x)).join('');
   // v183: o botão aparece sempre; fica desactivado, com a razão, enquanto faltar alguma equipa sem rega nem motivo ou motivos por confirmar
-  h += d.fechado_em ? '' : falta.length ? `<button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button><p class="pequeno" style="text-align:center;color:#8a4b00;margin:6px 0 0"><span>Para fechar o dia, todas as equipas têm de ter rega ou motivo. Faltam:</span> ${falta.length}</p>`
+  h += d.fechado_em ? '' : falta.length ? `<button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button><p class="pequeno" style="text-align:center;color:#8a4b00;margin:6px 0 0"><span>Para fechar o dia, todas as equipas têm de ter rega, cava-roda e mulching ou motivo. Faltam:</span> ${falta.length}</p>`
     : porConf ? `<button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button><p class="pequeno" style="text-align:center;color:#8a4b00;margin:6px 0 0"><span>Para fechar o dia, confirme os motivos dos activistas. Faltam:</span> ${porConf}</p>`
     : `<button class="btn" id="md-fechar" style="margin-top:12px" onclick="fecharDia()">🔒 Fechar o dia</button>`;
   h += `<div class="pequeno" style="margin-top:8px"><span>Feche o dia até às 18:00.</span> ${info('Os dias fechados a tempo, a monitoria no prazo, as regas com ⚠️ confirmadas e as equipas sem motivo contam no cumprimento de cada técnico e supervisor (painel).')}</div>${c.em && !navigator.onLine ? `<p class="pequeno"><span>Sem rede: dados de</span> ${fmtHora(c.em)}</p>` : ''}</div>`;
@@ -6729,7 +6812,7 @@ function htmlEquipaCampo(d) {
   const hoje = d.dia, depois = (d.agora || '').slice(11, 16) > '18:00' || hojeISO() > hoje;
   const pessoas = (d.pessoas || []).map((p) => {
     const dh = (p.dias || []).find((x) => x.data === hoje) || null, f = [];
-    if (dh && dh.sem_rega.length) f.push([depois ? 'v' : 'a', depois ? 'Equipas sem rega nem motivo' : 'Equipas ainda sem rega nem motivo', dh.sem_rega.length,
+    if (dh && dh.sem_rega.length) f.push([depois ? 'v' : 'a', depois ? 'Equipas sem rega, cava-roda nem motivo' : 'Equipas ainda sem rega, cava-roda nem motivo', dh.sem_rega.length,
       `<p class="pequeno">${nomesSem(dh.sem_rega)}</p>`]);
     // v224: um motivo registado depois do próprio dia não podia ser confirmado nesse dia: aparece, mas não conta como falta
     const mFalta = p.motivos.filter((m) => !m.registado || m.registado <= m.data);
@@ -6761,7 +6844,7 @@ function htmlEquipaCampo(d) {
     const anteriores = dias.filter((x) => x.data !== hoje).reverse().map((x) => { const e = estadoFecho(x.data, x.fecho, hoje, depois);
       return `<div class="item"><div><div class="nome">${DIAS_SEM[new Date(x.data + 'T12:00:00').getDay() - 1] ? `<span>${DIAS_SEM[new Date(x.data + 'T12:00:00').getDay() - 1]}</span> ` : ''}<b>${fmtData(x.data)}</b></div>
         <div class="sub">${e[1]} <span>${e[2]}</span>${e[3] ? ` <b>${esc(e[3])}</b>` : ''}</div>
-        ${x.sem_rega.length ? `<div class="sub erro-txt"><span>Sem rega nem motivo:</span> ${nomesSem(x.sem_rega)}</div>` : ''}
+        ${x.sem_rega.length ? `<div class="sub erro-txt"><span>Sem rega, cava-roda nem motivo:</span> ${nomesSem(x.sem_rega)}</div>` : ''}
         ${x.chegadas.length ? `<div class="sub"><span>Chegaram depois das</span> <b>${esc(d.hora_chegada)}</b>: <span class="sem-trad">${esc(x.chegadas.map((c) => c.nome + ' ' + c.hora).join(', '))}</span></div>` : ''}
         ${x.monitoria && !d.monitoria_pausa ? `<div class="sub erro-txt"><span>Monitoria por verificar:</span> <b>${x.monitoria}</b></div>` : ''}
         ${x.fora ? `<div class="sub erro-txt"><span>Regas fora da lista sem motivo:</span> <b>${x.fora}</b></div>` : ''}

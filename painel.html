@@ -288,10 +288,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=246"></script>
-<script src="i18n.js?v=246"></script>
+<script src="i18n-sw.js?v=247"></script>
+<script src="i18n.js?v=247"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=246"></script>
+<script src="demo.js?v=247"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -1117,7 +1117,7 @@ function desenharDiasSemRega() {
   if (!L.length) { $('#t-dsr').innerHTML = '<div class="vazio">Nenhum dia sem rega registado no período.</div>'; return; }
   tabela('#t-dsr', [['Data'], ['Equipa (activista)'], ['Comunidade'], ['Produtor'], ['Motivo'], ['Dia todo?'], ['Observação'], ['Regas no dia', 1], ['Registado por'], ['Confirmado por'], ['Fotografia']],
     L.map((x) => [fmtData(x.data) + (x.ate ? ' – ' + fmtData(x.ate) : ''), esc(x.activista || ''), esc(x.comunidade || ''), x.produtor ? `<span class="sem-trad">${esc(x.produtor)}</span> · ${esc(x.area_id || '')}${x.entrada_em ? ` <span style="color:var(--muted)">(${new Date(x.entrada_em).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })})</span>` : ''}` : '—', MOT_DSR[x.motivo] || esc(x.motivo), x.todo_dia === false ? 'Parte do dia' : 'Dia todo',
-      `<span class="sem-trad">${esc(x.descricao || '')}</span>`, num(x.regas || 0), esc(x.quem || ''),
+      `<span class="sem-trad">${esc(x.descricao || '')}</span>` + (x.sem_act ? `<br>🌱 <span>Sem cava-roda e mulching:</span> <span class="sem-trad">${esc(x.sem_act)}</span>` : ''), num(x.regas || 0), esc(x.quem || ''),
       x.por_confirmar ? '<b style="color:var(--crit)">Por confirmar</b>' : x.papel_quem === 'activista' && x.confirmado_nome ? `<span class="sem-trad">${esc(x.confirmado_nome)}</span>${x.confirmacao_nota ? ` · <span class="sem-trad">${esc(x.confirmacao_nota)}</span>` : ''}` : '—', x.foto_path ? `<button class="foto-btn" type="button" onclick="verFotoBalde('rega-fotos', '${esc(x.foto_path)}')">📷</button>` : '—']));
 }
 async function verFotoBalde(balde, caminho) {
