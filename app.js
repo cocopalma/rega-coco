@@ -445,15 +445,28 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'retirar' ? await sb.rpc('retirar_da_rega', { p_area: x.area_id, p_motivo: x.motivo, p_obs: x.obs || null, p_em: x.em })   // v205
         : x.tipo === 'agua' ? await sb.rpc('gravar_recolha_agua', { p_id: x.agua_id, p_activista: x.activista_id, p_em: x.em, p_lat: x.lat, p_lon: x.lon, p_precisao: x.precisao })   // v235
         : x.tipo === 'horas_extras' ? await sb.rpc('activar_horas_extras', { p_id: x.he_id, p_activista: x.activista_id, p_data: x.data, p_em: x.em })
+        : x.tipo === 'it_fecho' ? await sb.rpc('fechar_itinerario_dia', { p_plano: x.plano_id, p_dia: x.dia_n, p_data: x.data, p_falhas: x.falhas })   // v248
+        : x.tipo === 'concluir' ? (filaAct().some((y) => y.area_id === x.area_id) ? { adiar: true } : await sb.rpc('concluir_cavaroda', { p_area: x.area_id, p_em: x.em }))   // v248
         : x.tipo === 'chefe_man' ? { error: null }   // v239: já não há chefes de manutenção (14/11/2026, Valdo); o pedido antigo sai da fila
         : await sb.rpc('atribuir_area2', { p_area: x.area_id, p_activista: x.activista_id, p_motivo: x.motivo || null });
+      if (r4.adiar) continue;                            // v248: a conclusão espera que a cava-roda desse campo seja enviada
       if (r4.error && erroPassageiro(r4.error)) { erro = r4.error.message; sessao = erroSessao(r4.error); break; }   // sem rede: fica na fila
       if (r4.error) { marcarRecusa('filaAlt', x, r4.error, x.tipo || 'atrib'); recusadas++; continue; }   // recusado: fica na fila, marcado (antes saía e perdia-se)
-      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot', 'meta_mot2', 'agua', 'chefe_man', 'horas_extras'].includes(x.tipo)) alteradas++;
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot', 'meta_mot2', 'agua', 'chefe_man', 'horas_extras', 'it_fecho'].includes(x.tipo)) alteradas++;
       if (x.tipo === 'horas_extras') carregarHorasExtras();
+      if (x.tipo === 'it_fecho') carregarItEstado().catch(() => {});
+      if (x.tipo === 'concluir') { const o = LS.get('conclusoes', {}) || {}; delete o[x.area_id]; LS.set('conclusoes', o); }
     }
   }
   if (!erro && filaAct().length) erro = await enviarAct();   // cava-roda e mulching (depois do início do dia)
+  if (!erro && (LS.get('filaAlt', []) || []).some((x) => x.tipo === 'concluir' && !x._recusa && !filaAct().some((y) => y.area_id === x.area_id))) {
+    for (const x of LS.get('filaAlt', []).filter((y) => y.tipo === 'concluir')) {   // v248: conclusões que esperavam pela cava-roda
+      const r = await sb.rpc('concluir_cavaroda', { p_area: x.area_id, p_em: x.em });
+      if (r.error && erroPassageiro(r.error)) { erro = r.error.message; break; }
+      if (r.error) { marcarRecusa('filaAlt', x, r.error, 'concluir'); recusadas++; continue; }
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id));
+    }
+  }
   if (!erro) erro = await enviarPercurso();
   if (!erro && podeVerPercursos() && Date.now() - (S.percActEm || 0) > 15 * 60 * 1000) { S.percActEm = Date.now(); actualizarPercursos(hojeISO()).catch(() => {}); }
   if (!erro) erro = await enviarMonitorias();
@@ -573,6 +586,7 @@ async function carregarEstado(pronto) {
         .then((c) => { if (!c.error && c.count != null) LS.set('nTestes', c.count); }));
   }
   if (papel === 'activista') carregarMetaPend().catch(() => {});
+  if (papel === 'activista') Promise.all(tarefas).then(() => carregarItEstado()).catch(() => {});   // v248: dias do itinerário fechados
   if (PODE_REGAR.includes(papel)) { carregarSemMotivo().catch(() => {}); carregarDiasSemRega().catch(() => {}); tarefas.push(carregarApoios()); }
   if (!['oficial_me'].includes(papel))                // v163: regas de outra equipa feitas antes de o campo passar para esta equipa
     tarefas.push(sb.rpc('regas_outra_equipa').then((q) => { if (!q.error && Array.isArray(q.data)) { S.outras = q.data; LS.set('outras', q.data); } }));
@@ -2077,11 +2091,83 @@ function itinerarioHoje() {                              // { plano, dia, campos
   const p = planos().find((x) => x.activista_id === S.perfil.activista_id && x.estado === 'aprovado' && x.ronda === ri.n);
   if (!p) return null;
   const naLista = new Set(S.areas.filter((a) => a.activista_id === S.perfil.activista_id).map((a) => a.id));
+  // v248 (20/11/2026, Valdo): um dia do itinerário fechado (com o motivo de cada campo que ficou por regar) passa os campos que
+  // ficaram para o dia seguinte do plano; um dia por fechar continua a ser o dia de hoje
+  const est = itEstado(p.id), fechados = new Set(est.fechos.map((f) => f.dia_n)), atras = [];
   for (const d of p.dias || []) {
     const ids = d.campos.map((c) => c.area_id).filter((i) => naLista.has(i));
-    if (ids.some((i) => !ri.feitas.has(i))) return { plano: p, dia: d, campos: ids, feitas: ri.feitas, total: (p.dias || []).length };
+    if (fechados.has(d.n)) { ids.filter((i) => !ri.feitas.has(i) && !atras.includes(i)).forEach((i) => atras.push(i)); continue; }
+    const vem = atras.filter((i) => !ri.feitas.has(i));
+    if (ids.some((i) => !ri.feitas.has(i)) || vem.length) return { plano: p, dia: d, campos: [...vem, ...ids.filter((i) => !vem.includes(i))], atrasados: new Set(vem), feitas: ri.feitas, total: (p.dias || []).length };
   }
+  const resto = atras.filter((i) => !ri.feitas.has(i)), ult = (p.dias || [])[(p.dias || []).length - 1];
+  if (resto.length && ult) return { plano: p, dia: ult, campos: resto, atrasados: new Set(resto), feitas: ri.feitas, total: (p.dias || []).length, fim: true };
   return null;
+}
+// v248: estado do itinerário (servidor + o que ainda está no telefone)
+function itEstado(pid) {
+  const e = (LS.get('itEstado', {}) || {})[pid] || {}, loc = (LS.get('filaAlt', []) || []).filter((x) => x.tipo === 'it_fecho' && x.plano_id === pid);
+  const trab = { ...(LS.get('itTrab', {}) || {})[pid] }; (e.trabalhados || []).forEach((t) => { if (!trab[t.dia_n] || trab[t.dia_n] < t.data) trab[t.dia_n] = t.data; });
+  return { fechos: [...(e.fechos || []), ...loc.map((x) => ({ dia_n: x.dia_n, data: x.data, local: true }))], falhas: [...(e.falhas || []), ...loc.flatMap((x) => x.falhas.map((f) => ({ ...f, dia_n: x.dia_n, data: x.data, local: true })))], trab };
+}
+async function carregarItEstado() {
+  if (!souActivista() || !navigator.onLine) return;
+  const ri = rondaInfo(S.perfil.activista_id), p = planos().find((x) => x.activista_id === S.perfil.activista_id && x.estado === 'aprovado' && x.ronda === ri.n);
+  if (!p) return;
+  const r = await sb.rpc('itinerario_estado', { p_plano: p.id }); if (r.error || !r.data) return;
+  const o = LS.get('itEstado', {}) || {}; o[p.id] = r.data; LS.set('itEstado', o);
+  avisoItPend(true); if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
+}
+// o dia de hoje do itinerário já teve regas noutro dia e não foi fechado: o motivo dos campos que ficaram é obrigatório
+function itPendente() {
+  const it = itinerarioHoje(); if (!it || it.fim) return null;
+  const d = itEstado(it.plano.id).trab[it.dia.n];
+  return d && d < hojeISO() && it.campos.some((i) => !it.feitas.has(i)) ? { it, data: d } : null;
+}
+function avisoItPend(abrir) {
+  const x = itPendente(); if (!x || !abrir || $('#folha').classList.contains('on')) return;
+  ecraFechoItinerario(true, x.data);
+}
+// motivos dos campos do itinerário que ficaram por regar (Valdo, 20/11/2026)
+const MOTIVOS_FALHA_IT = [['tuk_tuk', 'O tuk-tuk não veio ou não chegou a tempo'], ['material', 'Faltou material', 'Que material faltou?'],
+  ['sem_agua_fonte', 'Não havia água na fonte', 'Qual fonte não tinha água?'], ['sem_vivas', 'O campo não tem plantas vivas'],
+  ['produtor', 'O produtor não deixou'], ['sem_acesso', 'Sem acesso ao campo'], ['outro', 'Outro motivo', 'Escreva o motivo']];
+const nomeFalhaIt = (k) => (MOTIVOS_FALHA_IT.find((m) => m[0] === k) || [k, k])[1];
+function ecraFechoItinerario(obrig = false, data = null) {
+  const it = itinerarioHoje(); if (!it) return;
+  const L = it.campos.filter((i) => !it.feitas.has(i)), dia = data || hojeISO();
+  if (!L.length) return;
+  const chips = (i) => MOTIVOS_FALHA_IT.map(([k, t]) => `<button class="chip" data-a="${esc(i)}" data-k="${k}">${t}</button>`).join('');
+  folha(`<h2>🏁 <span>Fim do dia do itinerário</span></h2>
+    <div class="msg ${obrig ? 'aviso' : 'info'}">${obrig ? `<span>No dia</span> ${fmtData(dia)} <span>ficaram campos do itinerário por regar. Diga o motivo de cada um para continuar.</span>` : '<span>Ficaram campos do itinerário de hoje por regar. Diga o motivo de cada um.</span>'} <span>Os campos passam para o dia seguinte do plano.</span></div>
+    <label><span>O mesmo motivo para todos os campos (pode mudar cada um a seguir)</span></label><div class="chips" id="fi-todos">${MOTIVOS_FALHA_IT.map(([k, t]) => `<button class="chip" data-k="${k}">${t}</button>`).join('')}</div>
+    ${L.map((i) => { const a = S.areas.find((x) => x.id === i) || {};
+      return `<div class="cartao fi-campo" data-a="${esc(i)}" style="margin:8px 0"><b class="sem-trad">${esc(a.produtor || i)}</b> <span class="pequeno sem-trad">${esc(i)}</span>
+        <div class="chips">${chips(i)}</div><input class="fi-txt" data-a="${esc(i)}" placeholder="" style="display:none;margin-top:6px"></div>`; }).join('')}
+    <div id="fi-msg"></div>
+    <button class="btn" id="fi-ok">Guardar</button>${obrig ? '' : '<button class="btn sec" onclick="fecharFolha()">Cancelar</button>'}`);
+  if (obrig) $('#folha-x').style.display = 'none';
+  const escolher = (i, k) => {
+    document.querySelectorAll(`.fi-campo[data-a="${CSS.escape(i)}"] .chip`).forEach((c) => c.classList.toggle('on', c.dataset.k === k));
+    const m = MOTIVOS_FALHA_IT.find((x) => x[0] === k), inp = document.querySelector(`.fi-txt[data-a="${CSS.escape(i)}"]`);
+    inp.style.display = m && m[2] ? '' : 'none'; inp.placeholder = m && m[2] ? m[2] : '';
+  };
+  document.querySelectorAll('.fi-campo .chip').forEach((b) => b.onclick = () => escolher(b.dataset.a, b.dataset.k));
+  document.querySelectorAll('#fi-todos .chip').forEach((b) => b.onclick = () => { document.querySelectorAll('#fi-todos .chip').forEach((c) => c.classList.toggle('on', c === b)); L.forEach((i) => escolher(i, b.dataset.k)); });
+  $('#fi-ok').onclick = () => {
+    const falhas = [];
+    for (const i of L) {
+      const k = document.querySelector(`.fi-campo[data-a="${CSS.escape(i)}"] .chip.on`)?.dataset.k, m = MOTIVOS_FALHA_IT.find((x) => x[0] === k);
+      const t = document.querySelector(`.fi-txt[data-a="${CSS.escape(i)}"]`).value.trim(), nome = (S.areas.find((x) => x.id === i) || {}).produtor || i;
+      if (!m) { $('#fi-msg').innerHTML = `<div class="msg erro"><span>Escolha o motivo de cada campo:</span> <span class="sem-trad">${esc(nome)}</span></div>`; return; }
+      if (m[2] && t.length < 3) { $('#fi-msg').innerHTML = `<div class="msg erro"><span>${m[2]}</span> · <span class="sem-trad">${esc(nome)}</span></div>`; return; }
+      falhas.push({ area_id: i, motivo: k, texto: m[2] ? t : null });
+    }
+    const f = LS.get('filaAlt', []); f.push({ id: crypto.randomUUID(), tipo: 'it_fecho', plano_id: it.plano.id, dia_n: it.dia.n, data: dia, falhas }); LS.set('filaAlt', f);
+    $('#folha-x').style.display = ''; fecharFolha(); actSync(); sincronizar(true);
+    aviso(navigator.onLine ? 'Guardado. Os campos passam para o dia seguinte do plano.' : 'Guardado. É enviado quando houver rede.', 'ok');
+    if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
+  };
 }
 function ecraMotivoItinerario(id, it) {
   const a = S.areas.find((x) => x.id === id) || {};
@@ -2191,9 +2277,12 @@ function ecraMotivoSugestao(id, s, motivoIt) {
 function cartaoItinerario() {
   const it = itinerarioHoje(); if (!it) return '';
   const linhas = it.campos.map((i, k) => { const a = S.areas.find((x) => x.id === i) || {}, feito = it.feitas.has(i);
-    return `<div class="lin"><span>${feito ? '✓' : `<b>${k + 1}</b>`} <span class="sem-trad">${esc(a.produtor || i)}</span></span><b>${plantasTxt(a)}</b></div>`; }).join('');
+    return `<div class="lin"><span>${feito ? '✓' : `<b>${k + 1}</b>`} <span class="sem-trad">${esc(a.produtor || i)}</span>${it.atrasados?.has(i) && !feito ? ' <span class="pequeno">⏭ <span>do dia anterior</span></span>' : ''}</span><b>${plantasTxt(a)}</b></div>`; }).join('');
+  const resta = it.campos.filter((i) => !it.feitas.has(i)).length, hojeTrab = itEstado(it.plano.id).trab[it.dia.n] === hojeISO();
+  const fim = resta && hojeTrab && horaTrabalho() >= HORA_LIMITE_INICIO && !LS.get('emCurso') && !it.fim
+    ? `<button class="btn aviso" id="b-fim-it" onclick="ecraFechoItinerario()">🏁 <span>Fim do dia: porque ficaram campos por regar</span> (${resta})</button>` : '';
   return `<div class="cartao" id="hoje-itin"><h2>🗺 <span>Itinerário de hoje</span> · <span>dia ${it.dia.n} de ${it.total}</span></h2>${linhas}
-    <p class="pequeno">É uma sugestão do plano da equipa. Se regar outro campo, a app pergunta porquê.</p>
+    <p class="pequeno">É uma sugestão do plano da equipa. Se regar outro campo, a app pergunta porquê.</p>${fim}
     <div class="chips"><button class="chip" onclick="verItinerarioMapa()">Ver no mapa</button></div></div>`;
 }
 function verItinerarioMapa() {
@@ -2234,7 +2323,7 @@ function ecraPlano(id) {
     <div class="msg info"><span>Meta:</span> ${num(p.capacidade)} <span>plantas por dia</span> (140 × ${p.pessoas} <span>pessoas</span>) · ${(p.dias || []).length} <span>dias</span></div>
     ${p.notas ? `<p class="pequeno">${esc(p.notas)}</p>` : ''}
     ${(p.dias || []).map((d) => `<div class="cartao"><div class="lin"><b>Dia ${d.n}</b><span>${num(d.plantas)} plantas · ${(d.dist_m / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km · ${h(d.minutos)}</span></div>
-      <p class="pequeno sem-trad">${d.campos.map((c, k) => `${k + 1}. ${esc(nome(c.area_id))}${c.sem_coordenada ? ' (?)' : ''}`).join(' · ')}</p></div>`).join('')}
+      <p class="pequeno sem-trad">${d.campos.map((c, k) => `${k + 1}. ${esc(nome(c.area_id))}${c.sem_coordenada ? ' (?)' : ''}`).join(' · ')}</p><div class="pl-falhas" data-n="${d.n}"></div></div>`).join('')}
     <div class="chips"><button class="chip" onclick="verPlanoMapa('${esc(p.id)}')">Ver no mapa</button></div>
     ${esperaPorMim(p) ? `<label>Motivo (obrigatório para recusar)<textarea id="pl-mot" rows="2"></textarea></label>
       <button class="btn" onclick="aprovarPlano('${esc(p.id)}', true)">✓ Aprovar</button><button class="btn aviso" onclick="aprovarPlano('${esc(p.id)}', false)">✗ Recusar</button>` : ''}
@@ -2242,6 +2331,18 @@ function ecraPlano(id) {
       <button class="btn sec" onclick="anularAprovacaoPlano('${esc(p.id)}')">↩️ Anular a minha aprovação</button>
       <p class="pequeno">O plano volta a ficar por aprovar por si. ${p.estado === 'aprovado' ? 'O activista deixa de ver o itinerário até nova decisão.' : ''}</p>` : ''}
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+  if (p.estado === 'aprovado') falhasPlano(p.id);
+}
+// v248: campos de cada dia do itinerário que ficaram por regar, com o motivo (passaram para o dia seguinte)
+async function falhasPlano(pid) {
+  if (!navigator.onLine) return;
+  const r = await sb.rpc('itinerario_estado', { p_plano: pid }); if (r.error || !r.data) return;
+  for (const el of document.querySelectorAll('.pl-falhas')) {
+    const n = +el.dataset.n, F = (r.data.falhas || []).filter((f) => f.dia_n === n), fe = (r.data.fechos || []).find((f) => f.dia_n === n);
+    if (!fe && !F.length) continue;
+    el.innerHTML = `<div class="pequeno" style="margin-top:4px">🏁 <span>Dia fechado a</span> ${fe ? fmtData(fe.data) : '—'}${F.length ? ` · ⏭ <span>passaram para o dia seguinte:</span>` : ` · <span>todos os campos regados</span>`}</div>` +
+      F.map((f) => `<div class="pequeno">· <span class="sem-trad">${esc(f.produtor || f.area_id)}</span>: <span>${esc(nomeFalhaIt(f.motivo))}</span>${f.texto ? ` (<span class="sem-trad">${esc(f.texto)}</span>)` : ''}</div>`).join('');
+  }
 }
 // v201 (03/11/2026, Valdo: "Se eu quiser voltar atrás numa aprovação… não está previsto"): o gestor principal anula um plano
 // aprovado (volta a «por aprovar pelo gestor»); o supervisor anula a sua aprovação enquanto o gestor ainda não decidiu.
@@ -2427,11 +2528,12 @@ function abrirFichaManut(id, nota = '') {
     ${esc_ && s !== 'completo' && s !== 'feito' && s !== 'sem' ? `<p class="pequeno">Para marcar como feito, todas as ${num(n)} plantas têm de ter cava-roda e mulching.</p>` : ''}
     ${esc_ && s === 'feito' ? `<button class="btn sec" onclick="marcarFeitoManut('${esc(id)}', false)">Desfazer «Feito»</button>` : ''}
     ${!esc_ && registaManut() && s === 'completo' ? '<p class="pequeno">Completo. Só o supervisor pode marcar como feito.</p>' : ''}
+    <div id="man-conc"></div>
     ${podeMedirManut(c) ? `${c.latitude == null ? '<div class="msg info">Este campo ainda não tem coordenada. Vá ao campo com o produtor ou o activista e meça a área: o campo passa a aparecer no mapa.</div>' : ''}<button class="btn sec" onclick="ecraMedir('${esc(id)}')">📐 Medir a área (andar à volta do campo)</button>` : ''}
     ${c.latitude != null ? `<button class="btn sec" onclick="fecharFolha();mudar('mapa');mapa.setView([${c.latitude},${c.longitude}],18)">Ver no mapa</button>` : ''}
     <h3>Registos</h3><div id="man-regs" class="pequeno">${navigator.onLine ? 'A carregar…' : ''}</div>
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
-  regsManut(id);
+  regsManut(id); if (registaManut()) blocoConclusao(id, '#man-conc');
 }
 async function regsManut(id) {
   const loc = filaMan().filter((x) => x.tipo === 'reg' && x.area_id === id).map((x) => ({ ...x, local: true, quem: S.perfil?.nome }));
@@ -4056,7 +4158,7 @@ async function marcarSaida() {
     saida_lat: g.lat, saida_lon: g.lon, gps_precisao_m: Math.max(ent.gps_precisao_m || 0, g.precisao),
     distancia_area_m: ent.distancia_area_m, gps_valido: ent.gps_valido, plantas_regadas: plantas, plantas_20l: p20,
     alerta: ent.alerta || null, motivo_alerta: ent.motivo_alerta || null, apoio_id: ent.apoio_id || null,
-    plano_id: ent.plano_id || null, plano_dia: ent.plano_dia ?? null, fora_itinerario: ent.fora_itinerario ?? null, motivo_itinerario: ent.motivo_itinerario || null,
+    plano_id: ent.plano_id || null, plano_dia: ent.plano_dia ?? null, ...((() => { if (ent.plano_id && ent.plano_dia != null) { const o = LS.get('itTrab', {}) || {}; (o[ent.plano_id] ||= {})[ent.plano_dia] = hojeISO(); LS.set('itTrab', o); } return {}; })()), fora_itinerario: ent.fora_itinerario ?? null, motivo_itinerario: ent.motivo_itinerario || null,
     area_sugerida_id: ent.area_sugerida_id || null, seguiu_sugestao: ent.seguiu_sugestao ?? null, motivo_sugestao: ent.motivo_sugestao || null,
     motivo_repetir: ent.motivo_repetir || null, motivo_tecnico: ent.motivo_tecnico || null,
     ...(ent.tuk && ent.agua_em ? { tuk_codigo: ent.tuk.codigo || null, tuk_outro: ent.tuk.outro || null, tuk_chegada: ent.tuk.chegada } : {}),
@@ -5820,13 +5922,75 @@ async function actividadesDoCampo(id) {
     if (!r.error && r.data && Array.isArray(r.data.lista)) { serv = r.data.lista; const o = LS.get('actTot', {}) || {}; o[id] = { c: r.data.cavaroda || 0, m: r.data.mulching || 0 }; LS.set('actTot', o); } } catch {} }
   const el = $('#f-cav'), l = [...loc, ...serv.filter((s) => !loc.some((y) => y.id === s.id))], a = S.areas.find((y) => y.id === id), t = totaisAct(id);
   if (!el || !a || (!l.length && !t.c && !t.m && !podeAct(a))) return;
-  const res = `<div id="act-tot">${resumoFaltaAct(a)}</div>`;
-  if (!l.length) { el.innerHTML = `<div class="cartao" style="margin-top:10px"><h3 style="font-size:14px;margin:0 0 4px">🌱 <span>Cava-roda e mulching deste campo</span></h3>${res}</div>`; return; }
+  const res = `<div id="act-tot">${resumoFaltaAct(a)}</div><div id="f-conc"></div>`;
+  if (!l.length) { el.innerHTML = `<div class="cartao" style="margin-top:10px"><h3 style="font-size:14px;margin:0 0 4px">🌱 <span>Cava-roda e mulching deste campo</span></h3>${res}</div>`; blocoConclusao(id, '#f-conc'); return; }
   const foto = (c, t) => c[`foto_${t}`] ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(c['foto_' + t])}', '${esc(FOTOS_ACT[t])}')">📷 <span>${{ entrada: 'Início', durante: 'Durante', saida: 'Fim' }[t]}</span></button>` : '';
   el.innerHTML = `<div class="cartao" style="margin-top:10px"><h3 style="font-size:14px;margin:0 0 4px">🌱 <span>Cava-roda e mulching deste campo</span></h3>${res}` + l.map((c) => `<div style="padding:4px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
     <div><b>${fmtData(c.data)}</b> · ${fmtHora(c.entrada_em)}–${fmtHora(c.saida_em)} · <span>cava-roda</span> ${num(c.cavaroda)} · <span>mulching</span> ${num(c.mulching)}${c.pessoas ? ` · ${num(c.pessoas)} <span>pessoas</span>` : ''}</div>
     <div class="pequeno"><span>${esc(nomeMotivoAct(c.motivo))}</span>${c.motivo_texto ? ` · <span class="sem-trad">${esc(c.motivo_texto)}</span>` : ''} · <span class="sem-trad">${esc(c.equipa || '')}</span>${c.motivo_tecnico ? ` · 🤝 <span>registado por</span> <span class="sem-trad">${esc(c.quem || '')}</span>` : ''}${c.local ? ' · <span>no telefone (por enviar)</span>' : ''}${c.excedente ? ` · <span>a mais no total da manutenção:</span> ${num(c.excedente)}` : ''}</div>
     ${c.observacao ? `<div class="pequeno sem-trad">${esc(c.observacao)}</div>` : ''}${c.local ? '' : `<div class="chips" style="margin-top:4px">${foto(c, 'entrada')}${foto(c, 'durante')}${foto(c, 'saida')}</div>`}</div>`).join('') + '</div>';
+  blocoConclusao(id, '#f-conc');
+}
+// v248 (20/11/2026, Valdo): sobrevivência indicativa. Quando todas as plantas vivas encontradas têm cava-roda e mulching, o técnico ou
+// o supervisor conclui o campo: sobrevivência indicativa = plantas com cava-roda ÷ plantas instaladas. Não muda as vivas da base; com
+// menos plantas do que as vivas da base, o servidor pede uma recontagem ao M&E (quem dá a sobrevivência real).
+const EST_REC_CONC = { por_encaminhar: 'por encaminhar a um oficial', encaminhada: 'com o oficial de M&E', enviada: 'por validar pelo M&E', validada: 'validada', recusada: 'recusada pelo M&E (volta ao oficial)', cancelada: 'cancelada' };
+const souConclui = () => ['tecnico', 'supervisor', 'gestor'].includes(S.perfil?.papel) && !S.perfil?.so_teste;
+const pctSob = (c, i) => (i > 0 ? Math.round(1000 * Math.min(c, i) / i) / 10 : null);
+async function blocoConclusao(id, sel) {
+  const o0 = LS.get('conclusoes', {}) || {}; let d = o0[id] || null;
+  const a = S.areas.find((x) => x.id === id) || camposManut().find((x) => x.id === id) || {};
+  if (navigator.onLine) { try { const r = await sb.rpc('conclusao_campo', { p_area: id }); if (!r.error && r.data) { d = r.data; const o = LS.get('conclusoes', {}) || {}; o[id] = d; LS.set('conclusoes', o); } } catch {} }
+  const el = $(sel); if (!el || S.fichaAberta !== id) return;
+  const pend = (LS.get('filaAlt', []) || []).find((x) => x.tipo === 'concluir' && x.area_id === id);
+  const t = totaisAct(id), cav = d ? Math.max(d.cavaroda || 0, d.fonte === 'actividades' ? t.c : 0) : t.c, inst = d ? d.instaladas : a.instaladas, viv = d ? d.vivas : a.vivas;
+  const c = d?.conclusao;
+  if (c) {
+    el.innerHTML = `<div class="msg ok" style="margin-top:8px">🌱 <b><span>Sobrevivência indicativa:</span> ${c.sobrevivencia != null ? String(c.sobrevivencia).replace('.', ',') + ' %' : '—'}</b> (${num(c.cavaroda)} <span>de</span> ${num(c.instaladas)} <span>plantas instaladas</span>)<br>
+      <span class="pequeno"><span>Concluído em</span> ${fmtData(String(c.em).slice(0, 10))}${c.quem ? ` · <span class="sem-trad">${esc(c.quem)}</span>` : ''} · <span>Vivas na base:</span> ${num(c.vivas_base || 0)}</span>
+      ${c.recontagem ? `<br><span class="pequeno">📋 <span>Recontagem pedida ao M&E (automática)</span>${c.recontagem_estado ? ` · <span>${esc(EST_REC_CONC[c.recontagem_estado] || c.recontagem_estado)}</span>` : ''}</span>` : ''}
+      <br><span class="pequeno">É indicativa: não muda as plantas vivas da base. A sobrevivência real é a da recontagem do M&E.</span></div>
+      ${(c.meu || S.perfil?.papel === 'gestor') && souConclui() ? `<button class="chip" onclick="ecraAnularConclusao('${esc(id)}','${esc(c.id)}')">↩️ Anular a conclusão (engano)</button>` : ''}`;
+    return;
+  }
+  if (pend) { el.innerHTML = `<div class="msg info" style="margin-top:8px">🌱 <span>Concluído no telefone: é enviado quando houver rede.</span> <span>Sobrevivência indicativa:</span> ${pctSob(cav, inst) != null ? String(pctSob(cav, inst)).replace('.', ',') + ' %' : '—'}</div>`; return; }
+  const pode = d ? d.pode : souConclui() && (S.perfil?.papel === 'gestor' || meuCampo(a));
+  if (!pode || !(cav > 0)) { el.innerHTML = ''; return; }
+  el.innerHTML = `<p class="pequeno" style="margin:8px 0 4px">Quando todas as plantas vivas encontradas no campo já têm cava-roda e mulching, conclua o campo: a app calcula a sobrevivência indicativa.</p>
+    <button class="btn sec" id="b-concluir" onclick="ecraConcluir('${esc(id)}', ${cav}, ${inst || 0}, ${viv || 0})">✓ <span>Concluir o campo: todas as plantas vivas já feitas</span></button>`;
+}
+function ecraConcluir(id, cav, inst, viv) {
+  const a = S.areas.find((x) => x.id === id) || camposManut().find((x) => x.id === id) || {}, p = pctSob(cav, inst);
+  if (!(inst > 0)) { aviso('Este campo não tem plantas instaladas na base: não se calcula a sobrevivência.', 'erro'); return; }
+  folha(`<h2>🌱 <span>Concluir a cava-roda e o mulching</span></h2>
+    <p class="pequeno sem-trad">${esc(a.produtor || id)} · ${esc(id)}</p>
+    <div class="cartao"><div class="lin"><span>Plantas com cava-roda</span><b>${num(Math.min(cav, inst))}</b></div>
+      <div class="lin"><span>Plantas instaladas</span><b>${num(inst)}</b></div><div class="lin"><span>Plantas vivas na base</span><b>${num(viv)}</b></div>
+      <div class="lin"><span>Sobrevivência indicativa</span><b>${p != null ? String(p).replace('.', ',') + ' %' : '—'}</b></div></div>
+    <div class="msg info"><span>Confirme que todas as plantas vivas encontradas no campo já têm cava-roda e mulching.</span>${Math.min(cav, inst) < viv ? ` <span>Fica pedida uma recontagem ao M&E: há menos plantas com cava-roda do que as vivas da base.</span>` : ''}</div>
+    <button class="btn" id="cc-ok">✓ <span>Concluir</span></button><button class="btn sec" onclick="abrirFicha('${esc(id)}')">Voltar</button>`);
+  $('#cc-ok').onclick = () => {
+    const f = LS.get('filaAlt', []); if (!f.some((x) => x.tipo === 'concluir' && x.area_id === id)) f.push({ id: crypto.randomUUID(), tipo: 'concluir', area_id: id, em: new Date().toISOString() }); LS.set('filaAlt', f);
+    aviso(navigator.onLine ? 'Campo concluído.' : 'Campo concluído. É enviado quando houver rede.', 'ok'); actSync(); sincronizar(true);
+    camposManut().some((x) => x.id === id) && !S.areas.some((x) => x.id === id) ? abrirFichaManut(id) : abrirFicha(id);
+  };
+}
+function ecraAnularConclusao(id, cid) {
+  const volta = () => (camposManut().some((x) => x.id === id) && !S.areas.some((x) => x.id === id) ? abrirFichaManut(id) : abrirFicha(id));
+  folha(`<h2>↩️ <span>Anular a conclusão</span></h2>
+    <p class="pequeno">A sobrevivência indicativa deixa de contar. Se a recontagem pedida ainda não foi encaminhada a um oficial, fica cancelada.</p>
+    <label><span>Porque anula a conclusão? (obrigatório)</span><textarea id="ac-mot" rows="2"></textarea></label><div id="ac-msg"></div>
+    <button class="btn" id="ac-ok">Anular a conclusão</button><button class="btn sec" id="ac-volta">Voltar</button>`);
+  $('#ac-volta').onclick = volta;
+  $('#ac-ok').onclick = async () => {
+    const mot = $('#ac-mot').value.trim();
+    if (mot.length < 3) { $('#ac-msg').innerHTML = '<div class="msg erro">Escreva o motivo.</div>'; return; }
+    if (!navigator.onLine) { $('#ac-msg').innerHTML = '<div class="msg erro">Precisa de rede para anular a conclusão.</div>'; return; }
+    $('#ac-ok').disabled = true;
+    const r = await sb.rpc('anular_conclusao_cavaroda', { p_id: cid, p_motivo: mot });
+    if (r.error) { $('#ac-ok').disabled = false; $('#ac-msg').innerHTML = `<div class="msg erro">${esc(semRede(r.error) ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : r.error.message)}</div>`; return; }
+    const o = LS.get('conclusoes', {}) || {}; delete o[id]; LS.set('conclusoes', o); aviso('Conclusão anulada.', 'ok'); volta();
+  };
 }
 // «O meu dia» (técnico/supervisor): o que a equipa fez hoje de cava-roda e mulching
 const linhaActEquipa = (e) => e.actividade ? `<div class="pequeno" style="margin:0 0 6px 8px">🌱 <span>Cava-roda</span> ${num(e.actividade.cavaroda || 0)} · <span>Mulching</span> ${num(e.actividade.mulching || 0)} (${num(e.actividade.campos || 0)} <span>campos</span>)</div>` : '';

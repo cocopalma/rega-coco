@@ -381,6 +381,29 @@
       return { id: x.id, manutencao: false, excedente: { cavaroda: 0, mulching: 0 } }; },
     actividades_campo_lista: (a) => { const l = (DB.act || []).filter((x) => x.area_id === a.p_area && !x.removido);
       return { lista: l.map((x) => ({ ...x, excedente: 0 })).reverse(), cavaroda: l.reduce((n, x) => n + (x.cavaroda || 0), 0), mulching: l.reduce((n, x) => n + (x.mulching || 0), 0) }; },
+    // v248: conclusão da cava-roda e do mulching (sobrevivência indicativa) e fecho do dia do itinerário
+    conclusao_campo: (a) => { const ar = area(a.p_area) || {}, l = (DB.act || []).filter((x) => x.area_id === a.p_area && !x.removido), k = (DB.conc || []).find((x) => x.area_id === a.p_area && !x.removido);
+      const r = k && k.recontagem_id ? DB.recontagens.find((x) => x.id === k.recontagem_id) : null;
+      return { cavaroda: l.reduce((n, x) => n + (x.cavaroda || 0), 0), mulching: l.reduce((n, x) => n + (x.mulching || 0), 0), fonte: 'actividades', instaladas: ar.instaladas || 0, vivas: ar.vivas || 0,
+        pode: ['tecnico', 'supervisor', 'gestor'].includes(papel), conclusao: k ? { ...k, meu: true, recontagem: !!k.recontagem_id, recontagem_estado: r ? r.estado : null } : null }; },
+    concluir_cavaroda: (a) => { const ar = area(a.p_area) || {}, l = (DB.act || []).filter((x) => x.area_id === a.p_area && !x.removido); DB.conc ||= [];
+      if (DB.conc.some((x) => x.area_id === a.p_area && !x.removido)) return { ja: true };
+      const inst = ar.instaladas || 0, cav = Math.min(l.reduce((n, x) => n + (x.cavaroda || 0), 0), inst || 1e9), viv = ar.vivas || 0; let rid = null;
+      if (cav < viv && !DB.recontagens.some((x) => x.area_id === a.p_area && ['por_encaminhar', 'encaminhada', 'enviada', 'recusada'].includes(x.estado))) {
+        rid = uid(); DB.recontagens.push({ id: rid, area_id: a.p_area, motivo: `Cava-roda e mulching concluídos com ${cav} plantas vivas encontradas; na base ${viv} vivas (pedido automático)`, estado: 'por_encaminhar', pedido_em: new Date().toISOString(), pedido_por: EU, oficial_id: null }); }
+      const k = { id: uid(), area_id: a.p_area, em: a.p_em || new Date().toISOString(), quem: NOMES[papel] || 'Eu', cavaroda: cav, mulching: l.reduce((n, x) => n + (x.mulching || 0), 0), instaladas: inst, vivas_base: viv,
+        sobrevivencia: inst > 0 ? Math.round(1000 * cav / inst) / 10 : null, recontagem_id: rid, removido: false };
+      DB.conc.push(k); return { id: k.id, sobrevivencia: k.sobrevivencia, recontagem: !!rid }; },
+    anular_conclusao_cavaroda: (a) => { const k = (DB.conc || []).find((x) => x.id === a.p_id); if (!k) return null; k.removido = true;
+      const r = k.recontagem_id && DB.recontagens.find((x) => x.id === k.recontagem_id && x.estado === 'por_encaminhar'); if (r) r.estado = 'cancelada'; return { ok: true }; },
+    painel_sobrevivencia: () => (['activista', 'oficial_me'].includes(papel) ? null : { feitos_antigos: 0, campos: (DB.conc || []).filter((k) => !k.removido).map((k) => { const ar = area(k.area_id) || {}, r = k.recontagem_id ? DB.recontagens.find((x) => x.id === k.recontagem_id) : null;
+      return { area_id: k.area_id, produtor: ar.produtor, comunidade: ar.comunidade, zona: ar.zona || null, equipa: nomeAct(ar.activista_id), instaladas: k.instaladas, vivas_base: k.vivas_base, cavaroda: k.cavaroda, mulching: k.mulching, sobrevivencia: k.sobrevivencia,
+        data: String(k.em).slice(0, 10), quem: k.quem, recontagem: !!k.recontagem_id, recontagem_estado: r ? r.estado : null }; }).reverse() }),
+    itinerario_estado: (a) => ({ fechos: (DB.itF || []).filter((x) => x.plano_id === a.p_plano), falhas: (DB.itX || []).filter((x) => x.plano_id === a.p_plano).map((x) => ({ ...x, produtor: (area(x.area_id) || {}).produtor })), trabalhados: [] }),
+    fechar_itinerario_dia: (a) => { DB.itF ||= []; DB.itX ||= []; if (DB.itF.some((x) => x.plano_id === a.p_plano && x.dia_n === a.p_dia)) return { ja: true };
+      DB.itF.push({ plano_id: a.p_plano, dia_n: a.p_dia, data: a.p_data });
+      for (const f of a.p_falhas || []) DB.itX.push({ plano_id: a.p_plano, dia_n: a.p_dia, data: a.p_data, area_id: f.area_id, motivo: f.motivo, texto: f.texto || null, quem: NOMES[papel] || 'Eu' });
+      return { ok: true, falhas: (a.p_falhas || []).length }; },
     painel_actividades: () => (['activista', 'oficial_me'].includes(papel) ? null : (DB.act || []).filter((x) => !x.removido).map((x) => { const ar = area(x.area_id) || {}; return { ...x, produtor: ar.produtor, comunidade: ar.comunidade, zona: ar.zona, excedente: 0, manutencao: false }; }).reverse()),
     acompanhamentos_campo: () => [], gravar_acompanhamento: (a) => ({ id: a.p_id, teste: false }), remover_acompanhamento: () => null,
     gravar_monitoria_escala: (a) => { DB.escala = (a.p_dias || []).slice().sort(); guardarDB(); return { dias: DB.escala }; },
