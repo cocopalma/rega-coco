@@ -6500,6 +6500,7 @@ async function carregarMeuDia() {
   if (!cn.error) LS.set('corrNome', Array.isArray(cn.data) ? cn.data : []);
   if (!ma.error) LS.set('motivosAnt', Array.isArray(ma.data) ? ma.data : []);   // v224
   if (!mx.error) LS.set('metaExpl', Array.isArray(mx.data) ? mx.data : []);   // v226
+  guardarDiasAnteriores();   // v249: sem esperar
 }
 // v197 (02/11/2026, Valdo: "Muda, mas o técnico e supervisor devem confirmar. Cria esta confirmação obrigatória"): correcção do nome
 // do produtor pedida ao gestor (ex.: pelo 💡); o nome só muda quando o técnico E o supervisor da equipa confirmam (servidor).
@@ -6623,16 +6624,37 @@ async function verDiaMD(dia) {
   if (!navigator.onLine) return;
   let r; try { r = await sb.rpc('meu_dia', { p_data: dia }); } catch (e) { r = { error: e }; }
   if (r.error) { S.mdErro = { dia, msg: /fetch|network|Load failed|abort|timeout/i.test(r.error.message || '') || !r.error.message ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : r.error.message }; }
-  else { S.mdErro = null; const hist = LS.get('meuDiaHist', {}) || {}; hist[dia] = { em: new Date().toISOString(), d: r.data || null };
-    const ks = Object.keys(hist).sort().reverse(); for (const k of ks.slice(10)) delete hist[k]; LS.set('meuDiaHist', hist); }
+  else { S.mdErro = null; guardarDiaHist(dia, r.data); }
   if (S.mdDia === dia && $('#e-hoje')?.classList.contains('on')) desenharHoje();
+}
+// v249 (20/11/2026, Valdo: "mesmo sem rede possa ser possível abrir"): cada dia visto fica no telefone, só com o que a vista usa;
+// com rede, os últimos DIAS_HIST dias guardam-se sozinhos (no máximo de hora a hora). Guarda os últimos MAX_HIST dias.
+const DIAS_HIST = 7, MAX_HIST = 14;
+function guardarDiaHist(dia, d) {
+  const hist = LS.get('meuDiaHist', {}) || {};
+  hist[dia] = { em: new Date().toISOString(), d: d ? { data: d.data, hora_chegada: d.hora_chegada, fechado_em: d.fechado_em, monitoria_hoje: d.monitoria_hoje,
+    equipas: d.equipas || [], alertas: (d.alertas || []).filter((x) => x.data === dia) } : null };
+  for (const k of Object.keys(hist).sort().reverse().slice(MAX_HIST)) delete hist[k];
+  LS.set('meuDiaHist', hist);
+}
+async function guardarDiasAnteriores() {
+  if (!MEU_DIA() || !navigator.onLine || window.DEMO) return;
+  const ult = LS.get('meuDiaHistEm'); if (ult && Date.now() - new Date(ult).getTime() < 3600e3) return;
+  LS.set('meuDiaHistEm', new Date().toISOString());
+  const base = new Date(hojeISO() + 'T12:00:00');
+  for (let i = 1; i <= DIAS_HIST; i++) {
+    const d = new Date(base); d.setDate(d.getDate() - i); const dia = d.toLocaleDateString('sv-SE');
+    let r; try { r = await sb.rpc('meu_dia', { p_data: dia }); } catch (e) { return; }
+    if (r.error) return;
+    guardarDiaHist(dia, r.data);
+  }
 }
 // um dia passado: equipas, motivos, fecho, chegadas, monitoria, regas com ⚠️ desse dia e recontagens que mudaram nesse dia
 function cartaoMeuDiaHist(dia) {
   const c = (LS.get('meuDiaHist', {}) || {})[dia], d = c?.d;
   let h = `<div class="cartao" id="meu-dia"><h2 style="margin-bottom:2px">📋 <span>O meu dia</span> · ${fmtData(dia)}</h2>${navMeuDia(dia)}
     <div class="msg info"><span>Dia anterior: só para ver. O que ainda falta tratar está em «Por tratar de dias anteriores», no dia de hoje.</span></div>`;
-  if (!d) return h + `<p class="pequeno">${S.mdErro?.dia === dia ? esc(S.mdErro.msg) : navigator.onLine ? 'A carregar…' : 'Precisa de rede para ver outro dia.'}</p></div>`;
+  if (!d) return h + `<p class="pequeno">${S.mdErro?.dia === dia ? esc(S.mdErro.msg) : navigator.onLine ? 'A carregar…' : 'Este dia não está guardado no telefone. Abra-o uma vez com rede. Os últimos 7 dias guardam-se sozinhos quando há rede.'}</p></div>`;
   const eqs = d.equipas || [], nomeMot = (m) => String(m || '').split(', ').map(nomeMotivoDsr).join(', ');
   h += `<p class="pequeno" style="margin:6px 0">${d.fechado_em ? `✓ <span>Dia fechado às</span> ${fmtHora(d.fechado_em)}${fmtHora(d.fechado_em) > '18:00' ? ' (<span>depois das 18:00</span>)' : ''}` : '<b style="color:var(--erro,#c62828)">Dia não fechado</b>'}</p>`;
   const L = [];
@@ -6650,7 +6672,7 @@ function cartaoMeuDiaHist(dia) {
   const al = (d.alertas || []).filter((x) => x.data === dia);
   L.push(['h-al', 'Regas deste dia com ⚠️ ainda por tratar', al.length, 'a', al.map(itemAlertaMD).join('') || '<p class="pequeno">Nenhuma.</p>']);
   if (veRecontagens()) { const ev = eventosRec(dia); L.push(['h-rc', 'Recontagens das plantas: o que mudou neste dia', ev.length, 'b', cartaoRecDia(dia)]); }
-  return h + L.map((x) => linhaTar(...x)).join('') + `<p class="pequeno" style="margin-top:6px"><span>Dados de</span> ${fmtDataHora(c.em)}</p></div>`;
+  return h + L.map((x) => linhaTar(...x)).join('') + `<p class="pequeno" style="margin-top:6px">${navigator.onLine ? '' : '<span>Sem rede: guardado no telefone.</span> '}<span>Dados de</span> ${fmtDataHora(c.em)}</p></div>`;
 }
 // v249: recontagens que mudaram num dia (pedida, encaminhada a um oficial, contada pelo oficial, validada, recusada)
 const EV_REC = [['pedido_em', 'Pedidas'], ['encaminhada_em', 'Encaminhadas a um oficial'], ['enviada_em', 'Contadas pelo oficial'], ['validada_em', 'Validadas pelo M&E'], ['recusada_em', 'Recusadas pelo M&E']];
