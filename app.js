@@ -453,7 +453,11 @@ async function sincronizarAgora(silencioso) {
       if (r4.error && erroPassageiro(r4.error)) { erro = r4.error.message; sessao = erroSessao(r4.error); break; }   // sem rede: fica na fila
       if (r4.error) { marcarRecusa('filaAlt', x, r4.error, x.tipo || 'atrib'); recusadas++; continue; }   // recusado: fica na fila, marcado (antes saía e perdia-se)
       LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot', 'meta_mot2', 'agua', 'chefe_man', 'horas_extras', 'it_fecho'].includes(x.tipo)) alteradas++;
-      if (x.tipo === 'horas_extras') carregarHorasExtras();
+      if (x.tipo === 'horas_extras') {   // v249: fica já no telefone como enviada (sem esperar pela lista do servidor), para o Hoje não perder o «Cancelar»
+        const L = (LS.get('horasExtras', []) || []).filter((h) => !(h.activista_id === x.activista_id && h.data === x.data));
+        L.push({ id: x.he_id, activista_id: x.activista_id, data: x.data, por: S.perfil?.nome, em: x.em }); LS.set('horasExtras', L);
+        carregarHorasExtras();
+      }
       if (x.tipo === 'it_fecho') carregarItEstado().catch(() => {});
       if (x.tipo === 'concluir') { const o = LS.get('conclusoes', {}) || {}; delete o[x.area_id]; LS.set('conclusoes', o); }
     }
@@ -533,7 +537,7 @@ async function carregarTudo() {
   if (pv && !pv.error && Array.isArray(pv.data)) { S.pluvs = pv.data; LS.set('pluvs', S.pluvs); }
   carregarTuks(); carregarTuksHoje();
   if (!qm.error && Array.isArray(qm.data)) { S.queimadas = qm.data; LS.set('queimadas', S.queimadas); }
-  if (!rc.error && Array.isArray(rc.data)) { S.recont = rc.data; LS.set('recont', S.recont); }
+  if (!rc.error && Array.isArray(rc.data)) { S.recont = rc.data; LS.set('recont', S.recont); _recontEm = Date.now(); }
   if (['me', 'gestor'].includes(p.data.papel)) oficiais().catch(() => {});
   carregarNPlantas().catch(() => {});
   carregarSugFeitas().catch(() => {});
@@ -568,7 +572,7 @@ async function carregarEstado(pronto) {
   // v155: os pedidos seguintes saem ao mesmo tempo (antes eram uns atrás dos outros)
   const papel = S.perfil?.papel, tarefas = [];
   tarefas.push(carregarHorasExtras());                   // horas extras de hoje (15:30)
-  tarefas.push(carregarTrilhos().catch(() => {}));       // v193: trilhos para a navegação (só o que mudou)
+  carregarTrilhos().catch(() => {});                     // v193: trilhos para a navegação (só o que mudou); v249: sem esperar
   if (!['cliente', 'oficial_me'].includes(papel)) tarefas.push(sb.rpc('planos_lista').then((q) => { if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data); }));
   if (VER_MEMBROS.includes(papel))                       // nomes das pessoas de cada equipa (v135, lista do RH de 23/10/2026)
     tarefas.push(sb.rpc('ausentes_hoje').then((q) => { if (!q.error && Array.isArray(q.data)) LS.set('ausentes', { data: hojeISO(), ids: q.data }); }));   // v171
@@ -657,7 +661,7 @@ async function autenticarPendente() {
   if (error && (semRede(error) || /fetch|Failed/i.test(error.message))) return false;          // ainda sem rede (v237: também pedido cortado aos 30 s)
   if (error) { S.credPend = null; LS.del('acessoOff'); aviso('A senha ou o PIN mudou. Entre de novo com rede; os registos continuam guardados no telefone.', 'erro'); setTimeout(() => location.reload(), 4000); return false; }
   S.user = data.user; S.credPend = null;
-  carregarTudo().then(() => { if ($('#e-hoje').classList.contains('on')) desenharHoje(); }).catch(() => {});
+  carregarTudo().then(() => { if ($('#e-hoje').classList.contains('on')) desenharHoje({ auto: true }); }).catch(() => {});
   return true;
 }
 // v237 (13/11/2026): desde a v233 um pedido lento é cortado aos 30 s (AbortError) e conta como falta de rede
@@ -4191,11 +4195,22 @@ const VER_APOIO = ['tecnico', 'supervisor', 'gestor'];
 const apoiosAct = () => (LS.get('apoios', []) || []).filter((p) => !p.terminado_em);
 const apoioDoCampo = (id) => apoiosAct().find((p) => (p.area_ids || []).includes(id)) || null;
 const apoioMeu = (id) => (souActivista() ? apoiosAct().find((p) => p.ajuda_activista_id === S.perfil.activista_id && (p.area_ids || []).includes(id)) || null : null);
-async function carregarApoios() {
+// v249: as sugestões de apoio (mais lentas) não fazem esperar; pedem-se no máximo de 2 em 2 min, salvo depois de uma acção (forcar)
+let _apoioSugEm = 0, _apoioSugP = null;
+function carregarApoioSug(forcar) {
+  if (!navigator.onLine || !VER_APOIO.includes(S.perfil?.papel)) return Promise.resolve();
+  if (_apoioSugP) return _apoioSugP;
+  if (!forcar && Date.now() - _apoioSugEm < 120000) return Promise.resolve();
+  _apoioSugP = sb.rpc('apoio_sugestoes').then((s) => { if (!s.error && Array.isArray(s.data)) { LS.set('apoioSug', s.data); _apoioSugEm = Date.now(); } })
+    .catch(() => {}).finally(() => { _apoioSugP = null; });
+  return _apoioSugP;
+}
+async function carregarApoios(forcar) {
   if (!navigator.onLine) return;
-  const [a, s] = await Promise.all([sb.rpc('apoios_lista'), VER_APOIO.includes(S.perfil?.papel) ? sb.rpc('apoio_sugestoes') : Promise.resolve({ data: null })]);
+  const sg = carregarApoioSug(forcar);
+  const a = await sb.rpc('apoios_lista');
   if (!a.error && Array.isArray(a.data)) LS.set('apoios', a.data);
-  if (!s.error && Array.isArray(s.data)) LS.set('apoioSug', s.data);
+  if (forcar) await sg;
 }
 function cartaoApoioCampo(a) {
   const p = apoioDoCampo(a.id); if (!p) return '';
@@ -4272,7 +4287,7 @@ async function ecraApoio(aj, pa) {
     const q = await sb.rpc('criar_apoio', { p_ajuda: aj, p_para: pa, p_areas: ids, p_nota: $('#ap-nota').value.trim() || null });
     if (q.error) { $('#ap-ok').disabled = false; return ($('#ap-msg').innerHTML = `<div class="msg erro">${esc(q.error.message)}</div>`); }
     fecharFolha(); aviso(so ? `Apoio activado: ${nAj} vai fazer cava-roda e mulching em ${ids.length} campos de ${nPa}. Avise as duas equipas.` : `Apoio activado: ${nAj} vai regar ${ids.length} campos de ${nPa}. Avise as duas equipas.`, 'ok');
-    await carregarApoios(); desenharLista(); desenharMapa(); if ($('#e-hoje').classList.contains('on')) desenharHoje();
+    await carregarApoios(true); desenharLista(); desenharMapa(); if ($('#e-hoje').classList.contains('on')) desenharHoje();
   };
 }
 async function terminarApoio(id) {
@@ -4280,7 +4295,7 @@ async function terminarApoio(id) {
   if (!confirm(`Terminar o apoio de ${p.ajuda_nome} a ${p.para_nome}? Os campos que faltam voltam só para a equipa de ${p.para_nome}.`)) return;
   if (!navigator.onLine) return aviso('Precisa de rede.', 'erro');
   const r = await sb.rpc('terminar_apoio', { p_id: id }); if (r.error) return aviso(r.error.message, 'erro');
-  aviso('Apoio terminado.', 'ok'); await carregarApoios(); desenharLista(); desenharMapa(); if ($('#e-hoje').classList.contains('on')) desenharHoje();
+  aviso('Apoio terminado.', 'ok'); await carregarApoios(true); desenharLista(); desenharMapa(); if ($('#e-hoje').classList.contains('on')) desenharHoje();
 }
 
 // ---------- próximo campo (sugestão opcional) ----------
@@ -4525,9 +4540,14 @@ const gereRecont = () => ['me', 'gestor'].includes(S.perfil?.papel);   // encami
 const podePedirRec = () => ['me', 'gestor', 'tecnico', 'supervisor'].includes(S.perfil?.papel) && !S.soVer;
 const veRecontagens = () => ['me', 'gestor', 'director', 'tecnico', 'supervisor'].includes(S.perfil?.papel);
 const filaRec = () => LS.get('filaRec', []);
-async function carregarRecontagens() {
-  const r = await sb.rpc('recontagens_lista');
-  if (!r.error && Array.isArray(r.data)) { S.recont = r.data; LS.set('recont', S.recont); }
+// v249: lista grande (~1 s, ~180 KB): ao passar de separador pede-se no máximo de 3 em 3 min; depois de uma acção, sempre (forcar)
+let _recontEm = 0, _recontP = null;
+async function carregarRecontagens(forcar = true) {
+  if (_recontP) return _recontP;
+  if (!forcar && S.recont && Date.now() - _recontEm < 180000) return;
+  _recontP = (async () => { const r = await sb.rpc('recontagens_lista');
+    if (!r.error && Array.isArray(r.data)) { S.recont = r.data; LS.set('recont', S.recont); _recontEm = Date.now(); } })().finally(() => { _recontP = null; });
+  return _recontP;
 }
 // Pedir, encaminhar, validar, recusar e cancelar também sem rede (18/10/2026, Valdo): ficam na fila filaRecG, pela ordem,
 // e são enviadas quando houver rede (com a hora do telefone). Até lá a app mostra-as como feitas, com a nota "no telefone".
@@ -5471,14 +5491,20 @@ async function registarAgua() {
   actSync(); aviso(g ? 'Registado: a equipa foi buscar água.' : 'Registado sem GPS: a equipa foi buscar água.', 'ok');
   desenharHoje(); sincronizar(true);
 }
-async function desenharHoje() {
-  const h = hojeISO(), local = filaRegistos().filter((r) => r.data === h);
+// v249 (20/11/2026, Valdo: demora ao abrir e ao passar de separador): os pedidos ao servidor saem todos ao mesmo tempo;
+// ao voltar ao separador Hoje (auto) só se pede de novo se a última vez foi há mais de 1 minuto; um desenho mais recente ganha a um mais antigo
+let _hojeSeq = 0, _hojeRedeEm = 0;
+async function desenharHoje(o) {
+  const auto = !!(o && o.auto), seq = ++_hojeSeq, velho = () => seq !== _hojeSeq;
+  const h = hojeISO(), local = filaRegistos().filter((r) => r.data === h), papel = S.perfil.papel;
+  const rede = navigator.onLine && (!auto || Date.now() - _hojeRedeEm > 60000 || !S.hojeRegs || S.hojeRegs.d !== h);
+  if (rede) _hojeRedeEm = Date.now();
   const guardado = LS.get('hojeHtml');
-  if (guardado && guardado.d === h && guardado.p === S.perfil.papel && !$('#hoje').innerHTML.trim()) $('#hoje').innerHTML = guardado.html;
+  if (guardado && guardado.d === h && guardado.p === papel && !$('#hoje').innerHTML.trim()) $('#hoje').innerHTML = guardado.html;
   let html = `<div class="cartao"><h2>Hoje · ${fmtData(h)}</h2>`;
   if (souOficial()) {                                    // oficial de M&E: só as recontagens (18/10/2026, Valdo)
     $('#hoje').innerHTML = cartaoRecontagensHoje();
-    if (navigator.onLine) { await carregarRecontagens(); $('#hoje').innerHTML = cartaoRecontagensHoje(); }
+    if (rede) { await carregarRecontagens(!auto); if (!velho()) $('#hoje').innerHTML = cartaoRecontagensHoje(); }
     return;
   }
   // dois botões no topo do Hoje: "Rega hoje" e "Recontagens das plantas" (18/10/2026, Valdo); a escolha fica no telefone
@@ -5487,20 +5513,37 @@ async function desenharHoje() {
     const vista = vistaActual();
     if (vista === 'rec') {
       $('#hoje').innerHTML = abasHoje('rec') + cartaoRecontagensHoje();
-      if (navigator.onLine) { await carregarRecontagens(); if (vistaActual() === 'rec') $('#hoje').innerHTML = abasHoje('rec') + cartaoRecontagensHoje(); }
+      if (rede) { await carregarRecontagens(!auto); if (!velho() && vistaActual() === 'rec') $('#hoje').innerHTML = abasHoje('rec') + cartaoRecontagensHoje(); }
       return;
     }
     abas = abasHoje('rega');
-    if (navigator.onLine) carregarRecontagens().then(() => {   // por trás: só actualiza o número no botão
+    if (rede) carregarRecontagens(!auto).then(() => {   // por trás: só actualiza o número no botão
       const b = document.querySelector('#hoje-abas [data-v=rec]'), n = contaRecHoje();
       if (b) b.textContent = n ? `Recontagens das plantas (${n})` : 'Recontagens das plantas';
     }).catch(() => {});
   }
-  if (['activista', 'tecnico', 'supervisor', 'gestor'].includes(S.perfil.papel)) { if (navigator.onLine) await carregarAvisos(); }
+  // tudo o que vem do servidor, ao mesmo tempo
+  const P = [], ok = (x) => Promise.resolve(x).catch(() => {});
+  let pReg = null;
+  if (rede && ['activista', 'tecnico', 'supervisor', 'gestor'].includes(papel)) P.push(ok(carregarAvisos()));
+  if (papel === 'activista') {
+    if (rede) pReg = sb.from('registos_rega').select('id,area_id,activista_id,data,teste,pessoas,entrada_em,saida_em,plantas_regadas,plantas_20l,alerta,agua_em,tuk_chegada,tuk_extra').eq('data', h).order('entrada_em');
+  } else {
+    if (rede && VER_APOIO.includes(papel)) P.push(ok(carregarApoios(!auto)));
+    if (rede && MEU_DIA()) P.push(ok(carregarMonitoria()), ok(carregarMeuDia()), ok(carregarRecontagens(!auto)));
+    else if (rede && ['tecnico', 'supervisor'].includes(papel)) P.push(ok(carregarMonitoria()), ok(carregarMeuDia()));
+    // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
+    if (rede) pReg = sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,plantas_20l,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h);
+  }
+  let rReg = null;
+  if (pReg) { P.push(pReg.then((r) => { rReg = r; }, (e) => { rReg = { error: e }; })); }
+  await Promise.all(P);
+  if (velho()) return;                                   // entretanto começou outro desenho
+  if (rReg && !rReg.error) S.hojeRegs = { d: h, p: papel, data: rReg.data || [] };
+  const regsGuard = S.hojeRegs && S.hojeRegs.d === h && S.hojeRegs.p === papel ? S.hojeRegs.data : null;
   if (veRecontagens() && !MEU_DIA() && vistaActual() !== 'rega') return;     // mudou de vista enquanto esperava
-  if (S.perfil.papel === 'activista') {
-    let serv = [];
-    if (navigator.onLine) { const r = await sb.from('registos_rega').select('id,area_id,activista_id,data,teste,pessoas,entrada_em,saida_em,plantas_regadas,plantas_20l,alerta,agua_em,tuk_chegada,tuk_extra').eq('data', h).order('entrada_em'); serv = r.data || []; }
+  if (papel === 'activista') {
+    const serv = (rReg && !rReg.error ? rReg.data : regsGuard) || [];
     const ids = new Set(serv.map((x) => x.id)), todos = [...serv, ...local.filter((x) => !ids.has(x.id))];
     const tot = todos.reduce((s, x) => s + (x.plantas_regadas || 0), 0);
     const j = jornadaHoje();
@@ -5511,14 +5554,11 @@ async function desenharHoje() {
       <div class="lin"><span>Campos regados hoje</span><b>${todos.length}</b></div><div class="lin"><span>Plantas regadas hoje</span><b>${num(tot)}</b></div><div class="lin"><span>Por enviar</span><b>${local.length}</b></div>${linhaMeta(metaHoje(S.perfil.activista_id, todos))}</div>`;
     html += todos.map((x) => { const a = S.areas.find((y) => y.id === x.area_id) || {}; return `<div class="item"><div><div class="nome">${esc(a.produtor)}</div><div class="sub">${fmtHora(x.entrada_em)}–${fmtHora(x.saida_em)} · ${num(x.plantas_regadas)} plantas${x.agua_em ? ' · água ' + fmtHora(x.agua_em) : ''}${x.alerta ? ' · fora da lista' : ''}</div></div></div>`; }).join('');
   } else {
-    if (VER_APOIO.includes(S.perfil.papel) && navigator.onLine) await carregarApoios();
-    if (MEU_DIA()) { if (navigator.onLine) await Promise.all([carregarMonitoria(), carregarMeuDia(), carregarRecontagens().catch(() => {})]); }
-    else if (['tecnico', 'supervisor'].includes(S.perfil.papel)) { if (navigator.onLine) await Promise.all([carregarMonitoria(), carregarMeuDia()]); html = cartaoMeuDia() + cartaoApoio() + cartaoMonitoria() + html; }
-    else if (VER_APOIO.includes(S.perfil.papel)) html = cartaoApoio() + html;
+    if (!MEU_DIA() && ['tecnico', 'supervisor'].includes(papel)) html = cartaoMeuDia() + cartaoApoio() + cartaoMonitoria() + html;
+    else if (!MEU_DIA() && VER_APOIO.includes(papel)) html = cartaoApoio() + html;
     const podeMudar = ['gestor', 'tecnico', 'supervisor'].includes(S.perfil.papel);
     if (podeMudar) html += linhaChuva('Chuva (pluviómetro) · teste') + (percursoActivo() || pontosPercursoHoje() ? linhaPercurso() : '');
-    // sem rede: não pede ao servidor (14/10/2026, Nuro: aparecia "Failed to fetch")
-    const r = navigator.onLine ? await sb.from('registos_rega').select('activista_id,area_id,plantas_regadas,plantas_20l,alerta,gps_valido,teste,entrada_em,saida_em,pessoas,agua_em').eq('data', h) : { error: { semRede: true } };
+    const r = rReg || (regsGuard ? { data: regsGuard } : { error: { semRede: true } });
     if (r.error && (r.error.semRede || /fetch|network|rede|abort|timeout/i.test(r.error.message || ''))) {
       // sem rede: mostra o último resumo das equipas guardado no telefone (16/10/2026, Nuro)
       const ult = LS.get('hojeEquipas');
@@ -7315,10 +7355,12 @@ function mudar(e) {
   document.querySelectorAll('.ecra').forEach((s) => s.classList.toggle('on', s.id === 'e-' + e));
   if (e === 'mapa') setTimeout(() => mapa.invalidateSize(), 50);
   if (e === 'lista') desenharLista();
-  if (e === 'hoje') desenharHoje();
+  if (e === 'hoje') desenharHoje({ auto: true });        // v249: ao passar de separador não repete os pedidos do último minuto
   if (e === 'gestao') desenharGestao();
-  if (e === 'painel') { const f = $('#painel-f'); if (!f.src) f.src = 'painel.html?embutido=1'; else f.contentWindow?.postMessage('actualizar', location.origin); }
+  if (e === 'painel') { const f = $('#painel-f'); if (!f.src) { f.src = 'painel.html?embutido=1'; _painelEm = Date.now(); }
+    else if (Date.now() - _painelEm > 120000) { _painelEm = Date.now(); f.contentWindow?.postMessage('actualizar', location.origin); } }   // v249: no máximo de 2 em 2 min
 }
+let _painelEm = 0;
 // Regas fora da lista sem motivo (v115, 26/10/2026, Valdo: "tem de ter motivo. Obrigatório ter motivo."). O servidor não
 // recusa a rega (pode vir de um telefone com a lista antiga, sem rede) mas marca-a "Sem justificação"; a app pede o motivo a
 // quem a registou até estar escrito: faixa vermelha por baixo do menu e ecrã sem ✕. Funciona sem rede (fila 'justif').
@@ -7533,7 +7575,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     pedidoSessao.then((s) => {
       if (s) S.user = s.user;
       else if (!sessaoGuardada()) { location.reload(); return; }   // a sessão deixou de valer: volta ao ecrã de entrada
-      if (navigator.onLine) carregarTudo().then(() => { if ($('#e-hoje').classList.contains('on')) desenharHoje(); }).catch(() => {}).finally(() => sincronizar(true));
+      if (navigator.onLine) carregarTudo().then(() => { if ($('#e-hoje').classList.contains('on')) desenharHoje({ auto: true }); }).catch(() => {}).finally(() => sincronizar(true));
     });
     return;
   }
@@ -7544,7 +7586,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const temLocal = carregarDoTelefone();
     if (temLocal && S.perfil) {                           // abre logo com os dados do telefone; o servidor actualiza por trás
       mostrarApp(); retomarRascunhos();
-      if (navigator.onLine) carregarTudo().then(() => { if ($('#e-hoje').classList.contains('on')) desenharHoje(); }).catch(() => {}).finally(() => sincronizar(true));
+      if (navigator.onLine) carregarTudo().then(() => { if ($('#e-hoje').classList.contains('on')) desenharHoje({ auto: true }); }).catch(() => {}).finally(() => sincronizar(true));
       return;
     }
     if (navigator.onLine) { try { await carregarTudo(); } catch (e) { if (!temLocal) { $('#login').style.display = 'block'; msgEntrada(`<div class="msg erro">${esc(e.message)}</div>`); return; } } }
