@@ -447,9 +447,9 @@
       const ok = (a.p_presentes || []).filter((id) => membros().some((m) => m.id === id && m.activista_id === a.p_activista));
       DB.presencas.push({ id: a.p_id, activista_id: a.p_activista, data: a.p_data, presentes: ok, outros: a.p_outros || 0 }); guardarDB(); return { pessoas: 1 + ok.length + (a.p_outros || 0) }; },
     // v156: «O meu dia» do técnico e do supervisor de exemplo, «Fechar o dia» e confirmar regas com ⚠️
-    meu_dia: () => {
+    meu_dia: (a0 = {}) => {
       if (!['tecnico', 'supervisor'].includes(papel)) return null;
-      const hoje = dia(0), ids = vis(), est = estadoRonda();
+      const hoje = (a0 && a0.p_data) || dia(0), ids = vis(), est = estadoRonda();   // v249: «O meu dia» de outro dia
       const eqs = DB.activistas.filter((t) => ids.includes(t.id) && DB.areas.some((a) => a.activista_id === t.id)).map((t) => {
         const l = reais().filter((r) => r.activista_id === t.id && r.data === hoje), ms = DB.dsr.filter((d) => !d.removido && d.activista_id === t.id && d.data <= hoje && (d.ate || d.data) >= hoje), sr = ms.map((d) => d.motivo);
         return { id: t.id, nome: t.nome, comunidade: t.comunidade_principal, sem_telefone: false, regas: l.length, plantas: l.reduce((x, r) => x + r.plantas_regadas, 0),
@@ -459,7 +459,7 @@
           motivos: ms.map((d) => ({ id: d.id, motivo: d.motivo, descricao: d.descricao, sem_act: d.sem_act || null, todo_dia: d.todo_dia, data: d.data, ate: d.ate || null, quem: d.quem, papel_quem: d.papel_quem || 'tecnico',
             criado_em: d.criado_em, por_confirmar: d.papel_quem === 'activista' && !d.confirmado_em, confirmado_nome: d.confirmado_nome || null, confirmado_em: d.confirmado_em || null })) }; });
       const base = (a) => (a.vivas > 0 ? a.vivas : a.instaladas) || 0;
-      const alertas = reais().filter((r) => ids.includes(r.activista_id) && !r.alerta_confirmado_em && !r.plantas_corrigidas_em && r.plantas_regadas > base(area(r.area_id)))
+      const alertas = reais().filter((r) => ids.includes(r.activista_id) && r.data <= hoje && !r.alerta_confirmado_em && !r.plantas_corrigidas_em && r.plantas_regadas > base(area(r.area_id)))
         .map((r) => ({ registo_id: r.id, data: r.data, area_id: r.area_id, produtor: area(r.area_id).produtor, equipa: nomeAct(r.activista_id), plantas: r.plantas_regadas, base: base(area(r.area_id)), ritmo: null, mediana: null, tipo: 'mais_que_base' }))
         .concat(reais().filter((r) => ids.includes(r.activista_id) && !r.foto_confirmada_em && r.fotos_origem && Object.values(r.fotos_origem).some((f) => f && f.tirada && String(f.tirada).slice(0, 10) !== r.data))
           .map((r) => ({ registo_id: r.id, data: r.data, area_id: r.area_id, produtor: area(r.area_id).produtor, equipa: nomeAct(r.activista_id), plantas: r.plantas_regadas, base: base(area(r.area_id)), ritmo: null, mediana: null, tipo: 'foto_data', fotos: r.fotos_origem })));

@@ -6603,8 +6603,83 @@ function alertaHoras(d) {
   const L = (d.equipas || []).filter((e) => !e.regas && !e.actividade && !(e.motivos || []).length && !e.sem_rega && (a10 || !e.comecou));
   return L.length ? { k: a10 ? 'h10' : 'h8', titulo: a10 ? 'Às 10:00 sem rega nem cava-roda' : 'Às 08:00 ainda não começaram', L } : null;
 }
+// v249 (20/11/2026, Valdo: "o hoje não fique muito populado por informação que não é do dia, mas que também não se perca o histórico"):
+// «‹ Dia anterior» e a data no topo do «O meu dia» abrem um dia passado tal como ficou (só para ver; precisa de rede, guarda os últimos 10)
+function navMeuDia(dia) {
+  const h = hojeISO();
+  return `<div class="md-nav" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 6px">
+    <button class="chip" id="md-ant" onclick="mudarDiaMD(-1)" title="Dia anterior" aria-label="Dia anterior" style="margin:0">‹</button>
+    <input type="date" id="md-data" max="${h}" value="${esc(dia)}" onchange="verDiaMD(this.value)" style="width:auto;margin:0;padding:4px 6px">
+    ${dia < h ? `<button class="chip" onclick="mudarDiaMD(1)" title="Dia seguinte" aria-label="Dia seguinte" style="margin:0">›</button><button class="chip" id="md-hoje" onclick="verDiaMD('')" style="margin:0"><span>Voltar a hoje</span></button>` : ''}</div>`;
+}
+function mudarDiaMD(n) {
+  const d = new Date((S.mdDia || hojeISO()) + 'T12:00:00'); d.setDate(d.getDate() + n);
+  verDiaMD(d.toLocaleDateString('sv-SE'));
+}
+async function verDiaMD(dia) {
+  const h = hojeISO();
+  if (!dia || dia >= h) { S.mdDia = null; return desenharHoje(); }
+  S.mdDia = dia; desenharHoje();
+  if (!navigator.onLine) return;
+  let r; try { r = await sb.rpc('meu_dia', { p_data: dia }); } catch (e) { r = { error: e }; }
+  if (r.error) { S.mdErro = { dia, msg: /fetch|network|Load failed|abort|timeout/i.test(r.error.message || '') || !r.error.message ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : r.error.message }; }
+  else { S.mdErro = null; const hist = LS.get('meuDiaHist', {}) || {}; hist[dia] = { em: new Date().toISOString(), d: r.data || null };
+    const ks = Object.keys(hist).sort().reverse(); for (const k of ks.slice(10)) delete hist[k]; LS.set('meuDiaHist', hist); }
+  if (S.mdDia === dia && $('#e-hoje')?.classList.contains('on')) desenharHoje();
+}
+// um dia passado: equipas, motivos, fecho, chegadas, monitoria, regas com ⚠️ desse dia e recontagens que mudaram nesse dia
+function cartaoMeuDiaHist(dia) {
+  const c = (LS.get('meuDiaHist', {}) || {})[dia], d = c?.d;
+  let h = `<div class="cartao" id="meu-dia"><h2 style="margin-bottom:2px">📋 <span>O meu dia</span> · ${fmtData(dia)}</h2>${navMeuDia(dia)}
+    <div class="msg info"><span>Dia anterior: só para ver. O que ainda falta tratar está em «Por tratar de dias anteriores», no dia de hoje.</span></div>`;
+  if (!d) return h + `<p class="pequeno">${S.mdErro?.dia === dia ? esc(S.mdErro.msg) : navigator.onLine ? 'A carregar…' : 'Precisa de rede para ver outro dia.'}</p></div>`;
+  const eqs = d.equipas || [], nomeMot = (m) => String(m || '').split(', ').map(nomeMotivoDsr).join(', ');
+  h += `<p class="pequeno" style="margin:6px 0">${d.fechado_em ? `✓ <span>Dia fechado às</span> ${fmtHora(d.fechado_em)}${fmtHora(d.fechado_em) > '18:00' ? ' (<span>depois das 18:00</span>)' : ''}` : '<b style="color:var(--erro,#c62828)">Dia não fechado</b>'}</p>`;
+  const L = [];
+  const sem = eqs.filter((e) => !e.regas && !e.actividade && !(e.motivos || []).length);
+  L.push(['h-eq', 'Equipas', eqs.length, 'b', eqs.map((e) => { const ms = e.motivos || [];
+    return `<div class="lin"><span class="sem-trad">${esc(e.nome)}</span><b>${e.regas ? `✓ ${num(e.regas)} <span>campos</span> · ${num(e.plantas)} <span>plantas</span>${e.pessoas && e.meta_pessoa ? ` · ${Math.round(100 * (e.plantas_eq ?? e.plantas) / (e.meta_pessoa * e.pessoas))}% <span>da meta</span>` : ''}`
+      : e.actividade ? '🌱 <span>Cava-roda e mulching</span>' : ms.length ? `<span>Sem rega</span>: ${esc(nomeMot(ms.map((m) => m.motivo).join(', ')))}`
+      : `<span style="color:var(--erro,#c62828)">Sem rega, cava-roda nem motivo</span>`}</b></div>` +
+      ms.map((m) => `<div class="pequeno" style="margin:2px 0 6px 8px">⚠️ <span>${esc(nomeMotivoDsr(m.motivo))}</span>${m.descricao ? ` · <span class="sem-trad">${esc(m.descricao)}</span>` : ''}${m.quem ? ` · <span>Registado por</span> <span class="sem-trad">${esc(m.quem)}</span>` : ''}${m.por_confirmar ? ' · <b style="color:var(--erro,#c62828)">por confirmar</b>' : m.confirmado_nome ? ` · ✓ <span>confirmado por</span> <span class="sem-trad">${esc(m.confirmado_nome)}</span>` : ''}</div>`).join(''); }).join('') || '<p class="pequeno">Nenhuma.</p>',
+    `${eqs.length - sem.length} / ${eqs.length} <span>com rega, cava-roda e mulching ou motivo</span>`]);
+  const hc = d.hora_chegada || '06:00', hMz = (t) => new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Africa/Maputo', hour: '2-digit', minute: '2-digit', hour12: false });
+  const tarde = eqs.filter((e) => e.chegada && hMz(e.chegada) > hc).sort((a, b) => a.chegada < b.chegada ? -1 : 1);
+  L.push(['h-ch', `<span>Chegaram ao 1.º campo depois das</span> ${esc(hc)}`, tarde.length, 'a', tarde.map((e) => `<div class="lin"><span class="sem-trad">${esc(e.nome)}</span><b>${hMz(e.chegada)}</b></div>`).join('') || '<p class="pequeno">Nenhuma.</p>']);
+  L.push(['h-mo', 'Monitoria: campos que ficaram por verificar', d.monitoria_hoje || 0, 'a', `<p class="pequeno">${d.monitoria_hoje ? 'Campos sorteados para verificar neste dia que não foram verificados.' : 'Nenhum.'}</p>`]);
+  const al = (d.alertas || []).filter((x) => x.data === dia);
+  L.push(['h-al', 'Regas deste dia com ⚠️ ainda por tratar', al.length, 'a', al.map(itemAlertaMD).join('') || '<p class="pequeno">Nenhuma.</p>']);
+  if (veRecontagens()) { const ev = eventosRec(dia); L.push(['h-rc', 'Recontagens das plantas: o que mudou neste dia', ev.length, 'b', cartaoRecDia(dia)]); }
+  return h + L.map((x) => linhaTar(...x)).join('') + `<p class="pequeno" style="margin-top:6px"><span>Dados de</span> ${fmtDataHora(c.em)}</p></div>`;
+}
+// v249: recontagens que mudaram num dia (pedida, encaminhada a um oficial, contada pelo oficial, validada, recusada)
+const EV_REC = [['pedido_em', 'Pedidas'], ['encaminhada_em', 'Encaminhadas a um oficial'], ['enviada_em', 'Contadas pelo oficial'], ['validada_em', 'Validadas pelo M&E'], ['recusada_em', 'Recusadas pelo M&E']];
+const diaDe = (t) => t ? new Date(t).toLocaleDateString('sv-SE') : '';
+function eventosRec(dia) {
+  const ev = []; for (const r of recontagens()) for (const [k, t] of EV_REC) if (diaDe(r[k]) === dia) ev.push({ r, k, t, em: r[k] });
+  return ev;
+}
+function cartaoRecDia(dia) {
+  const ev = eventosRec(dia);
+  if (!ev.length) return `<p class="pequeno">${dia === hojeISO() ? 'Nenhuma recontagem foi pedida, encaminhada, contada ou validada hoje.' : 'Nenhuma recontagem foi pedida, encaminhada, contada ou validada neste dia.'}</p>`;
+  return EV_REC.map(([k, t]) => { const l = ev.filter((e) => e.k === k); if (!l.length) return '';
+    return `<h3 style="margin:10px 0 4px;font-size:15px"><span>${t}</span> (${l.length})</h3>` + l.map(({ r, em }) => { const a = S.areas.find((x) => x.id === r.area_id) || {};
+      return `<div class="item" onclick="abrirFicha('${esc(r.area_id)}')"><div><div class="nome sem-trad">${esc(a.produtor || r.produtor || '')}</div><div class="sub"><span class="sem-trad">${esc(a.pr || r.pr || '')} · ${esc(a.comunidade || r.comunidade || '')}</span> · ${fmtHora(em)}${k === 'encaminhada_em' && r.oficial ? ` · <span class="sem-trad">${esc(r.oficial)}</span>` : ''}${k === 'pedido_em' && r.pedido_por_nome ? ` · <span>pedida por</span> <span class="sem-trad">${esc(r.pedido_por_nome)}</span>` : ''}${k === 'validada_em' && r.vivas != null ? ` · ${num(r.vivas)} <span>vivas</span>` : ''}</div></div></div>`; }).join(''); }).join('');
+}
+function itemAlertaMD(x) {
+  return `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
+      <div class="sub"><span class="sem-trad">${esc(x.equipa)}</span> · ${fmtData(x.data)} · ${x.tipo === 'foto_data' ? linhaFotoData(x) : x.tipo === 'mais_que_base' ? `${num(x.plantas)} <span>plantas regadas</span>, ${num(x.base)} <span>na base</span>` : `<span>ritmo</span> ${num(x.ritmo)} <span>plantas por pessoa por hora</span>, <span>mediana de todas as equipas</span> ${num(x.mediana)}`}</div>
+      <div class="chips">${x.tipo === 'foto_data' ? `<button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">📷 Abrir a ficha e ver as fotografias</button>` : `<button class="chip" onclick="corrigirRegaAgora('${esc(x.registo_id)}','${esc(x.area_id)}')">✏️ Corrigir as plantas regadas</button>`}<button class="chip" onclick="ecraConfirmarRega('${x.registo_id}', '${x.tipo}', ${Number(x.plantas) || 0}, ${Number(x.base) || 0}, '${esc(x.area_id)}')">✓ Está certo</button></div></div>`;
+}
+function itemMedicaoMD(x) {
+  return `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
+      <div class="sub"><span class="sem-trad">${esc(x.equipa || '')}</span> · ${esc(x.comunidade || '')} · ${x.proposta_em ? fmtDataHora(x.proposta_em) : ''}${x.area_m2 ? ' · ' + textoArea(x.area_m2) : ''}${x.quem ? ` · <span>medida por</span> <span class="sem-trad">${esc(x.quem)}</span>` : ''}</div>
+      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e aprovar</button></div></div>`;
+}
 function cartaoMeuDia() {
   if (!MEU_DIA()) return '';
+  if (S.mdDia && S.mdDia < hojeISO()) return cartaoMeuDiaHist(S.mdDia);
+  S.mdDia = null;
   const c = LS.get('meuDia');
   // v214: sem os dados do servidor (sem rede, ou o servidor não devolve «O meu dia»), as listas que vêm do telefone continuam
   // (monitoria, campos que nunca receberam água, recontagens); na v212 ficavam escondidas
@@ -6612,10 +6687,10 @@ function cartaoMeuDia() {
     const sem = c && c.d === null && c.dia === hojeISO(), M = [];
     const nMon = (Array.isArray(S.mon) ? S.mon : []).filter((m) => !monFeita(m)).length, cm = cartaoMonitoria();
     if (cm) M.push(linhaTar('mo', 'Monitoria: verificar hoje', nMon, 'b', dentroCartao(cm)));
-    { const n = contaNunca(); if (n) M.push(linhaTar('na', 'Campos que nunca receberam água', n, 'b', dentroCartao(cartaoNuncaAgua()))); }
-    if (veRecontagens()) M.push(linhaTar('rc', 'Recontagens das plantas', contaRecHoje(), 'b', dentroCartao(cartaoRecontagensHoje())));
+    // v249: os campos que nunca receberam água e a lista completa das recontagens passaram para «Mais»; aqui só o que mudou hoje
+    if (veRecontagens()) { const ev = eventosRec(hojeISO()); if (ev.length) M.push(linhaTar('rc', 'Recontagens das plantas: o que mudou hoje', ev.length, 'b', cartaoRecDia(hojeISO()))); }
     if (sem && !M.length) return '';
-    return `<div class="cartao" id="meu-dia"><h2>📋 O meu dia</h2>${sem ? '' : '<p class="pequeno">As equipas, os avisos e «Fechar o dia» aparecem quando houver rede.</p>'}${M.join('')}</div>`;
+    return `<div class="cartao" id="meu-dia"><h2>📋 O meu dia</h2>${navMeuDia(hojeISO())}${sem ? '' : '<p class="pequeno">As equipas, os avisos e «Fechar o dia» aparecem quando houver rede.</p>'}${M.join('')}</div>`;
   }
   // v234: as regas com uma correcção das plantas ainda por enviar saem da lista (no servidor a correcção trata o ⚠️)
   const corrPend = new Set(LS.get('filaAlt', []).filter((x) => x.tipo === 'plantas_rega').map((x) => x.registo_id));
@@ -6653,31 +6728,28 @@ function cartaoMeuDia() {
     if (al8) L.push([al8.k, al8.titulo, al8.L.length, 'a',
       `<p class="pequeno">${al8.k === 'h10' ? 'Estas equipas ainda não registaram nenhuma rega nem cava-roda e mulching. Pode haver uma rega em curso ainda por terminar. Ligue à equipa: sem rega, a equipa faz cava-roda e mulching; se não puder, registe o motivo.' : 'Estas equipas ainda não começaram o dia na app. Ligue à equipa para saber o que se passa.'}</p>` +
       al8.L.map((e) => `<div class="lin"><span><span class="sem-trad">${esc(e.nome)}</span>${e.comecou ? `<br><span class="pequeno"><span>Começou às</span> ${fmtHora(e.comecou)}</span>` : ''}</span><button class="chip" onclick="ecraDiaSemRega('${e.id}')">Registar o motivo</button></div>`).join('')]); }
-  // 2. regas com aviso
-  L.push(['al', 'Regas com ⚠️ por confirmar', al.length, 'a',
-    al.length ? al.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
-      <div class="sub"><span class="sem-trad">${esc(x.equipa)}</span> · ${fmtData(x.data)} · ${x.tipo === 'foto_data' ? linhaFotoData(x) : x.tipo === 'mais_que_base' ? `${num(x.plantas)} <span>plantas regadas</span>, ${num(x.base)} <span>na base</span>` : `<span>ritmo</span> ${num(x.ritmo)} <span>plantas por pessoa por hora</span>, <span>mediana de todas as equipas</span> ${num(x.mediana)}`}</div>
-      <div class="chips">${x.tipo === 'foto_data' ? `<button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">📷 Abrir a ficha e ver as fotografias</button>` : `<button class="chip" onclick="corrigirRegaAgora('${esc(x.registo_id)}','${esc(x.area_id)}')">✏️ Corrigir as plantas regadas</button>`}<button class="chip" onclick="ecraConfirmarRega('${x.registo_id}', '${x.tipo}', ${Number(x.plantas) || 0}, ${Number(x.base) || 0}, '${esc(x.area_id)}')">✓ Está certo</button></div></div>`).join('')
-      : '<p class="pequeno">Nenhuma.</p>']);
-  // 3. campos sem equipa (antes também havia um cartão à parte no topo: saiu, era repetido)
-  L.push(['se', 'Campos sem equipa', d.sem_equipa || 0, 'a', d.sem_equipa ? '<button class="chip" onclick="irPorAtribuir()">Atribuir os campos</button>' : '<p class="pequeno">Nenhum.</p>']);
-  // 4. medições por aprovar (v138)
-  L.push(['me', 'Medições de área por aprovar', pa.length, 'b',
-    pa.length ? pa.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.produtor || '')} · ${esc(x.area_id)}</div>
-      <div class="sub"><span class="sem-trad">${esc(x.equipa || '')}</span> · ${esc(x.comunidade || '')} · ${x.proposta_em ? fmtDataHora(x.proposta_em) : ''}${x.area_m2 ? ' · ' + textoArea(x.area_m2) : ''}${x.quem ? ` · <span>medida por</span> <span class="sem-trad">${esc(x.quem)}</span>` : ''}</div>
-      <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha e aprovar</button></div></div>`).join('') : '<p class="pequeno">Nenhuma.</p>']);
+  // 2. regas com aviso. v249: só as de hoje; as de outros dias vão para «Por tratar de dias anteriores» (A)
+  const alHoje = al.filter((x) => x.data === d.data), alAnt = al.filter((x) => x.data !== d.data);
+  L.push(['al', 'Regas de hoje com ⚠️ por confirmar', alHoje.length, 'a', alHoje.length ? alHoje.map(itemAlertaMD).join('') : '<p class="pequeno">Nenhuma.</p>']);
+  // 3. campos sem equipa: v249 passou para «Mais» (não muda de dia para dia)
+  // 4. medições por aprovar (v138). v249: só as medidas hoje aqui
+  const paHoje = pa.filter((x) => diaDe(x.proposta_em) === d.data), paAnt = pa.filter((x) => diaDe(x.proposta_em) !== d.data);
+  L.push(['me', 'Medições de área de hoje por aprovar', paHoje.length, 'b', paHoje.length ? paHoje.map(itemMedicaoMD).join('') : '<p class="pequeno">Nenhuma.</p>']);
+  const A = [];                                         // v249: por tratar de dias anteriores
+  if (alAnt.length) A.push(['ala', 'Regas com ⚠️ por confirmar', alAnt.length, 'a', alAnt.map(itemAlertaMD).join('')]);
+  if (paAnt.length) A.push(['mea', 'Medições de área por aprovar', paAnt.length, 'b', paAnt.map(itemMedicaoMD).join('')]);
   // 5. monitoria (o cartão da monitoria passou para dentro desta linha)
   L.push(['mo', 'Monitoria: verificar hoje', d.monitoria_hoje || 0, 'b',
     (d.monitoria_falhas_ontem ? `<div class="msg erro">❌ ${num(d.monitoria_falhas_ontem)} <span>campos sorteados ficaram por verificar ontem. Contam como falha na sua avaliação.</span></div>` : '') + dentroCartao(cartaoMonitoria()),
     d.monitoria_falhas_ontem ? `<span style="color:#c62828">${num(d.monitoria_falhas_ontem)} <span>por verificar ontem</span></span>` : '']);
-  // 6. campos que nunca receberam água (v204; antes cartão à parte)
-  { const n = contaNunca(); L.push(['na', 'Campos que nunca receberam água', n, 'b', n ? dentroCartao(cartaoNuncaAgua()) : '<p class="pequeno">Nenhum.</p>']); }
-  // 7. recontagens das plantas (antes um botão no topo do Hoje)
-  if (veRecontagens()) L.push(['rc', 'Recontagens das plantas', contaRecHoje(), 'b', dentroCartao(cartaoRecontagensHoje())]);
+  // 6. campos que nunca receberam água: v249 passou para «Mais»
+  // 7. recontagens das plantas. v249 (Valdo: "as que tiverem sido enviadas hoje apenas, ou … aprovadas, validadas, ou feitas hoje"):
+  // só as que mudaram hoje; a lista completa fica em «Mais»
+  if (veRecontagens()) { const ev = eventosRec(d.data); L.push(['rc', 'Recontagens das plantas: o que mudou hoje', ev.length, 'b', cartaoRecDia(d.data)]); }
   // v224 (09/11/2026, Valdo: "Sim"): motivos de dias anteriores que ficaram por confirmar (o «O meu dia» só mostra os do próprio dia;
   // ex.: motivo registado pelo activista dias depois). Não trancam o «Fechar o dia» de hoje.
   { const ma = (LS.get('motivosAnt', []) || []).filter((x) => !cp.has(x.id));
-    if (ma.length) L.push(['ma', 'Motivos de dias anteriores por confirmar', ma.length, 'a',
+    if (ma.length) A.push(['ma', 'Motivos de dias anteriores por confirmar', ma.length, 'a',
       '<p class="pequeno">Motivos de outros dias que ainda ninguém confirmou. Confirme ou registe o motivo certo.</p>' + ma.map((x) => `<div class="item" style="display:block"><div class="nome"><span class="sem-trad">${esc(x.activista || '')}</span> · ${fmtData(x.data)}${x.ate ? ` <span>até</span> ${fmtData(x.ate)}` : ''}</div>
       <div class="sub"><span>${esc(nomeMotivoDsr(x.motivo))}</span>${x.produtor ? ` · <span class="sem-trad">${esc(x.produtor)}</span>` : ''}${x.criado_em ? ` · <span>registado a</span> ${fmtData(String(x.criado_em))}` : ''}${x.quem ? ` · <span>por</span> <span class="sem-trad">${esc(x.quem)}</span>` : ''}</div>
       <div class="chips"><button class="chip" onclick="ecraConfirmarDsr('${esc(x.activista_id)}','${esc(x.id)}')">✓ Confirmar</button></div></div>`).join('')]); }
@@ -6686,7 +6758,7 @@ function cartaoMeuDia() {
   // supervisor escrevem o motivo. Não tranca o «Fechar o dia».
   { const pend = new Set(LS.get('filaAlt', []).filter((x) => ['meta_mot', 'meta_mot2'].includes(x.tipo)).map((x) => x.activista_id + '|' + x.data));
     const mx = (LS.get('metaExpl', []) || []).filter((x) => !pend.has(x.activista_id + '|' + x.data));
-    if (mx.length) L.push(['mt', 'Meta não atingida, sem motivo', mx.length, 'a',
+    if (mx.length) A.push(['mt', 'Meta não atingida, sem motivo', mx.length, 'a',
       '<p class="pequeno">A equipa ficou abaixo da meta e a app não encontrou a causa: chegou a horas e as viagens de tuk-tuk registadas chegavam. Se a equipa ainda não disse o motivo, pergunte e escolha-o.</p>' + mx.map((x) => `<div class="item" style="display:block"><div class="nome"><span class="sem-trad">${esc(x.equipa || '')}</span> · ${fmtData(x.data)}</div>
       <div class="sub">${num(x.plantas)} <span>de</span> ${num(x.meta)} <span>plantas da meta</span> (${num(Math.round(x.pct))} %) · ${num(x.pessoas)} <span>pessoas</span> · ${esc(x.ini || '')}–${esc(x.fim || '')}</div>
       <div class="chips"><button class="chip" onclick="ecraMotivoMetaEq('${esc(x.activista_id)}','${esc(x.data)}')">✍️ Escolher o motivo</button></div></div>`).join('')]); }
@@ -6705,16 +6777,19 @@ function cartaoMeuDia() {
       <div class="chips"><button class="chip" onclick="abrirFicha('${esc(x.area_id)}')">Abrir a ficha</button></div></div>`).join('') : '<p class="pequeno">Nenhum.</p>']);
   // 10. nomes de produtores por confirmar (v197; só aparece com pedidos)
   const cn = (LS.get('corrNome', []) || []).filter((x) => x.estado === 'por_confirmar');
-  if (cn.length) L.push(['cn', 'Nomes de produtores por confirmar', cn.length, 'b',
+  if (cn.length) A.push(['cn', 'Nomes de produtores por confirmar', cn.length, 'b',
     '<p class="pequeno">O nome só muda quando o técnico e o supervisor da equipa confirmarem.</p>' + cn.map((x) => `<div class="item" style="display:block"><div class="nome sem-trad">${esc(x.area_id)}${x.equipa ? ' · ' + esc(x.equipa) : ''}</div>
       <div class="sub"><span>Na base</span>: <b class="sem-trad">${esc(x.nome_antigo)}</b> → <span>Nome novo</span>: <b class="sem-trad">${esc(x.nome_novo)}</b></div>
       <div class="sub"><span>Técnico</span>: ${x.tecnico_em ? `✓ <span class="sem-trad">${esc(x.tecnico_nome || '')}</span>` : '<span>por confirmar</span>'} · <span>Supervisor</span>: ${x.supervisor_em ? `✓ <span class="sem-trad">${esc(x.supervisor_nome || '')}</span>` : '<span>por confirmar</span>'}</div>
       ${x.posso ? `<div class="chips"><button class="chip" onclick="ecraCorrNome('${esc(x.id)}')">✓ Confirmar ou recusar</button></div>` : ''}</div>`).join('')]);
   // primeiro as linhas com alguma coisa por tratar (pela ordem acima), depois as outras
   const ord = [...L.filter((x) => x[2] > 0), ...L.filter((x) => !(x[2] > 0))], porTratar = L.filter((x) => x[2] > 0).length;
-  let h = `<div class="cartao" id="meu-dia"><h2 style="margin-bottom:2px">📋 <span>O meu dia</span> · ${fmtData(d.data)}</h2>
+  const nAnt = A.reduce((n, x) => n + (x[2] || 0), 0);
+  let h = `<div class="cartao" id="meu-dia"><h2 style="margin-bottom:2px">📋 <span>O meu dia</span> · ${fmtData(d.data)}</h2>${navMeuDia(d.data)}
     <p class="pequeno" style="margin:0 0 6px">${d.fechado_em ? `✓ <span>Dia fechado às</span> ${fmtHora(d.fechado_em)}` : porTratar ? `${porTratar} <span>${porTratar === 1 ? 'lista por tratar' : 'listas por tratar'}</span> · <span>fechar o dia até às 18:00</span>` : '<span>Nada por tratar</span> · <span>fechar o dia até às 18:00</span>'}</p>` +
-    ord.map((x) => linhaTar(...x)).join('');
+    ord.map((x) => linhaTar(...x)).join('') +
+    // v249: uma só linha, fechada, com o que ficou de outros dias; cada item sai quando é tratado
+    (A.length ? linhaTar('ant', 'Por tratar de dias anteriores', nAnt, 'a', '<p class="pequeno">Ficaram de outros dias. Não trancam o «Fechar o dia» de hoje.</p>' + A.map((x) => linhaTar(...x)).join('')) : '');
   // v183: o botão aparece sempre; fica desactivado, com a razão, enquanto faltar alguma equipa sem rega nem motivo ou motivos por confirmar
   h += d.fechado_em ? '' : falta.length ? `<button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button><p class="pequeno" style="text-align:center;color:#8a4b00;margin:6px 0 0"><span>Para fechar o dia, todas as equipas têm de ter rega, cava-roda e mulching ou motivo. Faltam:</span> ${falta.length}</p>`
     : porConf ? `<button class="btn" disabled style="opacity:.45">🔒 Fechar o dia</button><p class="pequeno" style="text-align:center;color:#8a4b00;margin:6px 0 0"><span>Para fechar o dia, confirme os motivos dos activistas. Faltam:</span> ${porConf}</p>`
@@ -6728,6 +6803,10 @@ function cartaoMaisHoje(hojeCard) {
   const add = (k, titulo, html, n = null, sub = '') => { if (html && String(html).trim()) L.push(linhaTar(k, titulo, n, 'b', dentroCartao(html), sub)); };
   const eq = cartaoEquipas().replace(/^\s*<div class="cartao"><details><summary>[\s\S]*?<\/summary>/, '<div class="cartao-in"><div>').replace(/<\/details><\/div>\s*$/, '</div></div>');
   add('m-eq', 'As minhas equipas', eq, (S.activistas || []).filter((t) => t.activo !== false && (S.visiveis || []).includes(t.id)).length);
+  // v249: saíram do «O meu dia» (não mudam de dia para dia): campos sem equipa, campos que nunca receberam água, todas as recontagens
+  { const se = (LS.get('meuDia')?.d || {}).sem_equipa || 0; if (se) L.push(linhaTar('se', 'Campos sem equipa', se, 'a', '<button class="chip" onclick="irPorAtribuir()">Atribuir os campos</button>')); }
+  { const n = contaNunca(); if (n) L.push(linhaTar('na', 'Campos que nunca receberam água', n, 'b', dentroCartao(cartaoNuncaAgua()))); }
+  if (veRecontagens()) L.push(linhaTar('m-rc', 'Recontagens das plantas (todas)', contaRecHoje(), 'b', dentroCartao(cartaoRecontagensHoje())));
   add('m-hj', 'Regas de hoje e chuva', hojeCard);
   add('m-dsr', 'Dia sem rega', cartaoDiaSemRega());
   add('m-ap', 'Apoio entre equipas', cartaoApoio());
