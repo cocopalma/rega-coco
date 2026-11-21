@@ -574,15 +574,20 @@ function desenhar() {
   $('#d-agua').textContent = `${filtrado ? 'No período escolhido.' : 'Últimos 14 dias.'} Espera = minutos entre a chegada da equipa ao campo e a chegada do tuk-tuk (água). As equipas devem chegar ao campo às ${hc}; atraso = minutos depois das ${hc} na chegada ao 1.º campo do dia.`;
   const eqR = D.por_equipa || [], rLista = eqR.reduce((t, e) => t + (e.lista || 0), 0), rReg = eqR.reduce((t, e) => t + (e.regadas_ronda || 0), 0), pR = pct(rReg, rLista);
   const PV = DPV && DPV.total && DPV.total.regas ? DPV.total : null;   // v227: plantas regadas das vivas que havia
-  const aRR = D.areas_regadas_na_rega ?? D.areas_regadas, vRR = D.vivas_regadas_na_rega ?? D.vivas_regadas;   // v255: só os campos que estão hoje na rega
+  // v255 (21/11/2026, Valdo: "plantas regadas na totalidade e percentagem regada pelo menos 1 vez em relação ao total"; "Não podem ser 90%. Esta manhã faltavam apenas 2 campos"):
+  // com «Tudo», campos e plantas vivas que já receberam água pela regra de «Campos que nunca receberam água» (app, WhatsApp do próprio campo ou antes da app), D.agua
+  const AG = !filtrado && D.agua ? D.agua : null;
+  const pct1 = (v) => v.toLocaleString(LOC, { maximumFractionDigits: v >= 99 && v < 100 ? 1 : 0 }) + '%';   // 99,6 % não aparece como 100 %
   const kpi = (rot, val, sub, barra) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${val}</div><div class="sub">${sub}</div>${barra != null ? `<div class="barra"><i style="width:${Math.min(100, barra)}%"></i></div>` : ''}</div>`;
   $('#kpis').innerHTML =
     // v128 (28/10/2026, Valdo): dividir os campos regados num dia por todos os campos não dizia nada; o número é do período e a % passa para o progresso da ronda (estado de hoje)
     // v203 (05/11/2026, Valdo: "colocar no primeiro cartão também a percentagem"): só com «Tudo» (todo o histórico); com um período fica só o número, como na v128
-    // v255 (21/11/2026, Valdo: "plantas regadas na totalidade e percentagem regada pelo menos 1 vez em relação ao total"): com «Tudo» conta só os campos que estão hoje na rega (areas_regadas_na_rega)
-    (!filtrado ? kpi('Campos regados', fmtPct(pct(aRR, u.areas)), `${num(aRR)} / ${num(u.areas)} <span>campos na rega já receberam pelo menos uma rega</span>`, pct(aRR, u.areas))
+    (AG ? kpi('Campos que já receberam água', pct1(pct(AG.campos, u.areas)), `${num(AG.campos)} / ${num(u.areas)} <span>campos na rega</span>` +
+          `<br><span>Na app:</span> ${num(AG.app)} · <span>só no WhatsApp ou antes da app:</span> ${num(AG.so_fora)}` +
+          (AG.sem_vivas ? `<br><span>Visitados sem plantas vivas para regar:</span> ${num(AG.sem_vivas)}` : '') + (AG.nunca ? ` · <span>nunca receberam água:</span> ${num(AG.nunca)}` : ''), pct(AG.campos, u.areas))
+      : !filtrado ? kpi('Campos regados', fmtPct(pct(D.areas_regadas, u.areas)), `${num(D.areas_regadas)} / ${num(u.areas)} <span>campos na rega já receberam pelo menos uma rega</span>`, pct(D.areas_regadas, u.areas))
       : kpi('Campos regados', num(D.areas_regadas), `<span>com pelo menos uma rega no período</span><br><span>Campos na rega:</span> ${num(u.areas)}`)) +
-    (!filtrado ? kpi('Plantas vivas que já receberam água', fmtPct(pct(vRR, u.vivas)), `${num(vRR)} / ${num(u.vivas)} <span>plantas vivas, nos campos na rega que já receberam pelo menos uma rega</span>`, pct(vRR, u.vivas))
+    (AG ? kpi('Plantas vivas que já receberam água', pct1(pct(AG.vivas, u.vivas)), `${num(AG.vivas)} / ${num(u.vivas)} <span>plantas vivas, nos campos que já receberam água</span>`, pct(AG.vivas, u.vivas))
       : kpi('Plantas vivas em campos regados', num(D.vivas_regadas), `<span>nos campos regados no período</span><br><span>Plantas vivas na rega:</span> ${num(u.vivas)}`)) +
     kpi('Plantas regadas (total)', num(D.plantas_regadas_total), `em ${num(D.registos)} regas de campo`) +
     kpi('Progresso da ronda (hoje)', fmtPct(pR), `${num(rReg)} / ${num(rLista)} <span>campos com equipa, na ronda actual de cada uma</span>${u.areas > rLista ? `<br><span>Campos sem equipa:</span> ${num(u.areas - rLista)} · <span>total na rega:</span> ${num(u.areas)}` : ''}`, pR) +

@@ -1,10 +1,11 @@
-# v255 (21/11/2026): cartões «Campos regados», «Plantas vivas que já receberam água» e «Plantas regadas (total)» com «Tudo» e com um período; ANTIGO=1 = servidor sem as chaves _na_rega. LING=en / sw.
+# v255 (21/11/2026): cartões «Campos regados», «Plantas vivas que já receberam água» e «Plantas regadas (total)» com «Tudo» e com um período; ANTIGO=1 = servidor sem a chave agua. LING=en / sw.
 import json, subprocess, time, sys, os
 from playwright.sync_api import sync_playwright
 NM = "/home/claude/rega-test/node_modules"
 srv = subprocess.Popen([sys.executable, "-m", "http.server", "8855", "--directory", "/home/claude/rega-coco"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(1)
-def D(de, ate): return {"gerado_em": "2026-10-26T12:00:00Z", "periodo": {"de": de, "ate": ate}, "inicio": "2026-10-24", "fim": "2026-10-26", "universo": {"areas": 690, "vivas": 88880},
-    "areas_regadas": 624, "vivas_regadas": 77364, **({} if os.environ.get("ANTIGO") else {"areas_regadas_na_rega": 620, "vivas_regadas_na_rega": 76732}), "plantas_regadas_total": 99220, "pessoas_dia_total": 1200, "registos": 1034, "espera_agua_min": 22,
+REAL = json.load(open(os.environ["REAL"])) if os.environ.get("REAL") else None
+def D(de, ate): return REAL["d"] if REAL else {"gerado_em": "2026-10-26T12:00:00Z", "periodo": {"de": de, "ate": ate}, "inicio": "2026-10-24", "fim": "2026-10-26", "universo": {"areas": 690, "vivas": 88880},
+    "areas_regadas": 624, "vivas_regadas": 77364, **({} if os.environ.get("ANTIGO") else {"agua": {"campos": 687, "vivas": 88540, "app": 620, "so_fora": 67, "sem_vivas": 3, "nunca": 0}}), "plantas_regadas_total": 99220, "pessoas_dia_total": 1200, "registos": 1034, "espera_agua_min": 22,
     "chegada_equipa": {"hora_combinada": "06:00", "dias": 17, "hora_media": "09:08", "atraso_min": 188, "depois_hora": 16},
     "por_dia": [], "por_comunidade": [], "por_equipa": [], "constrangimentos": {},
     "chegadas_agua": [{"data": "2026-10-26", "equipa": "Ibraimo Ali Selemane", "comunidade": "Olumbe", "inicio_trabalho": "07:12", "atraso_min": 72, "primeira_agua": "07:40", "horas": "07:40", "campos": 7, "espera_media_min": 20},
@@ -20,7 +21,7 @@ pedidos = []
 def mock(route):
     u = route.request.url; ok = lambda b: route.fulfill(status=200, content_type="application/json", body=json.dumps(b))
     if "/rpc/painel_resumo_periodo" in u: a = json.loads(route.request.post_data); pedidos.append((a.get("p_de"), a.get("p_ate"))); return ok(D(a.get("p_de"), a.get("p_ate")))
-    if "/rpc/painel_plantas_vivas" in u: return ok({"dias": [], "total": {"regas": 1034, "plantas": 99220, "vivas": 120000, "mortas": 15000, "por_terminar": 4000, "outras": 1780}})
+    if "/rpc/painel_plantas_vivas" in u: return ok({"dias": [], "total": REAL["pv"] if REAL else {"regas": 1034, "plantas": 99220, "vivas": 120000, "mortas": 15000, "por_terminar": 4000, "outras": 1780}})
     if "/rpc/painel_monitoria_campos" in u: return ok(MC)
     if "/rpc/painel_monitoria" in u: return ok(M)
     if "/rpc/painel_testes" in u: return ok([{"nome": "Nuro", "papel": "supervisor", "regas": 13, "dias": 5, "campos": 9, "fotos3": 3, "plantas": 900, "chuva": 2, "ultima": "2026-10-25"}, {"nome": "Idelson", "papel": "supervisor", "regas": 0, "dias": 0, "campos": 0, "fotos3": 0, "plantas": 0, "chuva": 0, "ultima": None}])
@@ -42,6 +43,7 @@ with sync_playwright() as p:
     pg.fill("#l-user", "g"); pg.fill("#l-pin", "x"); pg.click("#l-entrar"); pg.wait_for_selector("#kpis .kpi", state="visible"); pg.wait_for_timeout(2500)
     cards = lambda: pg.evaluate("[...document.querySelectorAll('#kpis .kpi')].map(k=>k.innerText.replace(/\\s+/g,' ')+(k.querySelector('.barra')?' [barra]':''))")
     for c in cards(): print("  Tudo |", c)
+    pg.evaluate("document.querySelector('#kpis').scrollIntoView()"); pg.screenshot(path=f"/tmp/claude-0/-home-claude/2a67f740-10a3-5b35-b093-4e5b7aa6e992/scratchpad/v255_telefone_{os.environ.get('LING','pt')}.png", clip={"x":0,"y":0,"width":390,"height":844})
     pg.set_viewport_size({"width": 1200, "height": 900}); pg.wait_for_timeout(500)
     pg.locator("#kpis").screenshot(path=f"/tmp/claude-0/-home-claude/2a67f740-10a3-5b35-b093-4e5b7aa6e992/scratchpad/v255_tudo_{os.environ.get('LING','pt')}.png")
     pg.evaluate("localStorage.setItem('rega.painel.periodo', JSON.stringify({tipo:'hoje'}))"); pg.reload(); pg.wait_for_selector("#kpis .kpi", state="visible"); pg.wait_for_timeout(2500)
