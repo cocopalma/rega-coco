@@ -1,6 +1,6 @@
 # v251: inventário de plantas mórbidas (método do Paulo Dias, 20/11/2026). Simulação: técnico regista na ficha (amostra, mórbidas,
 # % ao vivo, duas fotografias, GPS), fica na lista do campo, vai para o servidor de exemplo e aparece no painel; activista sem botão;
-# cliente sem a secção do painel. LING=en / sw.
+# o cliente também vê a secção do painel (Valdo, 21/11/2026). LING=en / sw.
 import os, sys, json
 sys.argv = ["teste_v178.py"]
 SRC = open("/home/claude/rega-test/teste_v178.py").read()
@@ -70,7 +70,7 @@ with sync_playwright() as p:
     pg.screenshot(path=f"/home/claude/rega-test/v251_c_{LG}.png")
     demo(pg, "cliente"); pg.evaluate("fecharFolha(); mudar('painel')"); pg.wait_for_timeout(8000)
     fr = pg.frame("painel") or [x for x in pg.frames if "painel.html" in x.url][0]
-    passo("14 cliente: sem a secção", fr.evaluate("document.getElementById('s-mrb').hidden"))
+    passo("14 cliente: vê a secção", not fr.evaluate("document.getElementById('s-mrb').hidden") and "10 %" in fr.inner_text("#s-mrb"))
     passo("15 nada saiu para o servidor", PEDIDOS["n"] == 0, f"pedidos={PEDIDOS['n']}")
     b.close()
 print("TUDO OK" if all(res.values()) else "FALHAS: " + ", ".join(k for k, v in res.items() if not v))

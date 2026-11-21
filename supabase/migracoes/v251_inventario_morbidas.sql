@@ -73,12 +73,12 @@ begin
   if not found then raise exception 'Só quem registou (até 7 dias) ou o gestor pode remover.'; end if;
 end $function$;
 
--- painel: uma linha por inventário no período (datas nulas = todo o histórico); null ao cliente, ao activista e ao oficial
+-- painel: uma linha por inventário no período (datas nulas = todo o histórico); também o cliente (Valdo, 21/11/2026); null ao activista e ao oficial
 create or replace function public.painel_morbidas(p_de date default null, p_ate date default null)
  returns jsonb language plpgsql stable security definer set search_path to '' as $function$
 declare v_papel text := privado.meu_papel();
 begin
-  if v_papel is null or v_papel not in ('gestor','director','me','tecnico','supervisor') then return null; end if;
+  if v_papel is null or v_papel not in ('gestor','director','me','tecnico','supervisor','cliente') then return null; end if;
   return coalesce((select jsonb_agg(jsonb_build_object(
       'id', c.id, 'data', c.data, 'feito_em', c.feito_em, 'area_id', c.area_id, 'pr', a.pr, 'area_n', a.area_n, 'produtor', a.produtor,
       'comunidade', a.comunidade, 'zona', a.zona, 'equipa', ac.nome, 'quem', p.nome, 'papel', c.papel,

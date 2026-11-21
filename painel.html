@@ -1054,7 +1054,7 @@ function desenharSobrevivencia() {
     L.map((c) => [fmtData(c.data), esc(c.comunidade || ''), `<span class="sem-trad">${esc(c.produtor || '')}</span>`, `<span class="sem-trad">${esc(c.area_id)}</span>`, esc(c.equipa || ''), num(c.instaladas || 0), num(c.vivas_base || 0), num(c.cavaroda || 0),
       c.sobrevivencia != null ? String(c.sobrevivencia).replace('.', ',') + ' %' : '—', c.recontagem ? (EST[c.recontagem_estado] || esc(c.recontagem_estado || '')) : '—', `<span class="sem-trad">${esc(c.quem || '')}</span>`]));
 }
-// v251 (21/11/2026, Valdo): inventário de plantas mórbidas (método do Paulo Dias de 20/11/2026); null ao cliente
+// v251 (21/11/2026, Valdo): inventário de plantas mórbidas (método do Paulo Dias de 20/11/2026); também o cliente (Valdo: "O cliente deve vê-la também")
 function desenharMorbidas() {
   const el = $('#s-mrb'); if (!el) return;
   const L = Array.isArray(DMB) ? DMB : null; el.hidden = !L; if (!L) return;
