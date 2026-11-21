@@ -541,6 +541,7 @@ async function carregarTudo() {
   if (!rc.error && Array.isArray(rc.data)) { S.recont = rc.data; LS.set('recont', S.recont); _recontEm = Date.now(); }
   if (['me', 'gestor'].includes(p.data.papel)) oficiais().catch(() => {});
   carregarNPlantas().catch(() => {});
+  carregarNMorb().catch(() => {});
   carregarSugFeitas().catch(() => {});
   carregarExpansao().catch(() => {});
   carregarManut().catch(() => {});   // lista dos oficiais no telefone (encaminhar sem rede)
@@ -606,7 +607,7 @@ async function carregarEstado(pronto) {
   desenharMapa(); desenharLista();
 }
 function carregarDoTelefone() {
-  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.pluvs = LS.get('pluvs', []); S.tuks = LS.get('tuks', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []); S.autoriz = LS.get('autoriz', []); S.fechSemPl = LS.get('fechSemPl', []); S.expansao = LS.get('expansao', []);
+  S.perfil = LS.get('perfil'); S.visiveis = LS.get('visiveis'); S.minhasCom = LS.get('minhasCom', []); S.zonas = LS.get('zonas', []); S.comunidades = LS.get('comunidades', []); S.pontosCom = LS.get('pontosCom', []); S.queimadas = LS.get('queimadas', []); S.nPlantas = LS.get('nPlantas', {}); S.nMorb = LS.get('nMorb', {}); S.testesEq = LS.get('testesEquipa', {}); S.recont = LS.get('recont', []); S.pocos = LS.get('pocos', []); S.pluvs = LS.get('pluvs', []); S.tuks = LS.get('tuks', []); S.activistas = LS.get('activistas', []); S.areas = LS.get('areas', []); S.estado = LS.get('estado', {}); S.mon = LS.get('mon', []); S.avisos = LS.get('avisos', []); S.manut = LS.get('manut', null); S.modo = LS.get('modo', 'rega'); S.membros = LS.get('membros', []); S.outras = LS.get('outras', []); S.autoriz = LS.get('autoriz', []); S.fechSemPl = LS.get('fechSemPl', []); S.expansao = LS.get('expansao', []);
   return !!(S.perfil && S.areas.length);
 }
 
@@ -710,7 +711,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'filaMorb', 'rascMorb', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl', 'actTot'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'filaMorb', 'rascMorb', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'nMorb', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl', 'actTot'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -1207,6 +1208,9 @@ function desenharMapa(enquadrar = false) {
     if (a.activista_id && nuncaAgua(a)) L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-fogo', html: '🚱', iconSize: [22, 22], iconAnchor: [26, 26] }) })
       .on('click', (e) => clicarCampo(e, a)).addTo(camada);
     if (verPlantas() && nPlantas(a.id)) L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-fogo', html: '🌴', iconSize: [22, 22], iconAnchor: [-4, 26] }) })
+      .on('click', (e) => clicarCampo(e, a)).addTo(camada);
+    // v252: 🩺 = campo com inventário de plantas mórbidas (por baixo do ponto)
+    if (infoMorb(a.id)) L.marker([a.latitude, a.longitude], { icon: L.divIcon({ className: 'ic-fogo', html: '🩺', iconSize: [22, 22], iconAnchor: [11, -4] }) })
       .on('click', (e) => clicarCampo(e, a)).addTo(camada);
     pts.push([a.latitude, a.longitude]);
   }
@@ -2805,7 +2809,7 @@ function desenharLista() {
   if (txt) L2 = L2.filter((a) => (a.produtor || '').toLowerCase().includes(txt) || a.pr.toLowerCase().includes(txt));
   const todas = L2.map((a) => ({ a, s: situacao(a), d: S.pos ? distCampo(a, S.pos) : null }));
   const filtra = (v, L) => v === 'nunca' ? L.filter((x) => nuncaAgua(x.a))   // v204: nem na app, nem no WhatsApp
-    : v === 'queimada' ? L.filter((x) => queimadaDe(x.a.id)) : v === 'plantas' ? L.filter((x) => nPlantas(x.a.id))
+    : v === 'queimada' ? L.filter((x) => queimadaDe(x.a.id)) : v === 'plantas' ? L.filter((x) => nPlantas(x.a.id)) : v === 'morb' ? L.filter((x) => infoMorb(x.a.id))
     : v === 'semcoord' ? L.filter((x) => semCoord(x.a)) : v === 'semlimite' ? L.filter((x) => soPonto(x.a)) : v === 'nolim' ? L.filter((x) => semCoord(x.a) || soPonto(x.a))
     : v === 'teste' ? L.filter((x) => testeEm(x.a.id)) : v === 'testeq' ? L.filter((x) => testeEm(x.a.id) || testeEquipa(x.a.id))
     : v ? L.filter((x) => x.s.cod === v) : L;
@@ -2836,7 +2840,7 @@ function desenharLista() {
     linhas.slice(0, 300).map(({ a, s, d, nun }) => `<div class="item${S.selRet && S.selRet.has(a.id) ? ' sel-ret' : ''}" data-id="${esc(a.id)}">${S.selRet ? (podeRetirar(a) ? `<input type="checkbox" class="cx-ret" ${S.selRet.has(a.id) ? 'checked' : ''} tabindex="-1">` : '<span class="cx-ret-no" title="Fora da sua lista">—</span>') : ''}<div class="it-c">
       <div class="it-cab"><div class="nome">${esc(a.produtor)}</div><span class="tag t-${s.cod}">${s.txt}</span></div>
       <div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
-      <div class="it-tags">${nun ? '<span class="tag t-nunca">💧 <span>Nunca recebeu água</span></span>' : ''}${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${apoioDoCampo(a.id) ? `<span class="tag t-outra">🤝 <span>Apoio de</span> <span class="sem-trad">${esc(nomeAct(apoioDoCampo(a.id).ajuda_activista_id))}</span></span>` : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}</div>
+      <div class="it-tags">${nun ? '<span class="tag t-nunca">💧 <span>Nunca recebeu água</span></span>' : ''}${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${apoioDoCampo(a.id) ? `<span class="tag t-outra">🤝 <span>Apoio de</span> <span class="sem-trad">${esc(nomeAct(apoioDoCampo(a.id).ajuda_activista_id))}</span></span>` : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}${tagMorb(a.id)}${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}</div>
       </div>${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '') : '');
 }
 
@@ -5816,8 +5820,35 @@ async function enviarMorb() {
     if (r.error) avisoRecusado(r.error, `Inventário de plantas mórbidas não gravado: ${r.error.message}`, 'erro');
     LS.set('filaMorb', LS.get('filaMorb', []).filter((y) => y.id !== x.id));
     for (const k of ['campo', 'equipa']) { try { await FOTOS.apagar(`morb-${x.id}-${k}`); } catch {} }
+    S._morbEnviado = true;
   }
+  if (S._morbEnviado) { S._morbEnviado = false; carregarNMorb().catch(() => {}); }
   return null;
+}
+// v252 (21/11/2026, Valdo: "Sim"): campos com inventário na lista (filtro e etiqueta), no mapa (🩺) e a partir da tabela do painel.
+// Conta do servidor (morbidas_por_campo, guardada no telefone) e os inventários ainda no telefone (o mais recente ganha).
+const VER_MORB = ['tecnico', 'supervisor', 'gestor', 'director', 'me', 'cliente'];
+const verMorb = () => VER_MORB.includes(S.perfil?.papel);
+function infoMorb(id) {
+  if (!verMorb()) return null;
+  const sv = (S.nMorb || {})[id] || null, loc = morbLocais(id).sort((a, b) => String(b.feito_em).localeCompare(String(a.feito_em)));
+  if (!sv && !loc.length) return null;
+  const u = loc[0] && (!sv || String(loc[0].data) >= String(sv.ultima)) ? { ultima: loc[0].data, amostra: loc[0].amostra, morbidas: loc[0].morbidas } : sv;
+  return { n: (sv?.n || 0) + loc.length, ultima: u.ultima, pct: pctMorb(u.morbidas, u.amostra) };
+}
+function tagMorb(id) {
+  const m = infoMorb(id); if (!m) return '';
+  return `<span class="tag t-plantas">🩺 ${m.pct} % <span>mórbidas</span> · ${fmtData(m.ultima)}</span>`;
+}
+async function carregarNMorb() {
+  if (!verMorb() || !navigator.onLine) return;
+  const r = await sb.rpc('morbidas_por_campo');
+  if (!r.error && Array.isArray(r.data)) { S.nMorb = Object.fromEntries(r.data.map((x) => [x.area_id, { n: x.n, ultima: x.ultima, amostra: x.amostra, morbidas: x.morbidas }])); LS.set('nMorb', S.nMorb); if ($('#e-lista')?.classList.contains('on')) desenharLista(); desenharMapa(); }
+}
+// chamado pela tabela do painel (iframe da mesma origem): abre a ficha do campo por cima do painel
+function abrirCampoDoPainel(id) {
+  if (!S.areas.some((x) => x.id === id)) { aviso('Este campo não está no seu telefone (saiu da rega ou não é dos campos que vê).', 'erro'); return false; }
+  abrirFicha(id); return true;
 }
 // ---------- Cava-roda e mulching quando não há rega (ramo cc-manutencao, decisões do Valdo de 13–14/11/2026) ----------
 // Quando falta o tuk-tuk, ou por outra razão não há rega, a equipa faz cava-roda e mulching nos campos da sua lista (ou em apoio).
@@ -7542,6 +7573,8 @@ function mostrarApp() {
   const opPl = document.querySelector('#f-sit option[value="plantas"]'); if (opPl) opPl.hidden = !PODE_COORD.includes(papel);
   document.querySelectorAll('#f-sit .op-coord').forEach((o) => { o.hidden = !PODE_COORD.includes(papel); });
   document.querySelectorAll('.leg-plantas').forEach((x) => { x.style.display = PODE_COORD.includes(papel) ? '' : 'none'; });
+  { const o = document.querySelector('#f-sit option[value="morb"]'); if (o) o.hidden = !VER_MORB.includes(papel); }
+  document.querySelectorAll('.leg-morb').forEach((x) => { x.style.display = VER_MORB.includes(papel) ? '' : 'none'; });
   const cliente = papel === 'cliente';                     // cliente: Mapa, Campos e Painel, só para ver (15/10/2026, Valdo)
   document.querySelectorAll('#nav button').forEach((b) => { if (b.dataset.e === 'hoje') b.style.display = cliente ? 'none' : ''; });
   $('#h-sync').style.display = cliente ? 'none' : '';
