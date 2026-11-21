@@ -5792,10 +5792,13 @@ function ecraMorbidas(id, r) {
     if (r?.['f_' + k]) FOTOS.ler('morbr-' + k).then((f) => { if (f && $('#mb-fc')) { S.morbFotos[k] = f; mostrar(k, f); } }).catch(() => {});
   }
 }
-// plantas a verificar (amostra de Cochran da monitoria) e o desenho do percurso; o nº de plantas observadas começa com esse número
+// Amostra do inventário (21/11/2026, Valdo: "Vamos usar a amostragem mais segura"): Cochran 95 %, ±15 %, com p = 50 % (a proporção de
+// plantas mórbidas não é conhecida; 50 % dá a amostra maior) e correcção para população finita: 165 plantas → 35, 300 → 38.
+const amostraMorb = (N) => tamanhoAmostra(N, 0.5);
+// plantas a verificar (amostra de Cochran, como a monitoria) e o desenho do percurso; o nº de plantas observadas começa com esse número
 function amostraMorbEcra() {
   const P = S.morbP, e = $('#mb-alvo'); if (!P || !e) return;
-  const alvo = tamanhoAmostra(P.N);
+  const alvo = amostraMorb(P.N);
   e.innerHTML = alvo ? (alvo >= P.N ? `${num(alvo)} <span>(todas)</span>` : `${num(alvo)} <span>de</span> ${num(P.N)}`) : '—';
   if (alvo && !P.nMexido && $('#mb-n')) $('#mb-n').value = alvo;
   $('#mb-desenho').innerHTML = P.metodo ? desenhoMetodo(P.metodo) + `<p class="pequeno" style="margin:0">Siga o percurso ${esc(P.metodo)} e observe as plantas a intervalos regulares${alvo && P.N > alvo ? ` (cerca de 1 em cada ${Math.max(1, Math.round(P.N / alvo))})` : ' (todas as plantas)'}.</p>` : '';
@@ -5822,7 +5825,7 @@ async function gravarMorb(id) {
   let g; try { g = await validarPosicao(a); } catch (e) { $('#mb-gravar').disabled = false; return msg(esc(e.message)); }
   if (g.valido === false) { $('#mb-gravar').disabled = false; return msg(`Está a ${g.dist} m do campo. O inventário regista-se no campo (até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'}).${dicaGpsFraco(g)}`); }
   const x = { id: crypto.randomUUID(), area_id: id, data: hojeISO(), feito_em: new Date().toISOString(), amostra: n, morbidas: m, lat: g.lat, lon: g.lon, precisao_m: g.precisao, distancia_m: g.dist, observacao: $('#mb-obs').value.trim() || null,
-    metodo: S.morbP.metodo, plantas_campo: S.morbP.N, plantas_alvo: tamanhoAmostra(S.morbP.N) || null, campo_corrigido: !!S.morbP.Ncorr };
+    metodo: S.morbP.metodo, plantas_campo: S.morbP.N, plantas_alvo: amostraMorb(S.morbP.N) || null, campo_corrigido: !!S.morbP.Ncorr };
   for (const k of ['campo', 'equipa']) { try { await FOTOS.guardar(`morb-${x.id}-${k}`, S.morbFotos[k]); } catch { S.fotosMem = { ...(S.fotosMem || {}), [`morb-${x.id}-${k}`]: S.morbFotos[k] }; } }
   const f = LS.get('filaMorb', []); f.push(x); LS.set('filaMorb', f); LS.del('rascMorb');
   try { await FOTOS.apagar('morbr-campo'); await FOTOS.apagar('morbr-equipa'); } catch {}
@@ -7154,9 +7157,9 @@ const escolha = (id, ops) => `<div class="chips" id="${id}">${ops.map(([v, t]) =
 // v145 (30/10/2026, Valdo, depois da mensagem do Nuro sobre a carga de trabalho): monitoria leve — 1 dia por semana × 2 campos e
 // menos plantas por campo; o servidor pode parar o sorteio (config monitoria_pausa).
 // Nos campos pequenos a amostra aproxima-se do total de plantas (até 6 plantas: todas).
-function tamanhoAmostra(N) {
+function tamanhoAmostra(N, p = CFG.monP) {
   if (!(N > 0)) return 0;
-  const n0 = CFG.monZ ** 2 * CFG.monP * (1 - CFG.monP) / CFG.monMargem ** 2;
+  const n0 = CFG.monZ ** 2 * p * (1 - p) / CFG.monMargem ** 2;
   return Math.min(N, Math.ceil(n0 / (1 + (n0 - 1) / N)));
 }
 const METODOS = { X: 'M12 12L88 88M88 12L12 88', W: 'M10 12L30 88L50 30L70 88L90 12', Z: 'M12 12L88 12L12 88L88 88', Diagonal: 'M12 12L88 88' };

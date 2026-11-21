@@ -1,7 +1,7 @@
 -- v254 (21/11/2026, Valdo: "O técnico supervisor, quando abrir a ficha do campo, tem que saber quantas plantas vai verificar e tem
 -- que dizer qual foi o método que usou… a aplicação já tem que lhe dizer quantas plantas vai verificar."):
 -- o inventário de plantas mórbidas guarda o percurso (X, W, Z, Diagonal, como a monitoria), as plantas no campo usadas no cálculo
--- e as plantas a verificar que a app calculou (Cochran 95 %, ±15 %, p = 80 %, com correcção para população finita, como a monitoria).
+-- e as plantas a verificar que a app calculou (Cochran 95 %, ±15 %, p = 50 % — a amostragem mais segura, Valdo 21/11/2026 — com correcção para população finita).
 -- Só acrescenta: a gravar_inventario_morbidas antiga fica para versões em cache (sem método).
 alter table public.inventarios_morbidas add column if not exists metodo text;
 alter table public.inventarios_morbidas add column if not exists plantas_campo int;

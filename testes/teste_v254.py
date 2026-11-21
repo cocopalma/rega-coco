@@ -16,7 +16,7 @@ with sync_playwright() as p:
     entrar(pg, "tecnico", "segredo12"); pg.wait_for_selector("#app", state="visible"); pg.wait_for_timeout(2500); pg.evaluate(f"fecharFolha(); escolherLingua('{LG}')"); pg.wait_for_timeout(800)
     PEDIDOS["contar"] = True; PEDIDOS["n"] = 0
     demo(pg, "tecnico"); pg.evaluate("fecharFolha()")
-    a = pg.evaluate("(() => { const a = S.areas.find((x) => x.activista_id && meuCampo(x) && x.latitude != null && plantasN(x) > 30); return { id: a.id, N: plantasN(a), alvo: tamanhoAmostra(plantasN(a)) } })()")
+    a = pg.evaluate("(() => { const a = S.areas.find((x) => x.activista_id && meuCampo(x) && x.latitude != null && plantasN(x) > 30); return { id: a.id, N: plantasN(a), alvo: amostraMorb(plantasN(a)) } })()")
     pg.evaluate(f"DEMO.irPara('{a['id']}')"); pg.wait_for_timeout(1500)
     pg.evaluate(f"abrirFicha('{a['id']}')"); pg.wait_for_timeout(800)
     pg.locator("#folha .fi-q", has_text=T[0]).click(); pg.wait_for_selector("#mb-gravar")
@@ -29,7 +29,7 @@ with sync_playwright() as p:
     pg.click("#mb-metodo .chip[data-v=W]"); pg.wait_for_timeout(300)
     passo("4 desenho do percurso", pg.locator("#mb-desenho svg").count() == 1)
     pg.click("#mb-Nmudar"); pg.fill("#mb-N", "300"); pg.wait_for_timeout(300)
-    alvo2 = pg.evaluate("tamanhoAmostra(300)")
+    alvo2 = pg.evaluate("amostraMorb(300)")
     passo("5 corrigir o nº de plantas recalcula", str(alvo2) in pg.inner_text("#mb-alvo") and pg.input_value("#mb-n") == str(alvo2), pg.inner_text("#mb-alvo"))
     pg.fill("#mb-n", "10"); pg.wait_for_timeout(300)
     passo("6 aviso de menos plantas observadas", pg.inner_text("#mb-nmsg").strip() != "")
