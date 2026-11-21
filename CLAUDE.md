@@ -987,7 +987,7 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Painel › 🩺 Plantas mórbidas: colunas «Plantas vivas no campo» e «Plantas instaladas»; tocar no produtor ou no campo abre a ficha do campo na app (`abrirCampoApp` no painel → `abrirCampoDoPainel(id)` na app; campo que não está no telefone dá aviso). Excel com a coluna das instaladas. `demo.js`: `morbidas_por_campo`.
 - Teste: `testes/teste_v252.py` (simulação; LING=en / sw).
 
-## Mapa só com os campos com inventário (v253, 21/11/2026, Valdo: "Sim")
+## Mapa só com os campos com inventário (v253, 21/11/2026, Valdo: "Sim"; publicada no mesmo dia)
 - Mapa › ☰ Ferramentas › «🩺 Só os campos com inventário» (`#b-morb`, `alternarMorb`, `S.soMorb`, só em memória; papéis `VER_MORB`): o mapa mostra só os campos com inventário de plantas mórbidas (`infoMorb`) e enquadra-os; faixa `#ronda-info` «🩺 Só os campos com inventário de plantas mórbidas (N) · Mostrar todos»; Ferramentas fica marcado. Sem inventários: aviso e o mapa fica igual. Só app.
 - Teste: `testes/teste_v253.py` (simulação; LING=en / sw).
 
