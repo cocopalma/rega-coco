@@ -871,7 +871,7 @@ function desenharRotulos() {
   // o Leaflet apaga as etiquetas com 200 ms de atraso (desvanecer); entretanto a antiga, invisível, ainda apanhava toques: sai já
   rotulos.eachLayer((t) => { const e = t.getElement && t.getElement(); if (e) e.remove(); }); rotulos.clearLayers();
   const man = modoManut(), fa = $('#f-act')?.value;
-  const L2 = (man ? camposManut() : visiveis()).filter((a) => S.etiq.has(a.id) && centroCampo(a) && (man || !(fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa))) && (man || !S.planoIds || S.planoIds.has(a.id)));
+  const L2 = (man ? camposManut() : visiveis()).filter((a) => S.etiq.has(a.id) && centroCampo(a) && (man || !(fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa))) && (man || !S.soMorb || infoMorb(a.id)) && (man || !S.planoIds || S.planoIds.has(a.id)));
   for (const a of L2) {
     const nome = String(a.produtor || '').trim() || '—';   // nome completo e código do campo (18/10/2026, Valdo)
     const pl = man ? `CR ${pctMan(a.cavaroda, a.plantas)}% · M ${pctMan(a.mulching, a.plantas)}%` : a.vivas > 0 ? `${num(a.vivas)} vivas` : `${num(a.instaladas || 0)} mudas`;
@@ -1186,6 +1186,7 @@ function desenharMapa(enquadrar = false) {
     const prop = Array.isArray(a.poligono_proposto) && a.poligono_proposto.length >= 3 ? a.poligono_proposto : null;
     if (a.latitude == null && !prop) continue;
     if (S.planoIds && !S.planoIds.has(a.id)) continue;   // v222: mapa do plano
+    if (S.soMorb && !infoMorb(a.id)) continue;           // v253: só os campos com inventário de plantas mórbidas
     if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
     const s = situacao(a);
     const borda = bordaAzul(a, s) ? BORDA.regado : BORDA.nunca;
@@ -1234,15 +1235,22 @@ function desenharMapa(enquadrar = false) {
   $('#b-filtro').style.display = listaPropria() ? '' : 'none';
   $('#b-perc').style.display = podeVerPercursos() ? '' : 'none';
   $('#b-trilho').style.display = S.perfil && S.perfil.papel !== 'cliente' ? '' : 'none';
+  { const b = $('#b-morb'); if (b) { b.style.display = verMorb() ? '' : 'none'; b.classList.toggle('on', !!S.soMorb); } }
   $('#b-coq').style.display = temCoq() && !LS.get('escondeCoq', false) ? '' : 'none';
   { const l = $('#leg-coq'); if (l) l.style.display = temCoq() && LS.get('escondeCoq', false) ? '' : 'none'; }
   const ri = $('#ronda-info');
   if (souActivista() && S.perfil.activista_id) { ri.style.display = ''; ri.innerHTML = textoRonda(); }
+  else if (S.soMorb) { ri.style.display = ''; ri.innerHTML = `🩺 <span>Só os campos com inventário de plantas mórbidas</span> (${num(visiveis().filter((a) => infoMorb(a.id)).length)}) · <button class="chip" onclick="alternarMorb(false)">Mostrar todos</button>`; }
   // O filtro do activista escolhido na lista também vale no mapa. Mostra-o (v112, 26/10/2026: o Manuel e o Nuro não viam
   // o polígono de um campo de Olumbe; com um activista escolhido na lista, os campos dos outros não aparecem no mapa).
   else if (fa) { ri.style.display = ''; ri.innerHTML = `🔎 <span>Só os campos de</span> <b class="sem-trad">${esc(fa === '__sem' ? '—' : nomeAct(fa))}</b>${fa === '__sem' ? ' <span>(sem activista)</span>' : ''} · <button class="chip" onclick="limparFiltroAct()">Mostrar todos</button>`; }
   else ri.style.display = 'none';
   mostrarSugFixa();
+}
+// v253 (21/11/2026, Valdo: "Sim"): Mapa › Ferramentas › «🩺 Só os campos com inventário»: esconde os outros campos e enquadra estes.
+function alternarMorb(v = !S.soMorb) {
+  if (v && !visiveis().some((a) => infoMorb(a.id))) { S.soMorb = false; desenharMapa(); return aviso('Ainda não há campos com inventário de plantas mórbidas.', 'info'); }
+  S.soMorb = !!v; desenharMapa(S.soMorb);
 }
 function limparFiltroAct() { $('#f-act').value = ''; desenharLista(); desenharMapa(); }
 function textoRonda() {
@@ -7700,6 +7708,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   ligarFerramentas();
   $('#b-regua').onclick = alternarRegua;
   $('#b-trilho').onclick = gravarTrilho;
+  { const b = $('#b-morb'); if (b) b.onclick = () => alternarMorb(); }
   $('#b-coq').onclick = abrirCoq; $('#cq-marcar').onclick = marcarCoq; $('#cq-fechar').onclick = fecharCoq; $('#cq-desf').onclick = apagarUltimoCoq; $('#cq-csv').onclick = descarregarCoq;
   $('#b-perc').onclick = ecraPercursos; $('#pc-fechar').onclick = fecharPercurso;
   setInterval(() => { if (navigator.onLine && percursoPorEnviar()) sincronizar(true); }, 5 * 60 * 1000);
