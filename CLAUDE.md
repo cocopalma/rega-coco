@@ -996,4 +996,5 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Servidor (`supabase/migracoes/v254_morbidas_amostra.sql`; só acrescenta): colunas `inventarios_morbidas.metodo/plantas_campo/plantas_alvo/campo_corrigido`; RPC `gravar_inventario_morbidas2(…, p_metodo, p_plantas_campo, p_plantas_alvo, p_campo_corrigido)` (recusa sem percurso; chama a antiga, que fica para versões em cache); `inventarios_morbidas_campo` (recriada) e `painel_morbidas` devolvem os três. Testada com rollback a 21/11 (Nuro: sem percurso recusado; W/160/26 gravado; ficha e painel com W/26; repetido sem erro; o servidor guarda o número que a app manda). Registos da fila sem percurso (v251–v253) vão pela função antiga.
 - Ficha › lista dos inventários: «· percurso W · a verificar: 26». Painel › tabela: colunas «Percurso» e «Plantas a verificar»; Excel também com «Plantas no campo (cálculo da amostra)». `demo.js`: `gravar_inventario_morbidas2`.
 - Teste: `testes/teste_v254.py` (simulação; LING=en / sw); `teste_v251/252/253.py` escolhem o percurso. Suaíli por rever.
+- O «M» de que o Valdo falou é o percurso W (Valdo, 21/11/2026): ficam X, W, Z e Diagonal.
 
