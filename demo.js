@@ -405,6 +405,13 @@
       for (const f of a.p_falhas || []) DB.itX.push({ plano_id: a.p_plano, dia_n: a.p_dia, data: a.p_data, area_id: f.area_id, motivo: f.motivo, texto: f.texto || null, quem: NOMES[papel] || 'Eu' });
       return { ok: true, falhas: (a.p_falhas || []).length }; },
     painel_actividades: () => (['activista', 'oficial_me'].includes(papel) ? null : (DB.act || []).filter((x) => !x.removido).map((x) => { const ar = area(x.area_id) || {}; return { ...x, produtor: ar.produtor, comunidade: ar.comunidade, zona: ar.zona, excedente: 0, manutencao: false }; }).reverse()),
+    // v251: inventário de plantas mórbidas
+    gravar_inventario_morbidas: (a) => { DB.morb ||= []; if (DB.morb.some((x) => x.id === a.p_id)) return { id: a.p_id, repetido: true }; const ar = area(a.p_area);
+      DB.morb.push({ id: a.p_id, area_id: a.p_area, activista_id: ar.activista_id || null, data: String(a.p_feito_em || new Date().toISOString()).slice(0, 10), feito_em: a.p_feito_em, amostra: a.p_amostra, morbidas: a.p_morbidas,
+        foto_campo: a.p_foto_campo, foto_equipa: a.p_foto_equipa, observacao: a.p_obs || null, quem: NOMES[papel] || 'Eu', papel, removido: false }); guardarDB(); return { id: a.p_id }; },
+    inventarios_morbidas_campo: (a) => (DB.morb || []).filter((x) => x.area_id === a.p_area && !x.removido).map((x) => ({ ...x, meu: x.papel === papel })).reverse(),
+    remover_inventario_morbidas: (a) => { const x = (DB.morb || []).find((y) => y.id === a.p_id); if (x) { x.removido = true; guardarDB(); } return null; },
+    painel_morbidas: () => (['activista', 'oficial_me', 'cliente'].includes(papel) ? null : (DB.morb || []).filter((x) => !x.removido).map((x) => { const ar = area(x.area_id); return { ...x, pr: ar.pr, area_n: ar.area_n, produtor: ar.produtor, comunidade: ar.comunidade, zona: ar.zona || null, equipa: nomeAct(ar.activista_id), vivas: ar.vivas, instaladas: ar.instaladas }; }).reverse()),
     acompanhamentos_campo: () => [], gravar_acompanhamento: (a) => ({ id: a.p_id, teste: false }), remover_acompanhamento: () => null,
     gravar_monitoria_escala: (a) => { DB.escala = (a.p_dias || []).slice().sort(); guardarDB(); return { dias: DB.escala }; },
     monitoria_lista: () => { const l = DB.amostras.filter((m) => m.verificador_id === EU); return l.filter((m) => m.data_rega >= dia(2)).map((m) => ({ amostra_id: m.id, data_rega: m.data_rega, area_id: m.area_id, activista_id: m.activista_id, feita: DB.monitorias.some((x) => x.amostra_id === m.id) })); },

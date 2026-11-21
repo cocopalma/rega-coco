@@ -489,6 +489,7 @@ async function sincronizarAgora(silencioso) {
   }
   if (!erro) erro = await enviarQueimadas();
   if (!erro) erro = await enviarAcomp();
+  if (!erro && LS.get('filaMorb', []).length) erro = await enviarMorb();
   if (!erro) erro = await enviarSugestoes();
   if (!erro && filaMan().length) erro = await enviarManut();
   if (!erro && filaCoq().length) erro = await enviarCoq();
@@ -505,7 +506,7 @@ async function sincronizarAgora(silencioso) {
   if ($('#pe-lista')) ecraPorEnviar();   // ecrã «Registos por enviar» aberto: actualiza
 }
 function actSync() {
-  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaAcomp', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length + LS.get('filaCoq', []).length + LS.get('filaMed', []).length + (LS.get('filaAct', []) || []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
+  const n = filaRegistos().length + LS.get('filaJ', []).length + LS.get('filaAlt', []).length + LS.get('filaMon', []).length + LS.get('filaChuva', []).length + LS.get('filaQueim', []).length + LS.get('filaAcomp', []).length + LS.get('filaMorb', []).length + LS.get('filaRec', []).length + LS.get('filaRecG', []).length + LS.get('filaSug', []).length + LS.get('filaMan', []).length + LS.get('filaCoq', []).length + LS.get('filaMed', []).length + (LS.get('filaAct', []) || []).length, b = $('#h-sync'), u = LS.get('ultimaSync');
   const nr = recusados().length;
   b.textContent = n ? (nr ? `${n} por enviar · ${nr} recusado(s)` : `${n} por enviar`) : (u ? 'Sinc. ' + fmtHora(u) : 'Sincronizar');
   b.classList.toggle('pend', n > 0 && !nr); b.classList.toggle('recusa', nr > 0);
@@ -709,7 +710,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl', 'actTot'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'filaMorb', 'rascMorb', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl', 'actTot'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -3267,6 +3268,7 @@ function botoesCampo(a) {
   if (PODE_ACOMP.includes(papel) && a.activista_id) q.push(quadro(`ecraAcompanhar('${id}')`, '👁', 'Acompanhei a rega'));   // v218: também contas de testes (fica como teste)
   if (PODE_REGAR.includes(papel)) q.push(quadro(`ecraQueimada('${id}')`, '🔥', queimadaDe(a.id) ? 'Registar outra queimada' : 'Marcar queimada'));
   if (podePedirRecCampo(a)) q.push(quadro(`ecraPedirRecontagem('${id}')`, '📋', 'Pedir recontagem'));
+  if (podeMorb()) q.push(quadro(`ecraMorbidas('${id}')`, '🩺', 'Inventário de plantas mórbidas'));
   if (coord) { const np = plantasLocais(a.id).length; q.push(quadro(`ecraPlantas('${id}')`, '🌴', 'Mapa das plantas', `<small>${np ? `(${np}) · ` : ''}<span>teste</span></small>`)); }
   if (papel === 'activista' && a.activista_id === S.perfil.activista_id && (!temPoligono(a) || a.limites_abertos || a.poligono_proposto)) {
     if (a.poligono_proposto) h += `<div class="msg info">Área medida: ${textoArea(a.area_m2_proposta || areaPontos(a.poligono_proposto))}. À espera de aprovação do técnico ou do supervisor.${a.proposta_em ? `<br><span>Medida em</span> <b>${fmtDataHora(a.proposta_em)}</b>` : ''}</div>`;
@@ -3638,9 +3640,10 @@ function abrirFicha(id, nota = '') {
     ${linhaOutraEquipa(a, s)}
     ${s.pt ? `<div class="msg info">⏳ <span>Rega a meio nesta ronda: regadas</span> ${num(s.pt.regadas)} <span>de</span> ${num(plantasN(a))} <span>plantas</span>${s.pt.data ? ` (${fmtData(s.pt.data)})` : ''}. <span>O campo só fecha quando regarem as que faltam, ou se as que faltam forem mudas secas ou mortas.</span></div>` : ''}
     ${a.latitude == null ? '<div class="msg erro">Este campo não tem coordenada na base. A entrada fica registada sem validação de GPS.</div>' : ''}
-   ${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a, true)}${avisoCampo(a.id)}${cartaoAutorizacao(a, alheio)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (simulação)</button><p class="pequeno" style="margin:0 0 6px">Só na simulação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${parFicha(a, pelaBtn)}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) : botoesCampo(a)}<div id="f-regas"></div><div id="f-cav"></div><div id="f-mon"></div>`);
+   ${alheio ? `<div class="msg info"><div>Este campo não está na sua lista. Só pode ver.</div><div class="pequeno">${esc(equipaDe(a))}</div></div>` : ''}${cartaoApoioCampo(a)}${cartaoQueimada(a)}${cartaoRecontagem(a, true)}${avisoCampo(a.id)}${cartaoAutorizacao(a, alheio)}${acc}${window.DEMO && a.latitude != null ? `<button class="chip" style="border-color:#6a1b9a;color:#6a1b9a;margin:6px 0" onclick="DEMO.irPara('${esc(a.id)}')">🎬 Pôr-me neste campo (simulação)</button><p class="pequeno" style="margin:0 0 6px">Só na simulação: a app faz de conta que está dentro deste campo, para poder marcar a entrada aqui. No terreno a app usa o GPS do telefone e este botão não aparece.</p>` : ''}${parFicha(a, pelaBtn)}${alheio ? '' : botaoMonitoria(a)}${alheio ? botaoPassar(a) + (podeMorb() ? `<button class="btn sec" onclick="ecraMorbidas('${esc(a.id)}')">🩺 <span>Inventário de plantas mórbidas</span></button>` : '') : botoesCampo(a)}<div id="f-morb"></div><div id="f-regas"></div><div id="f-cav"></div><div id="f-mon"></div>`);
   S.soVer = false;
   if (navigator.onLine) { regasDoCampo(a.id); monitoriasDoCampo(a.id); }
+  morbidasDoCampo(a.id);
   actividadesDoCampo(a.id);   // também sem rede (as do telefone)   // a pedido, não atrasa a ficha
 }
 
@@ -5725,6 +5728,97 @@ async function enviarAcomp() {
   }
   return null;
 }
+// ---------- Inventário de plantas mórbidas (v251, 21/11/2026, Valdo: "Sim"; método do Paulo Dias de 20/11/2026) ----------
+// Em cada campo visitado, o técnico ou o supervisor observa uma amostra de plantas e conta as mórbidas (plantas fracas, estioladas
+// por falta de água, que recebem 20 L em cada rega). % = mórbidas ÷ amostra × 100. Duas fotografias obrigatórias: o campo com as
+// plantas mórbidas e a amostra; o técnico com o activista. GPS no campo (como o acompanhamento). Valdo: "sairmos dos relatórios
+// manuais e WhatsApp para os sistemas". Sem rede: fila filaMorb; fotografias no telefone (IndexedDB morb-<id>-campo / -equipa).
+const podeMorb = () => PODE_COORD.includes(S.perfil?.papel) && !S.perfil?.so_teste;
+const pctMorb = (m, n) => (n > 0 ? Math.round((100 * m) / n) : null);
+function ecraMorbidas(id, r) {
+  const a = S.areas.find((x) => x.id === id); if (!a || !podeMorb()) return;
+  S.morbFotos = { campo: null, equipa: null }; if (!r) LS.del('rascMorb');
+  const prev = (k) => `<img id="mb-p${k}" alt="" style="display:none;width:100%;max-height:160px;object-fit:cover;border-radius:10px;margin-top:6px">`;
+  folha(`<h2>🩺 Inventário de plantas mórbidas</h2>${r?.camara ? AVISO_CAMARA : ''}
+    <p class="pequeno">${esc(a.produtor)} · ${esc(a.pr)}-${a.area_n ?? '—'} · ${esc(a.comunidade)}${a.activista_id ? ` · <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span>` : ''}</p>
+    <p class="pequeno">Observe uma amostra de plantas do campo e conte as plantas mórbidas: fracas, estioladas por falta de água. Estas plantas recebem 20 L em cada rega.</p>
+    <label>Plantas observadas (amostra)<input id="mb-n" type="number" inputmode="numeric" min="1" max="5000"></label>
+    <label>Destas, plantas mórbidas<input id="mb-m" type="number" inputmode="numeric" min="0" max="5000"></label>
+    <div id="mb-pct"></div>
+    ${campoFoto('mb-fc', 'Fotografia do campo com as plantas mórbidas e a amostra (obrigatória)')}${prev('c')}
+    ${campoFoto('mb-fe', 'Fotografia do técnico com o activista (obrigatória)')}${prev('e')}
+    <textarea id="mb-obs" rows="2" placeholder="Observação (opcional)"></textarea>
+    <div id="mb-msg"></div>
+    <button class="btn" id="mb-gravar" onclick="gravarMorb('${esc(id)}')">Gravar</button><button class="btn sec" onclick="LS.del('rascMorb');abrirFicha('${esc(id)}')">Cancelar</button>`);
+  if (r) { if (r.n != null) $('#mb-n').value = r.n; if (r.m != null) $('#mb-m').value = r.m; if (r.obs) $('#mb-obs').value = r.obs; }
+  const guardar = () => { rascGuardar('rascMorb', { perfil: S.perfil?.id, area: id, n: $('#mb-n').value, m: $('#mb-m').value, obs: $('#mb-obs').value }); pctMorbEcra(); };
+  ['#mb-n', '#mb-m', '#mb-obs'].forEach((k) => $(k).addEventListener('input', guardar)); guardar();
+  const mostrar = (k, foto) => { const img = $('#mb-p' + (k === 'campo' ? 'c' : 'e')); if (!img) return; if (foto) { img.src = URL.createObjectURL(foto); img.style.display = ''; } else img.style.display = 'none'; };
+  for (const [k, cid] of [['campo', 'mb-fc'], ['equipa', 'mb-fe']]) {
+    ligarFoto(cid, 'rascMorb', async (foto) => { S.morbFotos[k] = foto; mostrar(k, foto); if (foto) { try { await FOTOS.guardar('morbr-' + k, foto); rascGuardar('rascMorb', { ['f_' + k]: true }); } catch {} } });
+    if (r?.['f_' + k]) FOTOS.ler('morbr-' + k).then((f) => { if (f && $('#mb-fc')) { S.morbFotos[k] = f; mostrar(k, f); } }).catch(() => {});
+  }
+}
+function pctMorbEcra() {
+  const n = parseInt($('#mb-n')?.value, 10), m = parseInt($('#mb-m')?.value, 10), e = $('#mb-pct'); if (!e) return;
+  if (!(n > 0) || isNaN(m)) { e.innerHTML = ''; return; }
+  e.innerHTML = m > n ? '<div class="msg erro">As plantas mórbidas não podem passar as plantas observadas.</div>'
+    : `<div class="msg info">🩺 <b>${pctMorb(m, n)} %</b> <span>de plantas mórbidas</span> (${num(m)} <span>de</span> ${num(n)})</div>`;
+}
+async function gravarMorb(id) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  const n = parseInt($('#mb-n').value, 10), m = parseInt($('#mb-m').value, 10), msg = (t) => { $('#mb-msg').innerHTML = `<div class="msg erro">${t}</div>`; };
+  if (!(n >= 1)) return msg('Escreva o número de plantas observadas.');
+  if (isNaN(m) || m < 0) return msg('Escreva o número de plantas mórbidas (0 se nenhuma).');
+  if (m > n) return msg('As plantas mórbidas não podem passar as plantas observadas.');
+  if (!S.morbFotos?.campo) return msg('Tire a fotografia do campo com as plantas mórbidas e a amostra.');
+  if (!S.morbFotos?.equipa) return msg('Tire a fotografia do técnico com o activista.');
+  $('#mb-gravar').disabled = true; $('#mb-msg').innerHTML = '<p class="pequeno">A ler o GPS…</p>';
+  let g; try { g = await validarPosicao(a); } catch (e) { $('#mb-gravar').disabled = false; return msg(esc(e.message)); }
+  if (g.valido === false) { $('#mb-gravar').disabled = false; return msg(`Está a ${g.dist} m do campo. O inventário regista-se no campo (até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'}).${dicaGpsFraco(g)}`); }
+  const x = { id: crypto.randomUUID(), area_id: id, data: hojeISO(), feito_em: new Date().toISOString(), amostra: n, morbidas: m, lat: g.lat, lon: g.lon, precisao_m: g.precisao, distancia_m: g.dist, observacao: $('#mb-obs').value.trim() || null };
+  for (const k of ['campo', 'equipa']) { try { await FOTOS.guardar(`morb-${x.id}-${k}`, S.morbFotos[k]); } catch { S.fotosMem = { ...(S.fotosMem || {}), [`morb-${x.id}-${k}`]: S.morbFotos[k] }; } }
+  const f = LS.get('filaMorb', []); f.push(x); LS.set('filaMorb', f); LS.del('rascMorb');
+  try { await FOTOS.apagar('morbr-campo'); await FOTOS.apagar('morbr-equipa'); } catch {}
+  actSync(); aviso(`Inventário registado: ${pctMorb(m, n)} % de plantas mórbidas.`, 'ok'); abrirFicha(id); sincronizar(true);
+}
+const morbLocais = (id) => LS.get('filaMorb', []).filter((x) => !id || x.area_id === id).map((x) => ({ ...x, quem: S.perfil?.nome, meu: true, local: true }));
+function linhaMorb(c) {
+  const ft = (cam, t) => (cam && fotoVisivel(cam) ? ` <button class="chip" onclick="verFoto('rega-fotos','${esc(cam)}','${esc(t)}')">📷 ${t}</button>` : '');
+  const rem = c.meu ? ` <button class="chip" onclick="removerMorb('${esc(c.id)}')">Remover (engano)</button>` : '';
+  return `<div class="pequeno" style="padding:4px 0;border-bottom:1px solid var(--linha,#e5e5e5)">🩺 <b>${fmtData(c.data)}</b> · <span class="sem-trad">${esc(c.quem || '?')}</span>: <b>${pctMorb(c.morbidas, c.amostra)} %</b> (${num(c.morbidas)} <span>de</span> ${num(c.amostra)} <span>plantas observadas</span>)${c.observacao ? ` · <span class="sem-trad">${esc(c.observacao)}</span>` : ''}${c.local ? ' · <span>no telefone</span>' : ''}${ft(c.foto_campo, 'Campo')}${ft(c.foto_equipa, 'Técnico e activista')}${rem}</div>`;
+}
+async function morbidasDoCampo(id) {
+  const loc = morbLocais(id); let serv = [];
+  if (navigator.onLine) { try { const r = await sb.rpc('inventarios_morbidas_campo', { p_area: id }); if (!r.error && Array.isArray(r.data)) serv = r.data; } catch {} }
+  const el = $('#f-morb'); if (!el || S.fichaAberta !== id) return;
+  const l = [...loc, ...serv.filter((y) => !loc.some((z) => z.id === y.id))];
+  el.innerHTML = l.length ? `<div class="cartao" style="margin-top:10px"><h3 style="font-size:14px;margin:0 0 4px">🩺 Inventários de plantas mórbidas</h3>${l.map(linhaMorb).join('')}</div>` : '';
+}
+async function removerMorb(cid) {
+  if (!confirm('Remover este inventário (registo feito por engano)?')) return;
+  const loc = LS.get('filaMorb', []), x = loc.find((y) => y.id === cid);
+  if (x) { LS.set('filaMorb', loc.filter((y) => y.id !== cid)); for (const k of ['campo', 'equipa']) { try { await FOTOS.apagar(`morb-${cid}-${k}`); } catch {} } actSync(); return abrirFicha(x.area_id); }
+  if (!navigator.onLine) return aviso('Precisa de rede para remover um inventário já enviado.', 'erro');
+  const r = await sb.rpc('remover_inventario_morbidas', { p_id: cid }); if (r.error) return aviso(r.error.message, 'erro');
+  aviso('Inventário removido.', 'ok'); if (S.fichaAberta) abrirFicha(S.fichaAberta);
+}
+async function enviarMorb() {
+  for (const x of LS.get('filaMorb', [])) {
+    const fotos = {};
+    for (const k of ['campo', 'equipa']) { let f = null; try { f = await FOTOS.ler(`morb-${x.id}-${k}`); } catch {} fotos[k] = f || S.fotosMem?.[`morb-${x.id}-${k}`] || null; }
+    if (!fotos.campo || !fotos.equipa) { LS.set('filaMorb', LS.get('filaMorb', []).filter((y) => y.id !== x.id)); aviso('Um inventário de plantas mórbidas perdeu as fotografias no telefone e não foi gravado. Registe-o de novo.', 'erro'); continue; }
+    const cam = { campo: `${S.perfil.id}/morb-${x.id}-campo.jpg`, equipa: `${S.perfil.id}/morb-${x.id}-equipa.jpg` };
+    for (const k of ['campo', 'equipa']) { const up = await sb.storage.from('rega-fotos').upload(cam[k], fotos[k], { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
+    const r = await sb.rpc('gravar_inventario_morbidas', { p_id: x.id, p_area: x.area_id, p_feito_em: x.feito_em, p_amostra: x.amostra, p_morbidas: x.morbidas, p_lat: x.lat, p_lon: x.lon,
+      p_precisao: x.precisao_m, p_distancia: x.distancia_m, p_foto_campo: cam.campo, p_foto_equipa: cam.equipa, p_obs: x.observacao });
+    if (r.error && erroPassageiro(r.error)) return r.error.message;
+    if (r.error) avisoRecusado(r.error, `Inventário de plantas mórbidas não gravado: ${r.error.message}`, 'erro');
+    LS.set('filaMorb', LS.get('filaMorb', []).filter((y) => y.id !== x.id));
+    for (const k of ['campo', 'equipa']) { try { await FOTOS.apagar(`morb-${x.id}-${k}`); } catch {} }
+  }
+  return null;
+}
 // ---------- Cava-roda e mulching quando não há rega (ramo cc-manutencao, decisões do Valdo de 13–14/11/2026) ----------
 // Quando falta o tuk-tuk, ou por outra razão não há rega, a equipa faz cava-roda e mulching nos campos da sua lista (ou em apoio).
 // Segue o padrão da rega: motivo → (início do dia) → entrada com GPS e fotografia → fotografia durante → saída com GPS, plantas com
@@ -7494,6 +7588,8 @@ function retomarRascunhos() {
     }
     const rt = rascLer('rascAct'), xa = actCurso();
     if (rt && rt.camara && rt.perfil === S.perfil?.id && xa && S.areas.some((x) => x.id === xa.area_id)) return rt.tipo === 'saida' ? ecraFimAct('', rt) : ecraFotoAct(rt.tipo, '', rt);
+    const rb = rascLer('rascMorb');
+    if (rb && rb.camara && rb.perfil === S.perfil?.id && S.areas.some((x) => x.id === rb.area)) return ecraMorbidas(rb.area, rb);
     const ra = rascLer('rascAcomp');
     if (ra && ra.camara && ra.perfil === S.perfil?.id && S.areas.some((x) => x.id === ra.area)) return ecraAcompanhar(ra.area, ra);
     const rq = rascLer('rascQueim');

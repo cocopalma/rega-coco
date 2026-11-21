@@ -241,6 +241,13 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <h3 style="font-size:14px;margin:12px 0 4px">Sobrevivência indicativa por comunidade</h3><div id="g-sob"></div>
     <div class="tabela" id="t-sob" style="max-height:none"></div><p class="desc" id="d-sob"></p></section>
 
+  <section class="card sec" id="s-mrb" hidden><h2>🩺 Plantas mórbidas (inventário)</h2>
+    <p class="desc">Em cada campo visitado, o técnico ou o supervisor observa uma amostra de plantas e conta as mórbidas (plantas fracas, estioladas por falta de água, que recebem 20 L em cada rega). % = plantas mórbidas ÷ plantas observadas × 100. Método do coordenador agrícola (20/11/2026).</p>
+    <div class="grelha kpis" id="k-mrb"></div>
+    <h3 style="font-size:14px;margin:12px 0 4px">Plantas mórbidas por comunidade (% da amostra)</h3><div id="g-mrb"></div>
+    <div class="tabela" id="t-mrb" style="max-height:none"></div>
+    <p style="margin:8px 0"><button class="foto-btn" id="b-mrb-csv" type="button">⬇ Descarregar a tabela (Excel, .csv)</button></p></section>
+
   <section class="card sec" id="s-apo" hidden><h2>🤝 Reforço entre equipas: responsável e executor</h2>
     <p class="desc">Regas feitas por uma equipa em campos de outra, com o «Apoio entre equipas». O responsável é a equipa dona do campo; o executor é a equipa que regou. A rega conta na ronda do responsável.</p>
     <div class="grelha kpis" id="k-apo"></div>
@@ -294,10 +301,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=250"></script>
-<script src="i18n.js?v=250"></script>
+<script src="i18n-sw.js?v=251"></script>
+<script src="i18n.js?v=251"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=250"></script>
+<script src="demo.js?v=251"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -946,7 +953,7 @@ function desenharPlantasMarcadas() {
 }
 // ---------- testes por pessoa (v91, 21/10/2026, Valdo: ver quem já testou e quem ainda não) ----------
 // Ao cliente o servidor devolve null e a secção fica escondida.
-let DTP = null, DMN = null, DSR = null, DCT = null, DAC = null, DTK = null, DAP = null, DAG = null, DSO = null;
+let DTP = null, DMN = null, DSR = null, DCT = null, DAC = null, DTK = null, DAP = null, DAG = null, DSO = null, DMB = null;
 const MOSTRAR_MANUT = true;   // v177 escondeu a secção por engano (Valdo queria tirar a manutenção do perfil de gestão, não do painel); v178 repôs
 // medições com a vara (v106, 23/10/2026, Valdo): só gestor, director e M&E (o servidor devolve null aos outros)
 let DMD = null;
@@ -1047,6 +1054,35 @@ function desenharSobrevivencia() {
     L.map((c) => [fmtData(c.data), esc(c.comunidade || ''), `<span class="sem-trad">${esc(c.produtor || '')}</span>`, `<span class="sem-trad">${esc(c.area_id)}</span>`, esc(c.equipa || ''), num(c.instaladas || 0), num(c.vivas_base || 0), num(c.cavaroda || 0),
       c.sobrevivencia != null ? String(c.sobrevivencia).replace('.', ',') + ' %' : '—', c.recontagem ? (EST[c.recontagem_estado] || esc(c.recontagem_estado || '')) : '—', `<span class="sem-trad">${esc(c.quem || '')}</span>`]));
 }
+// v251 (21/11/2026, Valdo): inventário de plantas mórbidas (método do Paulo Dias de 20/11/2026); null ao cliente
+function desenharMorbidas() {
+  const el = $('#s-mrb'); if (!el) return;
+  const L = Array.isArray(DMB) ? DMB : null; el.hidden = !L; if (!L) return;
+  const kpi = (rot, v, sub) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${v}</div><div class="sub">${sub}</div></div>`;
+  const pc = (a, b) => (b > 0 ? Math.round(100 * a / b) + ' %' : '—');
+  const n = L.reduce((t, x) => t + (x.amostra || 0), 0), m = L.reduce((t, x) => t + (x.morbidas || 0), 0);
+  $('#k-mrb').innerHTML = kpi('Inventários feitos', num(L.length), `${num(new Set(L.map((x) => x.area_id)).size)} <span>campos</span>`) +
+    kpi('Plantas observadas', num(n), '<span>soma das amostras</span>') +
+    kpi('Plantas mórbidas', pc(m, n), `${num(m)} <span>de</span> ${num(n)} <span>plantas observadas</span>`) +
+    kpi('Campos com plantas mórbidas', num(new Set(L.filter((x) => x.morbidas > 0).map((x) => x.area_id)).size), '<span>no período</span>');
+  if (!L.length) { $('#g-mrb').innerHTML = ''; $('#t-mrb').innerHTML = '<div class="vazio">Nenhum inventário no período.</div>'; return; }
+  const g = new Map(); for (const x of L) { const k = x.comunidade || '—', o = g.get(k) || { k, n: 0, m: 0, c: 0 }; o.n += x.amostra || 0; o.m += x.morbidas || 0; o.c++; g.set(k, o); }
+  barras('#g-mrb', [...g.values()].map((o) => ({ ...o, p: o.n ? 100 * o.m / o.n : 0 })).sort((a, b) => b.p - a.p), { valor: (e) => e.p, rotulo: (e) => e.k, texto: (e) => pc(e.m, e.n), sub: (e) => `${num(e.m)} / ${num(e.n)}`, max: 100, dicaDe: (e) => `${e.k}: ${pc(e.m, e.n)}` });
+  const foto = (c, t) => (c ? `<button class="foto-btn" type="button" onclick="verFotoBalde('rega-fotos','${esc(c)}')">📷 ${t}</button>` : '');
+  tabela('#t-mrb', [['Data'], ['Comunidade'], ['Produtor'], ['Campo'], ['Equipa'], ['Plantas observadas', 1], ['Plantas mórbidas', 1], ['%', 1], ['Fotografias'], ['Feito por'], ['Observação']],
+    L.map((x) => [fmtData(x.data), esc(x.comunidade || '') + (x.zona ? ' › ' + esc(x.zona) : ''), `<span class="sem-trad">${esc(x.produtor || '')}</span>`, `<span class="sem-trad">${esc((x.pr || '') + '-' + (x.area_n ?? ''))}</span>`, esc(x.equipa || ''),
+      num(x.amostra || 0), num(x.morbidas || 0), pc(x.morbidas || 0, x.amostra || 0), foto(x.foto_campo, 'Campo') + ' ' + foto(x.foto_equipa, 'Técnico e activista'), `<span class="sem-trad">${esc(x.quem || '')}</span>`, `<span class="sem-trad">${esc(x.observacao || '')}</span>`]));
+}
+function descarregarMorb() {
+  const L = Array.isArray(DMB) ? DMB : [], cel = (v) => { const t = String(v ?? ''); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const T = (x) => (window.trEN ? window.trEN(x) : x);
+  const cab = ['Data', 'Comunidade', 'Zona', 'Produtor', 'PR', 'Campo', 'Equipa', 'Plantas observadas', 'Plantas mórbidas', '% mórbidas', 'Plantas vivas na base', 'Feito por', 'Observação'];
+  const linhas = L.map((x) => [x.data, x.comunidade, x.zona, x.produtor, x.pr, x.area_n, x.equipa, x.amostra, x.morbidas, x.amostra ? Math.round(100 * x.morbidas / x.amostra) : '', x.vivas, x.quem, x.observacao]);
+  const csv = '\ufeff' + [cab.map(T), ...linhas].map((l) => l.map(cel).join(';')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `Rega_Coco_plantas_morbidas_${diaMaputo().replace(/-/g, '')}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+$('#b-mrb-csv').onclick = descarregarMorb;
 function desenharApoios() {
   const el = $('#s-apo'); if (!el) return;
   const X = DAP && typeof DAP === 'object' && Array.isArray(DAP.regas) ? DAP : null; el.hidden = !X; if (!X) return;
@@ -1272,7 +1308,8 @@ async function buscarPeriodo(p) {
   const apx = await sb.rpc('painel_apoios', { p_de: de, p_ate: ate });
   const agx = await sb.rpc('painel_agua', { p_de: de, p_ate: ate });
   const sox = await sb.rpc('painel_sobrevivencia', { p_de: de, p_ate: ate });
-  return { DSO: sox.error ? null : sox.data, DAG: agx.error ? null : agx.data, DAP: apx.error ? null : apx.data, DTK: tk.error ? null : tk.data, DAC: ac.error ? null : ac.data, DPV: pv.error ? null : pv.data, DMX: mx.error ? null : mx.data, DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
+  const mbx = await sb.rpc('painel_morbidas', { p_de: de, p_ate: ate });
+  return { DMB: mbx.error ? null : mbx.data, DSO: sox.error ? null : sox.data, DAG: agx.error ? null : agx.data, DAP: apx.error ? null : apx.data, DTK: tk.error ? null : tk.data, DAC: ac.error ? null : ac.data, DPV: pv.error ? null : pv.data, DMX: mx.error ? null : mx.data, DNA: na.error ? null : na.data, DCU: cu.error ? null : cu.data, DMC: mc.error ? null : mc.data, DCT: ct.error ? null : ct.data, D: r.data, DM: mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data, DP: pde.error ? null : pde.data, DT: tem.error ? null : tem.data, DZ: zon.error ? null : zon.data, DC: chu.error ? null : chu.data, DR, DPL, DTP: tp.error ? null : tp.data, DMN: mn.error ? null : mn.data, DMD: md.error ? null : md.data, DSR: dsr.error ? null : dsr.data, em: Date.now() };
 }
 // uma só cópia por período (v168, 01/11/2026: o espaço do aparelho encheu): apaga as cópias desse período de outros dias e, se
 // mesmo assim não couber, as outras cópias do painel; períodos escolhidos à mão (de… até…) só fica o que se está a ver
@@ -1310,7 +1347,7 @@ function semPeriodoGuardado() {
 async function carregar(mudou = false) {
   const c = (!D || mudou) && lerCache();
   if (mudou && !c && !navigator.onLine) { semPeriodoGuardado(); return; }
-  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; DMX = c.DMX || null; DPV = c.DPV || null; DAC = c.DAC || null; DTK = c.DTK || null; DAP = c.DAP || null; DAG = c.DAG || null; DSO = c.DSO || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharAgua(); desenharApoios(); desenharSobrevivencia(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas(); }
+  if (c) { D = c.D; DM = c.DM; DP = c.DP; DT = c.DT; DZ = c.DZ; DC = c.DC; DR = c.DR || null; DPL = c.DPL || null; DTP = c.DTP || null; DMN = c.DMN || null; DMD = c.DMD || null; DSR = c.DSR || null; DCT = c.DCT || null; DMC = c.DMC || null; DCU = c.DCU || null; DNA = c.DNA || null; DMX = c.DMX || null; DPV = c.DPV || null; DAC = c.DAC || null; DTK = c.DTK || null; DAP = c.DAP || null; DAG = c.DAG || null; DSO = c.DSO || null; DMB = c.DMB || null; $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharAgua(); desenharApoios(); desenharSobrevivencia(); desenharMorbidas(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas(); }
   if (!navigator.onLine) { if (D) avisoRede(c || { antigo: null }); else semRedeSemPainel(); return; }   // sem rede: não espera pelo servidor
   document.body.style.opacity = D && !c ? '.6' : '';
   const [de, ate] = datasDe(P);
@@ -1331,6 +1368,7 @@ async function carregar(mudou = false) {
   const pAp = sb.rpc('painel_apoios', { p_de: de, p_ate: ate });
   const pAg = sb.rpc('painel_agua', { p_de: de, p_ate: ate });
   const pSo = sb.rpc('painel_sobrevivencia', { p_de: de, p_ate: ate });
+  const pMb = sb.rpc('painel_morbidas', { p_de: de, p_ate: ate });
   const [{ data, error }, mon, pde, tem, zon, chu] = await Promise.all([sb.rpc('painel_resumo_periodo', { p_de: de, p_ate: ate }), sb.rpc('painel_monitoria', { p_de: de, p_ate: ate }), sb.rpc('painel_plantas_dia_equipa', { p_de: de, p_ate: ate }), sb.rpc('painel_tempos_equipa2', { p_de: de, p_ate: ate }), sb.rpc('painel_zonas', { p_de: de, p_ate: ate }), sb.rpc('painel_chuva', { p_de: de, p_ate: ate })]);
   const rec = await pRec; DR = rec.error ? null : rec.data;
   const pl = await pPl; DPL = pl.error ? null : pl.data;
@@ -1345,16 +1383,16 @@ async function carregar(mudou = false) {
   const mx = await pMx; DMX = mx.error ? null : mx.data;
   const pv = await pPv; DPV = pv.error ? null : pv.data;
   const acx = await pAc; DAC = acx.error ? null : acx.data;
-  const tkx = await pTk; DTK = tkx.error ? null : tkx.data; const apy = await pAp; DAP = apy.error ? null : apy.data; const agy = await pAg; DAG = agy.error ? null : agy.data; const soy = await pSo; DSO = soy.error ? null : soy.data;
+  const tkx = await pTk; DTK = tkx.error ? null : tkx.data; const apy = await pAp; DAP = apy.error ? null : apy.data; const agy = await pAg; DAG = agy.error ? null : agy.data; const soy = await pSo; DSO = soy.error ? null : soy.data; const mby = await pMb; DMB = mby.error ? null : mby.data;
   DP = pde.error ? null : pde.data; DT = tem.error ? null : tem.data; DZ = zon.error ? null : zon.data; DC = chu.error ? null : chu.data;
   DM = mon.error || !mon.data || typeof mon.data !== 'object' || mon.data.amostrados == null ? null : mon.data;
   document.body.style.opacity = '';
   if (error && D && !/sem acesso|JWT|sess/i.test(error.message)) { if (erroDeRede(error)) avisoRede(c || { antigo: null }); return; }   // sem rede: fica o último painel guardado
   if (error && erroDeRede(error)) { semRedeSemPainel(); return; }
   if (error) { mostrarLogin(/sem acesso/i.test(error.message) ? 'Este utilizador não tem acesso ao painel.' : error.message); return; }
-  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharAgua(); desenharApoios(); desenharSobrevivencia(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas();
+  D = data; avisoRede(null); $('#login').style.display = 'none'; $('#painel').style.display = ''; desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharAgua(); desenharApoios(); desenharSobrevivencia(); desenharMorbidas(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); desenharCumprimento(); desenharNunca(); desenharMetaCausas();
   arrumarCache();   // fica uma cópia por período (a mais recente), para ver sem rede
-  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, DMX, DPV, DAC, DTK, DAP, DAG, DSO, em: Date.now() });
+  guardarCache(P, { D, DM, DP, DT, DZ, DC, DR, DPL, DTP, DMN, DMD, DSR, DCT, DMC, DCU, DNA, DMX, DPV, DAC, DTK, DAP, DAG, DSO, DMB, em: Date.now() });
   setTimeout(() => guardarOutrosPeriodos().catch(() => {}), 1500);
   sb.rpc('registar_visita_painel').then(() => {}, () => {});   // quem viu o painel (no máximo 1 registo por pessoa a cada 30 min)
 }
@@ -1370,7 +1408,7 @@ $('#l-pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar()
 $('#b-act').onclick = carregar;
 $('#b-sair').onclick = async () => { try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {} await sb.auth.signOut(); location.reload(); };
 document.querySelectorAll('#v-meta button').forEach((b) => b.onclick = () => { VM = b.dataset.v; try { localStorage.setItem('rega.painel.meta', VM); } catch {} desenharMeta(); });
-let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharAgua(); desenharApoios(); desenharSobrevivencia(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }, 150); });
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { desenhar(); desenharPlantasDiaEquipa(); desenharMeta(); desenharTempos(); desenharChuva(); desenharRecontagens(); desenharPlantasMarcadas(); desenharDiasSemRega(); desenharActividades(); desenharTuks(); desenharAgua(); desenharApoios(); desenharSobrevivencia(); desenharMorbidas(); desenharTestes(); desenharMedicoes(); desenharManut(); desenharMonitoria(); }, 150); });
 // dentro da app (separador Painel): sem botão Sair próprio; a app pede para actualizar ao voltar ao separador
 const EMBUTIDO = new URLSearchParams(location.search).has('embutido');
 if (EMBUTIDO) { $('#b-sair').style.display = 'none'; $('#b-lingua').style.display = 'none'; window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data === 'actualizar') carregar(); }); }
