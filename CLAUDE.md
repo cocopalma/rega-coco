@@ -998,3 +998,9 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 - Teste: `testes/teste_v254.py` (simulação; LING=en / sw); `teste_v251/252/253.py` escolhem o percurso. Suaíli por rever.
 - O «M» de que o Valdo falou é o percurso W (Valdo, 21/11/2026): ficam X, W, Z e Diagonal.
 
+
+## Campos e plantas que já receberam água no painel (v255, 21/11/2026, Valdo: "O painel parece que não mostra o cartão de plantas regadas na totalidade e percentagem regada pelo menos 1 vez em relação ao total"; "Não podem ser 90%. Esta manhã faltavam apenas 2 campos"; publicada a 21/11/2026 com «Sim» depois de ver as imagens)
+- Desde a v227 o cartão «Plantas regadas das vivas que havia» tinha tirado «Plantas vivas em campos regados» e «Plantas regadas (total)»; e «Campos regados» (90 %) só contava regas na app e também campos já retirados.
+- Servidor (migração `v255_painel_agua`, cópia em `supabase/migracoes/v255_painel_plantas_na_rega.sql`; só acrescenta a chave `agua` a `painel_resumo_periodo`): campos activos que já receberam água pela regra de «Campos que nunca receberam água» (rega real na app com plantas > 0, WhatsApp do próprio campo, rega antes da app do próprio campo; só por produtor não conta) → {campos, vivas, app, so_fora, sem_vivas (só regas na app com 0 plantas), nunca}. A 21/11: 687/690 (app 620, só WhatsApp/antes 67, sem plantas vivas 3 em Manguna: PR395755-1, PR18110656-1, PR18110658-1), 88 540/88 880 vivas.
+- Painel com «Tudo»: «Campos que já receberam água» e «Plantas vivas que já receberam água» com % e barra (`AG`, `pct1`: 99,6 % não aparece como 100 %), «Plantas regadas (total)» de volta; «Plantas regadas das vivas que havia» fica. Com um período: «Campos regados» e «Plantas vivas em campos regados» do período (só app), como antes. Sem `agua` (cache antiga): como na v203.
+- Teste: `testes/teste_v255.py` (ANTIGO=1; REAL=<json> para os números reais; LING=en / sw).
