@@ -302,10 +302,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=254"></script>
-<script src="i18n.js?v=254"></script>
+<script src="i18n-sw.js?v=255"></script>
+<script src="i18n.js?v=255"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=254"></script>
+<script src="demo.js?v=255"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -574,18 +574,23 @@ function desenhar() {
   $('#d-agua').textContent = `${filtrado ? 'No período escolhido.' : 'Últimos 14 dias.'} Espera = minutos entre a chegada da equipa ao campo e a chegada do tuk-tuk (água). As equipas devem chegar ao campo às ${hc}; atraso = minutos depois das ${hc} na chegada ao 1.º campo do dia.`;
   const eqR = D.por_equipa || [], rLista = eqR.reduce((t, e) => t + (e.lista || 0), 0), rReg = eqR.reduce((t, e) => t + (e.regadas_ronda || 0), 0), pR = pct(rReg, rLista);
   const PV = DPV && DPV.total && DPV.total.regas ? DPV.total : null;   // v227: plantas regadas das vivas que havia
+  const aRR = D.areas_regadas_na_rega ?? D.areas_regadas, vRR = D.vivas_regadas_na_rega ?? D.vivas_regadas;   // v255: só os campos que estão hoje na rega
   const kpi = (rot, val, sub, barra) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${val}</div><div class="sub">${sub}</div>${barra != null ? `<div class="barra"><i style="width:${Math.min(100, barra)}%"></i></div>` : ''}</div>`;
   $('#kpis').innerHTML =
     // v128 (28/10/2026, Valdo): dividir os campos regados num dia por todos os campos não dizia nada; o número é do período e a % passa para o progresso da ronda (estado de hoje)
     // v203 (05/11/2026, Valdo: "colocar no primeiro cartão também a percentagem"): só com «Tudo» (todo o histórico); com um período fica só o número, como na v128
-    (!filtrado ? kpi('Campos regados', fmtPct(pct(D.areas_regadas, u.areas)), `${num(D.areas_regadas)} / ${num(u.areas)} <span>campos na rega já receberam pelo menos uma rega</span>`, pct(D.areas_regadas, u.areas))
+    // v255 (21/11/2026, Valdo: "plantas regadas na totalidade e percentagem regada pelo menos 1 vez em relação ao total"): com «Tudo» conta só os campos que estão hoje na rega (areas_regadas_na_rega)
+    (!filtrado ? kpi('Campos regados', fmtPct(pct(aRR, u.areas)), `${num(aRR)} / ${num(u.areas)} <span>campos na rega já receberam pelo menos uma rega</span>`, pct(aRR, u.areas))
       : kpi('Campos regados', num(D.areas_regadas), `<span>com pelo menos uma rega no período</span><br><span>Campos na rega:</span> ${num(u.areas)}`)) +
+    (!filtrado ? kpi('Plantas vivas que já receberam água', fmtPct(pct(vRR, u.vivas)), `${num(vRR)} / ${num(u.vivas)} <span>plantas vivas, nos campos na rega que já receberam pelo menos uma rega</span>`, pct(vRR, u.vivas))
+      : kpi('Plantas vivas em campos regados', num(D.vivas_regadas), `<span>nos campos regados no período</span><br><span>Plantas vivas na rega:</span> ${num(u.vivas)}`)) +
+    kpi('Plantas regadas (total)', num(D.plantas_regadas_total), `em ${num(D.registos)} regas de campo`) +
     kpi('Progresso da ronda (hoje)', fmtPct(pR), `${num(rReg)} / ${num(rLista)} <span>campos com equipa, na ronda actual de cada uma</span>${u.areas > rLista ? `<br><span>Campos sem equipa:</span> ${num(u.areas - rLista)} · <span>total na rega:</span> ${num(u.areas)}` : ''}`, pR) +
-    (PV ? kpiVivas(kpi) : kpi('Plantas vivas em campos regados', num(D.vivas_regadas), `<span>nos campos regados no período</span><br><span>Plantas vivas na rega:</span> ${num(u.vivas)}`)) +
+    (PV ? kpiVivas(kpi) : '') +
     kpi('Frequência média', D.dias_medios_entre_regas != null ? `${Number(D.dias_medios_entre_regas).toLocaleString(LOC)} dias` : '—', 'entre duas regas do mesmo campo') +
     kpi('Espera pela água', D.espera_agua_min != null ? `${num(D.espera_agua_min)} min` : '—', 'média, da chegada da equipa ao campo à chegada do tuk-tuk') +
     kpi('Chegada da equipa ao 1.º campo', D.chegada_equipa?.hora_media || '—', D.chegada_equipa ? `média; devia ser às ${D.chegada_equipa.hora_combinada}. ${num(D.chegada_equipa.depois_hora)} de ${num(D.chegada_equipa.dias)} dias de equipa depois dessa hora (atraso médio ${num(D.chegada_equipa.atraso_min)} min)` : 'sem dados');
-  $('#kpis').innerHTML += (PV ? '' : kpi('Plantas regadas (total)', num(D.plantas_regadas_total), `em ${num(D.registos)} regas de campo`)) +
+  $('#kpis').innerHTML +=
     kpi('Pessoas-dia', num(D.pessoas_dia_total), 'soma das pessoas presentes por equipa e dia') +
     kpi('Plantas por pessoa-dia', D.pessoas_dia_total ? num(D.plantas_regadas_total / D.pessoas_dia_total) : '—', 'produtividade média') +
     kpi('Equipas activas', num((D.por_equipa || []).filter((e) => e.dias_trabalhados > 0).length), `de ${num((D.por_equipa || []).length)} equipas com lista`);
