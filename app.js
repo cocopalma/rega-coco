@@ -5750,11 +5750,23 @@ const pctMorb = (m, n) => (n > 0 ? Math.round((100 * m) / n) : null);
 function ecraMorbidas(id, r) {
   const a = S.areas.find((x) => x.id === id); if (!a || !podeMorb()) return;
   S.morbFotos = { campo: null, equipa: null }; if (!r) LS.del('rascMorb');
+  // v254 (21/11/2026, Valdo): a app diz quantas plantas verificar (amostra de Cochran, como a monitoria, a partir das plantas no campo)
+  // e a pessoa escolhe o percurso que usou (X, W, Z, Diagonal). Número de plantas da base (vivas, senão mudas plantadas); corrige-se no campo.
+  S.morbP = { metodo: r?.metodo || null, N: r?.N != null ? Number(r.N) || 0 : plantasN(a), Ncorr: !!r?.Ncorr, nMexido: !!r?.nMexido };
+  const N0 = plantasN(a);
   const prev = (k) => `<img id="mb-p${k}" alt="" style="display:none;width:100%;max-height:160px;object-fit:cover;border-radius:10px;margin-top:6px">`;
   folha(`<h2>🩺 Inventário de plantas mórbidas</h2>${r?.camara ? AVISO_CAMARA : ''}
     <p class="pequeno">${esc(a.produtor)} · ${esc(a.pr)}-${a.area_n ?? '—'} · ${esc(a.comunidade)}${a.activista_id ? ` · <span class="sem-trad">${esc(nomeAct(a.activista_id))}</span>` : ''}</p>
     <p class="pequeno">Observe uma amostra de plantas do campo e conte as plantas mórbidas: fracas, estioladas por falta de água. Estas plantas recebem 20 L em cada rega.</p>
+    <div class="cartao" style="margin-top:6px"><div class="lin"><span>Plantas no campo</span><b id="mb-Nv">${S.morbP.N ? num(S.morbP.N) : '—'}</b></div>
+      <p class="pequeno" id="mb-Nfonte" style="margin:4px 0 0">${N0 ? `Da base (${plantasTxt(a)}).` : 'A base não tem o número de plantas deste campo. Conte as plantas e escreva o número.'}</p>
+      <div id="mb-Nedit" ${N0 && !S.morbP.Ncorr ? 'hidden' : ''}><label>Plantas que existem hoje no campo<input id="mb-N" type="number" inputmode="numeric" min="1" max="50000" value="${S.morbP.N || ''}"></label></div>
+      ${N0 && !S.morbP.Ncorr ? '<button class="chip" id="mb-Nmudar" style="margin-top:6px">O número de plantas mudou? Corrigir</button>' : ''}
+      <div class="lin" style="margin-top:6px"><span>Plantas a verificar</span><b id="mb-alvo">—</b></div></div>
+    <label>Percurso que vai usar no campo (obrigatório)</label>${escolha('mb-metodo', Object.keys(METODOS).map((k) => [k, k]))}
+    <div id="mb-desenho" style="display:flex;gap:12px;align-items:center;margin-top:8px"></div>
     <label>Plantas observadas (amostra)<input id="mb-n" type="number" inputmode="numeric" min="1" max="5000"></label>
+    <div id="mb-nmsg"></div>
     <label>Destas, plantas mórbidas<input id="mb-m" type="number" inputmode="numeric" min="0" max="5000"></label>
     <div id="mb-pct"></div>
     ${campoFoto('mb-fc', 'Fotografia do campo com as plantas mórbidas e a amostra (obrigatória)')}${prev('c')}
@@ -5762,14 +5774,33 @@ function ecraMorbidas(id, r) {
     <textarea id="mb-obs" rows="2" placeholder="Observação (opcional)"></textarea>
     <div id="mb-msg"></div>
     <button class="btn" id="mb-gravar" onclick="gravarMorb('${esc(id)}')">Gravar</button><button class="btn sec" onclick="LS.del('rascMorb');abrirFicha('${esc(id)}')">Cancelar</button>`);
-  if (r) { if (r.n != null) $('#mb-n').value = r.n; if (r.m != null) $('#mb-m').value = r.m; if (r.obs) $('#mb-obs').value = r.obs; }
-  const guardar = () => { rascGuardar('rascMorb', { perfil: S.perfil?.id, area: id, n: $('#mb-n').value, m: $('#mb-m').value, obs: $('#mb-obs').value }); pctMorbEcra(); };
-  ['#mb-n', '#mb-m', '#mb-obs'].forEach((k) => $(k).addEventListener('input', guardar)); guardar();
+  if (r) { if (r.n != null && r.n !== '') $('#mb-n').value = r.n; if (r.m != null) $('#mb-m').value = r.m; if (r.obs) $('#mb-obs').value = r.obs; }
+  const guardar = () => { rascGuardar('rascMorb', { perfil: S.perfil?.id, area: id, n: $('#mb-n').value, m: $('#mb-m').value, obs: $('#mb-obs').value,
+    metodo: S.morbP.metodo, N: S.morbP.N, Ncorr: S.morbP.Ncorr, nMexido: S.morbP.nMexido }); amostraMorbEcra(); pctMorbEcra(); };
+  ['#mb-m', '#mb-obs'].forEach((k) => $(k).addEventListener('input', guardar));
+  $('#mb-n').addEventListener('input', () => { S.morbP.nMexido = true; guardar(); });
+  $('#mb-N').addEventListener('input', () => { S.morbP.N = parseInt($('#mb-N').value, 10) || 0; S.morbP.Ncorr = true; $('#mb-Nv').textContent = S.morbP.N ? num(S.morbP.N) : '—';
+    $('#mb-Nfonte').textContent = 'Corrigido no campo. A app recalcula as plantas a verificar.'; guardar(); });
+  if ($('#mb-Nmudar')) $('#mb-Nmudar').onclick = () => { $('#mb-Nedit').hidden = false; $('#mb-Nmudar').remove(); $('#mb-N').focus(); };
+  if (S.morbP.Ncorr) $('#mb-Nfonte').textContent = 'Corrigido no campo. A app recalcula as plantas a verificar.';
+  document.querySelectorAll('#mb-metodo .chip').forEach((b) => { b.classList.toggle('on', b.dataset.v === S.morbP.metodo); b.onclick = () => {
+    document.querySelectorAll('#mb-metodo .chip').forEach((x) => x.classList.toggle('on', x === b)); S.morbP.metodo = b.dataset.v; guardar(); }; });
+  guardar();
   const mostrar = (k, foto) => { const img = $('#mb-p' + (k === 'campo' ? 'c' : 'e')); if (!img) return; if (foto) { img.src = URL.createObjectURL(foto); img.style.display = ''; } else img.style.display = 'none'; };
   for (const [k, cid] of [['campo', 'mb-fc'], ['equipa', 'mb-fe']]) {
     ligarFoto(cid, 'rascMorb', async (foto) => { S.morbFotos[k] = foto; mostrar(k, foto); if (foto) { try { await FOTOS.guardar('morbr-' + k, foto); rascGuardar('rascMorb', { ['f_' + k]: true }); } catch {} } });
     if (r?.['f_' + k]) FOTOS.ler('morbr-' + k).then((f) => { if (f && $('#mb-fc')) { S.morbFotos[k] = f; mostrar(k, f); } }).catch(() => {});
   }
+}
+// plantas a verificar (amostra de Cochran da monitoria) e o desenho do percurso; o nº de plantas observadas começa com esse número
+function amostraMorbEcra() {
+  const P = S.morbP, e = $('#mb-alvo'); if (!P || !e) return;
+  const alvo = tamanhoAmostra(P.N);
+  e.innerHTML = alvo ? (alvo >= P.N ? `${num(alvo)} <span>(todas)</span>` : `${num(alvo)} <span>de</span> ${num(P.N)}`) : '—';
+  if (alvo && !P.nMexido && $('#mb-n')) $('#mb-n').value = alvo;
+  $('#mb-desenho').innerHTML = P.metodo ? desenhoMetodo(P.metodo) + `<p class="pequeno" style="margin:0">Siga o percurso ${esc(P.metodo)} e observe as plantas a intervalos regulares${alvo && P.N > alvo ? ` (cerca de 1 em cada ${Math.max(1, Math.round(P.N / alvo))})` : ' (todas as plantas)'}.</p>` : '';
+  const n = parseInt($('#mb-n')?.value, 10), w = $('#mb-nmsg');
+  if (w) w.innerHTML = alvo && n > 0 && n < alvo ? `<div class="msg info"><span>Observou menos plantas do que as plantas a verificar</span> (${num(alvo)}). <span>Se puder, observe mais plantas.</span></div>` : '';
 }
 function pctMorbEcra() {
   const n = parseInt($('#mb-n')?.value, 10), m = parseInt($('#mb-m')?.value, 10), e = $('#mb-pct'); if (!e) return;
@@ -5780,6 +5811,8 @@ function pctMorbEcra() {
 async function gravarMorb(id) {
   const a = S.areas.find((x) => x.id === id); if (!a) return;
   const n = parseInt($('#mb-n').value, 10), m = parseInt($('#mb-m').value, 10), msg = (t) => { $('#mb-msg').innerHTML = `<div class="msg erro">${t}</div>`; };
+  if (!S.morbP?.metodo) return msg('Escolha o percurso que usou no campo (X, W, Z ou Diagonal).');
+  if (!(S.morbP.N >= 1)) return msg('Escreva o número de plantas que existem hoje no campo.');
   if (!(n >= 1)) return msg('Escreva o número de plantas observadas.');
   if (isNaN(m) || m < 0) return msg('Escreva o número de plantas mórbidas (0 se nenhuma).');
   if (m > n) return msg('As plantas mórbidas não podem passar as plantas observadas.');
@@ -5788,7 +5821,8 @@ async function gravarMorb(id) {
   $('#mb-gravar').disabled = true; $('#mb-msg').innerHTML = '<p class="pequeno">A ler o GPS…</p>';
   let g; try { g = await validarPosicao(a); } catch (e) { $('#mb-gravar').disabled = false; return msg(esc(e.message)); }
   if (g.valido === false) { $('#mb-gravar').disabled = false; return msg(`Está a ${g.dist} m do campo. O inventário regista-se no campo (até ${g.poligono ? CFG.margemPoligono + ' m da borda' : CFG.margemGPS + ' m'}).${dicaGpsFraco(g)}`); }
-  const x = { id: crypto.randomUUID(), area_id: id, data: hojeISO(), feito_em: new Date().toISOString(), amostra: n, morbidas: m, lat: g.lat, lon: g.lon, precisao_m: g.precisao, distancia_m: g.dist, observacao: $('#mb-obs').value.trim() || null };
+  const x = { id: crypto.randomUUID(), area_id: id, data: hojeISO(), feito_em: new Date().toISOString(), amostra: n, morbidas: m, lat: g.lat, lon: g.lon, precisao_m: g.precisao, distancia_m: g.dist, observacao: $('#mb-obs').value.trim() || null,
+    metodo: S.morbP.metodo, plantas_campo: S.morbP.N, plantas_alvo: tamanhoAmostra(S.morbP.N) || null, campo_corrigido: !!S.morbP.Ncorr };
   for (const k of ['campo', 'equipa']) { try { await FOTOS.guardar(`morb-${x.id}-${k}`, S.morbFotos[k]); } catch { S.fotosMem = { ...(S.fotosMem || {}), [`morb-${x.id}-${k}`]: S.morbFotos[k] }; } }
   const f = LS.get('filaMorb', []); f.push(x); LS.set('filaMorb', f); LS.del('rascMorb');
   try { await FOTOS.apagar('morbr-campo'); await FOTOS.apagar('morbr-equipa'); } catch {}
@@ -5798,7 +5832,7 @@ const morbLocais = (id) => LS.get('filaMorb', []).filter((x) => !id || x.area_id
 function linhaMorb(c) {
   const ft = (cam, t) => (cam && fotoVisivel(cam) ? ` <button class="chip" onclick="verFoto('rega-fotos','${esc(cam)}','${esc(t)}')">📷 ${t}</button>` : '');
   const rem = c.meu ? ` <button class="chip" onclick="removerMorb('${esc(c.id)}')">Remover (engano)</button>` : '';
-  return `<div class="pequeno" style="padding:4px 0;border-bottom:1px solid var(--linha,#e5e5e5)">🩺 <b>${fmtData(c.data)}</b> · <span class="sem-trad">${esc(c.quem || '?')}</span>: <b>${pctMorb(c.morbidas, c.amostra)} %</b> (${num(c.morbidas)} <span>de</span> ${num(c.amostra)} <span>plantas observadas</span>)${c.observacao ? ` · <span class="sem-trad">${esc(c.observacao)}</span>` : ''}${c.local ? ' · <span>no telefone</span>' : ''}${ft(c.foto_campo, 'Campo')}${ft(c.foto_equipa, 'Técnico e activista')}${rem}</div>`;
+  return `<div class="pequeno" style="padding:4px 0;border-bottom:1px solid var(--linha,#e5e5e5)">🩺 <b>${fmtData(c.data)}</b> · <span class="sem-trad">${esc(c.quem || '?')}</span>: <b>${pctMorb(c.morbidas, c.amostra)} %</b> (${num(c.morbidas)} <span>de</span> ${num(c.amostra)} <span>plantas observadas</span>)${c.metodo ? ` · <span>percurso</span> ${esc(c.metodo)}` : ''}${c.plantas_alvo ? ` · <span>a verificar:</span> ${num(c.plantas_alvo)}` : ''}${c.observacao ? ` · <span class="sem-trad">${esc(c.observacao)}</span>` : ''}${c.local ? ' · <span>no telefone</span>' : ''}${ft(c.foto_campo, 'Campo')}${ft(c.foto_equipa, 'Técnico e activista')}${rem}</div>`;
 }
 async function morbidasDoCampo(id) {
   const loc = morbLocais(id); let serv = [];
@@ -5822,8 +5856,11 @@ async function enviarMorb() {
     if (!fotos.campo || !fotos.equipa) { LS.set('filaMorb', LS.get('filaMorb', []).filter((y) => y.id !== x.id)); aviso('Um inventário de plantas mórbidas perdeu as fotografias no telefone e não foi gravado. Registe-o de novo.', 'erro'); continue; }
     const cam = { campo: `${S.perfil.id}/morb-${x.id}-campo.jpg`, equipa: `${S.perfil.id}/morb-${x.id}-equipa.jpg` };
     for (const k of ['campo', 'equipa']) { const up = await sb.storage.from('rega-fotos').upload(cam[k], fotos[k], { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; }
-    const r = await sb.rpc('gravar_inventario_morbidas', { p_id: x.id, p_area: x.area_id, p_feito_em: x.feito_em, p_amostra: x.amostra, p_morbidas: x.morbidas, p_lat: x.lat, p_lon: x.lon,
-      p_precisao: x.precisao_m, p_distancia: x.distancia_m, p_foto_campo: cam.campo, p_foto_equipa: cam.equipa, p_obs: x.observacao });
+    const base = { p_id: x.id, p_area: x.area_id, p_feito_em: x.feito_em, p_amostra: x.amostra, p_morbidas: x.morbidas, p_lat: x.lat, p_lon: x.lon,
+      p_precisao: x.precisao_m, p_distancia: x.distancia_m, p_foto_campo: cam.campo, p_foto_equipa: cam.equipa, p_obs: x.observacao };
+    // v254: com o percurso e as plantas a verificar; um registo da v251–v253 ainda na fila (sem percurso) vai pela função antiga
+    const r = x.metodo ? await sb.rpc('gravar_inventario_morbidas2', { ...base, p_metodo: x.metodo, p_plantas_campo: x.plantas_campo ?? null, p_plantas_alvo: x.plantas_alvo ?? null, p_campo_corrigido: !!x.campo_corrigido })
+      : await sb.rpc('gravar_inventario_morbidas', base);
     if (r.error && erroPassageiro(r.error)) return r.error.message;
     if (r.error) avisoRecusado(r.error, `Inventário de plantas mórbidas não gravado: ${r.error.message}`, 'erro');
     LS.set('filaMorb', LS.get('filaMorb', []).filter((y) => y.id !== x.id));

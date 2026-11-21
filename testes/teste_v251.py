@@ -27,7 +27,7 @@ with sync_playwright() as p:
     passo("2 ecrã traduzido", T[0] in pg.inner_text("#folha"))
     pg.click("#mb-gravar"); pg.wait_for_timeout(200)
     passo("3 sem amostra não grava", pg.locator("#mb-msg .erro").count() == 1)
-    pg.fill("#mb-n", "30"); pg.fill("#mb-m", "31"); pg.wait_for_timeout(200)
+    pg.click("#mb-metodo .chip[data-v=X]"); pg.fill("#mb-n", "30"); pg.fill("#mb-m", "31"); pg.wait_for_timeout(200)
     passo("4 mórbidas acima da amostra: aviso", pg.locator("#mb-pct .erro").count() == 1)
     pg.fill("#mb-m", "3"); pg.wait_for_timeout(200)
     t = pg.inner_text("#mb-pct")

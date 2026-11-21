@@ -20,7 +20,7 @@ with sync_playwright() as p:
     pg.evaluate(f"DEMO.irPara('{a['id']}')"); pg.wait_for_timeout(1500)
     pg.evaluate(f"abrirFicha('{a['id']}')"); pg.wait_for_timeout(800)
     pg.locator("#folha .fi-q", has_text=T[0]).click(); pg.wait_for_selector("#mb-gravar")
-    pg.fill("#mb-n", "40"); pg.fill("#mb-m", "10")
+    pg.click("#mb-metodo .chip[data-v=X]"); pg.fill("#mb-n", "40"); pg.fill("#mb-m", "10")
     pg.set_input_files("#mb-fc", FOTO); pg.wait_for_timeout(1200); pg.set_input_files("#mb-fe", FOTO); pg.wait_for_timeout(1200)
     pg.click("#mb-gravar"); pg.wait_for_timeout(5000)
     passo("1 inventário enviado e contado por campo", pg.evaluate(f"(S.nMorb||{{}})['{a['id']}']?.n") == 1, str(pg.evaluate("S.nMorb")))

@@ -408,7 +408,9 @@
     // v251: inventário de plantas mórbidas
     gravar_inventario_morbidas: (a) => { DB.morb ||= []; if (DB.morb.some((x) => x.id === a.p_id)) return { id: a.p_id, repetido: true }; const ar = area(a.p_area);
       DB.morb.push({ id: a.p_id, area_id: a.p_area, activista_id: ar.activista_id || null, data: String(a.p_feito_em || new Date().toISOString()).slice(0, 10), feito_em: a.p_feito_em, amostra: a.p_amostra, morbidas: a.p_morbidas,
-        foto_campo: a.p_foto_campo, foto_equipa: a.p_foto_equipa, observacao: a.p_obs || null, quem: NOMES[papel] || 'Eu', papel, removido: false }); guardarDB(); return { id: a.p_id }; },
+        foto_campo: a.p_foto_campo, foto_equipa: a.p_foto_equipa, observacao: a.p_obs || null, quem: NOMES[papel] || 'Eu', papel, removido: false,
+        metodo: a.p_metodo || null, plantas_campo: a.p_plantas_campo ?? null, plantas_alvo: a.p_plantas_alvo ?? null }); guardarDB(); return { id: a.p_id }; },
+    gravar_inventario_morbidas2: (a) => { if (!a.p_metodo) throw Object.assign(new Error('Escolha o percurso que usou no campo (X, W, Z ou Diagonal).'), { erro400: true }); return RPC.gravar_inventario_morbidas(a); },
     inventarios_morbidas_campo: (a) => (DB.morb || []).filter((x) => x.area_id === a.p_area && !x.removido).map((x) => ({ ...x, meu: x.papel === papel })).reverse(),
     morbidas_por_campo: () => { if (['activista', 'oficial_me'].includes(papel)) return []; const m = new Map(); for (const x of (DB.morb || []).filter((y) => !y.removido)) { const o = m.get(x.area_id); if (!o || String(x.feito_em) > String(o.f)) m.set(x.area_id, { area_id: x.area_id, n: (o?.n || 0) + 1, ultima: x.data, amostra: x.amostra, morbidas: x.morbidas, f: x.feito_em }); else o.n++; } return [...m.values()].map(({ f, ...r }) => r); },
     remover_inventario_morbidas: (a) => { const x = (DB.morb || []).find((y) => y.id === a.p_id); if (x) { x.removido = true; guardarDB(); } return null; },
