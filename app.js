@@ -562,6 +562,7 @@ async function carregarTudo() {
   }
   LS.set('perfil', S.perfil); LS.set('activistas', S.activistas); LS.set('areas', S.areas);
   await carregarEstado(est);
+  setTimeout(() => avisoPlanos(), 1500);              // v250: planos das equipas por aprovar
 }
 async function carregarEstado(pronto) {
   let { data, error } = pronto || await sb.rpc('estado_ronda3');
@@ -2302,10 +2303,36 @@ function marcasItinerario() {                            // números do itinerá
 }
 // supervisor, técnico, gestor, director, M&E: planos das equipas que vêem
 const souAprovadorGestor = () => S.perfil?.papel === 'gestor' && S.perfil?.gere_acessos !== false;
-const esperaPorMim = (p) => (p.estado === 'por_supervisor' && S.perfil?.papel === 'supervisor') || (p.estado === 'por_gestor' && souAprovadorGestor());
+// v250 (21/11/2026, Valdo): planos de rondas que a equipa já passou não aparecem (a ronda actual vem do estado dos campos da equipa)
+function rondaEquipa(act) { let r = 0; for (const a of S.areas || []) if (a.activista_id === act) { const e = (S.estado || {})[a.id]; if (e && e.ronda > r) r = e.ronda; } return r || null; }
+const planoPassado = (p) => { const r = rondaEquipa(p.activista_id); return r != null && p.ronda < r; };
+const planosVisiveis = () => planos().filter((p) => !planoPassado(p));
+// por aprovar por mim: o supervisor só nos planos das suas equipas (o servidor só o deixa aprovar esses)
+const esperaPorMim = (p) => !planoPassado(p) && ((p.estado === 'por_supervisor' && S.perfil?.papel === 'supervisor' && !S.perfil?.ve_tudo && (!Array.isArray(S.visiveis) || S.visiveis.includes(p.activista_id)))
+  || (p.estado === 'por_gestor' && souAprovadorGestor()));
+const planosPorMim = () => planos().filter(esperaPorMim);
+const itemPlano = (p) => `<div class="lin" style="flex-wrap:wrap"><span><span class="sem-trad">${esc(p.activista)}</span> · <span>ronda ${p.ronda}</span> · <span>${(p.dias || []).length} dias</span></span>
+  <button class="chip" onclick="ecraPlano('${esc(p.id)}')">Ver e aprovar</button></div>`;
+// v250 (Valdo: "uma mensagem… dentro do aplicativo, para que eles, quando abrirem, apareça no ecrã"): ao abrir a app, uma vez por dia,
+// o supervisor (e o gestor principal) vê os planos que esperam por ele; também ficam no «O meu dia»
+function avisoPlanos(tent = 0) {
+  if (!['supervisor', 'gestor'].includes(S.perfil?.papel) || window.DEMO) return;
+  const L = planosPorMim(); if (!L.length) return;
+  const chave = hojeISO() + '|' + (S.perfil.id || '');
+  if (LS.get('avisoPlanos') === chave) return;
+  if ($('#folha')?.classList.contains('on')) { if (tent < 12) setTimeout(() => avisoPlanos(tent + 1), 5000); return; }
+  LS.set('avisoPlanos', chave);
+  const sup = S.perfil.papel === 'supervisor';
+  folha(`<h2>🗺 <span>Planos das equipas por aprovar</span> (${L.length})</h2>
+    <div class="msg info" id="pl-aviso">${sup ? '<span>A app preparou o plano da ronda destas equipas: a ordem dos campos, dia a dia. Veja cada plano e aprove-o, ou recuse-o com o motivo. Depois da sua aprovação, o plano vai para o gestor; quando ele aprovar, o activista vê o itinerário no Hoje.</span>'
+      : '<span>Os supervisores já aprovaram estes planos. Depois da sua aprovação, o activista vê o itinerário no Hoje.</span>'}</div>
+    ${L.map(itemPlano).join('')}
+    <p class="pequeno"><span>Também estão em Hoje › O meu dia.</span></p>
+    <button class="btn sec" onclick="fecharFolha()">Mais tarde</button>`);
+}
 function cartaoPlanos() {
   if (souActivista() || !['tecnico', 'supervisor', 'gestor', 'director', 'me'].includes(S.perfil?.papel)) return '';
-  const l = planos().filter((p) => p.estado !== 'recusado' || Date.now() - new Date(p.recusado_em) < 7 * 864e5); if (!l.length) return '';
+  const l = planosVisiveis().filter((p) => p.estado !== 'recusado' || Date.now() - new Date(p.recusado_em) < 7 * 864e5); if (!l.length) return '';
   const meus = l.filter(esperaPorMim);
   return `<div class="cartao" id="hoje-planos"><h2>🗺 <span>Planos das equipas</span>${meus.length ? ` · <span>${meus.length} por aprovar</span>` : ''}</h2>
     ${l.map((p) => `<div class="lin" style="flex-wrap:wrap"><span><span class="sem-trad">${esc(p.activista)}</span> · <span>ronda ${p.ronda}</span> · <span>${(p.dias || []).length} dias</span></span>
@@ -6844,6 +6871,9 @@ function cartaoMeuDia() {
       <div class="sub"><span>Na base</span>: <b class="sem-trad">${esc(x.nome_antigo)}</b> → <span>Nome novo</span>: <b class="sem-trad">${esc(x.nome_novo)}</b></div>
       <div class="sub"><span>Técnico</span>: ${x.tecnico_em ? `✓ <span class="sem-trad">${esc(x.tecnico_nome || '')}</span>` : '<span>por confirmar</span>'} · <span>Supervisor</span>: ${x.supervisor_em ? `✓ <span class="sem-trad">${esc(x.supervisor_nome || '')}</span>` : '<span>por confirmar</span>'}</div>
       ${x.posso ? `<div class="chips"><button class="chip" onclick="ecraCorrNome('${esc(x.id)}')">✓ Confirmar ou recusar</button></div>` : ''}</div>`).join('')]);
+  // v250: planos das equipas que esperam pela minha aprovação (só aparece quando há)
+  { const pm = planosPorMim(); if (pm.length) L.push(['pl', 'Planos das equipas por aprovar', pm.length, 'a',
+    '<p class="pequeno">O plano propõe a ordem dos campos, dia a dia, na ronda que a equipa está a fazer. Aprove-o ou recuse-o com o motivo.</p>' + pm.map(itemPlano).join('')]); }
   // primeiro as linhas com alguma coisa por tratar (pela ordem acima), depois as outras
   const ord = [...L.filter((x) => x[2] > 0), ...L.filter((x) => !(x[2] > 0))], porTratar = L.filter((x) => x[2] > 0).length;
   const nAnt = A.reduce((n, x) => n + (x[2] || 0), 0);
@@ -6872,7 +6902,7 @@ function cartaoMaisHoje(hojeCard) {
   add('m-hj', 'Regas de hoje e chuva', hojeCard);
   add('m-dsr', 'Dia sem rega', cartaoDiaSemRega());
   add('m-ap', 'Apoio entre equipas', cartaoApoio());
-  { const pl = cartaoPlanos(); add('m-pl', 'Planos das equipas', pl, pl ? planos().filter(esperaPorMim).length : null); }
+  { const pl = cartaoPlanos(); add('m-pl', 'Planos das equipas', pl, pl ? planosPorMim().length : null); }
   add('m-av', 'Avisos da monitoria', cartaoAvisos(), avisos().length || null);
   add('m-tel', 'Activistas sem telemóvel', cartaoSemTelefone());
   add('m-man', 'Manutenção', cartaoManutHoje());
