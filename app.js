@@ -2358,15 +2358,15 @@ function ecraPlano(id) {
   folha(`<h2>🗺 <span>Plano da equipa</span> · <span class="sem-trad">${esc(p.activista)}</span></h2>
     <p class="pequeno"><span>Ronda ${p.ronda}</span> · <span>${ESTADO_PLANO[p.estado] || esc(p.estado)}</span>${p.supervisor_nome ? ` · <span>Supervisor:</span> <span class="sem-trad">${esc(p.supervisor_nome)}</span> ✓` : ''}${p.gestor_nome ? ` · <span>Gestor:</span> <span class="sem-trad">${esc(p.gestor_nome)}</span> ✓` : ''}</p>
     ${p.estado === 'recusado' ? `<div class="msg erro"><span>Recusado por</span> <span class="sem-trad">${esc(p.recusado_nome || '')}</span>: <span class="sem-trad">${esc(p.recusa_motivo || '')}</span></div>` : ''}
-    <div class="cartao"><h2 style="margin:0 0 6px">O que a equipa fez na ronda ${ap.ronda ?? p.ronda - 1}</h2>
+    ${ap.versao === 3 ? cartaoAprPlano(ap) : `<div class="cartao"><h2 style="margin:0 0 6px">O que a equipa fez na ronda ${ap.ronda ?? p.ronda - 1}</h2>
       <div class="lin"><span>Dias de trabalho</span><b>${ap.dias_trabalhados ?? '—'}</b></div>
       <div class="lin"><span>Pessoas por dia</span><b>${ap.pessoas ?? '—'}</b></div>
       <div class="lin"><span>Plantas por dia</span><b>${ap.plantas_por_dia != null ? num(ap.plantas_por_dia) : '—'}</b></div>
       <div class="lin"><span>Início e fim do dia</span><b>${ap.hora_inicio || '—'} – ${ap.hora_fim || '—'}</b></div>
-      <div class="lin"><span>Tempo da equipa por planta</span><b>${ap.min_por_planta != null ? Math.round(ap.min_por_planta * 60) + ' s' : '—'}</b></div></div>
+      <div class="lin"><span>Tempo da equipa por planta</span><b>${ap.min_por_planta != null ? Math.round(ap.min_por_planta * 60) + ' s' : '—'}</b></div></div>`}
     <div class="msg info"><span>Meta:</span> ${num(p.capacidade)} <span>plantas por dia</span> (140 × ${p.pessoas} <span>pessoas</span>) · ${(p.dias || []).length} <span>dias</span></div>
     ${p.notas ? `<p class="pequeno">${esc(p.notas)}</p>` : ''}
-    ${(p.dias || []).map((d) => `<div class="cartao"><div class="lin"><b>Dia ${d.n}</b><span>${num(d.plantas)} plantas · ${(d.dist_m / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km · ${h(d.minutos)}</span></div>
+    ${(p.dias || []).map((d) => d.fim ? diaPlano3(p, d, nome) : `<div class="cartao"><div class="lin"><b>Dia ${d.n}</b><span>${num(d.plantas)} plantas · ${(d.dist_m / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km · ${h(d.minutos)}</span></div>
       <p class="pequeno sem-trad">${d.campos.map((c, k) => `${k + 1}. ${esc(nome(c.area_id))}${c.sem_coordenada ? ' (?)' : ''}`).join(' · ')}</p><div class="pl-falhas" data-n="${d.n}"></div></div>`).join('')}
     <div class="chips"><button class="chip" onclick="verPlanoMapa('${esc(p.id)}')">Ver no mapa</button></div>
     ${esperaPorMim(p) ? `<label>Motivo (obrigatório para recusar)<textarea id="pl-mot" rows="2"></textarea></label>
@@ -2376,6 +2376,30 @@ function ecraPlano(id) {
       <p class="pequeno">O plano volta a ficar por aprovar por si. ${p.estado === 'aprovado' ? 'O activista deixa de ver o itinerário até nova decisão.' : ''}</p>` : ''}
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
   if (p.estado === 'aprovado') falhasPlano(p.id);
+}
+// v256 (22/11/2026, Valdo: "É importante dosear aqui bem o tempo para que não tenham horas ociosas"): planos da versão 3 do gerador.
+// Cada dia vai das 06:30 às 14:00; o tempo conta a espera pela água, a rega, a deslocação e as outras esperas, com o que a equipa
+// fez nos últimos 30 dias. O último dia da ronda continua com o 1.º dia da ronda seguinte (d.continua / d.continuacao).
+const durPl = (m) => (m == null ? '—' : m < 60 ? `${Math.round(m)} min` : `${Math.floor(m / 60)} h ${String(Math.round(m % 60)).padStart(2, '0')}`);
+function cartaoAprPlano(ap) {
+  return `<div class="cartao" id="pl-apr"><h2 style="margin:0 0 6px">O que a equipa fez nos últimos 30 dias</h2>
+    <div class="lin"><span>Dias com rega</span><b>${ap.n_dias ?? '—'}</b></div>
+    <div class="lin"><span>Pessoas por dia</span><b>${ap.pessoas ?? '—'}</b></div>
+    <div class="lin"><span>Espera pela água no 1.º campo</span><b>${durPl(ap.e1)}</b></div>
+    <div class="lin"><span>Espera pela água nos campos seguintes</span><b>${durPl(ap.en)}</b></div>
+    <div class="lin"><span>Rega, por planta</span><b>${ap.mr != null ? Math.round(ap.mr * 60) + ' s' : '—'}</b></div>
+    <div class="lin"><span>Deslocação entre campos</span><b>${ap.vel != null ? Math.round(ap.vel) : '—'} m/min · <span>longas</span> ${ap.vlon != null ? Math.round(Math.max(ap.vlon, ap.vel || 0)) : '—'} m/min</b></div>
+    <div class="lin"><span>Outras esperas por dia</span><b>${durPl(ap.bias)}</b></div>
+    <p class="pequeno"><span>Cada dia vai das 06:30 às 14:00. O tempo de cada dia é calculado com estes números.</span> ${ap.erro != null ? `<span>Nos dias reais da equipa, o cálculo erra em média</span> ±${Math.round(ap.erro)} min.` : ''}</p></div>`;
+}
+function diaPlano3(p, d, nome) {
+  const meta = p.capacidade || 0, pct = meta ? Math.round(100 * d.plantas / meta) : null;
+  return `<div class="cartao pl-dia" data-n="${d.n}"><div class="lin"><b>Dia ${d.n} · ${d.inicio} – ${d.fim}</b><span>${num(d.plantas)} plantas${pct != null ? ` (${pct}% <span>da meta</span>)` : ''} · ${(d.dist_m / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km</span></div>
+    ${d.continuacao ? `<div class="msg info pequeno">🔁 <span>Continua o último dia da ronda</span> ${p.ronda - 1} (<span>a partir das</span> ${d.inicio}).</div>` : ''}
+    <p class="pequeno pl-partes">💧 <span>Espera pela água</span> ${durPl(d.espera_min)} · 🌱 <span>Rega</span> ${durPl(d.rega_min)} · 🚶 <span>Deslocação</span> ${durPl(d.desloc_min)}${d.outras_min ? ` · <span>Outras esperas</span> ${durPl(d.outras_min)}` : ''}</p>
+    <p class="pequeno sem-trad">${d.campos.map((c, k) => `${k + 1}. ${esc(c.produtor || nome(c.area_id))} (${num(c.plantas)})${c.sem_coordenada ? ' (?)' : ''}`).join(' · ')}</p>
+    ${d.continua ? `<div class="msg info pequeno">🔁 <span>Depois destes campos a ronda</span> ${p.ronda} <span>fica feita: a equipa continua com o dia 1 da ronda</span> ${p.ronda + 1}${d.continua_ate ? ` <span>até às</span> ${d.continua_ate}` : ''}.</div>` : ''}
+    <div class="pl-falhas" data-n="${d.n}"></div></div>`;
 }
 // v248: campos de cada dia do itinerário que ficaram por regar, com o motivo (passaram para o dia seguinte)
 async function falhasPlano(pid) {
@@ -4267,16 +4291,21 @@ function cartaoApoioAct() {                                  // activista: a que
     : (p.so_actividade ? `<p><span>A equipa de</span> <b class="sem-trad">${esc(p.ajuda_nome)}</b> <span>está a ajudar a sua equipa na cava-roda e no mulching:</span> ${num((p.area_ids || []).length)} <span>campos</span> (${num(p.campos_actividade || 0)} <span>com trabalho registado</span>). <span>A rega desses campos continua consigo.</span></p>`
       : `<p><span>A equipa de</span> <b class="sem-trad">${esc(p.ajuda_nome)}</b> <span>está a ajudar a sua equipa:</span> ${num((p.area_ids || []).length)} <span>campos</span> (${num(p.feitas || 0)} <span>regados</span>). <span>Esses campos contam para a sua ronda.</span></p>`)).join('') + '</div>';
 }
+// v256 (22/11/2026, Valdo: "a app deve sugerir essa ajuda para o supervisor aprovar"): a sugestão compara quantos dias dura a ronda
+// de cada equipa (apoio_sugestoes); o supervisor vê-a também no «O meu dia» e activa-a com «Ver os campos e activar»
+const distTxt = (m) => (m < 1000 ? num(m) + ' m' : (m / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 }) + ' km');
+const itemSugApoio = (x) => `<div class="item sug-apoio" style="display:block">
+      <div class="nome"><span class="sem-trad">${esc(x.ajuda_nome)}</span> <span>pode ajudar</span> <span class="sem-trad">${esc(x.para_nome)}</span></div>
+      <div class="sub">${x.ajuda_dias != null ? `<span>A ronda de</span> <span class="sem-trad">${esc(x.ajuda_nome)}</span> <span>dura</span> ${num(x.ajuda_dias)} <span>dias</span>; <span>a de</span> <span class="sem-trad">${esc(x.para_nome)}</span> ${num(x.para_dias)} <span>dias</span>`
+        : `<span class="sem-trad">${esc(x.ajuda_nome)}</span> <span>já está na ronda</span> ${num(x.ajuda_ronda)} · <span class="sem-trad">${esc(x.para_nome)}</span> <span>na ronda</span> ${num(x.para_ronda)} (${num(x.para_regadas)}/${num(x.para_lista)})`} · ${num(x.campos)} <span>campos a menos de 5 km</span>${x.nunca ? ` (${num(x.nunca)} <span>nunca regados</span>)` : ''} · <span>o mais perto a</span> ${distTxt(x.dist_min)}</div>
+      <button class="chip" onclick="ecraApoio('${esc(x.ajuda_id)}','${esc(x.para_id)}')">Ver os campos e activar</button></div>`;
 function cartaoApoio() {                                     // técnico, supervisor, gestor
   const l = apoiosAct(), sg = LS.get('apoioSug', []) || [];
   let h = `<div class="cartao"><h2>🤝 Apoio entre equipas</h2><p class="pequeno">Uma equipa que já fechou a ronda pode ajudar outra equipa a menos de 5 km. Quem activa é o técnico ou o supervisor; a app sugere.</p><p class="pequeno">Uma equipa sem campos pode ajudar outra equipa da mesma comunidade, só na cava-roda e no mulching: use «Activar outro apoio».</p>`;
   if (l.length) h += '<h3 style="font-size:14px;margin:8px 0 4px">Em curso</h3>' + l.map((p) => `<div class="item" style="display:block"><div class="nome"><span class="sem-trad">${esc(p.ajuda_nome)}</span> → <span class="sem-trad">${esc(p.para_nome)}</span></div>
       <div class="sub">${p.so_actividade ? `🌱 <span>Só cava-roda e mulching:</span> ${num(p.campos_actividade || 0)} / ${num((p.area_ids || []).length)} <span>campos com trabalho registado</span>` : `${num(p.feitas || 0)} / ${num((p.area_ids || []).length)} <span>campos regados</span>`} · <span>desde</span> ${fmtData(p.inicio)}${p.criado_por_nome ? ` · <span>activado por</span> <span class="sem-trad">${esc(p.criado_por_nome)}</span>` : ''}</div>
       <button class="chip" onclick="terminarApoio('${esc(p.id)}')">Terminar o apoio</button></div>`).join('');
-  if (sg.length) h += '<h3 style="font-size:14px;margin:10px 0 4px">💡 Sugestões da app</h3>' + sg.slice(0, 6).map((x) => `<div class="item" style="display:block">
-      <div class="nome"><span class="sem-trad">${esc(x.ajuda_nome)}</span> <span>pode ajudar</span> <span class="sem-trad">${esc(x.para_nome)}</span></div>
-      <div class="sub"><span class="sem-trad">${esc(x.ajuda_nome)}</span> <span>já está na ronda</span> ${num(x.ajuda_ronda)} · <span class="sem-trad">${esc(x.para_nome)}</span> <span>na ronda</span> ${num(x.para_ronda)} (${num(x.para_regadas)}/${num(x.para_lista)}) · ${num(x.campos)} <span>campos a menos de 5 km</span>${x.nunca ? ` (${num(x.nunca)} <span>nunca regados</span>)` : ''} · <span>o mais perto a</span> ${x.dist_min < 1000 ? num(x.dist_min) + ' m' : (x.dist_min / 1000).toFixed(1) + ' km'}</div>
-      <button class="chip" onclick="ecraApoio('${esc(x.ajuda_id)}','${esc(x.para_id)}')">Ver os campos e activar</button></div>`).join('');
+  if (sg.length) h += '<h3 style="font-size:14px;margin:10px 0 4px">💡 Sugestões da app</h3>' + sg.slice(0, 6).map(itemSugApoio).join('');
   else if (!l.length) h += '<p class="pequeno">Sem sugestões: nenhuma equipa da sua lista fechou a ronda com outra equipa por perto.</p>';
   return h + `<button class="btn sec" onclick="ecraApoioEscolher()">➕ Activar outro apoio</button></div>`;
 }
@@ -7047,6 +7076,9 @@ function cartaoMeuDia() {
   // v250: planos das equipas que esperam pela minha aprovação (só aparece quando há)
   { const pm = planosPorMim(); if (pm.length) L.push(['pl', 'Planos das equipas por aprovar', pm.length, 'a',
     '<p class="pequeno">O plano propõe a ordem dos campos, dia a dia, na ronda que a equipa está a fazer. Aprove-o ou recuse-o com o motivo.</p>' + pm.map(itemPlano).join('')]); }
+  // v256: apoio entre equipas sugerido pela app (só o supervisor: é ele que aprova)
+  if (S.perfil?.papel === 'supervisor') { const sa = LS.get('apoioSug', []) || []; if (sa.length) L.push(['ap', 'Apoio entre equipas sugerido', sa.length, 'a',
+    '<p class="pequeno">Uma equipa que faz a ronda em metade dos dias (ou menos) pode ajudar uma equipa vizinha, a menos de 5 km. Veja os campos e active o apoio, se concordar.</p>' + sa.slice(0, 6).map(itemSugApoio).join('')]); }
   // primeiro as linhas com alguma coisa por tratar (pela ordem acima), depois as outras
   const ord = [...L.filter((x) => x[2] > 0), ...L.filter((x) => !(x[2] > 0))], porTratar = L.filter((x) => x[2] > 0).length;
   const nAnt = A.reduce((n, x) => n + (x[2] || 0), 0);
