@@ -432,6 +432,8 @@ async function sincronizarAgora(silencioso) {
         : x.tipo === 'plantas_rega' ? await sb.rpc('corrigir_plantas_rega', { p_id: x.registo_id, p_plantas: x.plantas, p_motivo: x.motivo, p_em: x.em })
         : x.tipo === 'tuk_rega' ? await sb.rpc('corrigir_tuk_rega', { p_id: x.registo_id, p_codigo: x.codigo, p_outro: x.outro, p_chegada: x.chegada, p_motivo: x.motivo, p_em: x.em })   // v241
         : x.tipo === 'aval_sug' ? await sb.rpc('avaliar_sugestao', { p_id: x.sug_id, p_estado: x.estado, p_nota: x.nota })
+        : x.tipo === 'msg_vista' ? await sb.rpc('mensagem_vista', { p_id: x.msg_id, p_em: x.em })   // v258
+        : x.tipo === 'msg_resp' ? await sb.rpc('responder_mensagem', { p_id: x.resp_id, p_msg: x.msg_id, p_texto: x.texto, p_em: x.em })
         : x.tipo === 'com_act' ? await sb.rpc('definir_comunidade_activista', { p_activista: x.activista_id, p_comunidade: x.comunidade })
         : x.tipo === 'membro' ? await sb.rpc('gravar_membro', { p_id: x.membro_id, p_activista: x.activista_id, p_nome: x.nome, p_activo: x.activo, p_motivo: x.motivo || null })
         : x.tipo === 'presencas' ? (x.ausente ? await sb.rpc('gravar_presencas2', { p_id: x.pres_id, p_activista: x.activista_id, p_data: x.data, p_presentes: x.presentes, p_outros: x.outros || 0, p_activista_presente: false })
@@ -452,7 +454,7 @@ async function sincronizarAgora(silencioso) {
       if (r4.adiar) continue;                            // v248: a conclusão espera que a cava-roda desse campo seja enviada
       if (r4.error && erroPassageiro(r4.error)) { erro = r4.error.message; sessao = erroSessao(r4.error); break; }   // sem rede: fica na fila
       if (r4.error) { marcarRecusa('filaAlt', x, r4.error, x.tipo || 'atrib'); recusadas++; continue; }   // recusado: fica na fila, marcado (antes saía e perdia-se)
-      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot', 'meta_mot2', 'agua', 'chefe_man', 'horas_extras', 'it_fecho'].includes(x.tipo)) alteradas++;
+      LS.set('filaAlt', LS.get('filaAlt', []).filter((y) => y.id !== x.id)); if (!['aval_sug', 'msg_vista', 'msg_resp', 'com_act', 'justif', 'dia_sem_rega', 'dia_sem_rega_rem', 'conf_dsr', 'membro', 'presencas', 'meta_mot', 'meta_mot2', 'agua', 'chefe_man', 'horas_extras', 'it_fecho'].includes(x.tipo)) alteradas++;
       if (x.tipo === 'horas_extras') {   // v249: fica já no telefone como enviada (sem esperar pela lista do servidor), para o Hoje não perder o «Cancelar»
         const L = (LS.get('horasExtras', []) || []).filter((h) => !(h.activista_id === x.activista_id && h.data === x.data));
         L.push({ id: x.he_id, activista_id: x.activista_id, data: x.data, por: S.perfil?.nome, em: x.em }); LS.set('horasExtras', L);
@@ -498,7 +500,7 @@ async function sincronizarAgora(silencioso) {
   if (!erro) erro = await enviarRecontagens();
   if (!erro && (LS.get('filaTrilho', []) || []).length) await enviarTrilhos();
   if (erro && recusadas && !sessao) await enviarProblemas();   // o servidor respondeu às recusas: o relatório delas também deve chegar
-  if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); if (S.manutMudou) { S.manutMudou = false; await carregarManut().catch(() => {}); } await carregarEstado(); }
+  if (!erro) { LS.set('ultimaSync', new Date().toISOString()); if (alteradas) await recarregarAreas(); if (S.manutMudou) { S.manutMudou = false; await carregarManut().catch(() => {}); } await carregarEstado(); if (Date.now() - _msgEm > 5 * 60000) carregarMensagens().then(() => avisoMensagens(0, true)).catch(() => {}); }
   actSync();
   if (sessao) aviso('A sessão expirou. Feche a app, abra-a de novo e tente outra vez.', 'erro');
   else if (recusadas && !erro) aviso('Alguns registos foram recusados pelo servidor. Toque no botão vermelho do topo para ver quais.', 'erro');
@@ -543,6 +545,7 @@ async function carregarTudo() {
   carregarNPlantas().catch(() => {});
   carregarNMorb().catch(() => {});
   carregarSugFeitas().catch(() => {});
+  carregarMensagens().catch(() => {});   // v258: mensagens do gestor
   carregarExpansao().catch(() => {});
   carregarManut().catch(() => {});   // lista dos oficiais no telefone (encaminhar sem rede)
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
@@ -565,6 +568,7 @@ async function carregarTudo() {
   LS.set('perfil', S.perfil); LS.set('activistas', S.activistas); LS.set('areas', S.areas);
   await carregarEstado(est);
   setTimeout(() => avisoPlanos(), 1500);              // v250: planos das equipas por aprovar
+  setTimeout(() => avisoMensagens(), 1200);           // v258: mensagens do gestor por ver
 }
 async function carregarEstado(pronto) {
   let { data, error } = pronto || await sb.rpc('estado_ronda3');
@@ -711,7 +715,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'filaMorb', 'rascMorb', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'nMorb', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl', 'actTot'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'filaMorb', 'rascMorb', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'nMorb', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl', 'actTot', 'mensagens', 'msgVistas'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -5574,8 +5578,8 @@ async function desenharHoje(o) {
   if (guardado && guardado.d === h && guardado.p === papel && !$('#hoje').innerHTML.trim()) $('#hoje').innerHTML = guardado.html;
   let html = `<div class="cartao"><h2>Hoje · ${fmtData(h)}</h2>`;
   if (souOficial()) {                                    // oficial de M&E: só as recontagens (18/10/2026, Valdo)
-    $('#hoje').innerHTML = cartaoRecontagensHoje();
-    if (rede) { await carregarRecontagens(!auto); if (!velho()) $('#hoje').innerHTML = cartaoRecontagensHoje(); }
+    $('#hoje').innerHTML = cartaoMensagens() + cartaoRecontagensHoje();
+    if (rede) { await carregarRecontagens(!auto); if (!velho()) $('#hoje').innerHTML = cartaoMensagens() + cartaoRecontagensHoje(); }
     return;
   }
   // dois botões no topo do Hoje: "Rega hoje" e "Recontagens das plantas" (18/10/2026, Valdo); a escolha fica no telefone
@@ -5583,8 +5587,8 @@ async function desenharHoje(o) {
   if (veRecontagens() && !MEU_DIA()) {
     const vista = vistaActual();
     if (vista === 'rec') {
-      $('#hoje').innerHTML = abasHoje('rec') + cartaoRecontagensHoje();
-      if (rede) { await carregarRecontagens(!auto); if (!velho() && vistaActual() === 'rec') $('#hoje').innerHTML = abasHoje('rec') + cartaoRecontagensHoje(); }
+      $('#hoje').innerHTML = cartaoMensagens() + abasHoje('rec') + cartaoRecontagensHoje();
+      if (rede) { await carregarRecontagens(!auto); if (!velho() && vistaActual() === 'rec') $('#hoje').innerHTML = cartaoMensagens() + abasHoje('rec') + cartaoRecontagensHoje(); }
       return;
     }
     abas = abasHoje('rega');
@@ -5661,7 +5665,7 @@ async function desenharHoje(o) {
   else html = cartaoNuncaAgua() + cartaoApoioAct() + cartaoPorTerminar() + cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoDiaSemRega() + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && !MEU_DIA() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
-  html = (veRecontagens() && !MEU_DIA() ? abasHoje('rega') : '') + html;
+  html = cartaoMensagens() + (veRecontagens() && !MEU_DIA() ? abasHoje('rega') : '') + html;
   $('#hoje').innerHTML = html;
   if (navigator.onLine) LS.set('hojeHtml', { d: h, p: S.perfil.papel, html });
 }
@@ -6667,6 +6671,108 @@ function sugFeitaVista(id) {
   const v = LS.get('sugVistas', []) || []; if (!v.includes(id)) v.push(id); LS.set('sugVistas', v.slice(-200));
   const el = $('#hoje-sugf'); if (el) { const h = cartaoSugFeitas(); if (h) el.outerHTML = h; else el.remove(); }
 }
+// ---------- mensagens (v258, 23/11/2026, Valdo: "É uma função bastante útil"; "Consegues fazer com que a pessoa possa também responder?") ----------
+// O gestor principal escreve a uma pessoa (Gestão › Mensagens). A pessoa vê-a ao abrir a app e no Hoje até tocar em «OK» ou responder.
+// A resposta vai a quem mandou (aparece-lhe da mesma maneira e em Gestão › Mensagens). «OK» e as respostas ficam no telefone
+// (rega.msgVistas) e vão ao servidor pela fila (filaAlt tipos 'msg_vista' e 'msg_resp'): funciona sem rede.
+let _msgEm = 0;
+async function carregarMensagens() {
+  if (!S.perfil || window.DEMO) return;
+  const { data, error } = await sb.rpc('minhas_mensagens');
+  if (error || !Array.isArray(data)) return;
+  _msgEm = Date.now(); LS.set('mensagens', data);
+  if ($('#e-hoje')?.classList.contains('on')) { const el = $('#hoje-msg'), h = cartaoMensagens(); if (el) { if (h) el.outerHTML = h; else el.remove(); } else if (h) $('#hoje').insertAdjacentHTML('afterbegin', h); }
+}
+const msgPorVer = () => { const v = LS.get('msgVistas', []) || []; return (LS.get('mensagens', []) || []).filter((m) => !m.vista_em && !v.includes(m.id)); };
+const horaMsg = (t) => `${fmtData(String(t).slice(0, 10))} ${String(new Date(t).toTimeString()).slice(0, 5)}`;
+const itemMsg = (m) => `<div class="lin" style="display:block">
+  <div class="pequeno"><span>De:</span> <b class="sem-trad">${esc(m.de || '')}</b> · ${horaMsg(m.criada_em)}</div>
+  ${m.resposta_a_texto ? `<div class="pequeno"><span>Resposta a:</span> <span class="sem-trad">«${esc(m.resposta_a_texto)}»</span></div>` : ''}
+  <div class="sem-trad" style="white-space:pre-wrap;margin:4px 0">${esc(m.texto)}</div>
+  <button class="chip" onclick="mensagemVista('${esc(m.id)}')">OK</button> <button class="chip" onclick="ecraResponder('${esc(m.id)}')">↩️ Responder</button></div>`;
+const tituloMsg = (n) => `✉️ <span>${n === 1 ? 'Mensagem para si' : 'Mensagens para si'}</span>`;
+function cartaoMensagens() {
+  const L = msgPorVer(); if (!L.length) return '';
+  return `<div class="cartao" id="hoje-msg" style="border-left:4px solid var(--azul,#0b6e8a)"><h2>${tituloMsg(L.length)}</h2>${L.map(itemMsg).join('')}</div>`;
+}
+function marcarMsgVista(id) {
+  const v = LS.get('msgVistas', []) || []; if (!v.includes(id)) v.push(id); LS.set('msgVistas', v.slice(-200));
+}
+function redesenharMsg() {
+  const el = $('#hoje-msg'); if (el) { const h = cartaoMensagens(); if (h) el.outerHTML = h; else el.remove(); }
+}
+function mensagemVista(id) {
+  marcarMsgVista(id);
+  const f = LS.get('filaAlt', []); if (!f.some((y) => y.tipo === 'msg_vista' && y.msg_id === id)) { f.push({ id: crypto.randomUUID(), tipo: 'msg_vista', msg_id: id, em: new Date().toISOString() }); LS.set('filaAlt', f); }
+  actSync(); redesenharMsg(); if (navigator.onLine) sincronizar(true);
+  if ($('#msg-aviso')) { const L = msgPorVer(); if (L.length) $('#msg-aviso').innerHTML = L.map(itemMsg).join(''); else fecharFolha(); }
+}
+function ecraResponder(id) {
+  const m = (LS.get('mensagens', []) || []).find((x) => x.id === id); if (!m) return;
+  folha(`<h2>↩️ <span>Responder</span></h2>
+    <div class="pequeno"><span>De:</span> <b class="sem-trad">${esc(m.de || '')}</b> · ${horaMsg(m.criada_em)}</div>
+    <div class="sem-trad" style="white-space:pre-wrap;margin:6px 0 10px;padding:8px;background:var(--fundo2,#f3f1ea);border-radius:8px">${esc(m.texto)}</div>
+    <label><span>A sua resposta</span><textarea id="mr-txt" rows="4" maxlength="2000"></textarea></label>
+    <p class="pequeno"><span>Sem rede, a resposta fica no telefone e vai quando houver rede.</span></p>
+    <button class="btn" id="mr-env" disabled>Enviar a resposta</button>
+    <button class="btn sec" onclick="fecharFolha()">Cancelar</button>`);
+  $('#mr-txt').oninput = () => { $('#mr-env').disabled = $('#mr-txt').value.trim().length < 3; };
+  $('#mr-env').onclick = () => {
+    const f = LS.get('filaAlt', []);
+    f.push({ id: crypto.randomUUID(), tipo: 'msg_resp', resp_id: crypto.randomUUID(), msg_id: id, texto: $('#mr-txt').value.trim(), em: new Date().toISOString() });
+    LS.set('filaAlt', f); marcarMsgVista(id); fecharFolha(); redesenharMsg();
+    aviso(navigator.onLine ? 'Resposta enviada.' : 'Resposta guardada no telefone. Vai quando houver rede.', 'ok');
+    sincronizar(true);
+  };
+}
+function avisoMensagens(tent = 0, soNovas = false) {
+  let L = msgPorVer(); if (window.DEMO) return;
+  S.msgAvisadas = S.msgAvisadas || new Set();
+  if (soNovas) L = L.filter((m) => !S.msgAvisadas.has(m.id));
+  if (!L.length) return;
+  if ($('#folha')?.classList.contains('on')) { if (tent < 12) setTimeout(() => avisoMensagens(tent + 1, soNovas), 5000); return; }
+  msgPorVer().forEach((m) => S.msgAvisadas.add(m.id)); L = msgPorVer();
+  folha(`<h2>${tituloMsg(L.length)}</h2>
+    <div id="msg-aviso">${L.map(itemMsg).join('')}</div>
+    <button class="btn sec" onclick="fecharFolha()">Ver depois</button>`);
+}
+// Gestão › ✉️ Mensagens (só o gestor principal)
+const enviaMensagens = () => S.perfil?.papel === 'gestor' && S.perfil?.gere_acessos === true && !S.perfil?.so_teste && !window.DEMO;
+const PAPEL_MSG = { activista: 'Activista', tecnico: 'Técnico', supervisor: 'Supervisor', gestor: 'Gestor', director: 'Director', me: 'M&E', oficial_me: 'Oficial de M&E', cliente: 'Cliente', chefe_manutencao: 'Chefe de manutenção' };
+async function cartaoMensagensGestao() {
+  const el = $('#g-msg'); if (!el) return;
+  const [d, e] = await Promise.all([sb.rpc('destinatarios_mensagem'), sb.rpc('mensagens_enviadas')]);
+  if (!$('#g-msg')) return;
+  if (d.error || !Array.isArray(d.data)) { el.innerHTML = `<h2>✉️ <span>Mensagens</span></h2><div class="msg erro">${semRede(d.error) ? 'Sem ligação ao servidor. As mensagens precisam de rede.' : esc(d.error?.message || 'Sem acesso')}</div>`; return; }
+  const grupos = {}; d.data.forEach((p) => (grupos[p.papel] = grupos[p.papel] || []).push(p));
+  const env = Array.isArray(e.data) ? e.data : [];
+  el.innerHTML = `<h2>✉️ <span>Mensagens</span></h2>
+    <p class="pequeno"><span>Escreva a uma pessoa. Ela vê a mensagem ao abrir a app e no Hoje, até tocar em «OK». Precisa de rede.</span></p>
+    <label><span>Para</span><select id="gm-para"><option value="">— Escolha a pessoa —</option>${Object.keys(PAPEL_MSG).filter((k) => grupos[k]).map((k) => `<optgroup label="${esc(PAPEL_MSG[k])}">${grupos[k].map((p) => `<option value="${esc(p.id)}" class="sem-trad">${esc(p.nome)}</option>`).join('')}</optgroup>`).join('')}</select></label>
+    <label><span>Mensagem</span><textarea id="gm-txt" rows="4" maxlength="2000"></textarea></label>
+    <button class="btn" id="gm-env" disabled>Enviar</button>
+    <p class="pequeno"><span>As respostas aparecem por baixo de cada mensagem e também no seu Hoje.</span></p>
+    <h3 style="font-size:14px;margin:14px 0 4px">Enviadas (últimos 60 dias)</h3>
+    ${env.length ? env.map((m) => `<div class="lin" style="display:block"><div><b class="sem-trad">${esc(m.para)}</b> · <span>${esc(PAPEL_MSG[m.papel] || m.papel)}</span> · ${fmtData(String(m.criada_em).slice(0, 10))}</div>
+      ${m.resposta_a_texto ? `<div class="pequeno"><span>Resposta a:</span> <span class="sem-trad">«${esc(m.resposta_a_texto)}»</span></div>` : ''}
+      <div class="sem-trad pequeno" style="white-space:pre-wrap">${esc(m.texto)}</div>
+      <div class="pequeno">${m.vista_em ? `<b style="color:var(--ok,#2e7d32)">✓ <span>Vista</span></b> ${fmtData(String(m.vista_em).slice(0, 10))} ${String(new Date(m.vista_em).toTimeString()).slice(0, 5)}` : `<b style="color:var(--warn,#b26b00)">Por ver</b> <button class="chip" onclick="removerMensagem('${esc(m.id)}')">Apagar (engano)</button>`}</div>
+      ${(m.respostas || []).map((r) => `<div style="margin:6px 0 0 12px;padding-left:8px;border-left:3px solid var(--azul,#0b6e8a)"><div class="pequeno">↩️ <span>Resposta</span> · ${horaMsg(r.criada_em)}</div><div class="sem-trad" style="white-space:pre-wrap">${esc(r.texto)}</div></div>`).join('')}</div>`).join('') : '<p class="pequeno">Ainda nenhuma.</p>'}`;
+  const ok = () => { $('#gm-env').disabled = !($('#gm-para').value && $('#gm-txt').value.trim().length >= 3); };
+  $('#gm-para').onchange = ok; $('#gm-txt').oninput = ok;
+  $('#gm-env').onclick = async () => {
+    const b = $('#gm-env'); b.disabled = true; b.textContent = 'A enviar…';
+    const { error } = await sb.rpc('enviar_mensagem', { p_id: crypto.randomUUID(), p_para: $('#gm-para').value, p_texto: $('#gm-txt').value.trim() });
+    if (error) { aviso(semRede(error) ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : error.message, 'erro'); b.textContent = 'Enviar'; ok(); return; }
+    aviso('Mensagem enviada.', 'ok'); cartaoMensagensGestao();
+  };
+}
+async function removerMensagem(id) {
+  if (!confirm('Apagar esta mensagem? A pessoa deixa de a ver.')) return;
+  const { error } = await sb.rpc('remover_mensagem', { p_id: id });
+  if (error) { aviso(semRede(error) ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : error.message, 'erro'); return; }
+  aviso('Mensagem apagada.', 'ok'); cartaoMensagensGestao();
+}
 function cartaoAvisos() {
   const L = avisos(); if (!L.length) return '';
   const varias = S.perfil.papel !== 'activista';
@@ -7422,7 +7528,7 @@ async function desenharGestao(msg = '') {
 async function montarGestao(d, msg = '') {
   const sem = d.activistas.filter((a) => !a.tem_login && a.activo !== false), com = d.activistas.filter((a) => a.tem_login);
   const gere = S.perfil?.gere_acessos !== false;   // false: gestor que não cria acessos nem muda senhas/PIN (15/10/2026)
-  $('#gestao').innerHTML = `${msg}${gere ? '<div class="cartao" id="g-sug"><h2>💡 Sugestões e problemas</h2><p class="pequeno">A carregar…</p></div>' : ''}${gere ? `<div class="cartao"><h2>Criar login de activista</h2>
+  $('#gestao').innerHTML = `${msg}${enviaMensagens() ? '<div class="cartao" id="g-msg"><h2>✉️ Mensagens</h2><p class="pequeno">A carregar…</p></div>' : ''}${gere ? '<div class="cartao" id="g-sug"><h2>💡 Sugestões e problemas</h2><p class="pequeno">A carregar…</p></div>' : ''}${gere ? `<div class="cartao"><h2>Criar login de activista</h2>
     ${sem.length ? '' : '<div class="msg info">Todos os activistas activos já têm login.</div>'}
     <label>Activista<select id="g-act" ${sem.length ? '' : 'disabled'}><option value="">— Escolha o activista —</option>${sem.map((a) => `<option value="${a.id}" data-u="${sugerirUtilizador(a.nome)}">${esc(a.nome)} — ${esc(a.comunidade_principal || '')}</option>`).join('')}</select></label>
     <label>Utilizador<input id="g-user" autocapitalize="none"></label>
@@ -7457,6 +7563,7 @@ async function montarGestao(d, msg = '') {
     ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div>${gere ? `<button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button>` : ''}</div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
   desenharVisitas(); desenharCoberturas(d);
   if (gere) { if (S.sug) desenharSugestoes(); cartaoSugestoes(); }
+  if (enviaMensagens()) cartaoMensagensGestao();   // v258
   sb.from('config').select('valor').eq('chave', 'monitoria_campos_escala').maybeSingle().then(({ data }) => { if (data && $('#m-n')) $('#m-n').value = data.valor; });
   sb.rpc('monitoria_escala_ver').then(({ data: e }) => { if (!e || !$('#m-escala')) return;
     if ($('#m-pausa')) $('#m-pausa').innerHTML = e.pausa ? '<div class="msg info">⏸ <b>O sorteio está parado</b> <span>(decisão de 30/10/2026). Ninguém recebe campos novos.</span></div>' : '';
