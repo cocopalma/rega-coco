@@ -6324,8 +6324,10 @@ function gravarCorrecaoPlantas(rid, areaId) {
   const v = (S.regasCampo?.[areaId] || []).find((x) => x.id === rid);
   if (v && Number(v.plantas_regadas) === n) {
     const al = (LS.get('meuDia')?.d?.alertas || []).find((x) => x.registo_id === rid), el = $('#cp-msg');
-    const h = `<div class="msg erro"><span>O número é igual ao que está gravado: não há nada para corrigir.</span> <span>Se a rega está certa, use «✓ Está certo».</span></div>`
-      + (al ? `<button class="chip" onclick="ecraConfirmarRega('${esc(rid)}', '${esc(al.tipo)}', ${Number(al.plantas) || 0}, ${Number(al.base) || 0}, '${esc(areaId)}')">✓ Está certo</button>` : '');
+    const h = `<div class="msg erro"><span>O número é igual ao que está gravado: não há nada para corrigir.</span>${al ? ' <span>Se a rega está certa, use «✓ Está certo».</span>' : ''}</div>`
+      + (al ? `<button class="chip" onclick="ecraConfirmarRega('${esc(rid)}', '${esc(al.tipo)}', ${Number(al.plantas) || 0}, ${Number(al.base) || 0}, '${esc(areaId)}')">✓ Está certo</button>`
+        // v257 (23/11/2026, sugestão do Guidion pelo 💡 às 11:52): numa rega sem aviso ⚠️ não havia botão e parecia que a app pedia outro número
+        : `<div class="msg ok" id="cp-semaviso"><span>Esta rega não tem nenhum aviso ⚠️ por confirmar: não precisa de fazer mais nada.</span> <span>Se as plantas vivas do campo são menos do que as da base, peça uma recontagem das plantas.</span></div>`);
     if (el) el.innerHTML = h; else alert('O número é igual ao que está gravado: não há nada para corrigir.');
     return;
   }

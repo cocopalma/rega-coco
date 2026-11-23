@@ -267,6 +267,8 @@ document.addEventListener('DOMContentLoaded', () => {
   "Sem resposta do servidor. Feche a app, abra-a de novo e tente outra vez.": "No response from the server. Close the app, open it again and try again.",
   "O número é igual ao que está gravado: não há nada para corrigir.": "The number is the same as the one saved: there is nothing to correct.",
   "Se a rega está certa, use «✓ Está certo».": "If the watering is right, use «✓ It is correct».",
+  "Esta rega não tem nenhum aviso ⚠️ por confirmar: não precisa de fazer mais nada.": "This watering has no ⚠️ warning to confirm: you do not need to do anything else.",
+  "Se as plantas vivas do campo são menos do que as da base, peça uma recontagem das plantas.": "If the field has fewer live plants than the base, ask for a plant recount.",
   "A fechar o dia…": "Closing the day\u2026",
   "Alteração": "Change",
   "Tentativas": "Attempts",

@@ -445,6 +445,8 @@ window.I18N_SW_D = {
 "Sem resposta do servidor. Feche a app, abra-a de novo e tente outra vez.": "Hakuna jibu kutoka kwa seva. Funga programu, ifungue tena na ujaribu tena.",
 "O número é igual ao que está gravado: não há nada para corrigir.": "Nambari ni sawa na iliyohifadhiwa: hakuna cha kusahihisha.",
 "Se a rega está certa, use «✓ Está certo».": "Ikiwa umwagiliaji ni sahihi, tumia «✓ Ni sahihi».",
+"Esta rega não tem nenhum aviso ⚠️ por confirmar: não precisa de fazer mais nada.": "Umwagiliaji huu hauna onyo ⚠️ la kuthibitisha: huhitaji kufanya kitu kingine.",
+"Se as plantas vivas do campo são menos do que as da base, peça uma recontagem das plantas.": "Ikiwa shamba lina mimea hai michache kuliko ya msingi, omba kuhesabiwa upya kwa mimea.",
 "A fechar o dia…": "Inafunga siku\u2026",
 "Alteração": "Mabadiliko",
 "Tentativas": "Majaribio",
