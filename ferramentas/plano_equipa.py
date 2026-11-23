@@ -11,11 +11,15 @@ Regras:
 - Experimenta vários caminhos pelos campos e, em cada um, os cortes que deixam os dias o mais cheios possível sem passar das 14:00;
   fica com o melhor. O último dia da ronda fica com o resto e continua com o 1.º dia da ronda seguinte (os campos regados há mais
   tempo, a partir de onde a equipa acaba), para não haver dias com um campo pequeno nem horas paradas.
+- Cada dia é um grupo de campos vizinhos (23/11/2026, Valdo): conta como custo cada campo a mais de 300 m do centro do seu dia, para
+  não haver dias que atravessam os grupos dos outros dias, e cada campo que fica mais perto do centro de outro dia do que do seu;
+  os dias seguem-se no terreno de grupo em grupo vizinho. Um campo isolado (nenhum outro a menos de 1,5 km) não faz um dia sozinho:
+  entra no início ou no fim do dia com o campo mais perto.
 - Gera dois planos: o resto da ronda actual (só os campos que faltam) e a ronda seguinte. Se o da ronda actual já existe, só a seguinte.
 
 Uso:  python3 plano_equipa.py dados.json > planos.json   (dados.json = consulta 2 de plano_dados.sql, uma equipa). Só biblioteca padrão.
 """
-import json, math, sys
+import itertools, json, math, sys
 from statistics import median
 
 W = 450               # minutos de trabalho por dia (06:30 -> 14:00)
@@ -23,6 +27,11 @@ INICIO = 390          # 06:30 em minutos
 CUSTO_DIA = 20000     # cada dia a mais pesa como um dia com 2 h 20 paradas
 SALTO = 1500          # um salto de mais de 1,5 km entre dois campos seguidos do mesmo dia…
 CUSTO_SALTO = 20000   # …pesa como 2 h 20 paradas: só se junta campos longe quando não há outra forma (Valdo, 22/11/2026)
+RAIO = 300            # cada campo a mais de 300 m do centro do seu dia…
+CUSTO_METRO = 80      # …pesa 80 por metro a mais: os dias ficam em grupos de campos vizinhos, sem misturar grupos (Valdo, 23/11/2026:
+                      # no plano do Majula o dia 4 ia de uma ponta à outra da zona, por cima dos grupos dos outros dias)
+CUSTO_MISTURA = 40    # cada metro que um campo está mais perto do centro de outro dia do que do seu pesa 40: dias que não se
+                      # cruzam (Valdo, 23/11/2026: "o dia 1 e o dia 2 podiam estar melhor organizados")
 
 
 def metros(a, b):
@@ -59,6 +68,7 @@ class Equipa:
         for a in dados['areas']:
             if a.get('lat') is not None: self.pos[a['id']] = (a['lat'], a['lon'])
         self.areas = {a['id']: a for a in dados['areas']}
+        self.isol = set()
         self.P = self.aprender(dados['regas'])
 
     def pl(self, i, seguinte=False):
@@ -111,9 +121,18 @@ class Equipa:
         P['n_dias_validacao'] = len(val)
         return P
 
+    def espalho(self, d):
+        """metros dos campos do dia além de RAIO do centro do dia (os campos isolados não contam)"""
+        com = [x for x in d if x in self.pos and x not in self.isol]
+        if len(com) < 2: return 0
+        c = (sum(self.pos[x][0] for x in com) / len(com), sum(self.pos[x][1] for x in com) / len(com))
+        return sum(max(0, metros(self.pos[x], c) - RAIO) for x in com)
+
     def saltos(self, d):
-        com = [x for x in d if x in self.pos]
-        return sum(1 for a, b in zip(com, com[1:]) if metros(self.pos[a], self.pos[b]) > SALTO)
+        """saltos longos entre campos seguidos (fora os campos isolados), mais o espalho do dia ao mesmo preço"""
+        com = [x for x in d if x in self.pos and x not in self.isol]
+        n = sum(1 for a, b in zip(com, com[1:]) if metros(self.pos[a], self.pos[b]) > SALTO)
+        return n + self.espalho(d) * CUSTO_METRO / CUSTO_SALTO
 
     def dp(self, rota, pl, orc1):
         n = len(rota)
@@ -130,6 +149,23 @@ class Equipa:
         return best[n], dias[::-1]
 
     def cortar(self, ids, pl, de, orc1=W):
+        # campo isolado (nenhum outro a menos de SALTO): não faz um dia sozinho; entra no início ou no fim do dia com o campo mais perto
+        com0 = [i for i in ids if i in self.pos]
+        isol = [i for i in com0 if len(com0) > 1 and min(metros(self.pos[i], self.pos[j]) for j in com0 if j != i) > SALTO]
+        self.isol |= set(isol)
+        dias = self.cortar_grupo([i for i in ids if i not in isol], pl, de, orc1)
+        T = lambda d: self.tempo([(x, pl(x)) for x in d])
+        for i in isol:
+            perto = sorted([d for d in dias if any(x in self.pos for x in d)],
+                           key=lambda d: min(metros(self.pos[i], self.pos[x]) for x in d if x in self.pos))
+            alvo = next((d for d in perto if T(d + [i]) <= (orc1 if d is (dias[0] if dias else None) else W)), None)
+            if alvo is None: dias.append([i]); continue
+            ca = [x for x in alvo if x in self.pos]
+            if metros(self.pos[i], self.pos[ca[0]]) < metros(self.pos[i], self.pos[ca[-1]]): alvo.insert(0, i)
+            else: alvo.append(i)
+        return dias
+
+    def cortar_grupo(self, ids, pl, de, orc1=W):
         com = [i for i in ids if i in self.pos]
         if not com: return []
         # continuação do último dia: o caminho começa onde a equipa está; senão experimenta começar em cada campo
@@ -137,16 +173,34 @@ class Equipa:
         dias = min((self.dp(r, pl, orc1) for r in rotas), key=lambda x: x[0])[1]
         return self.melhorar(dias, pl, de) if orc1 == W else dias
 
+    def centro(self, d):
+        com = [x for x in d if x in self.pos and x not in self.isol]
+        return (sum(self.pos[x][0] for x in com) / len(com), sum(self.pos[x][1] for x in com) / len(com)) if com else None
+
+    def mistura(self, dias):
+        """metros que cada campo está mais perto do centro de outro dia do que do centro do seu (dias que se cruzam)"""
+        cs = [self.centro(d) for d in dias]; s = 0
+        for k, d in enumerate(dias):
+            if cs[k] is None: continue
+            for i in d:
+                if i not in self.pos or i in self.isol: continue
+                outro = min([metros(self.pos[i], c) for j, c in enumerate(cs) if j != k and c] or [1e9])
+                s += max(0, metros(self.pos[i], cs[k]) - outro)
+        return s
+
     def melhorar(self, dias, pl, de):
-        """passa campos de um dia para outro enquanto isso deixar os dias mais cheios (o dia mais curto fica para o fim: é o que
-        continua com a ronda seguinte); nenhum dia passa das 14:00"""
+        """passa campos de um dia para outro, ou troca dois campos entre dias, enquanto isso deixar os dias mais cheios e mais
+        arrumados (sem se cruzarem); o dia mais curto fica para o fim: é o que continua com a ronda seguinte; nenhum dia passa
+        das 14:00"""
         T = lambda d: self.tempo([(x, pl(x)) for x in d])
         def custo(ds):
             ts = sorted(T(d) for d in ds)
-            return CUSTO_DIA * len(ds) + sum((W - t) ** 2 for t in ts[1:]) + CUSTO_SALTO * sum(self.saltos(d) for d in ds)
-        dias = [ordenar_de(d, self.pos, None) if len(d) > 2 else d for d in dias]
+            return (CUSTO_DIA * len(ds) + sum((W - t) ** 2 for t in ts[1:]) + CUSTO_SALTO * sum(self.saltos(d) for d in ds)
+                    + CUSTO_MISTURA * self.mistura(ds))
+        orden = lambda d: ordenar_de(d, self.pos, None) if len(d) > 2 else d
+        dias = [orden(d) for d in dias]
         atual = custo(dias)
-        for _ in range(200):
+        for _ in range(300):
             melhor = None
             for a in range(len(dias)):
                 for i in dias[a]:
@@ -154,21 +208,44 @@ class Equipa:
                         if a == b: continue
                         nb = ordenar_de(dias[b] + [i], self.pos, None)
                         if T(nb) > W: continue
-                        na = [x for x in dias[a] if x != i]
-                        na = ordenar_de(na, self.pos, None) if len(na) > 2 else na
-                        novo = [na if k == a else nb if k == b else d for k, d in enumerate(dias)]
-                        novo = [d for d in novo if d]
+                        na = orden([x for x in dias[a] if x != i])
+                        novo = [d for d in [na if k == a else nb if k == b else d for k, d in enumerate(dias)] if d]
                         c = custo(novo)
                         if c < atual - 1 and (melhor is None or c < melhor[0]): melhor = (c, novo)
+            if not melhor:
+                for a in range(len(dias)):
+                    for b in range(a + 1, len(dias)):
+                        for i in dias[a]:
+                            for j in dias[b]:
+                                na = orden([x for x in dias[a] if x != i] + [j]); nb = orden([x for x in dias[b] if x != j] + [i])
+                                if T(na) > W or T(nb) > W: continue
+                                novo = [na if k == a else nb if k == b else d for k, d in enumerate(dias)]
+                                c = custo(novo)
+                                if c < atual - 1 and (melhor is None or c < melhor[0]): melhor = (c, novo)
             if not melhor: break
             atual, dias = melhor
-        # ordem dos dias: a partir de onde a equipa começa, o mais curto no fim
+        # ordem dos dias: seguida no terreno (de grupo em grupo vizinho), o mais curto no fim
         curto = min(dias, key=T)
         resto = [d for d in dias if d is not curto]
-        ordem, cur = [], de
-        while resto:
-            n = min(resto, key=lambda d: metros(cur, self.pos[d[0]]) if cur else 0); ordem.append(n); resto.remove(n); cur = self.pos[n[-1]]
-        return ordem + [curto]
+        cs = {id(d): self.centro(d) or self.pos.get(d[0]) for d in dias}
+        def caminho(o):
+            seq = list(o) + [curto]
+            return sum(metros(cs[id(a)], cs[id(b)]) for a, b in zip(seq, seq[1:]) if cs[id(a)] and cs[id(b)])
+        if len(resto) <= 7:
+            ordem = list(min(itertools.permutations(resto), key=caminho))
+        else:
+            ordem, cur = [], de
+            while resto:
+                n = min(resto, key=lambda d: metros(cur, self.pos[d[0]]) if cur else 0); ordem.append(n); resto.remove(n); cur = self.pos[n[-1]]
+        # ordem dos campos em cada dia: o caminho mais curto, a começar perto de onde acabou o dia anterior
+        out, cur = [], None
+        for d in ordem + [curto]:
+            com = [x for x in d if x in self.pos]; sem = [x for x in d if x not in self.pos]
+            if len(com) > 1:
+                L = lambda r: sum(metros(self.pos[a], self.pos[b]) for a, b in zip(r, r[1:])) + (metros(cur, self.pos[r[0]]) if cur else 0)
+                com = min((ordenar_de(com, self.pos, self.pos[c]) for c in com), key=L)
+            out.append(com + sem); cur = self.pos[com[-1]] if com else cur
+        return out
 
     def sem_coord(self, dias, ids, pl, fora=None):
         for i in [x for x in ids if x not in self.pos]:
@@ -208,7 +285,7 @@ class Equipa:
         pessoas = P['pessoas'] or d.get('equipa_tamanho') or 1
         meta = d.get('meta', 140)
         apr = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in P.items()}
-        apr.update({'versao': 3, 'janela': '06:30–14:00', 'ronda': ronda - 1})
+        apr.update({'versao': 3, 'agrupamento': '23/11/2026', 'janela': '06:30–14:00', 'ronda': ronda - 1})
         falta = [a['id'] for a in d['areas'] if not a.get('feito_ronda')]
         feitos = sorted([a['id'] for a in d['areas'] if a.get('feito_ronda')], key=lambda i: self.areas[i].get('feito_em') or '')
         res = []
