@@ -73,7 +73,7 @@ with sync_playwright() as p:
     pg.goto("http://localhost:8840/"); pg.wait_for_selector("#l-entrar", state="visible")
     pg.fill("#l-user", "x"); pg.fill("#l-pin", "12345678"); pg.click("#l-entrar"); pg.wait_for_selector("#app", state="visible"); pg.wait_for_timeout(1200)
     if pg.is_visible("#folha-x"): pg.click("#folha-x"); pg.wait_for_timeout(300)
-    pg.click("#nav-gestao"); pg.wait_for_selector("#c-papel"); pg.wait_for_timeout(800)
+    pg.click("#nav-gestao"); pg.wait_for_selector("#gac-acessos", state="attached"); pg.evaluate("document.querySelector('#gac-acessos').open = true"); pg.wait_for_selector("#c-papel"); pg.wait_for_timeout(800)
     print("G1 activista:", repr(pg.input_value("#g-act")), "| user:", repr(pg.input_value("#g-user")), "| criar login desactivado:", pg.is_disabled("#g-criar"), "| select desactivado:", pg.is_disabled("#g-act"))
     print("G2 funções:", [(o["t"], o["d"]) for o in pg.eval_on_selector_all("#c-papel option", "os=>os.map(o=>({t:o.textContent,d:o.disabled}))")])
     print("G3 função:", repr(pg.input_value("#c-papel")), "| nome:", pg.inner_text("#c-nome-caixa").split(chr(10))[0], "| criar acesso desactivado:", pg.is_disabled("#c-criar"), "| aviso:", pg.inner_text("#c-nada")[:90])

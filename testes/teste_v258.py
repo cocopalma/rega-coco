@@ -88,7 +88,7 @@ def correr(caso):
             pg.evaluate("carregarMensagens()"); pg.wait_for_timeout(800)
             verif(pg.locator("#hoje-msg").count() == 0, "9 ao voltar a ler do servidor, as mensagens vistas no telefone não voltam")
         if PAPEL == "gestor":
-            pg.evaluate("mudar('gestao')"); pg.wait_for_timeout(800); pg.evaluate("typeof abaGestao === 'function' && abaGestao('acessos')"); pg.wait_for_timeout(2500)
+            pg.evaluate("mudar('gestao')"); pg.wait_for_timeout(800); pg.wait_for_timeout(1500); pg.evaluate("document.querySelector('#gac-msg') && (document.querySelector('#gac-msg').open = true)"); pg.wait_for_timeout(1500)
             if caso == "gestor":
                 verif(pg.locator("#gm-para").count() == 1, "G1 Gestão › Mensagens para o gestor principal")
                 g = pg.inner_text("#g-msg")

@@ -5142,6 +5142,7 @@ async function cartaoSugestoes() {
 function desenharSugestoes(filtro = S.sugFiltro || 'nova') {
   S.sugFiltro = filtro; const el = $('#g-sug'); if (!el || !S.sug) return;
   const lista = S.sug.sugestoes.filter((x) => filtro === 'todas' || x.estado === filtro), n = (e) => S.sug.sugestoes.filter((x) => x.estado === e).length;
+  numGac('sug', n('nova'));
   el.innerHTML = `<h2>💡 Sugestões e problemas</h2>${S.sugSemRede ? `<p class="pequeno"><span>Sem rede: lista guardada no telefone</span> (${fmtData(S.sugEm)} ${fmtHora(S.sugEm)}). <span>As respostas são enviadas quando houver rede.</span></p>` : ''}
     <div class="chips">${['nova', 'aprovada', 'feita', 'recusada', 'todas'].map((e) => `<button class="chip${e === filtro ? ' on' : ''}" onclick="desenharSugestoes('${e}')">${e === 'todas' ? 'Todas' : ESTADOS_SUG[e]} (${e === 'todas' ? S.sug.sugestoes.length : n(e)})</button>`).join('')}</div>
     ${lista.map((x) => `<div style="padding:8px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
@@ -7431,14 +7432,37 @@ async function enviarMonitorias() {
 const souGestorPrincipal = () => S.perfil?.papel === 'gestor' && S.perfil?.gere_acessos === true && !S.perfil?.so_teste && !window.DEMO;
 const TIPO_ALERTA = { mais_que_base: 'Plantas regadas acima da base', ritmo: 'Ritmo fora do habitual', foto_data: 'Fotografia de outro dia' };
 const motivoDsrTxt = (m) => (MOTIVOS_DSR.find((x) => x[0] === m) || [m, m])[1];
-function abaGestao(a) { LS.set('gestaoAba', a); mostrarAbaGestao(); }
-function mostrarAbaGestao() {
-  const tem = souGestorPrincipal(), aba = tem ? (LS.get('gestaoAba') || 'eq') : 'acessos';
-  $('#gestao-tabs').innerHTML = tem ? `<div class="chips" style="margin:0 0 10px"><button class="chip${aba === 'eq' ? ' on' : ''}" onclick="abaGestao('eq')">👷 Equipa de campo</button><button class="chip${aba === 'acessos' ? ' on' : ''}" onclick="abaGestao('acessos')">⚙️ Acessos e configurações</button></div>` : '';
-  $('#gestao-eq').style.display = aba === 'eq' ? '' : 'none';
-  $('#gestao-demo').style.display = $('#gestao').style.display = aba === 'eq' ? 'none' : '';
-  if (aba === 'eq') desenharEquipaCampo();
+// v259 (23/11/2026, Valdo: "cada tema estar dentro de um cartão… modelo de cascata… separar cada coisa no seu sítio para não ficar
+// tudo apinhado"): a Gestão é uma lista de cartões que abrem ao tocar, um de cada vez; o fechado mostra o número do que está à
+// espera. O telefone lembra o último aberto (gestaoAberto). Cada papel vê só os cartões a que já tinha acesso.
+const GAC = [
+  ['eq', '👷 Equipa de campo', 'O que cada técnico e supervisor fez e o que falta', () => souGestorPrincipal(), true],
+  ['msg', '✉️ Mensagens', 'Escrever a uma pessoa e ver as respostas', () => enviaMensagens(), true],
+  ['sug', '💡 Sugestões e problemas', 'Sugestões da equipa e problemas registados pela app', () => S.perfil?.gere_acessos !== false, true],
+  ['acessos', '🔑 Acessos', 'Logins de activistas e outros acessos', () => true, false],
+  ['conf', '⚙️ Configurações', 'Coberturas, monitoria e quem viu o painel', () => true, false],
+  ['sim', '🎬 Modo simulação', 'Mostrar a app como outra função a vê', () => !!cartaoDemo(), true],
+];
+function montarAcordeao() {
+  const el = $('#gestao-ac'); if (!el) return;
+  const vis = GAC.filter((g) => g[3]()), chave = vis.map((g) => g[0]).join(',');
+  if (el.dataset.k === chave) return;                       // já está montado para este papel
+  const guardado = LS.get('gestaoAberto'), aberto = guardado === undefined || guardado === null ? (vis[0] || [])[0] : guardado;
+  el.dataset.k = chave;
+  el.innerHTML = vis.map(([k, t, sub, , so1]) => `<details class="gac" data-k="${k}" id="gac-${k}"${k === aberto || window.__TAR_ABERTAS ? ' open' : ''} ontoggle="abrirGac(this)">
+    <summary><span class="tt"><span>${t}</span><small>${sub}</small></span><span class="nb" id="gac-n-${k}"></span>${CHEV}</summary>
+    <div class="gac-c${so1 ? ' so1' : ''}" id="gac-c-${k}">${k === 'eq' ? '<div id="gestao-eq"></div>' : k === 'sim' ? '<div id="gestao-demo"></div>' : '<p class="pequeno">A carregar…</p>'}</div></details>`).join('');
 }
+function abrirGac(el) {
+  if (window.__TAR_ABERTAS) return;
+  if (!el.open) { if (LS.get('gestaoAberto') === el.dataset.k) LS.set('gestaoAberto', ''); return; }
+  LS.set('gestaoAberto', el.dataset.k);
+  document.querySelectorAll('#gestao-ac details.gac[open]').forEach((d) => { if (d !== el) d.open = false; });
+  if (el.dataset.k === 'eq') desenharEquipaCampo();
+  setTimeout(() => { const r = el.getBoundingClientRect(); if (r.top < 0 || r.top > innerHeight * 0.6) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 30);
+}
+// número no cartão fechado (n = null: sem número; 0: cinzento)
+function numGac(k, n) { const b = $('#gac-n-' + k); if (!b) return; b.className = 'nb' + (n ? '' : ' z'); b.textContent = n == null ? '' : num(n); }
 async function desenharEquipaCampo() {
   const el = $('#gestao-eq'); if (!el || !souGestorPrincipal()) return;
   const g = LS.get('gestaoEq');
@@ -7447,7 +7471,7 @@ async function desenharEquipaCampo() {
   const { data, error } = await sb.rpc('gestao_equipa_campo');
   if (error || !data) { if (!g) el.innerHTML = `<div class="msg erro">${esc(error?.message || 'Sem acesso a este painel.')}</div>`; return; }
   LS.set('gestaoEq', data);
-  if ($('#gestao-eq').style.display !== 'none') el.innerHTML = htmlEquipaCampo(data);
+  if ($('#gestao-eq')) $('#gestao-eq').innerHTML = htmlEquipaCampo(data);
 }
 // estado do fecho do dia: ok (até às 18:00), tarde (depois), pend (hoje, ainda antes das 18:00), nao (não fechou)
 function estadoFecho(dia, fecho, hoje, depois) {
@@ -7478,6 +7502,7 @@ function htmlEquipaCampo(d) {
     return { p, dh, f, npend: npend + (ef && ef[0] === 'nao' ? 1 : 0), ef };
   }).sort((a, b) => b.npend - a.npend || a.p.nome.localeCompare(b.p.nome));
   const fecharam = pessoas.filter((x) => x.dh?.fecho).length, comPend = pessoas.filter((x) => x.npend).length;
+  setTimeout(() => numGac('eq', comPend), 0);
   const corCel = { ok: '#2e7d32', tarde: '#b45309', pend: '#9aa19b', nao: '#c62828' };
   return `<div class="cartao"><h2>👷 Equipa de campo</h2>
     <p class="pequeno"><span>O que cada técnico e supervisor fez e o que falta.</span> <span>Só o gestor principal vê este painel.</span></p>
@@ -7517,18 +7542,27 @@ async function chamarGestor(corpo) {
 }
 const sugerirUtilizador = (nome) => nome.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/\s+/)[0].replace(/[^a-z0-9]/g, '');
 async function desenharGestao(msg = '') {
-  mostrarAbaGestao();   // v223: separadores «Equipa de campo» / «Acessos e configurações» (só o gestor principal)
-  $('#gestao-demo').innerHTML = cartaoDemo();
+  montarAcordeao();      // v259: cartões em cascata (antes, v223: separadores «Equipa de campo» / «Acessos e configurações»)
+  if ($('#gestao-demo')) $('#gestao-demo').innerHTML = cartaoDemo();
+  if ($('#gestao-eq')) desenharEquipaCampo();
+  if (enviaMensagens()) numGac('msg', msgPorVer().filter((m) => m.resposta_a).length);
   const guardado = LS.get('gestaoListar');
-  if (guardado) montarGestao(guardado, msg); else $('#gestao').innerHTML = '<p>A carregar…</p>';
-  let d; try { d = await chamarGestor({ accao: 'listar' }); } catch (e) { if (!guardado) $('#gestao').innerHTML = `<div class="msg erro">${esc(e.message)}</div>`; return; }
+  $('#gestao').innerHTML = msg;
+  if (guardado) montarGestao(guardado, msg);
+  let d; try { d = await chamarGestor({ accao: 'listar' }); } catch (e) { if (!guardado) $('#gestao').innerHTML = `${msg}<div class="msg erro">${esc(e.message)}</div>`; return; }
   LS.set('gestaoListar', d);
   if (!guardado || JSON.stringify(guardado) !== JSON.stringify(d)) montarGestao(d, msg);
 }
 async function montarGestao(d, msg = '') {
   const sem = d.activistas.filter((a) => !a.tem_login && a.activo !== false), com = d.activistas.filter((a) => a.tem_login);
   const gere = S.perfil?.gere_acessos !== false;   // false: gestor que não cria acessos nem muda senhas/PIN (15/10/2026)
-  $('#gestao').innerHTML = `${msg}${enviaMensagens() ? '<div class="cartao" id="g-msg"><h2>✉️ Mensagens</h2><p class="pequeno">A carregar…</p></div>' : ''}${gere ? '<div class="cartao" id="g-sug"><h2>💡 Sugestões e problemas</h2><p class="pequeno">A carregar…</p></div>' : ''}${gere ? `<div class="cartao"><h2>Criar login de activista</h2>
+  montarAcordeao();
+  const poe = (k, h) => { const c = $('#gac-c-' + k); if (c) c.innerHTML = h; };
+  $('#gestao').innerHTML = msg;
+  if (enviaMensagens() && !$('#g-msg')) poe('msg', '<div class="cartao" id="g-msg"><h2>✉️ Mensagens</h2><p class="pequeno">A carregar…</p></div>');
+  if (gere && !$('#g-sug')) poe('sug', '<div class="cartao" id="g-sug"><h2>💡 Sugestões e problemas</h2><p class="pequeno">A carregar…</p></div>');
+  numGac('acessos', gere ? sem.length : null);
+  poe('acessos', `${gere ? `<div class="cartao"><h2>Criar login de activista</h2>
     ${sem.length ? '' : '<div class="msg info">Todos os activistas activos já têm login.</div>'}
     <label>Activista<select id="g-act" ${sem.length ? '' : 'disabled'}><option value="">— Escolha o activista —</option>${sem.map((a) => `<option value="${a.id}" data-u="${sugerirUtilizador(a.nome)}">${esc(a.nome)} — ${esc(a.comunidade_principal || '')}</option>`).join('')}</select></label>
     <label>Utilizador<input id="g-user" autocapitalize="none"></label>
@@ -7545,7 +7579,9 @@ async function montarGestao(d, msg = '') {
     <label>Utilizador<input id="c-user" autocapitalize="none"></label>
     <label>Senha provisória (8 ou mais caracteres)<input id="c-senha" type="password" autocomplete="new-password"></label><p class="pequeno">Ao entrar pela primeira vez, a pessoa escolhe uma senha só dela.</p>
     <button class="btn" id="c-criar" disabled>Criar acesso</button></div>` : ''}
-    <div class="cartao"><h2>Coberturas (ausências)</h2>
+    <div class="cartao"><h2>Acessos criados (${(d.utilizadores || []).length})</h2>
+    ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div>${gere ? `<button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button>` : ''}</div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`);
+  poe('conf', `<div class="cartao"><h2>Coberturas (ausências)</h2>
     <p class="pequeno">Quando um técnico ou supervisor está ausente, um colega passa a ver e gerir as equipas dele durante o período indicado.</p>
     <label>Quem cobre<select id="k-quem">${(d.utilizadores || []).filter((u) => u.papel === 'tecnico' || u.papel === 'supervisor').map((u) => `<option value="${u.id}" data-p="${u.papel}" data-n="${esc(u.nome)}">${esc(u.nome)} — ${esc(FUNCOES[u.papel].nome)}</option>`).join('')}</select></label>
     <label>Cobre as equipas de<select id="k-cobre"></select></label>
@@ -7558,9 +7594,7 @@ async function montarGestao(d, msg = '') {
     <div id="m-pausa"></div>
     <label>Campos no dia de monitoria, por pessoa<input id="m-n" type="number" inputmode="numeric" min="1" max="10"></label>
     <button class="btn sec" id="m-gravar-n">Gravar</button><div id="m-escala"></div></div>
-    <div class="cartao"><h2>Quem viu o painel</h2><div id="g-visitas"><p class="pequeno">A carregar…</p></div></div>
-    <div class="cartao"><h2>Acessos criados (${(d.utilizadores || []).length})</h2>
-    ${(d.utilizadores || []).map((c) => `<div class="item"><div><div class="nome">${esc(c.nome)}</div><div class="sub">${esc(FUNCOES[c.papel]?.nome || c.papel)} · utilizador: <b>${esc(c.utilizador || '')}</b></div></div>${gere ? `<button class="chip" onclick="reporSenha('${c.id}','${esc(c.nome)}')">Nova senha</button>` : ''}</div>`).join('') || '<p class="pequeno">Ainda nenhum.</p>'}</div>`;
+    <div class="cartao"><h2>Quem viu o painel</h2><div id="g-visitas"><p class="pequeno">A carregar…</p></div></div>`);
   desenharVisitas(); desenharCoberturas(d);
   if (gere) { if (S.sug) desenharSugestoes(); cartaoSugestoes(); }
   if (enviaMensagens()) cartaoMensagensGestao();   // v258
@@ -7593,8 +7627,10 @@ async function montarGestao(d, msg = '') {
     return lista;
   };
   const porCriar = (papel) => listaDe(papel).filter((x) => !comLogin.has(papel + '|' + x.nome)).length;
-  [...$('#c-papel').options].forEach((o) => { if (!o.value) return; const n = porCriar(o.value);
+  let nOutros = 0;
+  [...$('#c-papel').options].forEach((o) => { if (!o.value) return; const n = porCriar(o.value); nOutros += n;
     o.disabled = !n; o.textContent = `${FUNCOES[o.value].nome} (${n ? n + ' por criar' : 'todos com acesso'})`; });
+  numGac('acessos', sem.length + nOutros);
   if (![...$('#c-papel').options].some((o) => o.value && !o.disabled)) {
     $('#c-nada').innerHTML = '<div class="msg info">Não há acessos por criar: todas as pessoas da lista já têm acesso. Para uma pessoa nova, acrescente-a primeiro à lista do Excel de logins (aba OUTROS_ACESSOS).</div>';
     $('#c-papel').disabled = true;

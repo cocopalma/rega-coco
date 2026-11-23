@@ -52,12 +52,12 @@ with sync_playwright() as p:
     pg.wait_for_timeout(1500)
     pg.evaluate("window.__TAR_ABERTAS = true; fecharFolha && fecharFolha(); mudar('gestao')"); pg.wait_for_timeout(1800)
     if not GERE:
-        verif(pg.locator("#gestao-tabs .chip").count() == 0, "G1 gestor sem gere_acessos: sem separadores")
-        verif(not pg.is_visible("#gestao-eq") and pg.is_visible("#gestao"), "G2 vê a Gestão como antes")
+        verif(pg.locator("#gac-eq").count() == 0, "G1 gestor sem gere_acessos: sem o cartão «Equipa de campo» (v259)")
+        verif(pg.locator("#gestao-eq").count() == 0 and pg.is_visible("#gac-acessos"), "G2 vê os outros cartões da Gestão")
         verif(rec.get("eq", 0) == 0, "G3 não pede o painel ao servidor")
     else:
-        verif(pg.locator("#gestao-tabs .chip").count() == 2, "1 dois separadores")
-        verif(pg.is_visible("#gestao-eq") and not pg.is_visible("#gestao"), "2 abre em «Equipa de campo»")
+        verif(pg.locator("#gac-eq").count() == 1, "1 cartão «Equipa de campo» (v259: cascata)")
+        verif(pg.is_visible("#gestao-eq"), "2 abre em «Equipa de campo»")
         t = pg.inner_text("#gestao-eq")
         cards = pg.locator("#gestao-eq .eqc")
         verif(cards.count() == 2, "3 um cartão por pessoa")
@@ -68,15 +68,12 @@ with sync_playwright() as p:
         verif(cards.nth(0).locator(".faixa-eq .cel").count() == len(dias), "7 faixa com os dias da semana")
         verif("19:40" in c1, "8 dias anteriores com o fecho depois das 18:00")
         if LING == "pt":
-            verif("Ainda não fechou o dia" in c1 and "Equipas ainda sem rega nem motivo" in c1, "9 hoje antes das 18:00: pode fechar, equipas ainda sem rega")
+            verif("Ainda não fechou o dia" in c1 and "Equipas ainda sem rega, cava-roda nem motivo" in c1, "9 hoje antes das 18:00: pode fechar, equipas ainda sem rega")
         else:
             for pt in ["O que falta", "Fecho do dia", "Motivos por confirmar", "Regas com", "Ver os dias anteriores", "fecharam o dia", "Equipa de campo", "Não fechou o dia", "Ainda não fechou"]:
                 verif(pt not in t, f"9 traduzido: «{pt}»")
         pg.screenshot(path=f"/home/claude/rega-test/v223_{LING}.png", full_page=True)
-        pg.click("#gestao-tabs .chip >> nth=1"); pg.wait_for_timeout(500)
-        verif(pg.is_visible("#gestao") and not pg.is_visible("#gestao-eq"), "10 separador «Acessos e configurações» mostra a Gestão de antes")
-        pg.click("#gestao-tabs .chip >> nth=0"); pg.wait_for_timeout(500)
-        verif(pg.is_visible("#gestao-eq"), "11 volta ao painel")
+        verif(pg.is_visible("#gac-acessos") and pg.is_visible("#gac-conf"), "10 os outros cartões estão na mesma lista (v259)")
     print("erros JS:", erros)
     if erros: falhas.append("erros JS")
     b.close()

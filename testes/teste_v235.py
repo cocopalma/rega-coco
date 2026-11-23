@@ -118,7 +118,7 @@ def correr(PAPEL):
                 verif(len(v) == 1 and v[0]["p_motivo"].startswith("Fonte de água secou"), f"S5 voltar_a_regar com o motivo em português ({v})")
 
         if PAPEL == "gestor":
-            pg.evaluate("mudar('gestao')"); pg.wait_for_timeout(800); pg.evaluate("typeof abaGestao === 'function' && abaGestao('acessos')"); pg.wait_for_selector("#c-papel", timeout=10000); pg.wait_for_timeout(800)
+            pg.evaluate("mudar('gestao')"); pg.wait_for_timeout(800); pg.wait_for_selector("#gac-acessos", state="attached", timeout=10000); pg.evaluate("document.querySelector('#gac-acessos').open = true"); pg.wait_for_selector("#c-papel", timeout=10000); pg.wait_for_timeout(800)
             o = pg.locator("#c-papel option[value=chefe_manutencao]")
             verif(o.count() == 0 and pg.locator("#c-com-l").count() == 0, "G1 (v239) sem «Chefe de manutenção» nos outros acessos")
 
