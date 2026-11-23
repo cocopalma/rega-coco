@@ -373,6 +373,8 @@
     activar_horas_extras: (a) => { DB.he ||= []; const j = DB.he.find((h) => h.activista_id === a.p_activista && h.data === a.p_data);
       if (j) return { id: j.id, ja: true, por: j.por, em: j.em };
       DB.he.push({ id: a.p_id, activista_id: a.p_activista, data: a.p_data, por: NOMES[papel] || 'Eu', papel, em: a.p_em || new Date().toISOString() }); return { id: a.p_id, ja: false }; },
+    minhas_mensagens: () => [], destinatarios_mensagem: () => null, mensagens_enviadas: () => null,   // v258: as mensagens não entram na simulação
+    enviar_mensagem: () => null, responder_mensagem: () => null, mensagem_vista: () => true, remover_mensagem: () => null,
     cancelar_horas_extras: (a) => { DB.he = (DB.he || []).filter((h) => h.id !== a.p_id); return { ok: true }; },
     // cava-roda e mulching quando não há rega (ramo cc-manutencao): guardados na base de exemplo
     gravar_actividade: (a) => { const x = a.p || {}; DB.act ||= []; if (DB.act.some((y) => y.id === x.id)) return { id: x.id, ja: true };
