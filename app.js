@@ -6178,7 +6178,13 @@ async function enviarAct() {
       if (b) { const up = await sb.storage.from('rega-fotos').upload(caminho, b, { contentType: 'image/jpeg', upsert: true }); if (up.error) return up.error.message; cam[t] = caminho; }
       else if (x._enviadas?.[t]) cam[t] = x._enviadas[t];
     }
-    if (!cam.entrada || !cam.durante || !cam.saida) { marcarRecusa('filaAct', x, { code: 'FOTO', message: 'Faltam fotografias no telefone' }, 'actividades_campo'); continue; }
+    if (!cam.entrada || !cam.durante || !cam.saida) {
+      // v260: as fotografias só se apagam depois de o servidor aceitar; sem elas, o registo pode já estar no servidor (ficou no telefone por engano)
+      const q = await sb.rpc('gravar_actividade', { p: { ...p, foto_entrada: '', foto_durante: '', foto_saida: '' } });
+      if (q.error && erroPassageiro(q.error)) return q.error.message;
+      if (!q.error && q.data?.ja) { LS.set('filaAct', filaAct().filter((y) => y.id !== x.id)); continue; }
+      marcarRecusa('filaAct', x, { code: 'FOTO', message: 'Faltam fotografias no telefone' }, 'actividades_campo'); continue;
+    }
     const r = await sb.rpc('gravar_actividade', { p: { ...p, foto_entrada: cam.entrada, foto_durante: cam.durante, foto_saida: cam.saida } });
     if (r.error && erroPassageiro(r.error)) return r.error.message;
     if (r.error) { LS.set('filaAct', filaAct().map((y) => y.id === x.id ? { ...y, _enviadas: cam } : y)); marcarRecusa('filaAct', x, r.error, 'actividades_campo'); continue; }
