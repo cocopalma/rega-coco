@@ -767,6 +767,9 @@ function ecraTrocarSenha(obrig = false) {
 
 // ---------- mapa ----------
 let mapa, camada, rotulos, eu;
+let expPts;                                   // v267: pontos cinzentos dos campos fora do plano dentro das áreas de expansão
+const ZOOM_EXP_PTS = 15;                      // só aparecem com o mapa aproximado (26/11/2026, Valdo: "Manter só com zoom perto")
+function zoomExpPts() { if (!mapa || !expPts) return; const ver = mapa.getZoom() >= ZOOM_EXP_PTS; if (ver && !mapa.hasLayer(expPts)) expPts.addTo(mapa); else if (!ver && mapa.hasLayer(expPts)) mapa.removeLayer(expPts); }
 function iniciarMapa() {
   // rotate: o mapa pode rodar com a direcção (leaflet-rotate; sem o complemento fica como antes, norte em cima)
   mapa = L.map('mapa', { zoomControl: true, preferCanvas: true, rotate: true, rotateControl: false, touchRotate: false, compassBearing: false }).setView([-10.75, 40.45], 11);
@@ -787,7 +790,9 @@ function iniciarMapa() {
   new BotaoFundo().addTo(mapa);
   camada = L.layerGroup().addTo(mapa);
   rotulos = L.layerGroup().addTo(mapa);
+  expPts = L.layerGroup();
   mapa.on('zoomend moveend', desenharRotulos);
+  mapa.on('zoomend', zoomExpPts);
   mapa.on('click', (e) => { if (S.regua) pontoRegua([e.latlng.lat, e.latlng.lng]); });
   if (navigator.geolocation) navigator.geolocation.watchPosition((p) => {
     S.pos = [p.coords.latitude, p.coords.longitude]; S.fix = { coords: p.coords, t: Date.now() };
@@ -1636,6 +1641,8 @@ const centroPol = (P) => { const ll = P.map(([x, y]) => [y, x]); return [ll.redu
 const haExp = (e) => ((+e.area_m2 || areaPontos(e.poligono)) / 10000).toLocaleString(LOC, { maximumFractionDigits: 1 });
 function desenharExpansao() {
   const l = $('#leg-exp'); if (l) l.style.display = verExpansao() ? '' : 'none';
+  const l2 = $('#leg-exp2'); if (l2) l2.style.display = verExpansao() && S.expansao.some((e) => (e.campos || []).some((c) => !c.activa && c.lat != null)) ? '' : 'none';
+  if (expPts) expPts.clearLayers();
   if (!verExpansao() || modoManut()) return;
   for (const e of S.expansao) {
     if (!Array.isArray(e.poligono) || e.poligono.length < 3) continue;
@@ -1644,15 +1651,17 @@ function desenharExpansao() {
     // responde ao toque (o toque vai para o campo que está por baixo); a ficha da área abre-se pela etiqueta
     L.polygon(e.poligono.map(([x, y]) => [y, x]), { color: '#ad1457', weight: 3, dashArray: '10 6', opacity: S.modoPerc ? .5 : .95, fillColor: '#ad1457', fillOpacity: .05, interactive: false })
       .addTo(camada);
-    // os campos dentro da área que não estão no mapa (fora do plano de rega, ou de outra lista) ficam como pontos cinzentos que abrem uma ficha curta
+    // os campos dentro da área que não estão no mapa (fora do plano de rega, ou de outra lista) ficam como pontos cinzentos que abrem uma ficha curta;
+    // v267: só com o mapa aproximado (zoom ≥ ZOOM_EXP_PTS), para não encher a área de pontos
     for (const c of e.campos || []) {
       if (c.lat == null || S.areas.some((a) => a.id === c.id)) continue;
       L.circleMarker([+c.lat, +c.lon], { radius: 6, color: '#fff', weight: 1.5, fillColor: c.nao_existe ? '#bdbdbd' : '#757575', fillOpacity: .9 })
-        .on('click', (ev) => { if (S.regua) { L.DomEvent.stopPropagation(ev); pontoRegua([+c.lat, +c.lon], c.produtor || c.id); return; } L.DomEvent.stopPropagation(ev); fichaCampoExp(e.id, c.id); }).addTo(camada);
+        .on('click', (ev) => { if (S.regua) { L.DomEvent.stopPropagation(ev); pontoRegua([+c.lat, +c.lon], c.produtor || c.id); return; } L.DomEvent.stopPropagation(ev); fichaCampoExp(e.id, c.id); }).addTo(expPts);
     }
     L.marker(centroPol(e.poligono), { icon: L.divIcon({ className: '', html: `<span class="ic-exp"><span>${esc(e.nome)}</span> · ${haExp(e)} ha</span>`, iconSize: null, iconAnchor: [70, 10] }) })
       .on('click', clique).addTo(camada);
   }
+  zoomExpPts();
 }
 function verExpNoMapa(id) {
   const e = (S.expansao || []).find((x) => x.id === id); if (!e) return;
