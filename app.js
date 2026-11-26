@@ -2373,6 +2373,7 @@ function ecraPlano(id) {
     ${(p.dias || []).map((d) => d.fim ? diaPlano3(p, d, nome) : `<div class="cartao"><div class="lin"><b>Dia ${d.n}</b><span>${num(d.plantas)} plantas · ${(d.dist_m / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km · ${h(d.minutos)}</span></div>
       <p class="pequeno sem-trad">${d.campos.map((c, k) => `${k + 1}. ${esc(nome(c.area_id))}${c.sem_coordenada ? ' (?)' : ''}`).join(' · ')}</p><div class="pl-falhas" data-n="${d.n}"></div></div>`).join('')}
     <div class="chips"><button class="chip" onclick="verPlanoMapa('${esc(p.id)}')">Ver no mapa</button></div>
+    ${blocoMudarPlano(p)}
     ${esperaPorMim(p) ? `<label>Motivo (obrigatório para recusar)<textarea id="pl-mot" rows="2"></textarea></label>
       <button class="btn" onclick="aprovarPlano('${esc(p.id)}', true)">✓ Aprovar</button><button class="btn aviso" onclick="aprovarPlano('${esc(p.id)}', false)">✗ Recusar</button>` : ''}
     ${podeAnularPlano(p) ? `<label>Motivo para anular a aprovação (obrigatório)<textarea id="pl-anul" rows="2"></textarea></label>
@@ -2439,8 +2440,11 @@ async function aprovarPlano(id, sim) {
 }
 let camadaPlano = null;
 const CORES_DIA = ['#1e5bd8', '#c62828', '#2e7d32', '#ef6c00', '#6a1b9a', '#00838f', '#ad1457', '#5d4037', '#283593', '#827717'];
-function verPlanoMapa(id) {
-  const p = planos().find((x) => x.id === id); if (!p) return;
+function verPlanoMapa(id, rasc) {
+  const p0 = planos().find((x) => x.id === id); if (!p0) return;
+  // v263: «Ver no mapa (com as mudanças)» mostra os dias do plano que está a ser mudado
+  const p = rasc && S.edPlano?.id === id ? { ...p0, dias: S.edPlano.dias.filter((d) => d.campos.length).map((d, j) => ({ ...d, n: j + 1 })) } : p0;
+  if (rasc && S.edPlano) S.edPlano.motivo = $('#ep-mot')?.value ?? S.edPlano.motivo;
   fecharFolha(); mudar('mapa');
   if (!camadaPlano) camadaPlano = L.layerGroup(); camadaPlano.clearLayers(); camadaPlano.addTo(mapa);
   const pts = [];
@@ -2452,10 +2456,161 @@ function verPlanoMapa(id) {
   });
   if (pts.length) setTimeout(() => { mapa.invalidateSize(); mapa.fitBounds(pts, { padding: [40, 40], maxZoom: 16 }); }, 50);
   const el = $('#sug-mapa');
-  el.innerHTML = `<div>🗺 <span>Plano da equipa</span> · <span class="sem-trad">${esc(p.activista)}</span> · <span>dia·ordem</span></div><div class="chips"><button class="chip" onclick="ecraPlano('${esc(p.id)}')">Ver o plano</button><button class="chip" onclick="fecharPlanoMapa()">Fechar</button></div>`;
+  el.innerHTML = `<div>🗺 <span>Plano da equipa</span> · <span class="sem-trad">${esc(p.activista)}</span> · <span>dia·ordem</span></div><div class="chips">${rasc ? `<button class="chip" id="pm-voltar-ed" onclick="fecharPlanoMapa(); ecraEditarPlano('${esc(p.id)}', true)">✏️ <span>Voltar às mudanças</span></button>` : `<button class="chip" onclick="ecraPlano('${esc(p.id)}')">Ver o plano</button>`}<button class="chip" onclick="fecharPlanoMapa()">Fechar</button></div>`;
   el.style.display = ''; S.planoMapa = true;
   // v222 (09/11/2026, Valdo pelo 💡): no mapa do plano só aparecem os campos do plano; os outros saem para não atrapalhar a análise
   S.planoIds = new Set((p.dias || []).flatMap((d) => d.campos.map((c) => c.area_id))); desenharMapa();
+}
+// ---------- mudar o plano da equipa na app (v263, 26/11/2026, Valdo: "Preciso de poder alterar o plano dos activistas, em vez de te pedir") ----------
+// Quem: o gestor principal e o supervisor da equipa (como na aprovação; nunca as contas de testes). O que: passar campos entre dias,
+// mudar a ordem num dia, tirar e acrescentar campos da equipa, dias novos; e pedir um plano novo (a tarefa das 20:10 gera-o).
+// O plano fica no estado em que estava (aprovado continua aprovado); cada mudança fica no histórico com o motivo (planos_alteracoes).
+// Os dias do itinerário já fechados pelo activista não mudam. O tempo de cada dia recalcula-se com o que a equipa fez (aprendizagem).
+const ESTADOS_MUDAR = ['por_supervisor', 'por_gestor', 'aprovado'];
+function podeMudarPlano(p) {
+  if (!p || !ESTADOS_MUDAR.includes(p.estado) || planoPassado(p) || S.perfil?.so_teste) return false;
+  if (p.pode_mudar != null) return !!p.pode_mudar;
+  return souAprovadorGestor() || (S.perfil?.papel === 'supervisor' && !S.perfil?.ve_tudo && (!Array.isArray(S.visiveis) || S.visiveis.includes(p.activista_id)));
+}
+const hmPl = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`;
+const minPl = (t) => { const [h, m] = String(t || '06:30').split(':').map(Number); return h * 60 + (m || 0); };
+const posPl = (id) => { const a = S.areas.find((x) => x.id === id); return a && a.latitude != null ? [a.latitude, a.longitude] : null; };
+// o mesmo cálculo de ferramentas/plano_equipa.py (Equipa.partes): espera pela água, rega, deslocação, outras esperas
+function recalcDiaPlano(p, d) {
+  const ap = p.aprendizagem || {}, ll = d.campos.map((c) => posPl(c.area_id)).filter(Boolean);
+  let dist = 0, desl = 0;
+  for (let k = 1; k < ll.length; k++) {
+    const m = metros(ll[k - 1], ll[k]); dist += m;
+    if (ap.vel) desl += m <= 800 ? m / ap.vel : 800 / ap.vel + (m - 800) / Math.max(ap.vlon || ap.vel, ap.vel);
+  }
+  d.plantas = d.campos.reduce((t, c) => t + (+c.plantas || 0), 0); d.dist_m = Math.round(dist);
+  if (ap.versao === 3) {
+    const esp = d.campos.length ? (ap.e1 || 0) + (ap.en || 0) * (d.campos.length - 1) : 0, rega = d.plantas * (ap.mr || 0), out = d.campos.length ? ap.bias || 0 : 0;
+    const t = esp + rega + desl + out, ini = d.continuacao ? minPl(d.inicio) : 390;
+    Object.assign(d, { espera_min: Math.round(esp), rega_min: Math.round(rega), desloc_min: Math.round(desl), outras_min: Math.round(out), minutos: Math.round(t), inicio: hmPl(ini), fim: hmPl(ini + t) });
+  } else if (ap.min_por_planta != null) d.minutos = Math.round(d.plantas * ap.min_por_planta);
+  return d;
+}
+async function ecraEditarPlano(id, manter) {
+  const p = planos().find((x) => x.id === id); if (!p || !podeMudarPlano(p)) return;
+  if (!manter || !S.edPlano || S.edPlano.id !== id) {
+    S.edPlano = { id, dias: JSON.parse(JSON.stringify(p.dias || [])), fechados: new Set(), motivo: '' };
+    if (p.estado === 'aprovado' && navigator.onLine) {
+      const r = await sb.rpc('itinerario_estado', { p_plano: id });
+      if (!r.error && r.data) (r.data.fechos || []).forEach((f) => S.edPlano.fechados.add(f.dia_n));
+    }
+  }
+  desenharEditarPlano();
+}
+function desenharEditarPlano() {
+  const E = S.edPlano, p = planos().find((x) => x.id === E.id); if (!p) return;
+  const motivo = $('#ep-mot') ? $('#ep-mot').value : E.motivo; E.motivo = motivo;
+  const daEquipa = new Set(S.areas.filter((a) => a.activista_id === p.activista_id).map((a) => a.id));
+  const noPlano = new Set(E.dias.flatMap((d) => d.campos.map((c) => c.area_id)));
+  const meta = p.capacidade || 0, livres = E.dias.filter((d) => !E.fechados.has(d.n));
+  E.dias.forEach((d) => recalcDiaPlano(p, d));
+  const nome = (c) => esc(c.produtor || (S.areas.find((x) => x.id === c.area_id) || {}).produtor || c.area_id);
+  const cards = E.dias.map((d, j) => {
+    const fech = E.fechados.has(d.n), pct = meta ? Math.round(100 * d.plantas / meta) : null, avisos = [];
+    if (d.fim && minPl(d.fim) > 14 * 60) avisos.push(`<span>Passa das 14:00</span> (${d.fim})`);
+    d.campos.forEach((c, k) => { if (k) { const a = posPl(d.campos[k - 1].area_id), b = posPl(c.area_id); if (a && b && metros(a, b) > 1500) avisos.push(`<span class="sem-trad">${nome(c)}</span> <span>fica a</span> ${(metros(a, b) / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km <span>do campo anterior</span>`); } });
+    const linhas = d.campos.map((c, k) => {
+      const fora = !daEquipa.has(c.area_id);
+      return `<div class="lin ep-c" data-dia="${j}" data-k="${k}" style="flex-wrap:wrap;gap:4px"><span>${k + 1}. <span class="sem-trad">${nome(c)}</span> (${num(c.plantas)})${posPl(c.area_id) ? '' : ' <span class="pequeno">(<span>sem coordenada</span>)</span>'}${fora ? ' <b style="color:var(--erro,#c62828)"><span>já não é da equipa: tire-o</span></b>' : ''}</span>
+        ${fech ? '' : `<span class="chips" style="margin:0">
+          <button class="chip ep-sobe" ${k ? '' : 'disabled'} onclick="moverCampoPlano(${j},${k},-1)" title="Subir">↑</button><button class="chip ep-desce" ${k < d.campos.length - 1 ? '' : 'disabled'} onclick="moverCampoPlano(${j},${k},1)" title="Descer">↓</button>
+          <select class="ep-sel" onchange="passarCampoPlano(${j},${k},this.value)"><option value="">Passar para…</option>${E.dias.map((x, i) => (i === j || E.fechados.has(x.n) ? '' : `<option value="${i}">Dia ${i + 1}</option>`)).join('')}<option value="novo">Dia novo</option></select>
+          <button class="chip ep-tira" onclick="tirarCampoPlano(${j},${k})" title="Tirar do plano">✕</button></span>`}</div>`;
+    }).join('') || '<p class="pequeno"><span>Sem campos: este dia sai do plano quando gravar.</span></p>';
+    return `<div class="cartao ep-dia" data-j="${j}"><div class="lin"><b>Dia ${j + 1}${d.fim ? ` · ${d.inicio} – ${d.fim}` : ''}</b><span>${num(d.plantas)} <span>plantas</span>${pct != null ? ` (${pct}% <span>da meta</span>)` : ''} · ${(d.dist_m / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km</span></div>
+      ${fech ? '<div class="msg info pequeno">🔒 <span>Dia já fechado pelo activista: não muda.</span></div>' : ''}
+      ${avisos.length ? `<div class="msg erro pequeno">⚠️ ${avisos.join(' · ')}</div>` : ''}
+      ${linhas}${fech ? '' : `<button class="chip ep-mais" onclick="acrescentarCampoPlano(${j})">➕ <span>Acrescentar um campo a este dia</span></button>`}</div>`;
+  }).join('');
+  const fora = [...daEquipa].filter((i) => !noPlano.has(i)).length;
+  folha(`<h2>✏️ <span>Mudar o plano</span> · <span class="sem-trad">${esc(p.activista)}</span></h2>
+    <p class="pequeno"><span>Ronda ${p.ronda}</span> · <span>${ESTADO_PLANO[p.estado] || esc(p.estado)}</span> · <span>Meta:</span> ${num(meta)} <span>plantas por dia</span></p>
+    <div class="msg info pequeno"><span>Use ↑ ↓ para mudar a ordem, «Passar para…» para mudar o campo de dia e ✕ para o tirar do plano. As horas e os km de cada dia mudam logo.</span>${p.estado === 'aprovado' ? ' <span>O plano continua aprovado: o activista vê o itinerário novo quando o telefone actualizar.</span>' : ''}</div>
+    ${cards}
+    <div class="chips"><button class="chip" id="ep-novo-dia" onclick="novoDiaPlano()">➕ <span>Dia novo</span></button><button class="chip" onclick="verPlanoMapa('${esc(p.id)}', true)">🗺 <span>Ver no mapa (com as mudanças)</span></button></div>
+    ${fora ? `<p class="pequeno">${fora} <span>campos da equipa não estão no plano: acrescente-os no dia que quiser.</span></p>` : ''}
+    <label>Porque muda o plano? (obrigatório)<textarea id="ep-mot" rows="2">${esc(motivo || '')}</textarea></label>
+    <button class="btn" id="ep-gravar" onclick="gravarEdicaoPlano()">✓ <span>Gravar as mudanças</span></button>
+    <button class="btn sec" onclick="S.edPlano=null; ecraPlano('${esc(p.id)}')">Cancelar</button>`);
+}
+function moverCampoPlano(j, k, dir) { const c = S.edPlano.dias[j].campos; const [x] = c.splice(k, 1); c.splice(k + dir, 0, x); desenharEditarPlano(); }
+function passarCampoPlano(j, k, para) {
+  if (para === '') return; const D = S.edPlano.dias, [x] = D[j].campos.splice(k, 1);
+  if (para === 'novo') D.push({ n: null, campos: [x] }); else D[+para].campos.push(x);
+  desenharEditarPlano();
+}
+function tirarCampoPlano(j, k) { S.edPlano.dias[j].campos.splice(k, 1); desenharEditarPlano(); }
+function novoDiaPlano() { S.edPlano.dias.push({ n: null, campos: [] }); desenharEditarPlano(); }
+function acrescentarCampoPlano(j) {
+  const E = S.edPlano, p = planos().find((x) => x.id === E.id); if (!p) return;
+  E.motivo = $('#ep-mot')?.value || E.motivo;
+  const noPlano = new Set(E.dias.flatMap((d) => d.campos.map((c) => c.area_id))), d = E.dias[j];
+  const ult = d.campos.length ? posPl(d.campos[d.campos.length - 1].area_id) : null;
+  const L = S.areas.filter((a) => a.activista_id === p.activista_id && !noPlano.has(a.id))
+    .map((a) => ({ a, m: ult && a.latitude != null ? metros(ult, [a.latitude, a.longitude]) : null }))
+    .sort((x, y) => (x.m ?? 1e12) - (y.m ?? 1e12));
+  folha(`<h2>➕ <span>Acrescentar um campo ao dia</span> ${j + 1}</h2>
+    ${L.length ? `<p class="pequeno">${ult ? '<span>Os mais perto do último campo deste dia primeiro.</span>' : ''}</p>` + L.map(({ a, m }) => `<div class="lin ep-add" style="flex-wrap:wrap"><span><span class="sem-trad">${esc(a.produtor || a.id)}</span> · <span class="sem-trad">${esc(a.id)}</span> · ${plantasTxt(a)}${m != null ? ` · ${(m / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km` : ''}</span>
+      <button class="chip" onclick="escolherCampoPlano(${j},'${esc(a.id)}')">Acrescentar</button></div>`).join('')
+      : '<p><span>Todos os campos da equipa já estão no plano.</span></p>'}
+    <button class="btn sec" onclick="desenharEditarPlano()">Voltar</button>`);
+}
+function escolherCampoPlano(j, id) {
+  const a = S.areas.find((x) => x.id === id); if (!a) return;
+  S.edPlano.dias[j].campos.push({ area_id: id, produtor: a.produtor, plantas: plantasN(a), base: plantasN(a), sem_coordenada: a.latitude == null });
+  desenharEditarPlano();
+}
+async function gravarEdicaoPlano() {
+  const E = S.edPlano, p = planos().find((x) => x.id === E.id); if (!p) return;
+  const mot = ($('#ep-mot')?.value || '').trim(); E.motivo = mot;
+  if (mot.length < 3) { alert('Escreva porque muda o plano.'); return; }
+  if (!navigator.onLine) { aviso('Precisa de rede para gravar as mudanças do plano.', 'erro'); return; }
+  const daEquipa = new Set(S.areas.filter((a) => a.activista_id === p.activista_id).map((a) => a.id));
+  if (E.dias.some((d) => d.campos.some((c) => !daEquipa.has(c.area_id)))) { alert('Há campos que já não são da equipa. Tire-os do plano antes de gravar.'); return; }
+  const tinhaContinua = (p.dias || []).some((d) => d.continua);
+  const dias = E.dias.filter((d) => d.campos.length || E.fechados.has(d.n)).map((d) => recalcDiaPlano(p, JSON.parse(JSON.stringify(d))));
+  if (!dias.length) { alert('O plano tem de ter pelo menos um dia com campos.'); return; }
+  const usados = new Set(dias.filter((d) => E.fechados.has(d.n)).map((d) => d.n)); let prox = 1;
+  dias.forEach((d) => { if (E.fechados.has(d.n)) { prox = Math.max(prox, d.n + 1); return; } while (usados.has(prox)) prox++; d.n = prox; usados.add(prox); prox++; delete d.continua; delete d.continua_ate; });
+  if (tinhaContinua) dias[dias.length - 1].continua = true;
+  const b = $('#ep-gravar'); if (b) { b.disabled = true; b.textContent = 'A gravar…'; }
+  const r = await sb.rpc('editar_plano', { p_id: p.id, p_dias: dias, p_motivo: mot });
+  if (r.error) { if (b) { b.disabled = false; b.textContent = '✓ Gravar as mudanças'; } aviso(semRede(r.error) ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : r.error.message, 'erro'); return; }
+  const q = await sb.rpc('planos_lista'); if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data);
+  S.edPlano = null; aviso('Plano mudado.', 'ok'); ecraPlano(p.id); if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
+}
+async function pedirPlanoNovo(id) {
+  const mot = ($('#pl-novo-mot')?.value || '').trim();
+  if (mot.length < 3) { alert('Escreva porque pede um plano novo.'); return; }
+  if (!navigator.onLine) { aviso('Precisa de rede para pedir um plano novo.', 'erro'); return; }
+  const r = await sb.rpc('pedir_plano_novo', { p_plano: id, p_motivo: mot });
+  if (r.error) { aviso(r.error.message, 'erro'); return; }
+  const q = await sb.rpc('planos_lista'); if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data);
+  aviso(r.data === 'ja_pedido' ? 'Já há um pedido de plano novo para esta equipa.' : 'Pedido feito. O plano novo é preparado depois das 20:10 e vai para aprovação.', 'ok'); ecraPlano(id);
+}
+async function cancelarPedidoPlano(id) {
+  if (!confirm('Cancelar o pedido de plano novo?')) return;
+  if (!navigator.onLine) { aviso('Precisa de rede.', 'erro'); return; }
+  const r = await sb.rpc('cancelar_pedido_plano', { p_plano: id }); if (r.error) { aviso(r.error.message, 'erro'); return; }
+  const q = await sb.rpc('planos_lista'); if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data);
+  aviso('Pedido cancelado.', 'ok'); ecraPlano(id);
+}
+function blocoMudarPlano(p) {
+  const hist = p.n_alteracoes ? `<p class="pequeno" id="pl-hist">✏️ <span>Mudado</span> ${p.n_alteracoes}× · <span>a última por</span> <span class="sem-trad">${esc(p.alterado_nome || '')}</span> ${p.alterado_em ? fmtDataHora(p.alterado_em) : ''}${p.alterado_motivo ? `: <span class="sem-trad">${esc(p.alterado_motivo)}</span>` : ''}</p>` : '';
+  if (!podeMudarPlano(p)) return hist;
+  return `${hist}<div class="cartao" id="pl-mudar"><h2 style="margin:0 0 6px">✏️ <span>Mudar este plano</span></h2>
+    <p class="pequeno"><span>Passe campos entre dias, mude a ordem, tire ou acrescente campos.</span>${p.estado === 'aprovado' ? ' <span>O plano continua aprovado.</span>' : ''}</p>
+    <button class="btn" id="pl-editar" onclick="ecraEditarPlano('${esc(p.id)}')">✏️ <span>Mudar o plano</span></button>
+    ${p.pedido_novo_em ? `<div class="msg info pequeno" id="pl-pedido">🔄 <span>Plano novo pedido a</span> ${fmtDataHora(p.pedido_novo_em)}. <span>É preparado depois das 20:10 e vai para aprovação.</span></div>
+      <button class="chip" onclick="cancelarPedidoPlano('${esc(p.id)}')">Cancelar o pedido</button>`
+      : `<details class="ajuda"><summary>🔄 <span>Pedir um plano novo</span></summary><p class="pequeno"><span>A app prepara um plano novo para esta equipa depois das 20:10, com os dados de hoje. Vai primeiro ao supervisor e depois ao gestor.</span></p>
+        <label>Porque pede um plano novo? (obrigatório)<textarea id="pl-novo-mot" rows="2"></textarea></label>
+        <button class="btn sec" id="pl-pedir" onclick="pedirPlanoNovo('${esc(p.id)}')">🔄 <span>Pedir um plano novo</span></button></details>`}</div>`;
 }
 function fecharPlanoMapa() { S.planoMapa = false; S.planoIds = null; desenharMapa(); if (camadaPlano) { camadaPlano.clearLayers(); mapa.removeLayer(camadaPlano); } mostrarSugFixa(); }
 
