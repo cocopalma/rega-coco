@@ -1640,8 +1640,16 @@ function desenharExpansao() {
   for (const e of S.expansao) {
     if (!Array.isArray(e.poligono) || e.poligono.length < 3) continue;
     const clique = (ev) => { if (S.regua) { L.DomEvent.stopPropagation(ev); pontoRegua([ev.latlng.lat, ev.latlng.lng], e.nome); return; } fichaExpansao(e.id); };
-    L.polygon(e.poligono.map(([x, y]) => [y, x]), { color: '#ad1457', weight: 3, dashArray: '10 6', opacity: S.modoPerc ? .5 : .95, fillColor: '#ad1457', fillOpacity: .05 })
-      .on('click', clique).addTo(camada);
+    // v266 (26/11/2026, Valdo: "Quero poder clicar nos campos dentro do poligono de expansao… sem me abrir a area grande"): o limite não
+    // responde ao toque (o toque vai para o campo que está por baixo); a ficha da área abre-se pela etiqueta
+    L.polygon(e.poligono.map(([x, y]) => [y, x]), { color: '#ad1457', weight: 3, dashArray: '10 6', opacity: S.modoPerc ? .5 : .95, fillColor: '#ad1457', fillOpacity: .05, interactive: false })
+      .addTo(camada);
+    // os campos dentro da área que não estão no mapa (fora do plano de rega, ou de outra lista) ficam como pontos cinzentos que abrem uma ficha curta
+    for (const c of e.campos || []) {
+      if (c.lat == null || S.areas.some((a) => a.id === c.id)) continue;
+      L.circleMarker([+c.lat, +c.lon], { radius: 6, color: '#fff', weight: 1.5, fillColor: c.nao_existe ? '#bdbdbd' : '#757575', fillOpacity: .9 })
+        .on('click', (ev) => { if (S.regua) { L.DomEvent.stopPropagation(ev); pontoRegua([+c.lat, +c.lon], c.produtor || c.id); return; } L.DomEvent.stopPropagation(ev); fichaCampoExp(e.id, c.id); }).addTo(camada);
+    }
     L.marker(centroPol(e.poligono), { icon: L.divIcon({ className: '', html: `<span class="ic-exp"><span>${esc(e.nome)}</span> · ${haExp(e)} ha</span>`, iconSize: null, iconAnchor: [70, 10] }) })
       .on('click', clique).addTo(camada);
   }
@@ -1657,26 +1665,48 @@ function navegarExpansao(id) {
   if (S.pos) { let m = Infinity; for (const [lo, la] of e.poligono) { const d = metros(S.pos, [la, lo]); if (d < m) { m = d; alvo = [la, lo]; } } }
   navegarPonto(alvo[0], alvo[1], e.nome, null, e.id);
 }
-function fichaExpansao(id) {
-  const e = (S.expansao || []).find((x) => x.id === id); if (!e) return;
-  const C = e.campos || [], naRega = C.filter((c) => c.activa), fora = C.filter((c) => !c.activa);
-  const linha = (c) => {
+const haTxt = (m2) => (m2 / 1e4).toLocaleString(LOC, { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+function linhaCampoExp(e, c) {
     const noTel = S.areas.some((a) => a.id === c.id), cod = c.pr ? `${c.pr}-${c.area_n}` : c.id;
     return `<div class="item" style="display:block"><div class="nome sem-trad">${esc(c.produtor || '')}</div>
-      <div class="sub"><span class="sem-trad">${esc(cod)}</span> · ${num(c.vivas || 0)} <span>vivas de</span> ${num(c.instaladas || 0)} <span>plantadas</span>${c.activa ? ` · <span>activista</span> <span class="sem-trad">${esc(c.activista || '—')}</span>` : c.nao_existe ? ' · <span>retirado: o campo não existe</span>' : ' · <span>fora do plano de rega</span>'}</div>
+      <div class="sub"><span class="sem-trad">${esc(cod)}</span> · ${num(c.vivas || 0)} <span>vivas de</span> ${num(c.instaladas || 0)} <span>plantadas</span>${c.area_m2 != null ? ` · ${haTxt(c.area_m2)} ha` : ' · <span>sem área medida</span>'}${c.activa ? ` · <span>activista</span> <span class="sem-trad">${esc(c.activista || '—')}</span>` : c.nao_existe ? ' · <span>retirado: o campo não existe</span>' : ' · <span>fora do plano de rega</span>'}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${noTel ? `<button class="chip" onclick="abrirFicha('${esc(c.id)}')">Abrir a ficha</button>` : ''}
       <button class="chip" onclick="verPontoNoMapa(${+c.lat}, ${+c.lon})">📍 Ver no mapa</button>
       <button class="chip" onclick="navegarPonto(${+c.lat}, ${+c.lon}, '${esc(String(c.produtor || '').replace(/'/g, ''))}', '${esc(cod)}', '${esc(e.id)}')">🧭 Navegar</button></div></div>`;
-  };
+}
+// v266 (Valdo: "coloca tambem a area, nao apenas o numero de campos"): área de cada grupo de campos (só os que têm área)
+function areaGrupo(L) {
+  if (!L.length) return '';
+  const m = L.filter((c) => c.area_m2 != null), sem = L.length - m.length;
+  return ` · ${haTxt(m.reduce((t, c) => t + (+c.area_m2 || 0), 0))} ha${sem ? ` <span class="pequeno" style="font-weight:400">(${sem} <span>sem área medida</span>)</span>` : ''}`;
+}
+function fichaCampoExp(eid, cid) {
+  const e = (S.expansao || []).find((x) => x.id === eid), c = e && (e.campos || []).find((x) => x.id === cid); if (!c) return;
+  folha(`<h2>📍 <span>Campo dentro da</span> <span>${esc(e.nome)}</span></h2>${linhaCampoExp(e, c)}
+    <div class="chips"><button class="chip" onclick="fichaExpansao('${esc(e.id)}')"><span>Ver a área de expansão</span></button></div>
+    <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
+// v266 (Valdo: "descontar a area dos campos que estao dentro do poligono de expansao para termos a area que ainda nao foi plantada"):
+// área dos campos com área (medida na app, senão a do limite do campo), sem os campos que não existem; por plantar = área − essa soma
+function areaPorPlantar(e) {
+  const C = (e.campos || []).filter((c) => !c.nao_existe), med = C.filter((c) => c.area_m2 != null), soma = med.reduce((t, c) => t + (+c.area_m2 || 0), 0);
+  return { n: C.length, med: med.length, sem: C.length - med.length, soma, resta: Math.max(0, (+e.area_m2 || areaPontos(e.poligono) || 0) - soma) };
+}
+function fichaExpansao(id) {
+  const e = (S.expansao || []).find((x) => x.id === id); if (!e) return;
+  const C = e.campos || [], naRega = C.filter((c) => c.activa), fora = C.filter((c) => !c.activa), linha = (c) => linhaCampoExp(e, c), ap = areaPorPlantar(e);
   folha(`<h2><span>${esc(e.nome)}</span></h2>
     <div class="cartao"><div class="lin"><span>Comunidade</span><b class="sem-trad">${esc(e.comunidade || '—')}</b></div>
     <div class="lin"><span>Área</span><b>${haExp(e)} ha</b></div>
     <div class="lin"><span>Campos da base dentro da área</span><b>${C.length}</b></div>
+    <div class="lin" id="exp-plantada"><span>Área dos campos com área conhecida</span><b>${haTxt(ap.soma)} ha (${ap.med} <span>de</span> ${ap.n} <span>campos</span>)</b></div>
+    <div class="lin" id="exp-resta"><span>Área ainda por plantar</span><b>${ap.sem ? '<span>no máximo</span> ' : ''}${haTxt(ap.resta)} ha</b></div>
+    ${ap.sem ? `<p class="pequeno" style="margin:4px 0 0">${ap.sem} <span>campos dentro da área ainda não têm a área medida: a área por plantar é menor do que esta. Os que estão na rega podem ser medidos na ficha do campo («📐 Medir a área»).</span></p>` : ''}
     ${e.nota ? `<p class="pequeno sem-trad" style="margin:8px 0 0">${esc(e.nota)}</p>` : ''}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0"><button class="btn sec" style="margin:0;flex:1" onclick="verExpNoMapa('${esc(e.id)}')">📍 Ver a área no mapa</button>
     <button class="btn sec" style="margin:0;flex:1" onclick="navegarExpansao('${esc(e.id)}')">🧭 Navegar até à área</button></div>
-    <h3 style="font-size:15px;margin:12px 0 4px"><span>Na rega</span> (${naRega.length})</h3>${naRega.length ? naRega.map(linha).join('') : '<p class="pequeno">Nenhum.</p>'}
-    <h3 style="font-size:15px;margin:12px 0 4px"><span>Fora do plano de rega</span> (${fora.length})</h3>${fora.length ? fora.map(linha).join('') : '<p class="pequeno">Nenhum.</p>'}
+    <h3 style="font-size:15px;margin:12px 0 4px" id="exp-h-rega"><span>Na rega</span> (${naRega.length})${areaGrupo(naRega)}</h3>${naRega.length ? naRega.map(linha).join('') : '<p class="pequeno">Nenhum.</p>'}
+    <h3 style="font-size:15px;margin:12px 0 4px" id="exp-h-fora"><span>Fora do plano de rega</span> (${fora.length})${areaGrupo(fora.filter((c) => !c.nao_existe))}</h3>${fora.length ? fora.map(linha).join('') : '<p class="pequeno">Nenhum.</p>'}
     <p class="pequeno">Só entram os campos da base com coordenada dentro do limite. Os produtores sem campo na base não aparecem.</p>
     <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
 }
