@@ -1623,13 +1623,15 @@ function navegarPonto(lat, lon, nome, cod, exp) {
 // ---------- Áreas de expansão (v211, 07/11/2026, Valdo) ----------
 // "É a área de expansão para 2027, vamos procurar engajar produtores dentro da área para termos uma espécie de bloco."
 // Só técnico, supervisor, gestor e director (o servidor devolve [] aos outros). Mostra o limite, os hectares, a nota e os campos da base dentro.
+// v265 (26/11/2026, Valdo: "Todos, menos os activistas"): as áreas de expansão vêem-se em todos os papéis menos o activista
+const veExpansao = () => !!(S.perfil?.papel && S.perfil.papel !== 'activista');
 async function carregarExpansao() {
-  if (!S.perfil || !['tecnico', 'supervisor', 'gestor', 'director'].includes(S.perfil.papel)) { S.expansao = []; LS.set('expansao', []); return; }
+  if (!veExpansao()) { S.expansao = []; LS.set('expansao', []); return; }
   const r = await sb.rpc('areas_expansao_lista'); if (r.error || !Array.isArray(r.data)) return;
   S.expansao = r.data; LS.set('expansao', S.expansao);
   if (typeof desenharMapa === 'function' && camada) desenharMapa();
 }
-const verExpansao = () => !!(S.perfil && ['tecnico', 'supervisor', 'gestor', 'director'].includes(S.perfil.papel) && (S.expansao || []).length);
+const verExpansao = () => veExpansao() && !!(S.expansao || []).length;
 const centroPol = (P) => { const ll = P.map(([x, y]) => [y, x]); return [ll.reduce((t, p) => t + p[0], 0) / ll.length, ll.reduce((t, p) => t + p[1], 0) / ll.length]; };
 const haExp = (e) => ((+e.area_m2 || areaPontos(e.poligono)) / 10000).toLocaleString(LOC, { maximumFractionDigits: 1 });
 function desenharExpansao() {

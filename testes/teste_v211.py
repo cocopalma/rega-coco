@@ -1,7 +1,7 @@
 import json, subprocess, time, sys, os
 LING = os.environ.get("LING", "pt")
 from playwright.sync_api import sync_playwright
-# v211 (07/11/2026, Valdo): área de expansão 2027 (KMZ) no mapa para técnico, supervisor, gestor e director, com os campos da base dentro. PAPEL=activista; LING=en / sw
+# v211 (07/11/2026, Valdo): área de expansão 2027 (KMZ) no mapa, com os campos da base dentro; desde a v265 todos os papéis menos o activista. PAPEL=activista / cliente / me; LING=en / sw
 APP = "http://localhost:8766/"
 NM = "/home/claude/rega-test/node_modules"
 srv = subprocess.Popen([sys.executable, "-m", "http.server", "8766", "--directory", "/home/claude/rega-coco"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
