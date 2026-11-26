@@ -302,10 +302,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 <div id="dica" role="tooltip"></div>
 
-<script src="i18n-sw.js?v=260"></script>
-<script src="i18n.js?v=260"></script>
+<script src="i18n-sw.js?v=261"></script>
+<script src="i18n.js?v=261"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=260"></script>
+<script src="demo.js?v=261"></script>
 <script>
 'use strict';
 const URL_SB = 'https://fgzdqnvobgfzjetbbxcm.supabase.co';
@@ -579,7 +579,12 @@ function desenhar() {
   const AG = !filtrado && D.agua ? D.agua : null;
   const pct1 = (v) => v.toLocaleString(LOC, { maximumFractionDigits: v >= 99 && v < 100 ? 1 : 0 }) + '%';   // 99,6 % não aparece como 100 %
   const kpi = (rot, val, sub, barra) => `<div class="card kpi"><div class="rot">${rot}</div><div class="val">${val}</div><div class="sub">${sub}</div>${barra != null ? `<div class="barra"><i style="width:${Math.min(100, barra)}%"></i></div>` : ''}</div>`;
+  // v261 (26/11/2026, Valdo: "cartão do progresso da rega onde mostra a % de campos já regados totais"): com um período escolhido,
+  // o 1.º cartão mostra também os campos que já receberam água (estado de hoje, não muda com o período); com «Tudo» já estava
+  const AGh = filtrado && D.agua ? D.agua : null;
   $('#kpis').innerHTML =
+    (AGh ? kpi('Campos que já receberam água (hoje)', pct1(pct(AGh.campos, u.areas)), `${num(AGh.campos)} / ${num(u.areas)} <span>campos na rega</span>` +
+          (AGh.nunca ? ` · <span>nunca receberam água:</span> ${num(AGh.nunca)}` : '') + `<br><span>Estado de hoje: não muda com o período.</span>`, pct(AGh.campos, u.areas)) : '') +
     // v128 (28/10/2026, Valdo): dividir os campos regados num dia por todos os campos não dizia nada; o número é do período e a % passa para o progresso da ronda (estado de hoje)
     // v203 (05/11/2026, Valdo: "colocar no primeiro cartão também a percentagem"): só com «Tudo» (todo o histórico); com um período fica só o número, como na v128
     (AG ? kpi('Campos que já receberam água', pct1(pct(AG.campos, u.areas)), `${num(AG.campos)} / ${num(u.areas)} <span>campos na rega</span>` +

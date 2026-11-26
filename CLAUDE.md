@@ -1032,3 +1032,6 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 
 ## Cava-roda já no servidor presa no telefone (v260, 25/11/2026, problema registado pela app)
 - Sitambur Issa (25/11): a cava-roda e o mulching de PR396225-1 (09:45–11:01, 69/69) chegaram ao servidor às 11:01, mas o registo ficou também na fila `filaAct` do telefone; as fotografias já tinham sido apagadas (só se apagam depois de o servidor aceitar) e, desde as 13:02, cada envio dava «Faltam fotografias no telefone» e o registo ficava «recusado», sem forma de sair. Agora, sem as fotografias no telefone, `enviarAct` pergunta ao servidor (`gravar_actividade` sem as fotografias): se o registo já lá está (`ja`), sai da fila; senão fica recusado como antes. Regras sem mudança. Teste: `testes/teste_v260.py` (LING=en / sw).
+
+## Campos que já receberam água também com um período (v261, 26/11/2026, Valdo: "cartão do progresso da rega onde mostra a % de campos já regados totais"; "Sim, publica")
+- Painel: com um período escolhido (Hoje, Ontem, 7 dias…), o 1.º cartão é «Campos que já receberam água (hoje)» (% e barra, «Estado de hoje: não muda com o período.»; `AGh`), seguido dos cartões do período como antes; com «Tudo» fica como na v255. Só painel (`painel_resumo_periodo` já devolvia `agua` em qualquer período). Teste: `testes/teste_v261.py` (ANTIGO=1; LING=en / sw).
