@@ -1,4 +1,4 @@
-# v263 (26/11/2026): mudar o plano da equipa na app (gestor principal e supervisor da equipa): passar campos entre dias, mudar a ordem,
+# v264 (26/11/2026): mudar o plano da equipa na app (gestor principal e supervisor da equipa): passar campos entre dias, mudar a ordem,
 # tirar e acrescentar campos, dia novo, ver no mapa com as mudanças, gravar com motivo; pedir um plano novo. O técnico não muda.
 # Simulação (supervisor); editar_plano / pedir_plano_novo / planos_lista respondidos na página. LING=en / sw.
 import os, sys, json
@@ -31,7 +31,7 @@ with sync_playwright() as p:
     pg.evaluate("ecraPlano('pl-0')"); pg.wait_for_timeout(500)
     t = pg.inner_text("#folha")
     passo("1 ficha do plano: «Mudar o plano», pedir plano novo e histórico das mudanças", pg.locator("#pl-editar").count() == 1 and pg.locator("#pl-pedir").count() == 1 and pg.locator("#pl-hist").count() == 1, pg.inner_text("#pl-hist") if pg.locator("#pl-hist").count() else "")
-    pg.screenshot(path=f"{SHOT}/v263_plano_{LG}.png", full_page=True)
+    pg.screenshot(path=f"{SHOT}/v264_plano_{LG}.png", full_page=True)
     pg.click("#pl-editar"); pg.wait_for_selector(".ep-dia"); pg.wait_for_timeout(300)
     passo("2 editor: um cartão por dia com os campos", pg.locator(".ep-dia").count() == 2 and pg.locator(".ep-c").count() == 3)
     fim0 = pg.inner_text(".ep-dia >> nth=1").split("\n")[0]
@@ -48,10 +48,10 @@ with sync_playwright() as p:
     passo("6 ✕ tira o campo do plano", pg.locator(".ep-c[data-dia='0']").count() == 1)
     pg.locator(".ep-c[data-dia='1'][data-k='0'] select.ep-sel").select_option("novo"); pg.wait_for_timeout(300)
     passo("7 passar para um dia novo", pg.locator(".ep-dia").count() == 3)
-    pg.screenshot(path=f"{SHOT}/v263_editor_{LG}.png", full_page=True)
+    pg.screenshot(path=f"{SHOT}/v264_editor_{LG}.png", full_page=True)
     pg.click("text=" + {"pt": "Ver no mapa (com as mudanças)", "en": "See on the map (with the changes)", "sw": "Ona kwenye ramani (pamoja na mabadiliko)"}[LG]); pg.wait_for_timeout(800)
     passo("8 mapa com as mudanças e «Voltar às mudanças»", pg.locator("#pm-voltar-ed").count() == 1 and pg.evaluate("S.planoIds && S.planoIds.size") == 3)
-    pg.screenshot(path=f"{SHOT}/v263_mapa_{LG}.png")
+    pg.screenshot(path=f"{SHOT}/v264_mapa_{LG}.png")
     pg.click("#pm-voltar-ed"); pg.wait_for_selector(".ep-dia"); pg.wait_for_timeout(300)
     passo("9 de volta ao editor, com as mudanças guardadas", pg.locator(".ep-dia").count() == 3)
     pg.click("#ep-gravar"); pg.wait_for_timeout(400)
@@ -67,7 +67,7 @@ with sync_playwright() as p:
         pg.click("#pl-editar"); pg.wait_for_selector(".ep-dia"); pg.wait_for_timeout(300)
         txt = pg.inner_text("#folha")
         pt = [w for w in ["Mudar o plano", "Passar para", "Acrescentar", "plantas", "da meta", "Dia novo", "Gravar", "Porque muda", "Dia 1", "Ver no mapa"] if w in txt]
-        passo("14 sem português no editor", not pt, str(pt)); pg.screenshot(path=f"{SHOT}/v263_editor2_{LG}.png", full_page=True)
+        passo("14 sem português no editor", not pt, str(pt)); pg.screenshot(path=f"{SHOT}/v264_editor2_{LG}.png", full_page=True)
     pg.evaluate("S.edPlano = null; LS.set('planos', LS.get('planos').map((p) => ({ ...p, pode_mudar: false }))); S.perfil = { ...S.perfil, papel: 'tecnico' }; ecraPlano('pl-0')"); pg.wait_for_timeout(400)
     passo("15 técnico (sem permissão) não vê «Mudar o plano»", pg.locator("#pl-editar").count() == 0 and pg.locator("#pl-hist").count() == 1)
     passo("16 nada saiu para o servidor", PEDIDOS["n"] == 0, f"pedidos={PEDIDOS['n']}")

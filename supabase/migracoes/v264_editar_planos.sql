@@ -1,4 +1,4 @@
--- v263 (26/11/2026, Valdo: "Preciso de poder alterar o plano dos activistas, em vez de te pedir."):
+-- v264 (26/11/2026, Valdo: "Preciso de poder alterar o plano dos activistas, em vez de te pedir."):
 -- o gestor principal e o supervisor da equipa mudam o plano na app (passar campos entre dias, mudar a ordem, tirar e acrescentar
 -- campos) e pedem um plano novo; o plano fica no estado em que estava (aprovado continua aprovado), com histórico.
 -- Só acrescenta: planos_lista ganha chaves novas, o resto é novo.

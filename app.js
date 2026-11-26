@@ -2442,7 +2442,7 @@ let camadaPlano = null;
 const CORES_DIA = ['#1e5bd8', '#c62828', '#2e7d32', '#ef6c00', '#6a1b9a', '#00838f', '#ad1457', '#5d4037', '#283593', '#827717'];
 function verPlanoMapa(id, rasc) {
   const p0 = planos().find((x) => x.id === id); if (!p0) return;
-  // v263: «Ver no mapa (com as mudanças)» mostra os dias do plano que está a ser mudado
+  // v264: «Ver no mapa (com as mudanças)» mostra os dias do plano que está a ser mudado
   const p = rasc && S.edPlano?.id === id ? { ...p0, dias: S.edPlano.dias.filter((d) => d.campos.length).map((d, j) => ({ ...d, n: j + 1 })) } : p0;
   if (rasc && S.edPlano) S.edPlano.motivo = $('#ep-mot')?.value ?? S.edPlano.motivo;
   fecharFolha(); mudar('mapa');
@@ -2461,7 +2461,7 @@ function verPlanoMapa(id, rasc) {
   // v222 (09/11/2026, Valdo pelo 💡): no mapa do plano só aparecem os campos do plano; os outros saem para não atrapalhar a análise
   S.planoIds = new Set((p.dias || []).flatMap((d) => d.campos.map((c) => c.area_id))); desenharMapa();
 }
-// ---------- mudar o plano da equipa na app (v263, 26/11/2026, Valdo: "Preciso de poder alterar o plano dos activistas, em vez de te pedir") ----------
+// ---------- mudar o plano da equipa na app (v264, 26/11/2026, Valdo: "Preciso de poder alterar o plano dos activistas, em vez de te pedir") ----------
 // Quem: o gestor principal e o supervisor da equipa (como na aprovação; nunca as contas de testes). O que: passar campos entre dias,
 // mudar a ordem num dia, tirar e acrescentar campos da equipa, dias novos; e pedir um plano novo (a tarefa das 20:10 gera-o).
 // O plano fica no estado em que estava (aprovado continua aprovado); cada mudança fica no histórico com o motivo (planos_alteracoes).
@@ -2517,9 +2517,9 @@ function desenharEditarPlano() {
     const linhas = d.campos.map((c, k) => {
       const fora = !daEquipa.has(c.area_id);
       return `<div class="lin ep-c" data-dia="${j}" data-k="${k}" style="flex-wrap:wrap;gap:4px"><span>${k + 1}. <span class="sem-trad">${nome(c)}</span> (${num(c.plantas)})${posPl(c.area_id) ? '' : ' <span class="pequeno">(<span>sem coordenada</span>)</span>'}${fora ? ' <b style="color:var(--erro,#c62828)"><span>já não é da equipa: tire-o</span></b>' : ''}</span>
-        ${fech ? '' : `<span class="chips" style="margin:0">
+        ${fech ? '' : `<span class="ep-ctl" style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;width:100%">
           <button class="chip ep-sobe" ${k ? '' : 'disabled'} onclick="moverCampoPlano(${j},${k},-1)" title="Subir">↑</button><button class="chip ep-desce" ${k < d.campos.length - 1 ? '' : 'disabled'} onclick="moverCampoPlano(${j},${k},1)" title="Descer">↓</button>
-          <select class="ep-sel" onchange="passarCampoPlano(${j},${k},this.value)"><option value="">Passar para…</option>${E.dias.map((x, i) => (i === j || E.fechados.has(x.n) ? '' : `<option value="${i}">Dia ${i + 1}</option>`)).join('')}<option value="novo">Dia novo</option></select>
+          <select class="ep-sel" style="width:auto;flex:1;min-width:0;margin:0;padding:6px;font-size:13px" onchange="passarCampoPlano(${j},${k},this.value)"><option value="">Passar para…</option>${E.dias.map((x, i) => (i === j || E.fechados.has(x.n) ? '' : `<option value="${i}">Dia ${i + 1}</option>`)).join('')}<option value="novo">Dia novo</option></select>
           <button class="chip ep-tira" onclick="tirarCampoPlano(${j},${k})" title="Tirar do plano">✕</button></span>`}</div>`;
     }).join('') || '<p class="pequeno"><span>Sem campos: este dia sai do plano quando gravar.</span></p>';
     return `<div class="cartao ep-dia" data-j="${j}"><div class="lin"><b>Dia ${j + 1}${d.fim ? ` · ${d.inicio} – ${d.fim}` : ''}</b><span>${num(d.plantas)} <span>plantas</span>${pct != null ? ` (${pct}% <span>da meta</span>)` : ''} · ${(d.dist_m / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km</span></div>

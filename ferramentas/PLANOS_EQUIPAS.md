@@ -9,6 +9,14 @@ Regras (o gerador `plano_equipa.py` já as aplica):
 - Cada equipa tem dois planos: o resto da ronda actual e a ronda seguinte. Os planos novos vão primeiro ao supervisor
   (estado por_supervisor) e depois ao gestor principal (Valdo).
 
+Pedidos de plano novo feitos na app (v264, 26/11/2026, Valdo: "Gerar o plano de novo"; o gestor principal ou o supervisor pedem em
+Planos das equipas › plano › «🔄 Pedir um plano novo», com motivo): tabela `planos_pedidos` (estado `por_fazer`).
+- Antes do passo 1: para cada pedido `por_fazer`, gerar de novo o plano do resto da ronda actual dessa equipa (passo 2), mesmo que a
+  equipa já tenha plano; gravar o novo (`por_supervisor`), passar os planos dessa equipa e dessa ronda que ainda não estão aprovados a
+  `substituido` (um aprovado também passa a `substituido`, porque foi pedido um novo), e marcar o pedido `feito` (`feito_em`, `plano_novo_id`).
+  Se não houver dados para gerar, marcar `feito` com `nota` a dizer porquê. Dizer ao Valdo no aviso quem pediu e o motivo.
+- Os planos mudados na app (`planos_alteracoes`, `n_alteracoes` > 0) não se substituem sem pedido.
+
 Passos:
 1. Correr a consulta 1 de `plano_dados.sql`: equipas a quem falta o plano da ronda actual ou da seguinte.
 2. Para cada uma: consulta 2 (trocar :act) → guardar o JSON num ficheiro (o conector pode guardá-lo num ficheiro: extrair o objecto)
