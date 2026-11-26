@@ -1035,3 +1035,4 @@ Tabela `zonas` (comunidade, zona) e coluna `areas.zona`. Palma: Incularino, Quil
 
 ## Campos que já receberam água também com um período (v261, 26/11/2026, Valdo: "cartão do progresso da rega onde mostra a % de campos já regados totais"; "Sim, publica")
 - Painel: com um período escolhido (Hoje, Ontem, 7 dias…), o 1.º cartão é «Campos que já receberam água (hoje)» (% e barra, «Estado de hoje: não muda com o período.»; `AGh`), seguido dos cartões do período como antes; com «Tudo» fica como na v255. Só painel (`painel_resumo_periodo` já devolvia `agua` em qualquer período). Teste: `testes/teste_v261.py` (ANTIGO=1; LING=en / sw).
+- v262 (26/11/2026, Valdo: "Deves colocar a % também"; escolheu «% das plantas vivas na rega»): «Plantas regadas (total)» mostra também a % das plantas vivas na rega (`D.plantas_regadas_total ÷ universo.vivas`, com barra; acima de 100 % diz «Passa de 100 % porque cada campo é regado em várias rondas.»). Teste: `testes/teste_v262.py`.
