@@ -2632,13 +2632,7 @@ function recalcDiaPlano(p, d) {
 }
 async function ecraEditarPlano(id, manter) {
   const p = planos().find((x) => x.id === id); if (!p || !podeMudarPlano(p)) return;
-  if (!manter || !S.edPlano || S.edPlano.id !== id) {
-    S.edPlano = { id, dias: JSON.parse(JSON.stringify(p.dias || [])), fechados: new Set(), motivo: '' };
-    if (p.estado === 'aprovado' && navigator.onLine) {
-      const r = await sb.rpc('itinerario_estado', { p_plano: id });
-      if (!r.error && r.data) (r.data.fechos || []).forEach((f) => S.edPlano.fechados.add(f.dia_n));
-    }
-  }
+  if (!manter || !S.edPlano || S.edPlano.id !== id) await ecraEditarPlanoIni(id);
   desenharEditarPlano();
 }
 function desenharEditarPlano() {
@@ -2671,7 +2665,7 @@ function desenharEditarPlano() {
     <p class="pequeno"><span>Ronda ${p.ronda}</span> · <span>${ESTADO_PLANO[p.estado] || esc(p.estado)}</span> · <span>Meta:</span> ${num(meta)} <span>plantas por dia</span></p>
     <div class="msg info pequeno"><span>Use ↑ ↓ para mudar a ordem, «Passar para…» para mudar o campo de dia e ✕ para o tirar do plano. As horas e os km de cada dia mudam logo.</span>${p.estado === 'aprovado' ? ' <span>O plano continua aprovado: o activista vê o itinerário novo quando o telefone actualizar.</span>' : ''}</div>
     ${cards}
-    <div class="chips"><button class="chip" id="ep-novo-dia" onclick="novoDiaPlano()">➕ <span>Dia novo</span></button><button class="chip" onclick="verPlanoMapa('${esc(p.id)}', true)">🗺 <span>Ver no mapa (com as mudanças)</span></button></div>
+    <div class="chips"><button class="chip" id="ep-novo-dia" onclick="novoDiaPlano()">➕ <span>Dia novo</span></button><button class="chip" id="ep-mapa" onclick="editarPlanoMapa('${esc(p.id)}')">🗺 <span>Mudar no mapa</span></button><button class="chip" onclick="verPlanoMapa('${esc(p.id)}', true)">🗺 <span>Ver no mapa (com as mudanças)</span></button></div>
     ${fora ? `<p class="pequeno">${fora} <span>campos da equipa não estão no plano: acrescente-os no dia que quiser.</span></p>` : ''}
     <label>Porque muda o plano? (obrigatório)<textarea id="ep-mot" rows="2">${esc(motivo || '')}</textarea></label>
     <button class="btn" id="ep-gravar" onclick="gravarEdicaoPlano()">✓ <span>Gravar as mudanças</span></button>
@@ -2721,6 +2715,7 @@ async function gravarEdicaoPlano() {
   const r = await sb.rpc('editar_plano', { p_id: p.id, p_dias: dias, p_motivo: mot });
   if (r.error) { if (b) { b.disabled = false; b.textContent = '✓ Gravar as mudanças'; } aviso(semRede(r.error) ? 'Sem ligação ao servidor. Tente de novo quando tiver rede.' : r.error.message, 'erro'); return; }
   const q = await sb.rpc('planos_lista'); if (!q.error && Array.isArray(q.data)) LS.set('planos', q.data);
+  if (S.planoEdMapa) fecharPlanoMapa();
   S.edPlano = null; aviso('Plano mudado.', 'ok'); ecraPlano(p.id); if ($('#e-hoje')?.classList.contains('on')) desenharHoje();
 }
 async function pedirPlanoNovo(id) {
@@ -2744,14 +2739,157 @@ function blocoMudarPlano(p) {
   if (!podeMudarPlano(p)) return hist;
   return `${hist}<div class="cartao" id="pl-mudar"><h2 style="margin:0 0 6px">✏️ <span>Mudar este plano</span></h2>
     <p class="pequeno"><span>Passe campos entre dias, mude a ordem, tire ou acrescente campos.</span>${p.estado === 'aprovado' ? ' <span>O plano continua aprovado.</span>' : ''}</p>
-    <button class="btn" id="pl-editar" onclick="ecraEditarPlano('${esc(p.id)}')">✏️ <span>Mudar o plano</span></button>
+    <button class="btn" id="pl-editar-mapa" onclick="editarPlanoMapa('${esc(p.id)}')">🗺 <span>Mudar o plano no mapa</span></button>
+    <button class="btn sec" id="pl-editar" onclick="ecraEditarPlano('${esc(p.id)}')">📋 <span>Mudar o plano na lista</span></button>
     ${p.pedido_novo_em ? `<div class="msg info pequeno" id="pl-pedido">🔄 <span>Plano novo pedido a</span> ${fmtDataHora(p.pedido_novo_em)}. <span>É preparado depois das 20:10 e vai para aprovação.</span></div>
       <button class="chip" onclick="cancelarPedidoPlano('${esc(p.id)}')">Cancelar o pedido</button>`
       : `<details class="ajuda"><summary>🔄 <span>Pedir um plano novo</span></summary><p class="pequeno"><span>A app prepara um plano novo para esta equipa depois das 20:10, com os dados de hoje. Vai primeiro ao supervisor e depois ao gestor.</span></p>
         <label>Porque pede um plano novo? (obrigatório)<textarea id="pl-novo-mot" rows="2"></textarea></label>
         <button class="btn sec" id="pl-pedir" onclick="pedirPlanoNovo('${esc(p.id)}')">🔄 <span>Pedir um plano novo</span></button></details>`}</div>`;
 }
-function fecharPlanoMapa() { S.planoMapa = false; S.planoIds = null; desenharMapa(); if (camadaPlano) { camadaPlano.clearLayers(); mapa.removeLayer(camadaPlano); } mostrarSugFixa(); }
+function fecharPlanoMapa() { S.planoMapa = false; S.planoEdMapa = false; S.planoIds = null; $('#sug-mapa')?.classList.remove('pm'); desenharMapa(); if (camadaPlano) { camadaPlano.clearLayers(); mapa.removeLayer(camadaPlano); } mostrarSugFixa(); }
+// ---------- mudar o plano no mapa (v269, 27/11/2026, Valdo: "A ideia é remanejar o plano no mapa") ----------
+// O mapa mostra os campos da equipa: os do plano com a cor do dia e o número dia·ordem, os outros a cinzento. Em baixo, os dias
+// (plantas, % da meta, hora a que acaba). Escolhe-se o dia e cada campo tocado passa para esse dia, no lugar que acrescenta menos
+// caminho (Valdo: "A app escolhe"); tocar num campo que já é desse dia tira-o do plano. «Ordem mais curta» refaz a ordem do dia.
+// Grava-se com motivo, pela mesma RPC editar_plano (v264). Campos sem coordenada não aparecem no mapa: mudam-se na lista.
+async function editarPlanoMapa(id) {
+  const p = planos().find((x) => x.id === id); if (!p || !podeMudarPlano(p)) return;
+  if (!S.edPlano || S.edPlano.id !== id) await ecraEditarPlanoIni(id);
+  else S.edPlano.motivo = $('#ep-mot')?.value ?? S.edPlano.motivo;
+  const E = S.edPlano; if (!E) return;
+  E.desf = E.desf || [];
+  if (E.diaAct == null || E.diaAct >= E.dias.length || E.fechados.has(E.dias[E.diaAct]?.n)) E.diaAct = Math.max(0, E.dias.findIndex((d) => !E.fechados.has(d.n)));
+  fecharFolha(); mudar('mapa');
+  S.planoMapa = true; S.planoEdMapa = true; S.planoIds = new Set(); desenharMapa();
+  if (!camadaPlano) camadaPlano = L.layerGroup(); camadaPlano.addTo(mapa);
+  desenharPlanoMapa(true);
+}
+async function ecraEditarPlanoIni(id) {
+  S.edPlano = { id, dias: JSON.parse(JSON.stringify(planos().find((x) => x.id === id).dias || [])), fechados: new Set(), motivo: '' };
+  const p = planos().find((x) => x.id === id);
+  if (p.estado === 'aprovado' && navigator.onLine) {
+    const r = await sb.rpc('itinerario_estado', { p_plano: id });
+    if (!r.error && r.data) (r.data.fechos || []).forEach((f) => S.edPlano.fechados.add(f.dia_n));
+  }
+}
+function camposPlanoMapa(p) {
+  const E = S.edPlano, ids = new Set(S.areas.filter((a) => a.activista_id === p.activista_id).map((a) => a.id));
+  E.dias.forEach((d) => d.campos.forEach((c) => ids.add(c.area_id)));
+  return [...ids].map((i) => S.areas.find((a) => a.id === i)).filter(Boolean);
+}
+function diaDoCampo(id) {
+  const D = S.edPlano.dias;
+  for (let j = 0; j < D.length; j++) { const k = D[j].campos.findIndex((c) => c.area_id === id); if (k >= 0) return [j, k]; }
+  return [-1, -1];
+}
+function desenharPlanoMapa(enquadrar) {
+  const E = S.edPlano, p = planos().find((x) => x.id === E?.id); if (!p || !camadaPlano) return;
+  camadaPlano.clearLayers(); E.dias.forEach((d) => recalcDiaPlano(p, d));
+  const pts = [], A = camposPlanoMapa(p);
+  E.dias.forEach((d, j) => {
+    const ll = d.campos.map((c) => posPl(c.area_id)).filter(Boolean);
+    if (ll.length > 1) L.polyline(ll, { color: CORES_DIA[j % CORES_DIA.length], weight: j === E.diaAct ? 4 : 2.5, opacity: j === E.diaAct ? .9 : .55, interactive: false }).addTo(camadaPlano);
+  });
+  for (const a of A) {
+    if (a.latitude == null) continue;
+    const q = [a.latitude, a.longitude], [j, k] = diaDoCampo(a.id); pts.push(q);
+    const cor = j >= 0 ? CORES_DIA[j % CORES_DIA.length] : '#9e9e9e', fech = j >= 0 && E.fechados.has(E.dias[j].n);
+    if (Array.isArray(a.poligono) && a.poligono.length > 2)
+      L.polygon(a.poligono.map(([lo, la]) => [la, lo]), { color: cor, weight: 1.5, fillColor: cor, fillOpacity: j >= 0 ? .25 : .12, interactive: false }).addTo(camadaPlano);
+    const txt = j >= 0 ? `${j + 1}·${k + 1}${fech ? '🔒' : ''}` : '+';
+    const mk = L.marker(q, { icon: L.divIcon({ className: '', iconSize: [34, 22], iconAnchor: [17, 11],
+      html: `<div class="pm-pt${j === E.diaAct ? ' act' : ''}" data-area="${esc(a.id)}" style="background:${cor}">${txt}</div>` }) });
+    mk.on('click', (e) => { L.DomEvent.stopPropagation(e); tocarCampoPlano(a.id); });
+    mk.addTo(camadaPlano);
+  }
+  if (enquadrar && pts.length) setTimeout(() => { mapa.invalidateSize(); const h = ($('#sug-mapa')?.offsetHeight || 160) + 30; mapa.fitBounds(pts, { paddingTopLeft: [40, 60], paddingBottomRight: [40, h], maxZoom: 16 }); }, 50);
+  painelPlanoMapa(p, A);
+}
+function painelPlanoMapa(p, A) {
+  const E = S.edPlano, meta = p.capacidade || 0, el = $('#sug-mapa'); if (!el) return;
+  const chips = E.dias.map((d, j) => {
+    const fech = E.fechados.has(d.n), pct = meta ? Math.round(100 * d.plantas / meta) : null, tarde = d.fim && minPl(d.fim) > 14 * 60;
+    return `<button class="chip pm-dia${j === E.diaAct ? ' on' : ''}" data-j="${j}" ${fech ? 'disabled' : `onclick="escolherDiaPlanoMapa(${j})"`} style="border-color:${CORES_DIA[j % CORES_DIA.length]}${j === E.diaAct ? `;background:${CORES_DIA[j % CORES_DIA.length]};color:#fff` : ''}">
+      <b>Dia ${j + 1}</b>${fech ? ' 🔒' : ''} · ${num(d.plantas)}${pct != null ? ` · ${pct}%` : ''}${d.fim ? ` · <span class="${tarde ? 'pm-tarde' : ''}">${d.fim}</span>` : ''}</button>`;
+  }).join('');
+  const dA = E.dias[E.diaAct], semCoord = A.filter((a) => a.latitude == null).length, fora = A.filter((a) => a.latitude != null && diaDoCampo(a.id)[0] < 0).length;
+  const avisos = [];
+  if (dA?.fim && minPl(dA.fim) > 14 * 60) avisos.push(`<span>Passa das 14:00</span> (${dA.fim})`);
+  (dA?.campos || []).forEach((c, k) => { if (k) { const a = posPl(dA.campos[k - 1].area_id), b = posPl(c.area_id); if (a && b && metros(a, b) > 1500) avisos.push(`<span>Campo a</span> ${(metros(a, b) / 1000).toLocaleString(LOC, { maximumFractionDigits: 1 })} km <span>do campo anterior</span> (${E.diaAct + 1}·${k + 1})`); } });
+  el.innerHTML = `<div class="lin"><b>✏️ <span>Mudar o plano no mapa</span></b><span class="sem-trad">${esc(p.activista)}</span></div>
+    <div class="pm-dias" id="pm-dias">${chips}<button class="chip" id="pm-novo" onclick="novoDiaPlanoMapa()">➕ <span>Dia novo</span></button></div>
+    <p class="pequeno" id="pm-dica">${dA ? `<span>Toque num campo para o passar para o</span> <b>Dia ${E.diaAct + 1}</b>. <span>Tocar num campo que já é deste dia tira-o do plano.</span>` : '<span>Todos os dias estão fechados pelo activista.</span>'}${fora ? ` <span>Cinzento: campos da equipa que não estão no plano</span> (${fora}).` : ''}${semCoord ? ` <span>Campos sem coordenada não aparecem no mapa: mude-os na lista.</span> (${semCoord})` : ''}</p>
+    ${avisos.length ? `<div class="msg erro pequeno" id="pm-avisos">⚠️ ${avisos.join(' · ')}</div>` : ''}
+    <div class="chips"><button class="chip" id="pm-ordem" ${dA && dA.campos.length > 2 ? '' : 'disabled'} onclick="ordemCurtaPlano()">↺ <span>Ordem mais curta</span></button>
+      <button class="chip" id="pm-desf" ${E.desf.length ? '' : 'disabled'} onclick="desfazerPlanoMapa()">↶ <span>Desfazer</span></button>
+      <button class="chip" id="pm-lista" onclick="planoMapaParaLista()">📋 <span>Ver na lista</span></button>
+      <button class="chip" id="pm-gravar" onclick="gravarPlanoMapa()" style="background:var(--verde,#2e7d32);color:#fff">✓ <span>Gravar</span></button>
+      <button class="chip" id="pm-sair" onclick="sairPlanoMapa()">Sair</button></div>`;
+  el.classList.add('pm'); el.style.display = '';
+}
+function guardarDesfPlano() { const E = S.edPlano; E.desf.push(JSON.stringify(E.dias)); if (E.desf.length > 40) E.desf.shift(); }
+function desfazerPlanoMapa() { const E = S.edPlano; if (!E.desf.length) return; E.dias = JSON.parse(E.desf.pop()); if (E.diaAct >= E.dias.length) E.diaAct = E.dias.length - 1; desenharPlanoMapa(); }
+function escolherDiaPlanoMapa(j) { S.edPlano.diaAct = j; desenharPlanoMapa(); }
+function novoDiaPlanoMapa() { const E = S.edPlano; guardarDesfPlano(); E.dias.push({ n: null, campos: [] }); E.diaAct = E.dias.length - 1; desenharPlanoMapa(); }
+// lugar que acrescenta menos caminho no dia (os campos sem coordenada não contam)
+function lugarMaisCurto(campos, q) {
+  if (!q || !campos.length) return campos.length;
+  let best = campos.length, custo = Infinity;
+  for (let k = 0; k <= campos.length; k++) {
+    const a = k > 0 ? posPl(campos[k - 1].area_id) : null, b = k < campos.length ? posPl(campos[k].area_id) : null;
+    const c = a && b ? metros(a, q) + metros(q, b) - metros(a, b) : a ? metros(a, q) : b ? metros(q, b) : Infinity;
+    if (c < custo) { custo = c; best = k; }
+  }
+  return best;
+}
+function tocarCampoPlano(id) {
+  const E = S.edPlano, dA = E.dias[E.diaAct], a = S.areas.find((x) => x.id === id); if (!a) return;
+  const [j, k] = diaDoCampo(id);
+  if (j >= 0 && E.fechados.has(E.dias[j].n)) { aviso('Este campo está num dia já fechado pelo activista: não muda.', 'erro'); return; }
+  if (!dA) return;
+  guardarDesfPlano();
+  if (j === E.diaAct) { dA.campos.splice(k, 1); aviso('Campo tirado do plano.', 'ok'); desenharPlanoMapa(); return; }
+  let c;
+  if (j >= 0) c = E.dias[j].campos.splice(k, 1)[0];
+  else c = { area_id: id, produtor: a.produtor, plantas: plantasN(a), base: plantasN(a), sem_coordenada: a.latitude == null };
+  dA.campos.splice(lugarMaisCurto(dA.campos, posPl(id)), 0, c);
+  desenharPlanoMapa();
+}
+// ordem mais curta do dia: vizinho mais perto a partir de cada campo + 2-opt; os campos sem coordenada ficam no fim
+function ordemCurtaPlano() {
+  const E = S.edPlano, d = E.dias[E.diaAct]; if (!d || d.campos.length < 3) return;
+  const com = d.campos.filter((c) => posPl(c.area_id)), sem = d.campos.filter((c) => !posPl(c.area_id)), P = com.map((c) => posPl(c.area_id));
+  const n = com.length, M = P.map((a) => P.map((b) => metros(a, b))), comp = (o) => o.reduce((t, x, i) => t + (i ? M[o[i - 1]][x] : 0), 0);
+  let melhor = null;
+  for (let s = 0; s < n; s++) {
+    const o = [s], usado = new Set([s]);
+    while (o.length < n) { let nx = -1; for (let i = 0; i < n; i++) if (!usado.has(i) && (nx < 0 || M[o[o.length - 1]][i] < M[o[o.length - 1]][nx])) nx = i; o.push(nx); usado.add(nx); }
+    let mel = true;
+    while (mel) { mel = false; for (let i = 0; i < n - 1; i++) for (let k = i + 1; k < n; k++) { const t = o.slice(0, i).concat(o.slice(i, k + 1).reverse(), o.slice(k + 1)); if (comp(t) < comp(o) - 0.5) { o.splice(0, n, ...t); mel = true; } } }
+    if (!melhor || comp(o) < comp(melhor)) melhor = o.slice();
+  }
+  guardarDesfPlano(); d.campos = melhor.map((i) => com[i]).concat(sem);
+  aviso('Dia ordenado pelo caminho mais curto.', 'ok'); desenharPlanoMapa();
+}
+function planoMapaParaLista() { const id = S.edPlano.id; fecharPlanoMapa(); ecraEditarPlano(id, true); }
+function gravarPlanoMapa() {
+  const E = S.edPlano, p = planos().find((x) => x.id === E.id); if (!p) return;
+  const D = E.dias.filter((d) => d.campos.length);
+  folha(`<h2>✓ <span>Gravar as mudanças do plano</span></h2>
+    <p class="pequeno"><span class="sem-trad">${esc(p.activista)}</span> · <span>Ronda ${p.ronda}</span></p>
+    ${D.map((d, j) => `<div class="lin"><span><b>Dia ${j + 1}</b> · ${d.campos.length} <span>campos</span></span><span>${num(d.plantas)} <span>plantas</span>${d.fim ? ` · ${d.inicio} – ${d.fim}` : ''}</span></div>`).join('')}
+    <label>Porque muda o plano? (obrigatório)<textarea id="ep-mot" rows="2">${esc(E.motivo || '')}</textarea></label>
+    <button class="btn" id="ep-gravar" onclick="gravarEdicaoPlano()">✓ <span>Gravar as mudanças</span></button>
+    <button class="btn sec" onclick="S.edPlano.motivo=$('#ep-mot').value; fecharFolha()">Voltar ao mapa</button>`);
+}
+function sairPlanoMapa() {
+  const E = S.edPlano;
+  const ids = (D) => JSON.stringify((D || []).filter((d) => d.campos.length).map((d) => d.campos.map((c) => c.area_id)));
+  if (E && ids(E.dias) !== ids(planos().find((x) => x.id === E.id)?.dias) && !confirm('Sair sem gravar? As mudanças do plano perdem-se.')) return;
+  const id = E?.id; S.edPlano = null; fecharPlanoMapa(); if (id) ecraPlano(id);
+}
+
 
 // ---------- manutenção das plantas em Quiwia e Farol (v96, 22/10/2026, pedido do Raul via Valdo) ----------
 // À parte da rega, para não se confundir campos por regar com campos por fazer: interruptor "💧 Rega / 🌱 Manutenção" no Mapa
