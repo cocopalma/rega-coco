@@ -255,6 +255,7 @@ const FUNCOES = {
 const PODE_REGAR = ['activista', 'tecnico', 'supervisor', 'gestor'];
 const VER_PAINEL = ['tecnico', 'supervisor', 'gestor', 'director', 'me', 'cliente'];
 function situacao(a) {
+  if (a._proj) return a._proj === 'ret' ? { cod: 'ret', txt: a.nao_existe ? 'Retirado da rega · não existe' : 'Retirado da rega' } : { cod: 'fora', txt: 'Fora do plano de rega' };   // v268
   const u = ultimaRega(a);
   if (!a.activista_id) return { cod: 'sem', txt: 'Sem activista', u };
   let feita, n;
@@ -278,7 +279,7 @@ function testeEm(id) {
 // técnico, supervisor, gestor e director; campos que a pessoa vê. Também a roxo no mapa. Guardado no telefone (rega.testesEquipa).
 const VER_TESTES_EQ = ['tecnico', 'supervisor', 'gestor', 'director'];
 const testeEquipa = (id) => (VER_TESTES_EQ.includes(S.perfil?.papel) ? (S.testesEq || {})[id] || null : null);
-const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a', terminar: '#f9a825' };
+const COR = { por: '#d84315', feita: '#2e7d32', sem: '#8a8f8b', teste: '#6a1b9a', terminar: '#f9a825', ret: '#6d4c41', fora: '#9e9e9e' };
 // borda do campo no mapa (16/10/2026, Dalmar via Valdo): azul = já recebeu rega nesta ronda, vermelho = ainda não (ver bordaAzul)
 const BORDA = { regado: '#1e5bd8', nunca: '#c62828' };
 const COLS_AREAS = 'id,pr,area_n,comunidade,zona,produtor,instaladas,vivas,latitude,longitude,activista_id,activista_proposto,data_plantio,poligono,reactivada_em,area_m2,limites_abertos,poligono_proposto,area_m2_proposta,proposta_em,recusa_medicao_motivo,recusa_medicao_em,recusa_medicao_por,n_regas_origem,ultima_rega_origem,datas_rega_origem,plantas_regadas_origem,regas_origem_por_pr,wa_ultima,wa_n,wa_por_pr';
@@ -518,7 +519,7 @@ function actSync() {
 // todos os pedidos saem ao mesmo tempo (antes eram uns atrás dos outros)
 async function carregarTudo() {
   const [p, ac, ar, zs, est, lc, pc, qm, po, rc, pv] = await Promise.all([
-    sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos,trocar_senha,marca_coqueiros,so_teste,ve_tudo').eq('id', S.user.id).maybeSingle(),
+    sb.from('perfis').select('id,nome,papel,activista_id,titulo,gere_acessos,trocar_senha,marca_coqueiros,so_teste,ve_tudo,ve_campos_projecto').eq('id', S.user.id).maybeSingle(),
     sb.from('activistas').select('id,nome,comunidade_principal,tecnico,supervisor,activo,equipa_tamanho,sem_telefone').order('nome'),
     sb.from('areas').select(COLS_AREAS).eq('activa', true).order('comunidade').range(0, 4999),
     sb.from('zonas').select('comunidade,zona').order('zona'),
@@ -547,6 +548,7 @@ async function carregarTudo() {
   carregarSugFeitas().catch(() => {});
   carregarMensagens().catch(() => {});   // v258: mensagens do gestor
   carregarExpansao().catch(() => {});
+  carregarProj().catch(() => {});   // v268
   carregarManut().catch(() => {});   // lista dos oficiais no telefone (encaminhar sem rede)
   if (!pc.error && Array.isArray(pc.data)) { S.pontosCom = pc.data.map((x) => [x.comunidade, x.zona, +(+x.lat).toFixed(5), +(+x.lon).toFixed(5)]); LS.set('pontosCom', S.pontosCom); }
   // senha/PIN provisório dado pelo gestor: a pessoa escolhe outro (18/10/2026, Valdo)
@@ -715,6 +717,7 @@ async function sair() {
   // v112 (26/10/2026): o Gito carregou em Sair e depois não sabia o PIN. Não é preciso sair no fim do dia.
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
+  try { await FOTOS.apagar('camposProj'); } catch {} LS.del('projEm');   // v268
   try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'filaMorb', 'rascMorb', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'nMorb', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl', 'actTot', 'mensagens', 'msgVistas'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
@@ -1190,7 +1193,8 @@ function desenharMapa(enquadrar = false) {
   if (modoManut()) { mostrarSugFixa(); return desenharMapaManut(enquadrar); }   // manutenção: só os campos de Quiwia e Farol, cores próprias (v96)
   const pts = [];
   const fa = $('#f-act')?.value;
-  for (const a of visiveis()) {
+  const pvm = verProj() ? S.projVer : 'rega';   // v268: retirados / fora do plano: só esses; todos: os da rega e os outros
+  for (const a of pvm === 'ret' || pvm === 'fora' ? [] : visiveis()) {
     // v139 (29/10/2026, Valdo): a área medida pelo activista aparece a tracejado enquanto não é aprovada (também nos campos sem coordenada)
     const prop = Array.isArray(a.poligono_proposto) && a.poligono_proposto.length >= 3 ? a.poligono_proposto : null;
     if (a.latitude == null && !prop) continue;
@@ -1224,6 +1228,7 @@ function desenharMapa(enquadrar = false) {
       .on('click', (e) => clicarCampo(e, a)).addTo(camada);
     pts.push([a.latitude, a.longitude]);
   }
+  if (pvm !== 'rega' && !S.planoIds) desenharProj(pvm, fa, pts);
   // poços de água (18/10/2026, Valdo): em princípio estão em campos de produtores que regam sozinhos (fora do plano)
   for (const q of S.planoIds ? [] : S.pocos || []) {
     L.marker([q.lat, q.lon], { icon: L.divIcon({ className: 'ic-poco', html: '💧', iconSize: [20, 20], iconAnchor: [10, 10] }) })
@@ -1245,10 +1250,13 @@ function desenharMapa(enquadrar = false) {
   $('#b-perc').style.display = podeVerPercursos() ? '' : 'none';
   $('#b-trilho').style.display = S.perfil && S.perfil.papel !== 'cliente' ? '' : 'none';
   { const b = $('#b-morb'); if (b) { b.style.display = verMorb() ? '' : 'none'; b.classList.toggle('on', !!S.soMorb); } }
+  { const b = $('#b-proj'); if (b) { b.style.display = verProj() ? '' : 'none'; b.classList.toggle('on', pvm !== 'rega'); } }
+  { const l = $('#leg-proj'); if (l) l.style.display = pvm !== 'rega' ? '' : 'none'; }
   $('#b-coq').style.display = temCoq() && !LS.get('escondeCoq', false) ? '' : 'none';
   { const l = $('#leg-coq'); if (l) l.style.display = temCoq() && LS.get('escondeCoq', false) ? '' : 'none'; }
   const ri = $('#ronda-info');
   if (souActivista() && S.perfil.activista_id) { ri.style.display = ''; ri.innerHTML = textoRonda(); }
+  else if (pvm !== 'rega') { ri.style.display = ''; ri.innerHTML = `🗂 <span>${PROJ_TXT[pvm]}</span> (${num(projLista(pvm).length)}) · <button class="chip" onclick="setProj('rega')">Só os campos na rega</button>`; }
   else if (S.soMorb) { ri.style.display = ''; ri.innerHTML = `🩺 <span>Só os campos com inventário de plantas mórbidas</span> (${num(visiveis().filter((a) => infoMorb(a.id)).length)}) · <button class="chip" onclick="alternarMorb(false)">Mostrar todos</button>`; }
   // O filtro do activista escolhido na lista também vale no mapa. Mostra-o (v112, 26/10/2026: o Manuel e o Nuro não viam
   // o polígono de um campo de Olumbe; com um activista escolhido na lista, os campos dos outros não aparecem no mapa).
@@ -1260,6 +1268,96 @@ function desenharMapa(enquadrar = false) {
 function alternarMorb(v = !S.soMorb) {
   if (v && !visiveis().some((a) => infoMorb(a.id))) { S.soMorb = false; desenharMapa(); return aviso('Ainda não há campos com inventário de plantas mórbidas.', 'info'); }
   S.soMorb = !!v; desenharMapa(S.soMorb);
+}
+// ---------- Campos fora da rega, só para o gestor principal (v268, 27/11/2026, Valdo: "Sim. E coloca todos os campos que existem no
+// projecto, mas só visíveis para mim"; 10:04: "Deixa visível também para o Paulo e para Luciano e para o Dalmar") ----------
+// Campos › Filtros › «Campos do projecto» e Mapa › Ferramentas › «🗂 Campos fora da rega»: Retirados da rega (já estiveram na rega),
+// Fora do plano de rega (nunca entraram: importados com REGA=NÃO) ou Todos os campos do projecto. Só para ver: a ficha mostra o motivo
+// e a data da retirada, as plantas, a área, as regas e as fotografias; não se regista nada nestes campos. O servidor (RPC campos_projecto)
+// só os dá a quem tem perfis.ve_campos_projecto (Valdo, Dalmar, Paulo e Luciano; o gestor principal muda-o por SQL). Ficam no telefone (IndexedDB «camposProj») e actualizam-se no máximo de 30 em 30 min.
+const verProj = () => !!S.perfil?.ve_campos_projecto && !window.DEMO;
+S.projVer = 'rega';
+const PROJ_TXT = { rega: 'Só os campos na rega', ret: 'Retirados da rega', fora: 'Fora do plano de rega', proj: 'Todos os campos do projecto' };
+const projCampo = (id) => (verProj() && (S.proj || []).find((x) => x.id === id)) || null;
+const campoQualquer = (id) => S.areas.find((x) => x.id === id) || projCampo(id);
+function projLista(v = S.projVer) {
+  if (!verProj()) return [];
+  const P = S.proj || [];
+  return v === 'ret' ? P.filter((x) => x._proj === 'ret') : v === 'fora' ? P.filter((x) => x._proj === 'fora') : v === 'proj' ? P : [];
+}
+async function carregarProj(forcar = false) {
+  if (!verProj()) { S.proj = []; return; }
+  if (!S.proj) { try { S.proj = (await FOTOS.ler('camposProj')) || []; } catch { S.proj = []; } }
+  if (!navigator.onLine || (!forcar && S.proj.length && Date.now() - (+LS.get('projEm', 0) || 0) < 30 * 60e3)) return;
+  const r = await sb.rpc('campos_projecto');
+  if (r.error || !Array.isArray(r.data)) return;
+  S.proj = r.data.map((x) => ({ ...x, _proj: x.situacao === 'retirado' ? 'ret' : 'fora' }));
+  LS.set('projEm', Date.now()); try { await FOTOS.guardar('camposProj', S.proj); } catch {}
+  if (S.projVer !== 'rega') { desenharLista(); desenharMapa(); }
+}
+async function setProj(v) {
+  if (!verProj()) v = 'rega';
+  if (v !== 'rega' && !(S.proj || []).length) { aviso('A carregar os campos fora da rega…', 'info'); await carregarProj(true); }
+  if (v !== 'rega' && !(S.proj || []).length) { aviso('Os campos fora da rega ainda não estão no telefone. Abra a app uma vez com rede.', 'erro'); v = 'rega'; }
+  S.projVer = v; if ($('#f-proj')) $('#f-proj').value = v;
+  desenharLista(); desenharMapa(v !== 'rega');
+}
+function ecraProjVer() {
+  if (!verProj()) return;
+  const n = { rega: S.areas.length, ret: projLista('ret').length, fora: projLista('fora').length, proj: S.areas.length + projLista('proj').length };
+  const em = +LS.get('projEm', 0) || 0;
+  folha(`<h2>🗂 Campos do projecto</h2><p class="pequeno">Os campos fora da rega são só para ver: não se regista nada neles.</p>
+    ${['rega', 'ret', 'fora', 'proj'].map((k) => `<button class="btn ${S.projVer === k ? '' : 'sec'}" id="pj-${k}" onclick="fecharFolha();setProj('${k}')"><span>${PROJ_TXT[k]}</span> (${num(n[k])})</button>`).join('')}
+    <p class="pequeno">${em ? `<span>Actualizado a</span> ${fmtData(new Date(em).toISOString().slice(0, 10))} ${fmtHora(new Date(em).toISOString())}` : '<span>Ainda não carregado.</span>'}</p>
+    <button class="btn sec" onclick="fecharFolha();carregarProj(true).then(()=>{ecraProjVer();})">🔄 Actualizar a lista</button>
+    <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
+function avisoProj(pv) {
+  const n = pv === 'proj' ? S.areas.length + projLista('proj').length : projLista(pv).length;
+  return `<div class="msg info" id="proj-msg">🗂 <b>${PROJ_TXT[pv]}</b> · ${num(n)} <span>campos</span> · <span>só para ver</span><br><button class="chip" onclick="setProj('rega')">Só os campos na rega</button></div>`;
+}
+function tagProj(a) {
+  if (a._proj === 'ret') return `<span class="tag t-outra">🗑 <span>Retirado a</span> ${a.retirado_em ? fmtData(String(a.retirado_em).slice(0, 10)) : '—'}${a.retirado_por ? ` · <span class="sem-trad">${esc(a.retirado_por)}</span>` : ''}</span>${a.nao_existe ? '<span class="tag t-outra">❓ <span>Não existe</span></span>' : ''}`;
+  const o = a.activista || a.activista_origem; return o ? `<span class="tag t-outra sem-trad">${esc(o)}</span>` : '';
+}
+function desenharProj(pv, fa, pts) {
+  for (const a of projLista(pv)) {
+    if (fa && (fa === '__sem' ? a.activista_id : a.activista_id !== fa)) continue;
+    const c = centroCampo(a); if (!c) continue;
+    const cor = COR[a._proj], clique = (e) => { L.DomEvent.stopPropagation(e); if (S.regua) return pontoRegua(c, a.id); abrirFicha(a.id); };
+    if (temPoligono(a)) L.polygon(a.poligono.map(([x, y]) => [y, x]), { color: cor, weight: 2, dashArray: '4 4', fillColor: cor, fillOpacity: .15 }).on('click', clique).addTo(camada);
+    L.circleMarker(c, { radius: temPoligono(a) ? 4 : 6, color: '#fff', weight: 2, fillColor: cor, fillOpacity: .95 }).on('click', clique).addTo(camada);
+    pts.push(c);
+  }
+}
+const AGUA_ORIGEM = { COM: 'COM (com fonte de água)', SEM: 'SEM (sem fonte de água)', SEM_GEO: 'SEM_GEO (sem georeferenciamento)' };
+function fichaCampoProj(id) {
+  const a = projCampo(id); if (!a) return;
+  S.fichaAberta = id;
+  const s = situacao(a), c = centroCampo(a), ret = a._proj === 'ret';
+  const mot = String(a.retirado_texto || '').replace(/^Retirado da rega na app:\s*/, '');
+  const lin = (t, v) => `<div class="lin"><span>${t}</span><b>${v}</b></div>`;
+  folha(`<h2 style="margin-top:0">${esc(a.produtor)}</h2>
+    <p class="pequeno"><span class="sem-trad">${esc(a.id)}</span> · <span class="sem-trad">${esc(a.comunidade || '')}${a.zona ? ' › ' + esc(a.zona) : ''}</span></p>
+    <div class="it-tags"><span class="tag t-${s.cod}" id="fp-sit">${s.txt}</span>${a.nao_existe ? '<span class="tag t-outra">❓ <span>Não existe</span></span>' : ''}</div>
+    <div class="msg info">🗂 <span>Campo fora da rega: só para ver.</span></div>
+    <div class="cartao">
+      ${ret ? lin('Retirado da rega', `${a.retirado_em ? fmtData(String(a.retirado_em).slice(0, 10)) : '—'}${a.retirado_por ? ` · <span class="sem-trad">${esc(a.retirado_por)}</span>` : ''}`) + (mot ? `<div class="lin" id="fp-motivo"><span>Motivo</span><b class="sem-trad">${esc(mot)}</b></div>` : '')
+        : lin('Situação', '<span>Nunca entrou na rega (fora do plano de 09/10)</span>')}
+      ${lin('Activista', `<span class="sem-trad">${esc(a.activista || a.activista_origem || '—')}</span>${!a.activista && a.activista_origem ? ' <span>(da lista de 09/10)</span>' : ''}`)}
+      ${lin('Plantas vivas', `${num(a.vivas)} <span>de</span> ${num(a.instaladas)}`)}
+      ${lin('Área', a.area_m2 != null ? `${num(a.area_m2)} m² (${haTxt(a.area_m2)} ha) · <span>${a.area_medida ? 'medida na app' : 'do limite do mapa'}</span>` : '—')}
+      ${lin('Regas na app', a.regas_app ? `${num(a.regas_app)} · <span>última</span> ${fmtData(a.ultima_app)} · ${num(a.plantas_app)} <span>plantas</span>` : '0')}
+      ${lin('Registo do WhatsApp', a.wa_n ? `${num(a.wa_n)} · <span>última</span> ${fmtData(a.wa_ultima)}${a.wa_por_pr ? ' · <span>só por produtor</span>' : ''}` : '0')}
+      ${a.n_regas_origem ? lin('Regas antes da app', `${num(a.n_regas_origem)}${a.ultima_rega_origem ? ' · <span>última</span> ' + fmtData(a.ultima_rega_origem) : ''}${a.regas_origem_por_pr ? ' · <span>só por produtor</span>' : ''}`) : ''}
+      ${a.agua_origem ? lin('Água (lista de 09/10)', `<span>${AGUA_ORIGEM[a.agua_origem] || esc(a.agua_origem)}</span>`) : ''}
+      ${a.data_plantio ? lin('Plantio', fmtData(a.data_plantio)) : ''}
+    </div>
+    ${c ? `<div class="fi-par"><button class="btn sec" onclick="verNoMapaCampo('${esc(a.id)}')">📍 Ver no mapa</button><button class="btn sec" onclick="navegarPonto(${c[0]},${c[1]},'${esc(String(a.produtor || '').replace(/'/g, ' '))}','${esc(a.id)}')">🧭 Navegar até ao campo</button></div>` : '<p class="pequeno">Sem coordenada nem limite.</p>'}
+    <p class="pequeno">Para o pôr de volta na rega: Campos › ⋯ › «➕ Voltar a pôr um campo na rega».</p>
+    <div id="f-regas"></div>
+    <button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+  if (navigator.onLine) regasDoCampo(id).catch(() => {});
 }
 function limparFiltroAct() { $('#f-act').value = ''; desenharLista(); desenharMapa(); }
 function textoRonda() {
@@ -3036,6 +3134,8 @@ function desenharLista() {
   if (modoManut()) return desenharListaManut();
   const amb = $('#f-ambito').value, com = $('#f-com').value, sit = $('#f-sit').value, txt = $('#f-txt').value.trim().toLowerCase();
   let L2 = (amb === 'meus' && S.perfil?.papel === 'activista') ? minhas() : (amb === 'meus' && listaPropria()) ? meusCampos() : S.areas;
+  const pv = verProj() ? S.projVer : 'rega';   // v268: campos fora da rega (só o gestor principal)
+  if (pv === 'ret' || pv === 'fora') L2 = projLista(pv); else if (pv === 'proj') L2 = [...L2, ...projLista('proj')];
   const fa = $('#f-act').value; if (fa) L2 = L2.filter((a) => (fa === '__sem' ? !a.activista_id : a.activista_id === fa));
   if (com) { const [c, z] = com.split('|'); L2 = L2.filter((a) => a.comunidade === c && (z === undefined || (a.zona || '') === z)); }
   if (txt) L2 = L2.filter((a) => (a.produtor || '').toLowerCase().includes(txt) || a.pr.toLowerCase().includes(txt));
@@ -3047,8 +3147,8 @@ function desenharLista() {
     : v ? L.filter((x) => x.s.cod === v) : L;
   let linhas = filtra(sit, todas);
   // v204: primeiro os que nunca receberam água, depois os por terminar (v154), depois os há mais tempo sem água; regados no fim
-  for (const x of linhas) { x.nun = x.s.cod !== 'feita' && nuncaAgua(x.a); x.ua = x.nun ? '' : ultimaAgua(x.a) || ''; }
-  const ordem = (x) => (x.nun ? 0 : x.s.cod === 'terminar' ? 1 : x.s.cod === 'feita' ? 3 : 2);
+  for (const x of linhas) { x.nun = !x.a._proj && x.s.cod !== 'feita' && nuncaAgua(x.a); x.ua = x.nun ? '' : ultimaAgua(x.a) || ''; }
+  const ordem = (x) => (x.a._proj ? 4 : x.nun ? 0 : x.s.cod === 'terminar' ? 1 : x.s.cod === 'feita' ? 3 : 2);
   linhas.sort((x, y) => ordem(x) - ordem(y) || (ordem(x) === 2 ? x.ua.localeCompare(y.ua) : 0) || (x.d ?? 1e12) - (y.d ?? 1e12));
   if (S.selRet) S.ultLista = linhas.slice(0, 300).map((x) => x.a).filter(podeRetirar).map((a) => a.id);
   S.nLista = linhas.length; actVerFiltros();
@@ -3062,7 +3162,7 @@ function desenharLista() {
   // C3: os avisos numa só linha
   const av = avisosLista(sit);
   const res = resumoLista(linhas); if (res.linhas) linhas = res.linhas;   // v240: «Resumo por»
-  $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') +
+  $('#lista').innerHTML = (souActivista() && S.perfil.activista_id ? `<div class="msg info">${textoRonda()}</div>` : '') + (pv !== 'rega' ? avisoProj(pv) : '') +
     (av.length ? `<button class="av-linha" id="av-lista" onclick="ecraAvisosLista()"><span>${av.map((x) => `<b>${num(x.n)}</b> <span>${x.t}</span>`).join(' · ')}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>` : '') +
     (S.selRet ? `<div class="msg info" id="sel-ret" style="background:#fff6e5;color:#5d3a00;position:sticky;top:0;z-index:5"><b>🗑 Retirar vários campos da rega</b><br><span>Toque nos campos para os escolher. Todos ficam com o mesmo motivo e a mesma justificação.</span><br>
       <b>${S.selRet.size}</b> <span>campos escolhidos</span>
@@ -3072,7 +3172,7 @@ function desenharLista() {
     linhas.slice(0, 300).map(({ a, s, d, nun }) => `<div class="item${S.selRet && S.selRet.has(a.id) ? ' sel-ret' : ''}" data-id="${esc(a.id)}">${S.selRet ? (podeRetirar(a) ? `<input type="checkbox" class="cx-ret" ${S.selRet.has(a.id) ? 'checked' : ''} tabindex="-1">` : '<span class="cx-ret-no" title="Fora da sua lista">—</span>') : ''}<div class="it-c">
       <div class="it-cab"><div class="nome">${esc(a.produtor)}</div><span class="tag t-${s.cod}">${s.txt}</span></div>
       <div class="sub">${esc(a.pr)} · ${esc(a.comunidade)}${a.zona ? ' › ' + esc(a.zona) : ''} · ${plantasTxt(a)}${d != null ? ' · ' + (d < 1000 ? Math.round(d) + ' m' : (d / 1000).toFixed(1) + ' km') : ''}</div>
-      <div class="it-tags">${nun ? '<span class="tag t-nunca">💧 <span>Nunca recebeu água</span></span>' : ''}${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${apoioDoCampo(a.id) ? `<span class="tag t-outra">🤝 <span>Apoio de</span> <span class="sem-trad">${esc(nomeAct(apoioDoCampo(a.id).ajuda_activista_id))}</span></span>` : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}${tagMorb(a.id)}${!meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}</div>
+      <div class="it-tags">${nun ? '<span class="tag t-nunca">💧 <span>Nunca recebeu água</span></span>' : ''}${eNovo(a) ? '<span class="tag t-novo">Novo na rega</span>' : ''}${queimadaDe(a.id) ? '<span class="tag t-fogo">🔥 Queimada</span>' : ''}${apoioDoCampo(a.id) ? `<span class="tag t-outra">🤝 <span>Apoio de</span> <span class="sem-trad">${esc(nomeAct(apoioDoCampo(a.id).ajuda_activista_id))}</span></span>` : ''}${verLimites() && semCoord(a) ? '<span class="tag t-outra">📍 <span>sem coordenada</span></span>' : verLimites() && soPonto(a) ? '<span class="tag t-outra">📐 <span>sem limite</span></span>' : ''}${verPlantas() && nPlantas(a.id) ? `<span class="tag t-plantas">🌴 <span>${nPlantas(a.id) === 1 ? '1 planta' : num(nPlantas(a.id)) + ' plantas'}</span></span>` : ''}${tagMorb(a.id)}${a._proj ? tagProj(a) : !meuCampo(a) ? `<span class="tag t-outra">${esc(equipaDe(a))}</span>` : ''}</div>
       </div>${s.cod === 'sem' && podeAtribuir(a) && meuCampo(a) ? linhaAtribuir(a) : ''}</div>`).join('') + (linhas.length > 300 ? '<p class="pequeno">Mostra os 300 mais próximos. Use os filtros.</p>' : '') : '');
 }
 
@@ -3530,7 +3630,7 @@ function botoesCampo(a) {
 // rede (fila filaAlt tipo 'retirar' → RPC retirar_da_rega). Volta pela lista: «➕ Voltar a pôr um campo na rega».
 // v208 (06/11/2026, Valdo): também «O campo não existe» (sugestão do Raul: PR973938 tem um só campo) e «Outro motivo» (Nuro)
 const MOTIVOS_RETIRAR = [['mudas_mortas', '🥀 Todas as mudas mortas'], ['sem_acesso', '🚧 Sem acesso ao campo'], ['nao_existe', '❓ O campo não existe'], ['outro', '✏️ Outro motivo']];
-const podeRetirar = (a) => !!(a && PODE_COORD.includes(S.perfil?.papel) && !S.perfil?.so_teste && meuCampo(a) && LS.get('emCurso')?.area_id !== a.id);
+const podeRetirar = (a) => !!(a && !a._proj && PODE_COORD.includes(S.perfil?.papel) && !S.perfil?.so_teste && meuCampo(a) && LS.get('emCurso')?.area_id !== a.id);
 function ecraRetirar(id) {
   // v207 (06/11/2026, Valdo: "selecionar múltiplos campos que tenham a mesma justificação"): aceita um campo ou uma lista
   const ids = Array.isArray(id) ? id : [id];
@@ -3810,7 +3910,7 @@ function aplicarPendentes(lista) {                          // o que ainda não 
 }
 
 function abrirFicha(id, nota = '') {
-  const a = S.areas.find((x) => x.id === id); if (!a) return fichaEmCursoFora(id, nota);
+  const a = S.areas.find((x) => x.id === id); if (!a) return LS.get('emCurso')?.area_id !== id && projCampo(id) ? fichaCampoProj(id) : fichaEmCursoFora(id, nota);
   S.fichaAberta = id;
   const s = situacao(a), emCurso = LS.get('emCurso');
   const d = S.pos ? distCampo(a, S.pos) : null;
@@ -3986,8 +4086,9 @@ function campoJunto(id, g) {
     <div class="pequeno" style="margin-top:4px">Se tem a certeza de que está no campo deste produtor, a coordenada pode estar errada: diga ao técnico ou ao supervisor.</div></div>`;
 }
 function verNoMapaCampo(id) {
-  const a = S.areas.find((x) => x.id === id); if (!a) return;
-  mudar('mapa');
+  const a = campoQualquer(id); if (!a) return;
+  if (a._proj && S.projVer === 'rega') { S.projVer = 'proj'; if ($('#f-proj')) $('#f-proj').value = 'proj'; desenharMapa(); }   // v268: campo fora da rega
+  fecharFolha(); mudar('mapa');
   setTimeout(() => {
     mapa.invalidateSize();
     const pts = temPoligono(a) ? a.poligono.map(([lo, la]) => [la, lo]) : a.latitude != null ? [[a.latitude, a.longitude]] : [];
@@ -5893,7 +5994,7 @@ async function regasDoCampo(id) {
   for (const x of LS.get('filaAlt', [])) if (x.tipo === 'plantas_rega') { const v = r.data.find((y) => y.id === x.registo_id); if (v) { v.pendente = { era: v.plantas_regadas }; v.plantas_regadas = x.plantas; } }
   for (const x of LS.get('filaAlt', [])) if (x.tipo === 'tuk_rega') { const v = r.data.find((y) => y.id === x.registo_id); if (v) { v.tuk_codigo = x.codigo; v.tuk_outro = x.outro; v.tuk_chegada = x.chegada; v.tukPend = true; } }
   (S.regasCampo ||= {})[id] = r.data;
-  const ar = S.areas.find((x) => x.id === id), podeCorr = PODE_CORRIGIR_PLANTAS.includes(S.perfil?.papel) && (!ar || meuCampo(ar));
+  const ar = S.areas.find((x) => x.id === id), podeCorr = PODE_CORRIGIR_PLANTAS.includes(S.perfil?.papel) && (ar ? meuCampo(ar) : !projCampo(id));
   const bt = (v, t, rot) => fotoVisivel(v['foto_' + t]) ? `<button class="chip" onclick="verFoto('rega-fotos', '${esc(v['foto_' + t])}', '${esc(rot)} · ${esc(fmtData(v.data))} ${esc(fmtHora(v['foto_' + t + '_em'] || v.entrada_em))} · ${esc(v.quem || '')}')">📷 ${rot}</button>` : '';
   el.innerHTML = `<div class="cartao" style="margin-top:10px"><h2>Regas deste campo</h2>` + r.data.map((v) => `<div style="padding:6px 0;border-bottom:1px solid var(--linha,#e5e5e5)">
       <div class="lin" style="border:0;padding:0"><span>${fmtData(v.data)} · ${fmtHora(v.entrada_em)}–${v.saida_em ? fmtHora(v.saida_em) : '…'}${v.teste ? ' <span class="tag t-teste">teste</span>' : ''}</span><b>${num(v.plantas_regadas)} plantas</b></div>
@@ -8010,6 +8111,7 @@ function mostrarApp() {
   S.filtro = lp ? LS.get('filtroSup', 'meus') : 'todas';
   S.resumo = LS.get('resumoLista', '') || ''; S.resumoCam = [];   // v240
   $('#f-ambito').value = S.filtro; $('#f-ambito').style.display = lp ? '' : 'none';
+  S.projVer = 'rega'; { const c = $('#f-proj-c'); if (c) c.style.display = verProj() ? '' : 'none'; if ($('#f-proj')) $('#f-proj').value = 'rega'; }   // v268
   $('#leg-teste').style.display = (PODE_REGAR.includes(papel) && papel !== 'activista') || VER_TESTES_EQ.includes(papel) ? '' : 'none';
   const opTq = document.querySelector('#f-sit option[value="testeq"]'); if (opTq) opTq.hidden = !VER_TESTES_EQ.includes(papel);
   const opT = document.querySelector('#f-sit option[value="teste"]'); if (opT) opT.hidden = !(PODE_REGAR.includes(papel) && papel !== 'activista');
@@ -8128,6 +8230,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#b-regua').onclick = alternarRegua;
   $('#b-trilho').onclick = gravarTrilho;
   { const b = $('#b-morb'); if (b) b.onclick = () => alternarMorb(); }
+  { const b = $('#b-proj'); if (b) b.onclick = ecraProjVer; const f = $('#f-proj'); if (f) f.onchange = () => setProj(f.value); }
   $('#b-coq').onclick = abrirCoq; $('#cq-marcar').onclick = marcarCoq; $('#cq-fechar').onclick = fecharCoq; $('#cq-desf').onclick = apagarUltimoCoq; $('#cq-csv').onclick = descarregarCoq;
   $('#b-perc').onclick = ecraPercursos; $('#pc-fechar').onclick = fecharPercurso;
   setInterval(() => { if (navigator.onLine && percursoPorEnviar()) sincronizar(true); }, 5 * 60 * 1000);

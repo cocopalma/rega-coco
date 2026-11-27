@@ -544,6 +544,7 @@
     gravar_queimada2: (a) => { if (!DB.queimadas.some((x) => x.id === a.p_id)) { DB.queimadas.push({ id: a.p_id, area_id: a.p_area, data: a.p_data, observacao: a.p_obs || null, foto_path: a.p_foto || null, registada_por: EU, registada_em: new Date().toISOString(), plantas_afectadas: a.p_afectadas, plantas_mortas: a.p_mortas ?? null, removida: false });
       DB.recontagens.push({ id: uid(), area_id: a.p_area, queimada_id: a.p_id, motivo: 'Queimada', estado: 'por_encaminhar', pedido_em: new Date().toISOString(), pedido_por: EU, oficial_id: null }); } return null; },
     areas_expansao_lista: () => [],
+    campos_projecto: () => null,   // v268: na simulação não há campos fora da rega
     aprovar_poligono: (a) => { const ar = area(a.p_area); if (ar.id && ar.poligono_proposto) { if (a.p_aprovar) { ar.poligono = ar.poligono_proposto; ar.area_m2 = ar.area_m2_proposta; ar.limites_abertos = false; ar.recusa_medicao_motivo = null; ar.recusa_medicao_em = null; ar.recusa_medicao_por = null; } else { ar.recusa_medicao_motivo = a.p_motivo || null; ar.recusa_medicao_em = new Date().toISOString(); ar.recusa_medicao_por = null; } ar.poligono_proposto = null; ar.area_m2_proposta = null; ar.proposta_em = null; } return null; },
     atribuir_area2: (a) => { const ar = area(a.p_area); if (ar.id) ar.activista_id = a.p_activista; return null; },
     // v247: a razão de não fazer cava-roda e mulching depois de «não houve rega»

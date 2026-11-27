@@ -81,7 +81,7 @@ label{display:block;margin-top:12px;font-weight:600}
 #demo-faixa{background:#6a1b9a;color:#fff;padding:6px 10px;font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}#demo-faixa b{font-weight:700}#demo-faixa button{background:#fff;color:#6a1b9a;border:0;border-radius:14px;padding:4px 10px;font-size:13px;font-weight:600}
 .chip.op{display:block;width:100%;text-align:left;border-radius:12px;padding:8px 12px}.chip.op b{display:block;font-size:15px}.chip.op span{display:block;font-size:13px;color:#555;font-weight:400;margin-top:2px}.chip.op.on span{color:var(--verde)}
 .tag{display:inline-block;border-radius:6px;padding:2px 8px;color:#fff;font-size:13px;font-weight:700}
-.t-alerta{background:#f6c9c4}.t-feita{background:var(--feita)}.t-por{background:var(--por)}.t-terminar{background:#f9a825;color:#222}.t-nunca{background:#c62828;color:#fff;margin-right:4px}.t-sem{background:var(--sem)}.t-teste{background:#6a1b9a;color:#fff}.t-novo{background:#0b6e8a;color:#fff;margin-right:4px}.t-outra{background:#e0e0e0;color:#333;margin-left:4px}
+.t-alerta{background:#f6c9c4}.t-feita{background:var(--feita)}.t-por{background:var(--por)}.t-terminar{background:#f9a825;color:#222}.t-nunca{background:#c62828;color:#fff;margin-right:4px}.t-sem{background:var(--sem)}.t-ret{background:#6d4c41;color:#fff}.t-fora{background:#9e9e9e;color:#fff}.t-teste{background:#6a1b9a;color:#fff}.t-novo{background:#0b6e8a;color:#fff;margin-right:4px}.t-outra{background:#e0e0e0;color:#333;margin-left:4px}
 .modo-sw{position:absolute;z-index:600;top:10px;left:50%;transform:translateX(-50%);display:flex;background:#fff;border-radius:20px;box-shadow:0 1px 4px rgba(0,0,0,.25);overflow:hidden}
 .modo-sw button{border:0;background:#fff;padding:5px 10px;font-size:12px;font-weight:700;color:var(--verde)}.modo-sw button.on{background:var(--verde);color:#fff}
 .modo-sw.lista button{padding:8px 14px;font-size:14px}.modo-sw.lista{position:static;transform:none;margin:10px 14px 0;width:max-content;max-width:calc(100% - 28px)}
@@ -250,6 +250,7 @@ td.n,th.n{text-align:right}
           <button id="b-perc" title="Percurso do dia de cada activista" style="display:none">👣 Percursos</button>
           <button id="b-trilho" title="Gravar um trilho: o caminho por onde anda fica para a navegação" style="display:none">🛤 Trilho</button>
           <button id="b-morb" title="Mostrar só os campos com inventário de plantas mórbidas" style="display:none">🩺 Só os campos com inventário</button>
+          <button id="b-proj" title="Campos retirados da rega e fora do plano" style="display:none">🗂 Campos fora da rega</button>
           <button id="b-sat">🛰 <span>Satélite</span></button>
           <button id="b-coq" title="Coqueiros fora dos campos da base (p. ex. no acampamento)" style="display:none">🥥 Coqueiros (teste)</button>
         </div>
@@ -327,6 +328,7 @@ td.n,th.n{text-align:right}
         <div>💧 Poço de água</div>
         <div>🌧 Pluviómetro (a chuva regista-se junto dele)</div>
         <div><i class="b" style="border-color:#0b6e8a;border-style:dashed"></i>Tracejado: área medida pelo activista, por aprovar</div>
+        <div id="leg-proj" style="display:none"><i style="background:#6d4c41"></i>Retirado da rega · <i style="background:#9e9e9e;margin-left:6px"></i>Fora do plano de rega (só para ver)</div>
         <div id="leg-exp" style="display:none"><i class="b" style="border-color:#ad1457;border-style:dashed"></i>Área de expansão (tocar para ver os campos dentro)</div>
         <div id="leg-exp2" style="display:none"><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#757575;border:1.5px solid #fff;box-shadow:0 0 0 1px #999;margin-right:6px"></i>Campo fora do plano de rega, dentro da área de expansão (aparece com o mapa aproximado)</div>
         <div id="leg-coq" style="display:none">🥥 Coqueiros (teste): botão escondido · <button class="chip" onclick="event.stopPropagation(); esconderCoq(false)">Mostrar</button></div>
@@ -345,6 +347,7 @@ td.n,th.n{text-align:right}
         <div class="f-rap" id="f-rap"></div>
       </div>
       <div id="f-guarda" hidden><div id="f-mais">
+        <div class="f-camp" id="f-proj-c" style="display:none"><label for="f-proj">Campos do projecto</label><select id="f-proj"><option value="rega">Só os campos na rega</option><option value="ret">🗂 Retirados da rega</option><option value="fora">🗂 Fora do plano de rega</option><option value="proj">🗂 Todos os campos do projecto</option></select></div>
         <div class="f-camp"><label for="f-ambito">Campos</label><select id="f-ambito"><option value="meus">As minhas áreas</option><option value="todas">Todas as áreas</option></select></div>
         <div class="f-camp"><label for="f-com">Comunidade</label><select id="f-com"><option value="">Todas as comunidades</option></select></div>
         <div class="f-camp"><label for="f-act">Activista</label><select id="f-act" style="display:none"><option value="">Todos os activistas</option></select></div>
@@ -367,12 +370,12 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=267"></script>
-<script src="i18n.js?v=267"></script>
+<script src="i18n-sw.js?v=268"></script>
+<script src="i18n.js?v=268"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="demo.js?v=267"></script>
-<script src="app.js?v=267"></script>
+<script src="demo.js?v=268"></script>
+<script src="app.js?v=268"></script>
 </body>
 </html>
