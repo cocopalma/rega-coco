@@ -547,6 +547,7 @@ async function carregarTudo() {
   carregarNMorb().catch(() => {});
   carregarSugFeitas().catch(() => {});
   carregarMensagens().catch(() => {});   // v258: mensagens do gestor
+  actualizarAvisosPush().catch(() => {});   // v275: avisos das mensagens com a app fechada
   carregarExpansao().catch(() => {});
   carregarProj().catch(() => {});   // v268
   carregarManut().catch(() => {});   // lista dos oficiais no telefone (encaminhar sem rede)
@@ -702,6 +703,7 @@ function ecraDefinicoes() {
   folha(`<h2>⚙️ <span>Definições</span></h2>
     <p class="pequeno sem-trad">${esc(S.perfil?.nome || '')}</p>
     <label>Língua</label><div class="chips sem-trad">${L.map((l) => `<button class="chip${l === atual ? ' on' : ''}" onclick="escolherLingua('${l}')">${nomes[l]}${l === atual ? ' ✓' : ''}</button>`).join('')}</div>
+    ${window.DEMO ? '' : linhaAvisosPush()}
     ${window.DEMO ? '' : `<button class="btn sec" onclick="ecraTrocarSenha(false)">🔑 <span>${act ? 'Mudar o meu PIN' : 'Mudar a minha senha'}</span></button>`}
     <button class="btn sec" style="border-color:#b42318;color:#b42318" onclick="sair()">${window.DEMO ? 'Terminar a simulação' : 'Sair'}</button>
     ${window.DEMO ? '' : `<p class="pequeno">${act ? 'Não é preciso sair no fim do dia: pode só fechar a app.' : 'Para voltar a entrar vai precisar do utilizador e da senha.'}</p>`}
@@ -718,7 +720,8 @@ async function sair() {
   if (!filaRegistos().length && !confirm(souActivista() ? 'Para voltar a entrar vai precisar do utilizador e do PIN. Não é preciso sair no fim do dia: pode só fechar a app. Sair mesmo assim?' : 'Para voltar a entrar vai precisar do utilizador e da senha. Sair?')) return;
   try { const dias = LS.get('percDias', {}) || {}; for (const [k, v] of Object.entries(dias)) for (const x of v.lista || []) await FOTOS.apagar(chavePerc(k, x)); } catch {}
   try { await FOTOS.apagar('camposProj'); } catch {} LS.del('projEm');   // v268
-  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'filaMorb', 'rascMorb', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'nMorb', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl', 'actTot', 'mensagens', 'msgVistas'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
+  await desligarAvisosPush();   // v275: os avisos das mensagens deixam de vir para este telefone
+  try { await sb.auth.signOut(); } catch {} ['perfil', 'emCurso', 'sugestao', 'meusRegs', 'jornada', 'hojeHtml', 'gestaoListar', 'mon', 'avisos', 'visiveis', 'meusTestes', 'chuvaTesteIds', 'chuvaFeita', 'rascChuva', 'rascMon', 'rascMedir', 'rascFotoRega', 'plantas', 'hojeEquipas', 'queimadas', 'rascQueim', 'filaAcomp', 'rascAcomp', 'filaMorb', 'rascMorb', 'recont', 'rascRec', 'oficiais', 'percurso', 'percursoFim', 'percDias', 'nPlantas', 'nMorb', 'testesEquipa', 'nTestes', 'sugFeitas', 'sugVistas', 'manut', 'modo', 'filaSugProx', 'coqueiros', 'filaCoq', 'rascCoq', 'coqLocal', 'medicoes', 'filaMed', 'rascVara', 'planos', 'sugGest', 'semMotivo', 'diasSemRega', 'meuDia', 'membros', 'apoios', 'apoioSug', 'outras', 'autoriz', 'fechSemPl', 'actTot', 'mensagens', 'msgVistas', 'msgSom', 'pushNao'].forEach(LS.del); try { Object.keys(localStorage).filter((k) => k.startsWith('rega.painel.cache.')).forEach((k) => localStorage.removeItem(k)); } catch {}; location.reload();
 }
 
 // ---------- a minha senha / o meu PIN (18/10/2026, Valdo) ----------
@@ -6014,8 +6017,8 @@ async function desenharHoje(o) {
   if (guardado && guardado.d === h && guardado.p === papel && !$('#hoje').innerHTML.trim()) $('#hoje').innerHTML = guardado.html;
   let html = `<div class="cartao"><h2>Hoje · ${fmtData(h)}</h2>`;
   if (souOficial()) {                                    // oficial de M&E: só as recontagens (18/10/2026, Valdo)
-    $('#hoje').innerHTML = cartaoMensagens() + cartaoRecontagensHoje();
-    if (rede) { await carregarRecontagens(!auto); if (!velho()) $('#hoje').innerHTML = cartaoMensagens() + cartaoRecontagensHoje(); }
+    $('#hoje').innerHTML = cartaoMensagens() + cartaoAvisosPush() + cartaoRecontagensHoje();
+    if (rede) { await carregarRecontagens(!auto); if (!velho()) $('#hoje').innerHTML = cartaoMensagens() + cartaoAvisosPush() + cartaoRecontagensHoje(); }
     return;
   }
   // dois botões no topo do Hoje: "Rega hoje" e "Recontagens das plantas" (18/10/2026, Valdo); a escolha fica no telefone
@@ -6023,8 +6026,8 @@ async function desenharHoje(o) {
   if (veRecontagens() && !MEU_DIA()) {
     const vista = vistaActual();
     if (vista === 'rec') {
-      $('#hoje').innerHTML = cartaoMensagens() + abasHoje('rec') + cartaoRecontagensHoje();
-      if (rede) { await carregarRecontagens(!auto); if (!velho() && vistaActual() === 'rec') $('#hoje').innerHTML = cartaoMensagens() + abasHoje('rec') + cartaoRecontagensHoje(); }
+      $('#hoje').innerHTML = cartaoMensagens() + cartaoAvisosPush() + abasHoje('rec') + cartaoRecontagensHoje();
+      if (rede) { await carregarRecontagens(!auto); if (!velho() && vistaActual() === 'rec') $('#hoje').innerHTML = cartaoMensagens() + cartaoAvisosPush() + abasHoje('rec') + cartaoRecontagensHoje(); }
       return;
     }
     abas = abasHoje('rega');
@@ -6101,7 +6104,7 @@ async function desenharHoje(o) {
   else html = cartaoNuncaAgua() + cartaoApoioAct() + cartaoPorTerminar() + cartaoItinerario() + cartaoPlanos() + cartaoSugHoje() + cartaoAvisos() + cartaoSugFeitas() + cartaoSemEquipa() + cartaoSemTelefone() + cartaoPrimeiroTeste() + cartaoManutHoje() + html + cartaoDiaSemRega() + cartaoEquipas();   // "Sair" fica só no botão do topo (13/10/2026, Valdo)
   S.hojeRega = { d: h, html };                           // para voltar a "Rega hoje" sem esperar
   if (veRecontagens() && !MEU_DIA() && vistaActual() !== 'rega') return;   // mudou para as recontagens enquanto carregava
-  html = cartaoMensagens() + (veRecontagens() && !MEU_DIA() ? abasHoje('rega') : '') + html;
+  html = cartaoMensagens() + cartaoAvisosPush() + (veRecontagens() && !MEU_DIA() ? abasHoje('rega') : '') + html;
   $('#hoje').innerHTML = html;
   if (navigator.onLine) LS.set('hojeHtml', { d: h, p: S.perfil.papel, html });
 }
@@ -7123,6 +7126,7 @@ async function carregarMensagens() {
   const { data, error } = await sb.rpc('minhas_mensagens');
   if (error || !Array.isArray(data)) return;
   _msgEm = Date.now(); LS.set('mensagens', data);
+  somNovasMensagens();
   if ($('#e-hoje')?.classList.contains('on')) { const el = $('#hoje-msg'), h = cartaoMensagens(); if (el) { if (h) el.outerHTML = h; else el.remove(); } else if (h) $('#hoje').insertAdjacentHTML('afterbegin', h); }
 }
 const msgPorVer = () => { const v = LS.get('msgVistas', []) || []; return (LS.get('mensagens', []) || []).filter((m) => !m.vista_em && !v.includes(m.id)); };
@@ -7178,6 +7182,92 @@ function avisoMensagens(tent = 0, soNovas = false) {
   folha(`<h2>${tituloMsg(L.length)}</h2>
     <div id="msg-aviso">${L.map(itemMsg).join('')}</div>
     <button class="btn sec" onclick="fecharFolha()">Ver depois</button>`);
+}
+// ---------- som e avisos das mensagens (v275, 28/11/2026, Valdo: "sempre que alguem receber mensagem o telefone emitir um som?" → "As 2.") ----------
+// A: com a app aberta, cada mensagem nova toca um som curto e o telefone vibra (uma vez por mensagem: rega.msgSom).
+//    O navegador só deixa tocar depois de a pessoa ter tocado no ecrã uma vez (desbloquearSom).
+// B: com a app fechada, a notificação vem pelo service worker (Web Push). A pessoa liga os avisos no Hoje ou em ⚙️ Definições;
+//    o telefone guarda a subscrição no servidor (gravar_push) e o gatilho mensagens_push chama a função push-mensagem.
+let _audio = null;
+function audioCtx() { try { _audio = _audio || new (window.AudioContext || window.webkitAudioContext)(); } catch { _audio = null; } return _audio; }
+function desbloquearSom() { const a = audioCtx(); if (a && a.state !== 'running') a.resume().catch(() => {}); }
+function somMensagem() {
+  try { navigator.vibrate?.([200, 100, 200]); } catch {}
+  const a = audioCtx(); if (!a) return;
+  const tocar = () => {
+    const t = a.currentTime + 0.02;
+    [[880, 0], [1320, 0.2]].forEach(([f, d]) => {
+      const o = a.createOscillator(), g = a.createGain(); o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.5, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.28);
+      o.connect(g); g.connect(a.destination); o.start(t + d); o.stop(t + d + 0.32);
+    });
+  };
+  if (a.state === 'running') tocar(); else a.resume().then(() => { if (a.state === 'running') tocar(); }).catch(() => {});
+}
+function somNovasMensagens() {
+  const ja = LS.get('msgSom', []) || [], novas = msgPorVer().filter((m) => !ja.includes(m.id)); if (!novas.length) return;
+  LS.set('msgSom', ja.concat(novas.map((m) => m.id)).slice(-200));
+  if (document.visibilityState === 'visible') somMensagem();
+}
+const PUSH_OK = () => !window.DEMO && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const chaveU8 = (b64) => { const p = '='.repeat((4 - b64.length % 4) % 4), r = atob((b64 + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, (c) => c.charCodeAt(0)); };
+async function subscreverPush() {
+  const { data: chave, error } = await sb.rpc('push_chave_publica'); if (error || !chave) throw new Error(error?.message || 'Os avisos ainda não estão prontos no servidor.');
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveU8(chave) });
+  const j = sub.toJSON();
+  const r = await sb.rpc('gravar_push', { p_endpoint: j.endpoint, p_p256dh: j.keys?.p256dh, p_auth: j.keys?.auth, p_lingua: typeof LINGUA !== 'undefined' ? LINGUA : 'pt', p_agente: navigator.userAgent.slice(0, 300) });
+  if (r.error) throw new Error(r.error.message);
+  LS.set('pushEm', `${hojeISO()}|${S.perfil?.id}|${typeof LINGUA !== 'undefined' ? LINGUA : 'pt'}`);
+}
+// ao abrir a app: com os avisos já autorizados, renova a subscrição no servidor uma vez por dia (sem perguntar nada)
+async function actualizarAvisosPush() {
+  if (!PUSH_OK() || Notification.permission !== 'granted' || !navigator.onLine) return;
+  if (LS.get('pushEm') === `${hojeISO()}|${S.perfil?.id}|${typeof LINGUA !== 'undefined' ? LINGUA : 'pt'}`) return;
+  await subscreverPush();
+}
+async function ligarAvisosPush() {
+  if (!PUSH_OK()) return aviso('Este telefone não deixa a app mostrar avisos.', 'erro');
+  let p = Notification.permission;
+  if (p === 'default') { try { p = await Notification.requestPermission(); } catch { p = Notification.permission; } }
+  if (p !== 'granted') { if (p === 'denied') ajudaAvisosPush(); redesenharAvisosPush(); return; }
+  if (!navigator.onLine) { aviso('Sem rede: os avisos ficam ligados quando houver rede.', 'info'); redesenharAvisosPush(); return; }
+  try { await subscreverPush(); aviso('🔔 Avisos ligados: quando chegar uma mensagem, o telefone toca, mesmo com a app fechada.', 'ok'); somMensagem(); }
+  catch (e) { aviso('Não foi possível ligar os avisos: ' + (e?.message || e), 'erro'); }
+  redesenharAvisosPush();
+}
+async function desligarAvisosPush() {
+  try {
+    if (!PUSH_OK()) return;
+    const reg = await navigator.serviceWorker.getRegistration(), sub = await reg?.pushManager.getSubscription();
+    if (sub) { await Promise.race([sb.rpc('remover_push', { p_endpoint: sub.endpoint }), new Promise((ok) => setTimeout(ok, 3000))]); await sub.unsubscribe(); }
+  } catch {}
+  LS.del('pushEm');
+}
+function ajudaAvisosPush() {
+  folha(`<h2>🔔 <span>Os avisos estão bloqueados</span></h2>
+    <p>O Chrome não deixa a app mostrar avisos. Para os ligar:</p>${passosPermissao('Notificações')}
+    <button class="btn" onclick="fecharFolha(); ligarAvisosPush()">Já autorizei</button><button class="btn sec" onclick="fecharFolha()">Fechar</button>`);
+}
+function cartaoAvisosPush() {
+  if (!PUSH_OK() || Notification.permission !== 'default' || LS.get('pushNao') === S.perfil?.id) return '';
+  return `<div class="cartao" id="hoje-push" style="border-left:4px solid var(--azul,#0b6e8a)"><h2>🔔 <span>Ligar os avisos das mensagens</span></h2>
+    <p class="pequeno">Quando lhe mandarem uma mensagem na app, o telefone toca e mostra um aviso, mesmo com a app fechada.</p>
+    <button class="btn" onclick="ligarAvisosPush()">🔔 Ligar os avisos</button> <button class="chip" onclick="naoAvisosPush()">Agora não</button></div>`;
+}
+function naoAvisosPush() { LS.set('pushNao', S.perfil?.id); redesenharAvisosPush(); aviso('Pode ligar os avisos mais tarde em ⚙️ Definições.', 'info'); }
+function linhaAvisosPush() {
+  if (!PUSH_OK()) return '';
+  const p = Notification.permission;
+  const estado = p === 'granted' ? '<p class="pequeno">🔔 <span>Avisos das mensagens: ligados</span> ✓</p>'
+    : p === 'denied' ? `<p class="pequeno">🔕 <span>Avisos das mensagens: bloqueados no Chrome</span></p><button class="btn sec" onclick="ajudaAvisosPush()">🔔 <span>Como ligar os avisos</span></button>`
+    : `<button class="btn sec" onclick="ligarAvisosPush()">🔔 <span>Ligar os avisos das mensagens</span></button>`;
+  return `<div id="def-push">${estado}<button class="chip" onclick="somMensagem()">🔊 <span>Ouvir o som do aviso</span></button></div>`;
+}
+function redesenharAvisosPush() {
+  const c = $('#hoje-push'); if (c) { const h = cartaoAvisosPush(); if (h) c.outerHTML = h; else c.remove(); }
+  const d = $('#def-push'); if (d) d.outerHTML = linhaAvisosPush();
 }
 // Gestão › ✉️ Mensagens (só o gestor principal)
 const enviaMensagens = () => S.perfil?.papel === 'gestor' && S.perfil?.gere_acessos === true && !S.perfil?.so_teste && !window.DEMO;
@@ -8481,6 +8571,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('online', () => sincronizar(true));
   window.addEventListener('offline', actSync);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  // v275: o service worker avisa quando chega uma mensagem (push); com a app aberta, toca o som e mostra-a
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (ev) => {
+    if (ev.data?.tipo !== 'mensagem' || !S.perfil) return;
+    carregarMensagens().then(() => avisoMensagens(0, !ev.data.abrir)).catch(() => {});
+  });
+  document.addEventListener('pointerdown', desbloquearSom, { capture: true, passive: true });
 
   // Sem rede e com a sessão expirada, getSession() fica ~30 s a tentar renovar o token e o ecrã fica branco
   // (Nuro, 14/10/2026). Espera no máximo 1,5 s (8 s com rede) e, se não responder, usa a sessão guardada no telefone;

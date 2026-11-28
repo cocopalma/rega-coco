@@ -1,6 +1,6 @@
 // Service worker: guarda a app e as bibliotecas para funcionar sem rede.
 // Os pedidos ao Supabase nunca são guardados aqui (a fila offline está na app).
-const VERSAO = 'rega-v274';
+const VERSAO = 'rega-v275';
 const V = VERSAO.split('-v')[1];   // o ?v= de index.html e painel.html é sempre o número da VERSAO
 const BASE = ['./', 'index.html', `app.js?v=${V}`, `demo.js?v=${V}`, `i18n.js?v=${V}`, `i18n-sw.js?v=${V}`, 'painel.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js',
@@ -53,4 +53,28 @@ self.addEventListener('fetch', (e) => {
     daRede.then((r) => { clearTimeout(t); fim(r); }).catch(() => { clearTimeout(t); doTelefone().then((r) => { fim(r); if (!feito) { feito = true; ok(new Response('', { status: 504 })); } }); });
     e.waitUntil(daRede.catch(() => {}));
   }));
+});
+
+// v275 (28/11/2026): avisos das mensagens com a app fechada (Web Push). A função push-mensagem manda {tipo, id, titulo, texto}.
+// Com a app aberta e à vista, não mostra a notificação: a app toca o som e mostra a mensagem.
+self.addEventListener('push', (e) => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch {}
+  if (d.tipo !== 'mensagem') return;
+  e.waitUntil((async () => {
+    const cl = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    cl.forEach((c) => c.postMessage({ tipo: 'mensagem', id: d.id }));
+    if (cl.some((c) => c.visibilityState === 'visible')) return;
+    await self.registration.showNotification(d.titulo || '✉️ Rega Coco', {
+      body: d.texto || '', tag: 'msg-' + d.id, renotify: true, icon: 'icon-192.png', badge: 'icon-192.png',
+      vibrate: [200, 100, 200], data: { id: d.id } });
+  })());
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const cl = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const c = cl.find((x) => x.url.startsWith(self.registration.scope) && !x.url.includes('painel.html'));
+    if (c) { c.postMessage({ tipo: 'mensagem', id: e.notification.data?.id, abrir: true }); return c.focus(); }
+    return self.clients.openWindow(self.registration.scope);
+  })());
 });
