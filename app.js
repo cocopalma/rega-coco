@@ -7245,11 +7245,18 @@ function htmlGrupoEnv(g) {
 }
 function desenharEnviadas() {
   const el = $('#gm-lista'); if (!el) return;
-  const G = gruposEnviadas(S.gmEnv || []);
-  if (!G.length) { el.innerHTML = '<p class="pequeno">Ainda nenhuma.</p>'; return; }
+  const env = S.gmEnv || [];
+  if (!env.length) { el.innerHTML = '<p class="pequeno">Ainda nenhuma.</p>'; return; }
+  const nao = env.filter((m) => !m.vista_em), sim = env.filter((m) => m.vista_em);
+  const rpv = gruposEnviadas(sim).reduce((a, g) => a + g.porVer, 0);
+  const bot = (v, txt, n, extra) => `<button class="chip gm-b${S.gmVer === v ? ' on' : ''}" id="gm-b-${v}" onclick="verEnviadas('${v}')">${txt} (${n})</button>${extra || ''}`;
+  const topo = `<div class="gm-bts">${bot('nao', '📭 Não lidas', nao.length)}${bot('sim', '✅ Lidas', sim.length, rpv ? ` <b class="gm-nb">${rpv} <span>${rpv === 1 ? 'resposta por ver' : 'respostas por ver'}</span></b>` : '')}</div>`;
+  if (!S.gmVer) { el.innerHTML = topo + '<p class="pequeno">Toque num botão para ver as mensagens.</p>'; return; }
+  const G = gruposEnviadas(S.gmVer === 'nao' ? nao : sim);
+  if (!G.length) { el.innerHTML = topo + `<p class="pequeno">${S.gmVer === 'nao' ? 'Nenhuma mensagem por ler.' : 'Nenhuma mensagem lida.'}</p>`; return; }
   const lim = new Date(Date.now() - GM_DIAS * 864e5).toISOString();
   const rec = G.filter((g) => g.porVer || g.ultima >= lim), ant = G.filter((g) => !(g.porVer || g.ultima >= lim));
-  el.innerHTML = (rec.length ? rec.map(htmlGrupoEnv).join('') : `<p class="pequeno"><span>Nenhuma nos últimos 7 dias.</span></p>`) +
+  el.innerHTML = topo + (rec.length ? rec.map(htmlGrupoEnv).join('') : `<p class="pequeno"><span>Nenhuma nos últimos 7 dias.</span></p>`) +
     (ant.length ? (S.gmAntigas ? ant.map(htmlGrupoEnv).join('') + `<button class="chip" onclick="S.gmAntigas=false;desenharEnviadas()">Esconder as mais antigas</button>`
       : `<button class="chip" id="gm-mais" onclick="S.gmAntigas=true;desenharEnviadas()">Ver mais antigas (${ant.length})</button>`) : '');
   el.querySelectorAll('details.gm-g').forEach((d) => d.addEventListener('toggle', () => {
@@ -7257,6 +7264,7 @@ function desenharEnviadas() {
     if (d.open) { S.gmAbertos.add(d.dataset.k); S.gmFech.delete(d.dataset.k); } else { S.gmAbertos.delete(d.dataset.k); S.gmFech.add(d.dataset.k); }
   }));
 }
+function verEnviadas(v) { S.gmVer = S.gmVer === v ? null : v; S.gmAntigas = false; desenharEnviadas(); }
 function vistaRespGestao(id) { mensagemVista(id); desenharEnviadas(); numGac('msg', msgPorVer().filter((m) => m.resposta_a).length); }
 async function removerMensagem(id) {
   if (!confirm('Apagar esta mensagem? A pessoa deixa de a ver.')) return;
