@@ -7148,6 +7148,7 @@ function mensagemVista(id) {
   const f = LS.get('filaAlt', []); if (!f.some((y) => y.tipo === 'msg_vista' && y.msg_id === id)) { f.push({ id: crypto.randomUUID(), tipo: 'msg_vista', msg_id: id, em: new Date().toISOString() }); LS.set('filaAlt', f); }
   actSync(); redesenharMsg(); if (navigator.onLine) sincronizar(true);
   if ($('#msg-aviso')) { const L = msgPorVer(); if (L.length) $('#msg-aviso').innerHTML = L.map(itemMsg).join(''); else fecharFolha(); }
+  desenharRecebidas(); if ($('#gm-lista')) { desenharEnviadas(); numGac('msg', msgPorVer().filter((m) => m.resposta_a).length); }
 }
 function ecraResponder(id) {
   const m = (LS.get('mensagens', []) || []).find((x) => x.id === id); if (!m) return;
@@ -7162,7 +7163,7 @@ function ecraResponder(id) {
   $('#mr-env').onclick = () => {
     const f = LS.get('filaAlt', []);
     f.push({ id: crypto.randomUUID(), tipo: 'msg_resp', resp_id: crypto.randomUUID(), msg_id: id, texto: $('#mr-txt').value.trim(), em: new Date().toISOString() });
-    LS.set('filaAlt', f); marcarMsgVista(id); fecharFolha(); redesenharMsg();
+    LS.set('filaAlt', f); marcarMsgVista(id); fecharFolha(); redesenharMsg(); desenharRecebidas(); if ($('#gm-lista')) desenharEnviadas();
     aviso(navigator.onLine ? 'Resposta enviada.' : 'Resposta guardada no telefone. Vai quando houver rede.', 'ok');
     sincronizar(true);
   };
@@ -7183,7 +7184,7 @@ const enviaMensagens = () => S.perfil?.papel === 'gestor' && S.perfil?.gere_aces
 const PAPEL_MSG = { activista: 'Activista', tecnico: 'Técnico', supervisor: 'Supervisor', gestor: 'Gestor', director: 'Director', me: 'M&E', oficial_me: 'Oficial de M&E', cliente: 'Cliente', chefe_manutencao: 'Chefe de manutenção' };
 async function cartaoMensagensGestao() {
   const el = $('#g-msg'); if (!el) return;
-  const [d, e] = await Promise.all([sb.rpc('destinatarios_mensagem'), sb.rpc('mensagens_enviadas')]);
+  const [d, e] = await Promise.all([sb.rpc('destinatarios_mensagem'), sb.rpc('mensagens_enviadas'), carregarMensagens()]);
   if (!$('#g-msg')) return;
   if (d.error || !Array.isArray(d.data)) { el.innerHTML = `<h2>✉️ <span>Mensagens</span></h2><div class="msg erro">${semRede(d.error) ? 'Sem ligação ao servidor. As mensagens precisam de rede.' : esc(d.error?.message || 'Sem acesso')}</div>`; return; }
   const grupos = {}; d.data.forEach((p) => (grupos[p.papel] = grupos[p.papel] || []).push(p));
@@ -7194,9 +7195,11 @@ async function cartaoMensagensGestao() {
     <label><span>Mensagem</span><textarea id="gm-txt" rows="4" maxlength="2000"></textarea></label>
     <button class="btn" id="gm-env" disabled>Enviar</button>
     <p class="pequeno"><span>As respostas aparecem por baixo de cada mensagem e também no seu Hoje.</span></p>
+    <h3 style="font-size:14px;margin:14px 0 4px">Recebidas (últimos 30 dias)</h3>
+    <div id="gr-lista"></div>
     <h3 style="font-size:14px;margin:14px 0 4px">Enviadas (últimos 60 dias)</h3>
     <div id="gm-lista"></div>`;
-  S.gmEnv = env; desenharEnviadas();
+  desenharRecebidas(); S.gmEnv = env; desenharEnviadas();
   const ok = () => { $('#gm-env').disabled = !($('#gm-para').value && $('#gm-txt').value.trim().length >= 3); };
   $('#gm-para').onchange = ok; $('#gm-txt').oninput = ok;
   $('#gm-env').onclick = async () => {
@@ -7264,6 +7267,27 @@ function desenharEnviadas() {
     if (d.open) { S.gmAbertos.add(d.dataset.k); S.gmFech.delete(d.dataset.k); } else { S.gmAbertos.delete(d.dataset.k); S.gmFech.add(d.dataset.k); }
   }));
 }
+// v273 (28/11/2026, Valdo: "faltam as recebidas (não lidas e lidas)"): Gestão › Mensagens › Recebidas, com os mesmos dois botões.
+// Dados de minhas_mensagens (por ler + lidas nos últimos 30 dias), guardados no telefone: também sem rede.
+const itemMsgLida = (m) => `<div class="lin" style="display:block">
+  <div class="pequeno"><span>De:</span> <b class="sem-trad">${esc(m.de || '')}</b> · ${horaMsg(m.criada_em)} · <span>✓ Lida</span></div>
+  ${m.resposta_a_texto ? `<div class="pequeno"><span>Resposta a:</span> <span class="sem-trad">«${esc(m.resposta_a_texto)}»</span></div>` : ''}
+  <div class="sem-trad" style="white-space:pre-wrap;margin:4px 0">${esc(m.texto)}</div>
+  <button class="chip" onclick="ecraResponder('${esc(m.id)}')">↩️ Responder</button></div>`;
+function desenharRecebidas() {
+  const el = $('#gr-lista'); if (!el) return;
+  const todas = (LS.get('mensagens', []) || []).slice().sort((a, b) => (b.criada_em > a.criada_em ? 1 : -1));
+  if (!todas.length) { el.innerHTML = '<p class="pequeno">Ainda nenhuma.</p>'; return; }
+  const porVer = new Set(msgPorVer().map((m) => m.id));
+  const nao = todas.filter((m) => porVer.has(m.id)), sim = todas.filter((m) => !porVer.has(m.id));
+  const bot = (v, txt, n) => `<button class="chip gm-b${S.grVer === v ? ' on' : ''}" id="gr-b-${v}" onclick="verRecebidas('${v}')">${txt} (${n})</button>`;
+  const topo = `<div class="gm-bts">${bot('nao', '📭 Não lidas', nao.length)}${bot('sim', '✅ Lidas', sim.length)}</div>`;
+  if (!S.grVer) { el.innerHTML = topo + '<p class="pequeno">Toque num botão para ver as mensagens.</p>'; return; }
+  const L = S.grVer === 'nao' ? nao : sim;
+  el.innerHTML = topo + (L.length ? L.map(S.grVer === 'nao' ? itemMsg : itemMsgLida).join('')
+    : `<p class="pequeno">${S.grVer === 'nao' ? 'Nenhuma mensagem por ler.' : 'Nenhuma mensagem lida.'}</p>`);
+}
+function verRecebidas(v) { S.grVer = S.grVer === v ? null : v; desenharRecebidas(); }
 function verEnviadas(v) { S.gmVer = S.gmVer === v ? null : v; S.gmAntigas = false; desenharEnviadas(); }
 function vistaRespGestao(id) { mensagemVista(id); desenharEnviadas(); numGac('msg', msgPorVer().filter((m) => m.resposta_a).length); }
 async function removerMensagem(id) {
