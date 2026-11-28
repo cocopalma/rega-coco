@@ -7195,11 +7195,8 @@ async function cartaoMensagensGestao() {
     <button class="btn" id="gm-env" disabled>Enviar</button>
     <p class="pequeno"><span>As respostas aparecem por baixo de cada mensagem e também no seu Hoje.</span></p>
     <h3 style="font-size:14px;margin:14px 0 4px">Enviadas (últimos 60 dias)</h3>
-    ${env.length ? env.map((m) => `<div class="lin" style="display:block"><div><b class="sem-trad">${esc(m.para)}</b> · <span>${esc(PAPEL_MSG[m.papel] || m.papel)}</span> · ${fmtData(String(m.criada_em).slice(0, 10))}</div>
-      ${m.resposta_a_texto ? `<div class="pequeno"><span>Resposta a:</span> <span class="sem-trad">«${esc(m.resposta_a_texto)}»</span></div>` : ''}
-      <div class="sem-trad pequeno" style="white-space:pre-wrap">${esc(m.texto)}</div>
-      <div class="pequeno">${m.vista_em ? `<b style="color:var(--ok,#2e7d32)">✓ <span>Vista</span></b> ${fmtData(String(m.vista_em).slice(0, 10))} ${String(new Date(m.vista_em).toTimeString()).slice(0, 5)}` : `<b style="color:var(--warn,#b26b00)">Por ver</b> <button class="chip" onclick="removerMensagem('${esc(m.id)}')">Apagar (engano)</button>`}</div>
-      ${(m.respostas || []).map((r) => `<div style="margin:6px 0 0 12px;padding-left:8px;border-left:3px solid var(--azul,#0b6e8a)"><div class="pequeno">↩️ <span>Resposta</span> · ${horaMsg(r.criada_em)}</div><div class="sem-trad" style="white-space:pre-wrap">${esc(r.texto)}</div></div>`).join('')}</div>`).join('') : '<p class="pequeno">Ainda nenhuma.</p>'}`;
+    <div id="gm-lista"></div>`;
+  S.gmEnv = env; desenharEnviadas();
   const ok = () => { $('#gm-env').disabled = !($('#gm-para').value && $('#gm-txt').value.trim().length >= 3); };
   $('#gm-para').onchange = ok; $('#gm-txt').oninput = ok;
   $('#gm-env').onclick = async () => {
@@ -7209,6 +7206,58 @@ async function cartaoMensagensGestao() {
     aviso('Mensagem enviada.', 'ok'); cartaoMensagensGestao();
   };
 }
+// v271 (28/11/2026, Valdo: "a lista vai ficar muito extensa"): a mesma mensagem enviada a várias pessoas fica num só cartão
+// (quem viu, quem não viu, respostas), o texto encolhido abre ao tocar, as respostas por ver vêm primeiro e só se mostram
+// os últimos 7 dias («Ver mais antigas» abre o resto). Só na app: os dados são os de mensagens_enviadas.
+const GM_DIAS = 7;
+const respPorVer = (r) => !r.vista_em && !(LS.get('msgVistas', []) || []).includes(r.id);
+function gruposEnviadas(env) {
+  const G = new Map();
+  env.forEach((m) => {
+    const k = (m.resposta_a_texto || '') + '\u0001' + m.texto;
+    if (!G.has(k)) G.set(k, { k, texto: m.texto, resposta_a_texto: m.resposta_a_texto, msgs: [] });
+    G.get(k).msgs.push(m);
+  });
+  return [...G.values()].map((g) => {
+    g.ultima = g.msgs.reduce((a, m) => (m.criada_em > a ? m.criada_em : a), '');
+    g.primeira = g.msgs.reduce((a, m) => (!a || m.criada_em < a ? m.criada_em : a), '');
+    g.vistas = g.msgs.filter((m) => m.vista_em).length;
+    g.resp = g.msgs.reduce((a, m) => a + (m.respostas || []).length, 0);
+    g.porVer = g.msgs.reduce((a, m) => a + (m.respostas || []).filter(respPorVer).length, 0);
+    return g;
+  }).sort((a, b) => (b.porVer > 0) - (a.porVer > 0) || (b.ultima > a.ultima ? 1 : b.ultima < a.ultima ? -1 : 0));
+}
+function htmlGrupoEnv(g) {
+  const n = g.msgs.length, um = n === 1 ? g.msgs[0] : null;
+  const para = um ? `<b class="sem-trad">${esc(um.para)}</b> · <span>${esc(PAPEL_MSG[um.papel] || um.papel)}</span>` : `<b>${n} <span>pessoas</span></b>`;
+  const datas = fmtData(String(g.primeira).slice(0, 10)) + (String(g.primeira).slice(0, 10) !== String(g.ultima).slice(0, 10) ? ' – ' + fmtData(String(g.ultima).slice(0, 10)) : '');
+  const estado = `<span>Vistas:</span> ${g.vistas}/${n}` + (g.resp ? ` · ${g.resp} <span>${g.resp === 1 ? 'resposta' : 'respostas'}</span>` : '');
+  const pessoa = (m) => `<div class="gm-p"><div><b class="sem-trad">${esc(m.para)}</b> · <span>${esc(PAPEL_MSG[m.papel] || m.papel)}</span></div>
+      <div class="pequeno">${m.vista_em ? `<b style="color:var(--ok,#2e7d32)">✓ <span>Vista</span></b> ${horaMsg(m.vista_em)}` : `<b style="color:var(--warn,#b26b00)">Por ver</b> <button class="chip" onclick="removerMensagem('${esc(m.id)}')">Apagar (engano)</button>`}</div>
+      ${(m.respostas || []).map((r) => `<div class="gm-r${respPorVer(r) ? ' nova' : ''}"><div class="pequeno">↩️ <span>Resposta</span> · ${horaMsg(r.criada_em)}${respPorVer(r) ? ' · <b style="color:var(--warn,#b26b00)">por ver</b>' : ''}</div><div class="sem-trad" style="white-space:pre-wrap">${esc(r.texto)}</div>
+        ${respPorVer(r) ? `<button class="chip" onclick="vistaRespGestao('${esc(r.id)}')">OK</button> <button class="chip" onclick="ecraResponder('${esc(r.id)}')">↩️ Responder</button>` : ''}</div>`).join('')}</div>`;
+  return `<details class="gm-g${g.porVer ? ' nova' : ''}" data-k="${esc(g.k)}"${S.gmAbertos?.has(g.k) || (g.porVer && !S.gmFech?.has(g.k)) ? ' open' : ''}>
+    <summary><div class="gm-cab"><span>Para:</span> ${para} · ${datas}</div>
+      ${g.resposta_a_texto ? `<div class="pequeno"><span>Resposta a:</span> <span class="sem-trad">«${esc(g.resposta_a_texto)}»</span></div>` : ''}
+      <div class="gm-txt sem-trad">${esc(g.texto)}</div>
+      <div class="pequeno">${estado}${g.porVer ? ` · <b class="gm-nb">${g.porVer} <span>${g.porVer === 1 ? 'resposta por ver' : 'respostas por ver'}</span></b>` : ''}</div></summary>
+    <div class="gm-corpo">${n > 1 ? g.msgs.slice().sort((a, b) => (!!a.vista_em - !!b.vista_em) || String(a.para).localeCompare(String(b.para))).map(pessoa).join('') : pessoa(um)}</div></details>`;
+}
+function desenharEnviadas() {
+  const el = $('#gm-lista'); if (!el) return;
+  const G = gruposEnviadas(S.gmEnv || []);
+  if (!G.length) { el.innerHTML = '<p class="pequeno">Ainda nenhuma.</p>'; return; }
+  const lim = new Date(Date.now() - GM_DIAS * 864e5).toISOString();
+  const rec = G.filter((g) => g.porVer || g.ultima >= lim), ant = G.filter((g) => !(g.porVer || g.ultima >= lim));
+  el.innerHTML = (rec.length ? rec.map(htmlGrupoEnv).join('') : `<p class="pequeno"><span>Nenhuma nos últimos 7 dias.</span></p>`) +
+    (ant.length ? (S.gmAntigas ? ant.map(htmlGrupoEnv).join('') + `<button class="chip" onclick="S.gmAntigas=false;desenharEnviadas()">Esconder as mais antigas</button>`
+      : `<button class="chip" id="gm-mais" onclick="S.gmAntigas=true;desenharEnviadas()">Ver mais antigas (${ant.length})</button>`) : '');
+  el.querySelectorAll('details.gm-g').forEach((d) => d.addEventListener('toggle', () => {
+    S.gmAbertos = S.gmAbertos || new Set(); S.gmFech = S.gmFech || new Set();
+    if (d.open) { S.gmAbertos.add(d.dataset.k); S.gmFech.delete(d.dataset.k); } else { S.gmAbertos.delete(d.dataset.k); S.gmFech.add(d.dataset.k); }
+  }));
+}
+function vistaRespGestao(id) { mensagemVista(id); desenharEnviadas(); numGac('msg', msgPorVer().filter((m) => m.resposta_a).length); }
 async function removerMensagem(id) {
   if (!confirm('Apagar esta mensagem? A pessoa deixa de a ver.')) return;
   const { error } = await sb.rpc('remover_mensagem', { p_id: id });

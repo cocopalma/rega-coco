@@ -38,6 +38,11 @@ nav button.on{color:var(--verde);border-top-color:var(--verde)}
 .gac>summary .nb:empty{display:none}.gac>summary .nb.z{background:#e3e7e1;color:#5b6168}
 .gac>summary .ch{width:18px;height:18px;flex:none;transition:transform .15s;color:#8a9089}.gac[open]>summary .ch{transform:rotate(90deg)}
 .gac[open]{background:#f4f6f2}.gac[open]>summary{border-bottom:1px solid var(--borda)}
+.gm-g{border:1px solid var(--linha,#e3ded2);border-radius:10px;margin:6px 0;background:var(--cartao,#fff)}.gm-g.nova{border-left:4px solid var(--warn,#b26b00)}
+.gm-g>summary{list-style:none;cursor:pointer;padding:8px 10px}.gm-g>summary::-webkit-details-marker{display:none}
+.gm-txt{white-space:pre-wrap;margin:3px 0;font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.gm-g[open] .gm-txt{display:block;-webkit-line-clamp:unset}
+.gm-nb{color:var(--warn,#b26b00)}.gm-corpo{padding:0 10px 8px}.gm-p{border-top:1px dashed var(--linha,#e3ded2);padding:6px 0}
+.gm-r{margin:6px 0 0 12px;padding-left:8px;border-left:3px solid var(--azul,#0b6e8a)}.gm-r.nova{border-left-color:var(--warn,#b26b00)}
 .gac>.gac-c{padding:10px 8px 2px}.gac-c .cartao{margin-bottom:10px}
 .gac-c.so1>.cartao>h2:first-child,.gac-c.so1>div>.cartao:first-child>h2:first-child{display:none}
 .tar{border-top:1px solid #eceee9}.tar:first-of-type{border-top:0}
@@ -372,12 +377,12 @@ td.n,th.n{text-align:right}
 
 <div class="folha" id="folha"><button class="fechar" id="folha-x">✕</button><div id="folha-c"></div></div>
 
-<script src="i18n-sw.js?v=270"></script>
-<script src="i18n.js?v=270"></script>
+<script src="i18n-sw.js?v=271"></script>
+<script src="i18n.js?v=271"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="demo.js?v=270"></script>
-<script src="app.js?v=270"></script>
+<script src="app.js?v=271"></script>
 </body>
 </html>
