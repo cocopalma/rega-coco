@@ -91,8 +91,10 @@ def correr(caso):
             pg.evaluate("mudar('gestao')"); pg.wait_for_timeout(800); pg.wait_for_timeout(1500); pg.evaluate("document.querySelector('#gac-msg') && (document.querySelector('#gac-msg').open = true)"); pg.wait_for_timeout(1500)
             if caso == "gestor":
                 verif(pg.locator("#gm-para").count() == 1, "G1 Gestão › Mensagens para o gestor principal")
+                pg.click("#gm-b-sim"); pg.wait_for_timeout(300)
                 g = pg.inner_text("#g-msg")
                 verif("Fica em Olumbe." in g and ("✓" in g), f"G2 lista das enviadas com a resposta e «Vista» ({g[-160:]!r})")
+                pg.evaluate("abrirEditorMsg(true)")
                 pg.select_option("#gm-para", VALDO); pg.fill("#gm-txt", "Obrigado, Shella."); pg.evaluate("document.querySelector('#g-msg').scrollIntoView()"); foto(pg, "3_gestao.png")
                 verif(not pg.is_disabled("#gm-env"), "G3 «Enviar» activo com pessoa e texto")
                 pg.click("#gm-env"); pg.wait_for_timeout(1500)

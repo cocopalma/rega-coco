@@ -7190,11 +7190,15 @@ async function cartaoMensagensGestao() {
   const grupos = {}; d.data.forEach((p) => (grupos[p.papel] = grupos[p.papel] || []).push(p));
   const env = Array.isArray(e.data) ? e.data : [];
   el.innerHTML = `<h2>✉️ <span>Mensagens</span></h2>
+    <button class="btn" id="gm-abrir" onclick="abrirEditorMsg(true)">✏️ Escrever uma mensagem</button>
+    <div id="gm-form" style="display:none">
     <p class="pequeno"><span>Escreva a uma pessoa. Ela vê a mensagem ao abrir a app e no Hoje, até tocar em «OK». Precisa de rede.</span></p>
     <label><span>Para</span><select id="gm-para"><option value="">— Escolha a pessoa —</option>${Object.keys(PAPEL_MSG).filter((k) => grupos[k]).map((k) => `<optgroup label="${esc(PAPEL_MSG[k])}">${grupos[k].map((p) => `<option value="${esc(p.id)}" class="sem-trad">${esc(p.nome)}</option>`).join('')}</optgroup>`).join('')}</select></label>
     <label><span>Mensagem</span><textarea id="gm-txt" rows="4" maxlength="2000"></textarea></label>
     <button class="btn" id="gm-env" disabled>Enviar</button>
+    <button class="btn sec" id="gm-fechar" onclick="abrirEditorMsg(false)">Cancelar</button>
     <p class="pequeno"><span>As respostas aparecem por baixo de cada mensagem e também no seu Hoje.</span></p>
+    </div>
     <h3 style="font-size:14px;margin:14px 0 4px">Recebidas (últimos 30 dias)</h3>
     <div id="gr-lista"></div>
     <h3 style="font-size:14px;margin:14px 0 4px">Enviadas (últimos 60 dias)</h3>
@@ -7274,6 +7278,12 @@ const itemMsgLida = (m) => `<div class="lin" style="display:block">
   ${m.resposta_a_texto ? `<div class="pequeno"><span>Resposta a:</span> <span class="sem-trad">«${esc(m.resposta_a_texto)}»</span></div>` : ''}
   <div class="sem-trad" style="white-space:pre-wrap;margin:4px 0">${esc(m.texto)}</div>
   <button class="chip" onclick="ecraResponder('${esc(m.id)}')">↩️ Responder</button></div>`;
+// v274 (28/11/2026, Valdo: "1 botão para abrir este editor, em vez de ele estar sempre aberto")
+function abrirEditorMsg(abrir) {
+  const f = $('#gm-form'), b = $('#gm-abrir'); if (!f || !b) return;
+  f.style.display = abrir ? '' : 'none'; b.style.display = abrir ? 'none' : '';
+  if (abrir) $('#gm-para')?.focus(); else { $('#gm-para').value = ''; $('#gm-txt').value = ''; $('#gm-env').disabled = true; }
+}
 function desenharRecebidas() {
   const el = $('#gr-lista'); if (!el) return;
   const todas = (LS.get('mensagens', []) || []).slice().sort((a, b) => (b.criada_em > a.criada_em ? 1 : -1));
